@@ -1,0 +1,14 @@
+[project]
+name = "younilab-authorization-contracts"
+version = "0.1.0"
+description = "Stable authorization decision contracts for SEO services."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.0,<3"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

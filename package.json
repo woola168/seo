@@ -1,0 +1,12 @@
+{
+  "name": "younilab-seo-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/admin-portal"
+  ],
+  "scripts": {
+    "dev:portal": "npm run dev --workspace @younilab/admin-portal",
+    "build:portal": "npm run build --workspace @younilab/admin-portal",
+    "test:portal": "npm run test --workspace @younilab/admin-portal"
+  }
+}

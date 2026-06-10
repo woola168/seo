@@ -1,0 +1,21 @@
+PERMISSIONS = frozenset(
+    {
+        "users.read",
+        "users.manage",
+        "roles.read",
+        "roles.manage",
+        "permissions.read",
+        "access-grants.read",
+        "access-grants.manage",
+        "customers.read",
+        "customers.create",
+        "customers.update",
+        "customers.delete",
+        "tasks.read",
+        "tasks.create",
+        "tasks.update",
+        "tasks.delete",
+        "authorization.evaluate",
+        "audit-events.read",
+    }
+)

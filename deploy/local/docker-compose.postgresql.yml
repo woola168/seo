@@ -1,0 +1,15 @@
+services:
+  access-control-postgresql:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: access_control
+      POSTGRES_USER: access_control
+      POSTGRES_PASSWORD: access_control
+    ports:
+      - "5432:5432"
+    volumes:
+      - access-control-postgresql-data:/var/lib/postgresql
+      - ./postgresql/001_access_control_schema.sql:/docker-entrypoint-initdb.d/001_access_control_schema.sql:ro
+
+volumes:
+  access-control-postgresql-data:

@@ -1,0 +1,26 @@
+[project]
+name = "younilab-access-control-api"
+version = "0.1.0"
+description = "SEO back-office authentication and access control API."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0,<1",
+    "younilab-access-control-application",
+    "younilab-access-control-domain",
+    "younilab-access-control-infrastructure",
+    "younilab-authorization-contracts",
+]
+
+[tool.uv.sources]
+younilab-access-control-application = { workspace = true }
+younilab-access-control-domain = { workspace = true }
+younilab-access-control-infrastructure = { workspace = true }
+younilab-authorization-contracts = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

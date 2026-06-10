@@ -1,0 +1,13 @@
+.env
+.env.local
+.pytest_cache/
+.uv-cache/
+.uv-python/
+.venv/
+.npm-cache/
+node_modules/
+apps/admin-portal/dist/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+references/
