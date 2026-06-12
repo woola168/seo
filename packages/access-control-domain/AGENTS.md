@@ -14,3 +14,10 @@ Local rules for the access control domain package. Extends the root `AGENTS.md`.
 
 - Model invariants and authorization decisions with plain Python.
 - Do not add DTOs, repositories, HTTP errors, SQL models, or configuration.
+
+## Structure
+
+- Keep account models in `accounts.py`, role models in `roles.py`, and protected
+  resource models in `resources.py`.
+- Add deeper DDD directories only when multiple real aggregate, entity, value
+  object, or event implementations require them.

@@ -1,11 +1,8 @@
 from dataclasses import dataclass
 
-from younilab_access_control_domain.models import (
-    ProtectedResource,
-    ResourceType,
-    Role,
-    UserAccount,
-)
+from younilab_access_control_domain.accounts import UserAccount
+from younilab_access_control_domain.resources import ProtectedResource, ResourceType
+from younilab_access_control_domain.roles import Role
 
 
 class AuthorizationReason:

@@ -1,18 +1,17 @@
-from younilab_access_control_domain.models import (
-    AccountStatus,
-    Customer,
-    ProtectedResource,
-    ResourceType,
-    Role,
-    SeoTask,
-    UserAccount,
-)
+from younilab_access_control_domain.accounts import AccountStatus, UserAccount
 from younilab_access_control_domain.policy import (
     AccessPolicy,
     AuthorizationReason,
     PolicyDecision,
 )
 from younilab_access_control_domain.permissions import PERMISSIONS
+from younilab_access_control_domain.resources import (
+    Customer,
+    ProtectedResource,
+    ResourceType,
+    SeoTask,
+)
+from younilab_access_control_domain.roles import Role
 
 __all__ = [
     "AccessPolicy",

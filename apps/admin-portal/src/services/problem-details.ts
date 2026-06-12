@@ -1,0 +1,60 @@
+type ProblemDetail = {
+  detail?: unknown;
+  message?: unknown;
+  title?: unknown;
+};
+
+type ValidationIssue = {
+  loc?: unknown;
+  msg?: unknown;
+  type?: unknown;
+};
+
+export function problemMessage(payload: unknown): string {
+  if (!isRecord(payload)) return "API request failed";
+
+  const problem = payload as ProblemDetail;
+  if (typeof problem.detail === "string" && problem.detail.trim()) {
+    return problem.detail;
+  }
+
+  if (Array.isArray(problem.detail)) {
+    const messages = problem.detail
+      .map(validationIssueMessage)
+      .filter((message): message is string => Boolean(message));
+    if (messages.length) return messages.join("；");
+  }
+
+  for (const fallback of [problem.message, problem.title]) {
+    if (typeof fallback === "string" && fallback.trim()) return fallback;
+  }
+  return "API request failed";
+}
+
+function validationIssueMessage(issue: unknown): string | null {
+  if (!isRecord(issue)) return null;
+
+  const validationIssue = issue as ValidationIssue;
+  const message =
+    validationIssue.type === "uuid_parsing"
+      ? "請輸入有效的 UUID"
+      : typeof validationIssue.msg === "string"
+        ? validationIssue.msg.trim()
+        : "";
+  if (!message) return null;
+
+  const location = Array.isArray(validationIssue.loc)
+    ? validationIssue.loc
+        .filter(
+          (part): part is string | number =>
+            typeof part === "string" || typeof part === "number",
+        )
+        .filter((part) => part !== "body")
+        .join(".")
+    : "";
+  return location ? `${location}: ${message}` : message;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}

@@ -29,6 +29,19 @@ def test_me_requires_authentication() -> None:
     assert response.headers["content-type"].startswith("application/problem+json")
 
 
+def test_login_rejects_unknown_request_fields() -> None:
+    response = TestClient(create_app()).post(
+        "/api/v1/auth/login",
+        json={
+            "email": "admin@example.com",
+            "password": "LongPassword123!",
+            "unexpected": True,
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_login_me_refresh_and_admin_role_management() -> None:
     user_id = UUID("11111111-1111-4111-8111-111111111111")
     role_id = UUID("22222222-2222-4222-8222-222222222222")

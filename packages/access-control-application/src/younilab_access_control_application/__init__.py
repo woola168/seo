@@ -1,5 +1,3 @@
-from younilab_access_control_application.authentication import AuthenticationService
-from younilab_access_control_application.authorization import AuthorizationService
 from younilab_access_control_application.errors import (
     AccessControlError,
     AccountUnavailable,
@@ -10,27 +8,42 @@ from younilab_access_control_application.errors import (
 )
 from younilab_access_control_application.interfaces import (
     AccessControlRepository,
+    AccessGrantRepository,
+    AccessManagementRepository,
+    AuthenticationRepository,
+    AuthorizationRepository,
     Clock,
     IdGenerator,
     PasswordHasher,
+    RefreshSessionRepository,
+    RoleRepository,
     TokenProvider,
+    UserRepository,
 )
-from younilab_access_control_application.management import AccessManagementService
 from younilab_access_control_application.models import (
     AccessClaims,
     Capabilities,
     IssuedTokens,
     RefreshSession,
 )
+from younilab_access_control_application.use_cases import (
+    AccessManagementService,
+    AuthenticationService,
+    AuthorizationService,
+)
 
 __all__ = [
     "AccessClaims",
     "AccessControlError",
     "AccessControlRepository",
+    "AccessGrantRepository",
     "AccessManagementService",
+    "AccessManagementRepository",
     "AccountUnavailable",
     "AuthenticationService",
+    "AuthenticationRepository",
     "AuthorizationService",
+    "AuthorizationRepository",
     "Capabilities",
     "Clock",
     "Conflict",
@@ -40,6 +53,9 @@ __all__ = [
     "IssuedTokens",
     "PasswordHasher",
     "RefreshSession",
+    "RefreshSessionRepository",
     "ResourceNotFound",
+    "RoleRepository",
     "TokenProvider",
+    "UserRepository",
 ]

@@ -5,6 +5,7 @@ import type {
   SessionUser,
   UserAccess,
 } from "../types";
+import { problemMessage } from "./problem-details";
 
 let accessToken = sessionStorage.getItem("accessToken") ?? "";
 
@@ -35,8 +36,8 @@ async function request<T>(
     if (refreshed) return request<T>(path, options, false);
   }
   if (!response.ok) {
-    const problem = await response.json().catch(() => null);
-    throw new ApiError(problem?.detail ?? "API request failed", response.status);
+    const problem: unknown = await response.json().catch(() => null);
+    throw new ApiError(problemMessage(problem), response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -94,6 +95,29 @@ export const api = {
     request<Role>("/api/v1/roles", {
       method: "POST",
       body: JSON.stringify({ name, permissions }),
+    }),
+  updateRolePermissions: (roleId: string, permissions: string[]) =>
+    request<Role>(`/api/v1/roles/${roleId}/permissions`, {
+      method: "PUT",
+      body: JSON.stringify({ permissions }),
+    }),
+  updateUserRoles: (userId: string, roleIds: string[]) =>
+    request<UserAccess>(`/api/v1/users/${userId}/roles`, {
+      method: "PUT",
+      body: JSON.stringify({ roleIds }),
+    }),
+  updateCustomerGrants: (userId: string, customerIds: string[]) =>
+    request<UserAccess>(
+      `/api/v1/users/${userId}/customer-access-grants`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ customerIds }),
+      },
+    ),
+  updateTaskGrants: (userId: string, taskIds: string[]) =>
+    request<UserAccess>(`/api/v1/users/${userId}/task-access-grants`, {
+      method: "PUT",
+      body: JSON.stringify({ taskIds }),
     }),
   evaluate: (
     userId: string,

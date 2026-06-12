@@ -17,3 +17,10 @@ Local rules for the access control application package. Extends the root
 - Use cases enforce authorization at the application boundary.
 - External capabilities are protocols injected by runtime composition.
 - Structured inputs and results use explicit typed models.
+
+## Structure
+
+- Keep orchestration in `use_cases/`.
+- Keep repository, security, and runtime ports in `interfaces/`.
+- Use the narrow use-case repository protocols instead of depending on the
+  aggregate `AccessControlRepository` inside services.

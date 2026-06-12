@@ -1,8 +1,6 @@
-from younilab_access_control_infrastructure.memory import (
-    MemoryAccessControlRepository,
-)
 from younilab_access_control_infrastructure.config import AccessControlSettings
 from younilab_access_control_infrastructure.persistence import (
+    MemoryAccessControlRepository,
     PostgresAccessControlRepository,
     build_postgres_repository,
     build_postgres_session_factory,

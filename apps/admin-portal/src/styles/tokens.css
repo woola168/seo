@@ -1,0 +1,31 @@
+:root {
+  font-family:
+    Inter, "Noto Sans TC", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #1f1f1f;
+  background: #f5f5f5;
+  font-synthesis: none;
+  --primary: #0a2b41;
+  --primary-hover: #2e4a5e;
+  --primary-soft: #e7eaec;
+  --accent: #fdb338;
+  --info: #1677ff;
+  --success: #52c41a;
+  --warning: #d68c24;
+  --danger: #f5222d;
+  --text-primary: #1f1f1f;
+  --text-secondary: #595959;
+  --text-muted: #8c8c8c;
+  --text-disabled: #bfbfbf;
+  --border: #d9d9d9;
+  --border-subtle: #f0f0f0;
+  --surface: #ffffff;
+  --surface-secondary: #fafafa;
+  --page: #f5f5f5;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+  --topbar-height: 56px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-focus: 0 0 0 3px rgb(10 43 65 / 8%);
+}

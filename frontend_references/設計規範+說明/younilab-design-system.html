@@ -1,0 +1,3104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Youni Lab Design System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,300,0,0" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--font-sans:'Inter','Noto Sans TC',-apple-system,sans-serif;--font-mono:'IBM Plex Mono','Menlo',monospace;--fg:#0A0A0A;--fg-2:#595959;--fg-3:#8C8C8C;--bg:#fff;--bg-2:#FAFAFA;--border:#D9D9D9;--border-light:#F0F0F0;--sidebar-w:220px}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-sans)}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#D9D9D9;border-radius:3px}
+@keyframes dotPulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+@keyframes modalIn{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideInright{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes slideInleft{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback, useRef } = React;
+
+const LOGO_B64 = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCA1NSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iNTAuMjUiIHdpZHRoPSI0LjUiIGhlaWdodD0iNC41IiByeD0iMi4yNSIgZmlsbD0iI0ZEQjMzOCIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTQ2Ljg3NSAxOS41QzQ3LjA4MjEgMTkuNSA0Ny4yNSAxOS42Njc5IDQ3LjI1IDE5Ljg3NUw0Ny4yNSAyMi43NUM0Ny4yNSAyMi45MzkzIDQ3LjM1NTIgMjMuMTA0IDQ3LjUxMDMgMjMuMTg4OUM0Ny42MzE0IDIzLjI1NTIgNDcuNzUgMjMuMzYxOSA0Ny43NSAyMy41QzQ3Ljc1IDIzLjc3NjEgNDcuNTE3NCAyNC4wMDkzIDQ3LjI2MzEgMjMuOTAxNkM0Ni44MTQ3IDIzLjcxMTggNDYuNSAyMy4yNjc2IDQ2LjUgMjIuNzVMNDYuNSAxOS44NzVDNDYuNSAxOS42Njc5IDQ2LjY2NzkgMTkuNSA0Ni44NzUgMTkuNVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik01MS42MjUgMTkuNUM1MS44MzIxIDE5LjUgNTIgMTkuNjY3OSA1MiAxOS44NzVWMjMuNjI1QzUyIDIzLjgzMjEgNTEuODMyMSAyNCA1MS42MjUgMjRDNTEuNDE3OSAyNCA1MS4yNSAyMy44MzIxIDUxLjI1IDIzLjYyNVYxOS44NzVDNTEuMjUgMTkuNjY3OSA1MS40MTc5IDE5LjUgNTEuNjI1IDE5LjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTQuMzc1IDIzLjI1QzU0LjU4MjEgMjMuMjUgNTQuNzUgMjMuNDE3OSA1NC43NSAyMy42MjVDNTQuNzUgMjMuODMyMSA1NC41ODIxIDI0IDU0LjM3NSAyNEM1NC4xNjc5IDI0IDU0IDIzLjgzMjEgNTQgMjMuNjI1QzU0IDIzLjQxNzkgNTQuMTY3OSAyMy4yNSA1NC4zNzUgMjMuMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTAuMzc1IDIxQzUwLjU4MjEgMjEgNTAuNzUgMjEuMTY3OSA1MC43NSAyMS4zNzVWMjNDNTAuNzUgMjMuMDQ5OCA1MC43NjQ1IDIzLjA5NjEgNTAuNzg5NiAyMy4xMzUxQzUwLjg2NDMgMjMuMjUxMiA1MSAyMy4zNjE5IDUxIDIzLjVDNTEgMjMuNzc2MSA1MC43NjI3IDI0LjAxMDQgNTAuNTIwNSAyMy44Nzc4QzUwLjIxMDMgMjMuNzA4IDUwIDIzLjM3ODUgNTAgMjNWMjEuMzc1QzUwIDIxLjE2NzkgNTAuMTY3OSAyMSA1MC4zNzUgMjFaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMjAuMjUgOC4yNUMxOC4xNzg5IDguMjUgMTYuNSA5LjkyODkzIDE2LjUgMTJDMTYuNSAxNC4wNzExIDE4LjE3ODkgMTUuNzUgMjAuMjUgMTUuNzVDMjIuMzIxMSAxNS43NSAyNCAxNC4wNzExIDI0IDEyQzI0IDkuOTI4OTMgMjIuMzIxMSA4LjI1IDIwLjI1IDguMjVaTTEzLjUgMTJDMTMuNSA4LjI3MjA4IDE2LjUyMjEgNS4yNSAyMC4yNSA1LjI1QzIzLjk3NzkgNS4yNSAyNyA4LjI3MjA4IDI3IDEyQzI3IDE1LjcyNzkgMjMuOTc3OSAxOC43NSAyMC4yNSAxOC43NUMxNi41MjIxIDE4Ljc1IDEzLjUgMTUuNzI3OSAxMy41IDEyWiIgZmlsbD0iIzA4MkI0MSIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTUxLjI1IDIyLjM3NUM1MS4yNSAyMS42MTU2IDUxLjg2NTYgMjEgNTIuNjI1IDIxQzUzLjM4NDQgMjEgNTQgMjEuNjE1NiA1NCAyMi4zNzVWMjIuNjI1QzU0IDIzLjM4NDQgNTMuMzg0NCAyNCA1Mi42MjUgMjRDNTEuODY1NiAyNCA1MS4yNSAyMy4zODQ0IDUxLjI1IDIyLjYyNVYyMi4zNzVaTTUyLjYyNSAyMS43NUM1Mi4yNzk4IDIxLjc1IDUyIDIyLjAyOTggNTIgMjIuMzc1VjIyLjYyNUM1MiAyMi45NzAyIDUyLjI3OTggMjMuMjUgNTIuNjI1IDIzLjI1QzUyLjk3MDIgMjMuMjUgNTMuMjUgMjIuOTcwMiA1My4yNSAyMi42MjVWMjIuMzc1QzUzLjI1IDIyLjAyOTggNTIuOTcwMiAyMS43NSA1Mi42MjUgMjEuNzVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNDggMjIuMzc1QzQ4IDIxLjYxNTYgNDguNjE1NiAyMSA0OS4zNzUgMjFDNTAuMTM0NCAyMSA1MC43NSAyMS42MTU2IDUwLjc1IDIyLjM3NVYyMi42MjVDNTAuNzUgMjMuMzg0NCA1MC4xMzQ0IDI0IDQ5LjM3NSAyNEM0OC42MTU2IDI0IDQ4IDIzLjM4NDQgNDggMjIuNjI1VjIyLjM3NVpNNDkuMzc1IDIxLjc1QzQ5LjAyOTggMjEuNzUgNDguNzUgMjIuMDI5OCA0OC43NSAyMi4zNzVWMjIuNjI1QzQ4Ljc1IDIyLjk3MDIgNDkuMDI5OCAyMy4yNSA0OS4zNzUgMjMuMjVDNDkuNzIwMiAyMy4yNSA1MCAyMi45NzAyIDUwIDIyLjYyNVYyMi4zNzVDNTAgMjIuMDI5OCA0OS43MjAyIDIxLjc1IDQ5LjM3NSAyMS43NVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00My41IDguMjVDNDEuODQzMSA4LjI1IDQwLjUgOS41OTMxNCA0MC41IDExLjI1VjEyLjc1QzQwLjUgMTYuMDYzNyAzNy44MTM3IDE4Ljc1IDM0LjUgMTguNzVDMzEuMTg2MyAxOC43NSAyOC41IDE2LjA2MzcgMjguNSAxMi43NUwyOC41IDYuNUMyOC41IDYuMjIzODYgMjguNzIzOSA2IDI5IDZMMzEgNkMzMS4yNzYxIDYgMzEuNSA2LjIyMzg2IDMxLjUgNi41TDMxLjUgMTIuNzVDMzEuNSAxNC40MDY5IDMyLjg0MzEgMTUuNzUgMzQuNSAxNS43NUMzNi4xNTY5IDE1Ljc1IDM3LjUgMTQuNDA2OSAzNy41IDEyLjc1VjExLjI1QzM3LjUgNy45MzYyOSA0MC4xODYzIDUuMjUgNDMuNSA1LjI1QzQ2LjgxMzcgNS4yNSA0OS41IDcuOTM2MjkgNDkuNSAxMS4yNUw0OS41IDE3LjVDNDkuNSAxNy43NzYxIDQ5LjI3NjEgMTggNDkgMThMNDcgMThDNDYuNzIzOSAxOCA0Ni41IDE3Ljc3NjEgNDYuNSAxNy41TDQ2LjUgMTEuMjVDNDYuNSA5LjU5MzE0IDQ1LjE1NjkgOC4yNSA0My41IDguMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTMuNSA2QzUzLjc3NjEgNiA1NCA2LjIyMzg2IDU0IDYuNUw1NCAxNy41QzU0IDE3Ljc3NjEgNTMuNzc2MSAxOCA1My41IDE4SDUxLjVDNTEuMjIzOSAxOCA1MSAxNy43NzYxIDUxIDE3LjVMNTEgNi41QzUxIDYuMjIzODYgNTEuMjIzOSA2IDUxLjUgNkw1My41IDZaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNOSAxOFYxMkgxMlYxOEMxMiAyMS4zMTM3IDkuMzEzNzEgMjQgNiAyNEgzLjVDMy4yMjM4NiAyNCAzIDIzLjc3NjEgMyAyMy41VjIxLjVDMyAyMS4yMjM5IDMuMjIzODYgMjEgMy41IDIxSDZDNy42NTY4NiAyMSA5IDE5LjY1NjkgOSAxOFoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yLjUgNkMyLjc3NjE1IDYgMyA2LjIyMzg2IDMgNi41TDMgMTJDMyAxMy42NTY5IDQuMzQzMTUgMTUgNiAxNUM3LjY1Njg2IDE1IDkgMTMuNjU2OSA5IDEyVjYuNUM5IDYuMjIzODYgOS4yMjM4NiA2IDkuNSA2SDExLjVDMTEuNzc2MSA2IDEyIDYuMjIzODYgMTIgNi41VjEyQzEyIDE1LjMxMzcgOS4zMTM3MSAxOCA2IDE4QzIuNjg2MjkgMTggMCAxNS4zMTM3IDAgMTJMMy4zODc1M2UtMDYgNi41QzMuNTU3NjFlLTA2IDYuMjIzODYgMC4yMjM4NjEgNiAwLjUwMDAwNCA2TDIuNSA2WiIgZmlsbD0iIzA4MkI0MSIvPgo8L3N2Zz4K";
+
+/* ═══════════════════════════════════════════════════════════
+   Youni Lab Design System — Updated with Figma Design Tokens
+   ═══════════════════════════════════════════════════════════ */
+
+// ── Token Data from Figma ──
+const REF = {
+  theme: [
+    { step: "50", hex: "#E7EAEC" }, { step: "100", hex: "#C4CDD3" },
+    { step: "200", hex: "#9AABB7" }, { step: "300", hex: "#718491" },
+    { step: "400", hex: "#4D6577" }, { step: "500", hex: "#2E4A5E" },
+    { step: "600", hex: "#0A2B41" }, { step: "700", hex: "#082335" },
+    { step: "800", hex: "#061A28" }, { step: "900", hex: "#04111B" },
+  ],
+  blue: [
+    { step: "50", hex: "#E6F4FF" }, { step: "100", hex: "#BAE0FF" },
+    { step: "200", hex: "#91CAFF" }, { step: "300", hex: "#69B1FF" },
+    { step: "400", hex: "#4096FF" }, { step: "500", hex: "#1677FF" },
+    { step: "600", hex: "#0958D9" }, { step: "700", hex: "#003EB3" },
+    { step: "800", hex: "#002C8C" }, { step: "900", hex: "#001D66" },
+  ],
+  green: [
+    { step: "50", hex: "#F6FFED" }, { step: "100", hex: "#D9F7BE" },
+    { step: "200", hex: "#B7EB8F" }, { step: "300", hex: "#95DE64" },
+    { step: "400", hex: "#73D13D" }, { step: "500", hex: "#52C41A" },
+    { step: "600", hex: "#389E0D" }, { step: "700", hex: "#237804" },
+    { step: "800", hex: "#135200" }, { step: "900", hex: "#092B00" },
+  ],
+  orange: [
+    { step: "50", hex: "#FFFCF0" }, { step: "100", hex: "#FFF1B8" },
+    { step: "200", hex: "#FFC861" }, { step: "300", hex: "#FDB338" },
+    { step: "400", hex: "#F09C20" }, { step: "500", hex: "#D68C24" },
+    { step: "600", hex: "#AD6800" }, { step: "700", hex: "#874D00" },
+    { step: "800", hex: "#613400" }, { step: "900", hex: "#3B1F00" },
+  ],
+  red: [
+    { step: "50", hex: "#FFF1F0" }, { step: "100", hex: "#FFCCC7" },
+    { step: "200", hex: "#FFA39E" }, { step: "300", hex: "#FF7875" },
+    { step: "400", hex: "#FF4D4F" }, { step: "500", hex: "#F5222D" },
+    { step: "600", hex: "#CF1322" }, { step: "700", hex: "#A8071A" },
+    { step: "800", hex: "#820014" }, { step: "900", hex: "#5C0011" },
+  ],
+  neutral: [
+    { step: "0", hex: "#FFFFFF" }, { step: "50", hex: "#FAFAFA" },
+    { step: "100", hex: "#F5F5F5" }, { step: "200", hex: "#F0F0F0" },
+    { step: "300", hex: "#D9D9D9" }, { step: "400", hex: "#BFBFBF" },
+    { step: "500", hex: "#8C8C8C" }, { step: "600", hex: "#595959" },
+    { step: "700", hex: "#434343" }, { step: "800", hex: "#262626" },
+    { step: "900", hex: "#1F1F1F" }, { step: "1000", hex: "#000000" },
+  ],
+};
+
+const NAV = [
+  { section: "Foundations", items: [
+    { id: "introduction", label: "Introduction" },
+    { id: "colors",       label: "Colors" },
+    { id: "typography",   label: "Typography" },
+  ]},
+  { section: "Layout", items: [
+    { id: "sidebar",     label: "Sidebar / Nav" },
+    { id: "pageheader",  label: "Page Header" },
+    { id: "card",        label: "Card" },
+  ]},
+  { section: "Navigation", items: [
+    { id: "breadcrumbs",  label: "Breadcrumbs" },
+    { id: "tabs",         label: "Tabs" },
+    { id: "pagination",   label: "Pagination" },
+    { id: "dropdownmenu", label: "Dropdown Menu" },
+  ]},
+  { section: "Data Display", items: [
+    { id: "statcard",          label: "Stat Card" },
+    { id: "userrow",           label: "User Row" },
+    { id: "notificationitem",  label: "Notification Item" },
+    { id: "badge",             label: "Badge" },
+    { id: "avatar",            label: "Avatar" },
+    { id: "table",             label: "Table" },
+    { id: "progress",          label: "Progress" },
+    { id: "emptystate",        label: "Empty State" },
+  ]},
+  { section: "Form & Input", items: [
+    { id: "button",       label: "Button" },
+    { id: "input",        label: "Input" },
+    { id: "textarea",     label: "Textarea" },
+    { id: "searchinput",  label: "Search Input" },
+    { id: "select",       label: "Select" },
+    { id: "selectmulti",  label: "Select (Multi-Tag)" },
+    { id: "checkbox",     label: "Checkbox" },
+    { id: "radio",        label: "Radio" },
+    { id: "radiocard",    label: "Radio Card" },
+    { id: "switch",       label: "Switch" },
+    { id: "choicebox",    label: "Choicebox" },
+    { id: "choiceboxplus",label: "Choicebox (Enhanced)" },
+    { id: "toggle",       label: "Toggle" },
+    { id: "toggleplus",   label: "Toggle (Enhanced)" },
+    { id: "datepicker",   label: "Date Picker" },
+    { id: "starrating",   label: "Star Rating" },
+  ]},
+  { section: "Feedback", items: [
+    { id: "toast",    label: "Toast" },
+    { id: "note",     label: "Note" },
+    { id: "tooltip",  label: "Tooltip" },
+    { id: "spinner",  label: "Spinner" },
+    { id: "feedback", label: "Feedback" },
+  ]},
+  { section: "Overlay", items: [
+    { id: "modal",  label: "Modal" },
+    { id: "drawer", label: "Drawer" },
+  ]},
+];
+
+// ── Utilities ──
+function isLight(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return (r*299+g*587+b*114)/1000 > 160;
+}
+
+// ── Shared Components ──
+const Toast = ({ message, visible }) => (
+  <div style={{
+    position:"fixed",bottom:24,left:"50%",
+    transform:`translateX(-50%) translateY(${visible?0:12}px)`,
+    opacity:visible?1:0,transition:"all .25s ease",
+    background:"#000",color:"#fff",padding:"8px 16px",
+    borderRadius:8,fontSize:13,fontFamily:"var(--font-mono)",
+    pointerEvents:"none",zIndex:9999,boxShadow:"0 4px 14px rgba(0,0,0,.15)",
+  }}>{message}</div>
+);
+
+const Anchor = ({ id, children }) => (
+  <h2 id={id} style={{
+    fontSize:14,fontWeight:600,color:"var(--fg)",
+    margin:"48px 0 20px",paddingTop:24,
+    borderTop:"1px solid var(--border)",fontFamily:"var(--font-sans)",
+  }}><a href={`#${id}`} style={{color:"inherit",textDecoration:"none"}}>{children}</a></h2>
+);
+
+const DemoBox = ({ children, style:s, ...r }) => (
+  <div style={{
+    border:"1px solid var(--border)",borderRadius:12,
+    padding:24,display:"flex",alignItems:"center",
+    justifyContent:"center",gap:12,flexWrap:"wrap",
+    background:"var(--bg-2)",...s,
+  }} {...r}>{children}</div>
+);
+
+const GTable = ({ headers, rows }) => (
+  <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:4}}>
+    <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"var(--font-sans)",fontSize:14}}>
+      <thead><tr>
+        {headers.map((h,i)=>(
+          <th key={i} style={{textAlign:"left",padding:"10px 16px",fontWeight:400,color:"var(--fg-3)",fontSize:13,borderBottom:"1px solid var(--border)",background:"var(--bg)"}}>{h}</th>
+        ))}
+      </tr></thead>
+      <tbody>
+        {rows.map((row,ri)=>(
+          <tr key={ri}>{row.map((cell,ci)=>(
+            <td key={ci} style={{
+              padding:"12px 16px",borderBottom:ri<rows.length-1?"1px solid var(--border-light)":"none",
+              color:"var(--fg-2)",fontSize:14,
+              fontFamily:typeof cell==="string"&&(cell.startsWith("#")||cell.includes("px"))?"var(--font-mono)":"inherit",
+            }}>{cell}</td>
+          ))}</tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+// ── Color Scale Bar ──
+const ColorScale = ({ name, colors, onCopy }) => (
+  <div style={{marginBottom:20}}>
+    <div style={{fontSize:13,fontWeight:500,color:"var(--fg-2)",marginBottom:8,fontFamily:"var(--font-sans)"}}>{name}</div>
+    <div style={{display:"flex",borderRadius:10,overflow:"hidden",border:"1px solid var(--border)"}}>
+      {colors.map((c,i) => {
+        const lt = isLight(c.hex);
+        return (
+          <div key={i} onClick={()=>onCopy(c.hex)} title={`${name}/${c.step}\n${c.hex}`}
+            style={{
+              flex:1,height:56,background:c.hex,cursor:"pointer",
+              display:"flex",alignItems:"flex-end",justifyContent:"center",
+              paddingBottom:6,transition:"opacity .15s",
+              borderRight:i<colors.length-1?"1px solid rgba(128,128,128,0.1)":"none",
+            }}
+            onMouseEnter={e=>{e.currentTarget.style.opacity=0.85}}
+            onMouseLeave={e=>{e.currentTarget.style.opacity=1}}
+          >
+            <span style={{fontSize:10,fontFamily:"var(--font-mono)",fontWeight:500,color:lt?"rgba(0,0,0,0.35)":"rgba(255,255,255,0.55)"}}>{c.step}</span>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+// ── Semantic Color Card ──
+const SemanticGroup = ({ title, items, onCopy }) => (
+  <div style={{marginBottom:8}}>
+    <div style={{fontSize:13,fontWeight:500,color:"var(--fg-2)",marginBottom:10,fontFamily:"var(--font-sans)"}}>{title}</div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {items.map((item,i)=>{
+        const lt = isLight(item.hex);
+        return (
+          <div key={i} onClick={()=>onCopy(item.hex)}
+            style={{cursor:"pointer",display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border)",transition:"all .12s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="var(--bg-2)"}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent"}}
+          >
+            <div style={{width:28,height:28,borderRadius:6,background:item.hex,border:lt?"1px solid var(--border)":"none",flexShrink:0}} />
+            <div>
+              <div style={{fontSize:12,fontWeight:500,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{item.label}</div>
+              <div style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>{item.hex}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+// ── Button ──
+const Btn = ({ variant="primary", size="md", children, disabled, loading, onClick }) => {
+  const [h,setH]=useState(false);
+  const [a,setA]=useState(false);
+  // Sizes from comp tokens
+  const sizes = {
+    sm:{height:32,padding:"0 12px",fontSize:12,radius:4},
+    md:{height:40,padding:"0 20px",fontSize:14,radius:8},
+    lg:{height:48,padding:"0 24px",fontSize:16,radius:8},
+  };
+  const sz = sizes[size];
+  const base = {
+    fontFamily:"var(--font-sans)",fontWeight:500,cursor:disabled?"not-allowed":"pointer",
+    borderRadius:sz.radius,display:"inline-flex",alignItems:"center",justifyContent:"center",gap:size==="lg"?8:4,
+    transition:"all .15s ease",outline:"none",border:"none",
+    fontSize:sz.fontSize,height:sz.height,padding:sz.padding,opacity:disabled?0.5:1,
+  };
+  // Colors from comp tokens
+  const vars = {
+    primary: { background:disabled?"#F0F0F0":a?"#061A28":h?"#2E4A5E":"#0A2B41", color:disabled?"#BFBFBF":"#FFFFFF" },
+    secondary: { background:disabled?"#F0F0F0":a?"#F5F5F5":h?"#FAFAFA":"#FFFFFF", color:disabled?"#BFBFBF":"#1F1F1F", border:"1px solid "+(disabled?"#F0F0F0":"#D9D9D9") },
+    danger: { background:disabled?"#F0F0F0":a?"#CF1322":h?"#FF4D4F":"#F5222D", color:disabled?"#BFBFBF":"#FFFFFF" },
+    ghost: { background:a?"#F5F5F5":h?"#FAFAFA":"transparent", color:disabled?"#BFBFBF":"#1F1F1F", border:"1px solid transparent" },
+    warning: { background:disabled?"#F0F0F0":a?"#D68C24":h?"#FFC861":"#FDB338", color:disabled?"#BFBFBF":"#FFFFFF" },
+  };
+  return (
+    <button style={{...base,...vars[variant]}} onClick={!disabled?onClick:undefined}
+      onMouseEnter={()=>!disabled&&setH(true)} onMouseLeave={()=>{setH(false);setA(false)}}
+      onMouseDown={()=>!disabled&&setA(true)} onMouseUp={()=>setA(false)}
+    >
+      {loading ? <span style={{display:"flex",gap:3}}>{[0,1,2].map(i=>(
+        <span key={i} style={{width:4,height:4,borderRadius:"50%",
+          background:variant==="secondary"||variant==="ghost"?"#8C8C8C":"rgba(255,255,255,0.7)",
+          animation:`dotPulse 1.2s ease-in-out ${i*0.15}s infinite`}} />
+      ))}</span> : children}
+    </button>
+  );
+};
+
+// ═══════════════════════════════════════
+// PAGES
+// ═══════════════════════════════════════
+
+function IntroPage() {
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:40,fontFamily:"var(--font-sans)"}}>
+        Youni Lab 的設計系統。為打造一致且愉悅的產品體驗而生。<br/>
+        <span style={{fontSize:13,color:"var(--fg-3)"}}>Design tokens sourced from Figma — ref / sys / comp 三層架構。</span>
+      </p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {[
+          {title:"Colors",desc:"三層 token 架構的完整色彩系統。",bg:"linear-gradient(135deg, #0A2B41, #2E4A5E)",fg:"#fff",link:"colors"},
+          {title:"Typography",desc:"Inter + Noto Sans TC，專為螢幕閱讀設計。",bg:"var(--bg-2)",fg:"var(--fg)",link:"typography"},
+          {title:"Button",desc:"四種樣式、三種尺寸，精確對齊 Figma tokens。",bg:"var(--bg-2)",fg:"var(--fg)",link:"button"},
+          {title:"Brand",desc:"品牌標誌與使用規範。",bg:"linear-gradient(135deg, #FDB338, #D68C24)",fg:"#fff",link:null},
+        ].map((card,i) => (
+          <div key={i} onClick={()=>card.link&&document.querySelector(`[data-nav="${card.link}"]`)?.click()}
+            style={{
+              background:card.bg,borderRadius:12,padding:28,minHeight:140,
+              display:"flex",flexDirection:"column",justifyContent:"flex-end",
+              cursor:card.link?"pointer":"default",
+              border:card.bg==="var(--bg-2)"?"1px solid var(--border)":"none",
+              transition:"transform .2s, box-shadow .2s",
+            }}
+            onMouseEnter={e=>{if(card.link){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.06)"}}}
+            onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none"}}
+          >
+            <div style={{fontSize:16,fontWeight:600,color:card.fg,fontFamily:"var(--font-sans)",marginBottom:4}}>{card.title}</div>
+            <div style={{fontSize:14,color:card.fg,opacity:0.7,fontFamily:"var(--font-sans)"}}>{card.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <Anchor id="token-arch">Token Architecture</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        設計系統使用三層 token 架構，確保色彩從基礎到元件層的一致性。
+      </p>
+      <DemoBox style={{flexDirection:"column",alignItems:"stretch",gap:0,padding:0,background:"var(--bg)"}}>
+        {[
+          {layer:"ref",name:"Reference",desc:"基礎色階值（theme, blue, green, orange, red, neutral）",color:"#0A2B41"},
+          {layer:"sys",name:"System",desc:"語意對應（primary, info, success, warning, error, neutral）",color:"#2E4A5E"},
+          {layer:"comp",name:"Component",desc:"元件規格（button, input, card 的 color + size）",color:"#4D6577"},
+        ].map((t,i) => (
+          <div key={i} style={{
+            display:"flex",alignItems:"center",gap:16,padding:"16px 20px",
+            borderBottom:i<2?"1px solid var(--border-light)":"none",
+          }}>
+            <code style={{
+              background:t.color,color:"#fff",padding:"3px 10px",borderRadius:6,
+              fontSize:12,fontWeight:600,fontFamily:"var(--font-mono)",minWidth:56,textAlign:"center",
+            }}>{t.layer}</code>
+            <div>
+              <div style={{fontSize:14,fontWeight:500,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{t.name}</div>
+              <div style={{fontSize:13,color:"var(--fg-3)",fontFamily:"var(--font-sans)"}}>{t.desc}</div>
+            </div>
+          </div>
+        ))}
+      </DemoBox>
+    </div>
+  );
+}
+
+function ColorsPage({onCopy}) {
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        色彩系統基於 Figma Design Tokens，分為 ref 基礎色階與 sys 語意色。點擊色票即可複製色碼。
+      </p>
+
+      <Anchor id="ref-scales">Reference Scales</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:24,fontFamily:"var(--font-sans)"}}>
+        系統中有 6 組基礎色階（<code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>ref/color/*</code>），每組包含 10 個色階值。
+      </p>
+      {Object.entries(REF).map(([name, colors]) => (
+        <ColorScale key={name} name={name.charAt(0).toUpperCase()+name.slice(1)} colors={colors} onCopy={onCopy} />
+      ))}
+
+      <Anchor id="sys-primary">Primary</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:16,fontFamily:"var(--font-sans)"}}>
+        品牌主色，用於最高權重的互動元素。對應 <code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>sys/color/primary</code>。
+      </p>
+      <SemanticGroup title="Container" items={[
+        {label:"Default",hex:"#0A2B41"},{label:"Hovered",hex:"#2E4A5E"},
+        {label:"Pressed",hex:"#061A28"},{label:"Disabled",hex:"#F0F0F0"},
+        {label:"Light",hex:"#E7EAEC"},
+      ]} onCopy={onCopy} />
+      <SemanticGroup title="Label" items={[
+        {label:"Default",hex:"#FFFFFF"},{label:"Disabled",hex:"#BFBFBF"},
+      ]} onCopy={onCopy} />
+      <SemanticGroup title="Border" items={[
+        {label:"Default",hex:"#0A2B41"},{label:"Hovered",hex:"#2E4A5E"},{label:"Focused",hex:"#718491"},
+      ]} onCopy={onCopy} />
+
+      <Anchor id="sys-semantic">Semantic Colors</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:16,fontFamily:"var(--font-sans)"}}>
+        語意色用於狀態回饋與資料視覺化。
+      </p>
+      {[
+        {title:"Info (sys/color/info)", items:[
+          {label:"Default",hex:"#1677FF"},{label:"Hovered",hex:"#4096FF"},{label:"Pressed",hex:"#0958D9"},{label:"Light",hex:"#E6F4FF"},
+        ]},
+        {title:"Success (sys/color/success)", items:[
+          {label:"Default",hex:"#52C41A"},{label:"Hovered",hex:"#73D13D"},{label:"Pressed",hex:"#389E0D"},{label:"Light",hex:"#F6FFED"},
+        ]},
+        {title:"Warning (sys/color/warning)", items:[
+          {label:"Default",hex:"#FDB338"},{label:"Hovered",hex:"#FFC861"},{label:"Pressed",hex:"#D68C24"},{label:"Light",hex:"#FFFCF0"},
+        ]},
+        {title:"Error (sys/color/error)", items:[
+          {label:"Default",hex:"#F5222D"},{label:"Hovered",hex:"#FF4D4F"},{label:"Pressed",hex:"#CF1322"},{label:"Light",hex:"#FFF1F0"},
+        ]},
+      ].map((g,i) => <SemanticGroup key={i} title={g.title} items={g.items} onCopy={onCopy} />)}
+
+      <Anchor id="sys-neutral">Neutral</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:16,fontFamily:"var(--font-sans)"}}>
+        中性色是界面骨架。對應 <code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>sys/color/neutral</code>。
+      </p>
+      <SemanticGroup title="Label" items={[
+        {label:"Primary",hex:"#1F1F1F"},{label:"Secondary",hex:"#595959"},
+        {label:"Description",hex:"#8C8C8C"},{label:"Disabled",hex:"#BFBFBF"},{label:"Inverse",hex:"#FFFFFF"},
+      ]} onCopy={onCopy} />
+      <SemanticGroup title="Container" items={[
+        {label:"Default",hex:"#FFFFFF"},{label:"Secondary",hex:"#FAFAFA"},
+        {label:"Tertiary",hex:"#F5F5F5"},{label:"Disabled",hex:"#F0F0F0"},{label:"Inverse",hex:"#1F1F1F"},
+      ]} onCopy={onCopy} />
+      <SemanticGroup title="Border" items={[
+        {label:"Default",hex:"#D9D9D9"},{label:"Strong",hex:"#BFBFBF"},
+        {label:"Subtle",hex:"#F0F0F0"},{label:"Disabled",hex:"#F0F0F0"},
+      ]} onCopy={onCopy} />
+      <SemanticGroup title="Surface" items={[
+        {label:"Page",hex:"#F5F5F5"},{label:"Overlay",hex:"#000000"},
+      ]} onCopy={onCopy} />
+    </div>
+  );
+}
+
+function TypographyPage() {
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        清晰可讀，層次分明。通過字重和字號雙重維度建立視覺層次。
+      </p>
+      <Anchor id="usage">Usage</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:12,fontFamily:"var(--font-sans)"}}>
+        英文使用 Inter，中文使用 Noto Sans TC。
+      </p>
+      <div style={{background:"var(--bg-2)",borderRadius:10,padding:"14px 18px",fontFamily:"var(--font-mono)",fontSize:13,color:"var(--fg-2)",border:"1px solid var(--border)",lineHeight:1.6,marginBottom:8}}>
+        <code>font-family: 'Inter', 'Noto Sans TC', -apple-system, sans-serif;</code>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:24,marginBottom:8}}>
+        <DemoBox style={{flexDirection:"column",alignItems:"flex-start",padding:28}}>
+          <span style={{fontSize:11,fontWeight:500,color:"var(--fg-3)",fontFamily:"var(--font-mono)",marginBottom:12}}>Inter · English & Numbers</span>
+          <span style={{fontSize:36,fontWeight:700,color:"var(--fg)",fontFamily:"'Inter', sans-serif",letterSpacing:"-0.02em"}}>Aa Bb Cc</span>
+          <span style={{fontSize:20,fontWeight:400,color:"var(--fg-2)",fontFamily:"'Inter', sans-serif",marginTop:4}}>0123456789</span>
+        </DemoBox>
+        <DemoBox style={{flexDirection:"column",alignItems:"flex-start",padding:28}}>
+          <span style={{fontSize:11,fontWeight:500,color:"var(--fg-3)",fontFamily:"var(--font-mono)",marginBottom:12}}>Noto Sans TC · 繁體中文</span>
+          <span style={{fontSize:36,fontWeight:700,color:"var(--fg)",fontFamily:"'Noto Sans TC', sans-serif"}}>設計系統</span>
+          <span style={{fontSize:20,fontWeight:400,color:"var(--fg-2)",fontFamily:"'Noto Sans TC', sans-serif",marginTop:4}}>永東國際 品牌指南</span>
+        </DemoBox>
+      </div>
+
+      <Anchor id="headings">Headings</Anchor>
+      <GTable headers={["Example","Size / Weight","Usage"]} rows={[
+        [<span style={{fontSize:28,fontWeight:700,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Heading 32</span>,"32px / Bold 700","頁面主標題"],
+        [<span style={{fontSize:22,fontWeight:600,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Heading 24</span>,"24px / Semibold 600","區塊標題"],
+        [<span style={{fontSize:18,fontWeight:600,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Heading 20</span>,"20px / Semibold 600","卡片標題"],
+        [<span style={{fontSize:15,fontWeight:600,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Heading 16</span>,"16px / Semibold 600","表單區塊"],
+      ]} />
+
+      <Anchor id="body">Body</Anchor>
+      <GTable headers={["Example","Size / Weight","Usage"]} rows={[
+        [<span style={{fontSize:16,fontWeight:400,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Body Large 重要說明正文</span>,"16px / Regular 400","重要說明"],
+        [<span style={{fontSize:14,fontWeight:400,fontFamily:"var(--font-sans)",color:"var(--fg)"}}>Body 標準正文內容</span>,"14px / Regular 400","標準正文"],
+        [<span style={{fontSize:13,fontWeight:400,fontFamily:"var(--font-sans)",color:"var(--fg-2)"}}>Body Small 次要說明</span>,"13px / Regular 400","表頭、次要"],
+        [<span style={{fontSize:12,fontWeight:400,fontFamily:"var(--font-sans)",color:"var(--fg-3)"}}>Caption 輔助說明</span>,"12px / Regular 400","時間戳記"],
+      ]} />
+
+      <Anchor id="data">Data Display</Anchor>
+      <DemoBox style={{gap:40}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:28,fontWeight:600,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>12,580</div>
+          <div style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)",marginTop:6}}>Data Large · 28/600</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:20,fontWeight:600,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>3,472</div>
+          <div style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)",marginTop:6}}>Data Medium · 20/600</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <span style={{display:"inline-block",padding:"2px 10px",borderRadius:999,background:"#E6F4FF",color:"#0958D9",fontSize:12,fontWeight:500,fontFamily:"var(--font-sans)"}}>整數</span>
+          <div style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)",marginTop:6}}>Label · 12/500</div>
+        </div>
+      </DemoBox>
+    </div>
+  );
+}
+
+function ButtonPage() {
+  const IcUpload = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 10v2.5A1.5 1.5 0 003.5 14h9a1.5 1.5 0 001.5-1.5V10"/><path d="M8 10V3"/><path d="M5 5.5L8 2.5L11 5.5"/></svg>;
+  const IcPlus = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M8 3v10M3 8h10"/></svg>;
+  const IcTrash = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 5h10"/><path d="M12 5v7.5a1.5 1.5 0 01-1.5 1.5h-5A1.5 1.5 0 014 12.5V5"/><path d="M6.5 5V3.5a1 1 0 011-1h1a1 1 0 011 1V5"/></svg>;
+  const IcArrow = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 8h10"/><path d="M9 4l4 4-4 4"/></svg>;
+  const IcStar = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M8 2l1.8 3.6L14 6.2l-3 2.9.7 4.1L8 11.3 4.3 13.2l.7-4.1-3-2.9 4.2-.6L8 2z"/></svg>;
+
+  // Icon-only button
+  const IconBtn = ({children,variant="secondary",shape="square",size=40}) => {
+    const [h,setH]=useState(false);
+    const [a,setA]=useState(false);
+    const styles = {
+      primary:{background:a?"#061A28":h?"#2E4A5E":"#0A2B41",color:"#fff",border:"none"},
+      secondary:{background:a?"#F5F5F5":h?"#FAFAFA":"#fff",color:"var(--fg)",border:"1px solid var(--border)"},
+      ghost:{background:a?"#F5F5F5":h?"#FAFAFA":"transparent",color:"var(--fg-2)",border:"1px solid transparent"},
+    };
+    const s = styles[variant];
+    return (
+      <button style={{
+        width:size,height:size,borderRadius:shape==="circle"?"50%":8,display:"inline-flex",
+        alignItems:"center",justifyContent:"center",cursor:"pointer",outline:"none",
+        transition:"all .15s",...s,
+      }} onMouseEnter={()=>setH(true)} onMouseLeave={()=>{setH(false);setA(false)}} onMouseDown={()=>setA(true)} onMouseUp={()=>setA(false)}>
+        {children}
+      </button>
+    );
+  };
+
+  // Rounded marketing button
+  const RoundedBtn = ({children,variant="primary",prefix,suffix}) => {
+    const [h,setH]=useState(false);
+    const styles = {
+      primary:{background:h?"#2E4A5E":"#0A2B41",color:"#fff"},
+      secondary:{background:h?"#FAFAFA":"#fff",color:"var(--fg)",border:"1px solid var(--border)"},
+    };
+    return (
+      <button style={{
+        height:44,padding:"0 24px",borderRadius:999,display:"inline-flex",alignItems:"center",
+        justifyContent:"center",gap:8,fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",
+        cursor:"pointer",outline:"none",border:"none",transition:"all .15s",
+        boxShadow:"0 2px 8px rgba(0,0,0,0.08)",...styles[variant],
+      }} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}>
+        {prefix}{children}{suffix}
+      </button>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        觸發動作或事件，例如提交表單或顯示對話框。
+      </p>
+
+      <Anchor id="sizes">Sizes</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>預設尺寸為 Medium。</p>
+      <DemoBox>
+        <Btn size="sm"><span style={{display:"flex",alignItems:"center",gap:4}}><IcUpload/>Upload</span></Btn>
+        <Btn size="md"><span style={{display:"flex",alignItems:"center",gap:4}}><IcUpload/>Upload</span></Btn>
+        <Btn size="lg"><span style={{display:"flex",alignItems:"center",gap:6}}><IcUpload/>Upload</span></Btn>
+      </DemoBox>
+
+      <Anchor id="types">All Types and Sizes</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:16,alignItems:"stretch"}}>
+        {[
+          {v:"primary",l:"primary"},{v:"secondary",l:"secondary"},
+          {v:"danger",l:"error"},{v:"ghost",l:"tertiary"},{v:"warning",l:"warning"},
+        ].map(({v,l})=>(
+          <div key={v} style={{display:"flex",gap:12,alignItems:"center"}}>
+            <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:72,flexShrink:0}}>{l}</span>
+            <Btn variant={v} size="sm"><span style={{display:"flex",alignItems:"center",gap:4}}><IcUpload/>Upload</span></Btn>
+            <Btn variant={v} size="md"><span style={{display:"flex",alignItems:"center",gap:4}}><IcUpload/>Upload</span></Btn>
+            <Btn variant={v} size="lg"><span style={{display:"flex",alignItems:"center",gap:6}}><IcUpload/>Upload</span></Btn>
+          </div>
+        ))}
+      </DemoBox>
+
+      <Anchor id="shapes">Shapes</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        Icon-only 按鈕應包含 <code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>aria-label</code>。
+      </p>
+      <DemoBox style={{gap:16}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"center"}}>
+          <span style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>square</span>
+          <div style={{display:"flex",gap:8}}>
+            <IconBtn><IcPlus/></IconBtn>
+            <IconBtn variant="primary"><IcPlus/></IconBtn>
+            <IconBtn variant="ghost"><IcPlus/></IconBtn>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"center"}}>
+          <span style={{fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>circle</span>
+          <div style={{display:"flex",gap:8}}>
+            <IconBtn shape="circle"><IcPlus/></IconBtn>
+            <IconBtn shape="circle" variant="primary"><IcPlus/></IconBtn>
+            <IconBtn shape="circle" variant="ghost"><IcPlus/></IconBtn>
+          </div>
+        </div>
+      </DemoBox>
+
+      <Anchor id="prefix-suffix">Prefix and Suffix</Anchor>
+      <DemoBox style={{gap:12}}>
+        <Btn variant="primary"><span style={{display:"flex",alignItems:"center",gap:6}}><IcUpload/>Upload</span></Btn>
+        <Btn variant="secondary"><span style={{display:"flex",alignItems:"center",gap:6}}>繼續<IcArrow/></span></Btn>
+        <Btn variant="secondary"><span style={{display:"flex",alignItems:"center",gap:6}}><IcStar/>收藏</span></Btn>
+      </DemoBox>
+
+      <Anchor id="rounded">Rounded</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        搭配 <code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>rounded + shadow</code> 的組合，常用於行銷頁面。
+      </p>
+      <DemoBox>
+        <RoundedBtn prefix={<IcUpload/>}>Upload</RoundedBtn>
+        <RoundedBtn variant="secondary" prefix={<IcStar/>}>收藏</RoundedBtn>
+        <RoundedBtn suffix={<IcArrow/>}>開始使用</RoundedBtn>
+      </DemoBox>
+
+      <Anchor id="loading">Loading</Anchor>
+      <DemoBox>
+        <Btn variant="primary" loading>Upload</Btn>
+        <Btn variant="secondary" loading>取消</Btn>
+        <Btn variant="danger" loading>刪除</Btn>
+      </DemoBox>
+
+      <Anchor id="disabled">Disabled</Anchor>
+      <DemoBox>
+        <Btn variant="primary" disabled>Upload</Btn>
+        <Btn variant="secondary" disabled>取消</Btn>
+        <Btn variant="danger" disabled>刪除</Btn>
+      </DemoBox>
+
+      <Anchor id="pair">Button Pair</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        操作場景固定採用「輪廓取消 + 深色確認」的雙按鈕配對，確認按鈕在右側。
+      </p>
+      <DemoBox style={{flexDirection:"column",gap:16,alignItems:"stretch"}}>
+        <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
+          <Btn variant="secondary">取消</Btn><Btn variant="primary">儲存變更</Btn>
+        </div>
+        <div style={{borderTop:"1px solid var(--border-light)",paddingTop:16,display:"flex",gap:12,justifyContent:"flex-end"}}>
+          <Btn variant="secondary">取消</Btn><Btn variant="danger"><span style={{display:"flex",alignItems:"center",gap:4}}><IcTrash/>確認刪除</span></Btn>
+        </div>
+      </DemoBox>
+
+      <Anchor id="best-practices">Best Practices</Anchor>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {[
+          "使用 Button 執行會改變狀態的動作（部署、儲存、刪除）；使用連結（Link）進行會改變 URL 的導覽。",
+          "預設為 Primary。次要操作使用 Secondary，破壞性確認使用 Error。",
+          "使用 loading 取代手動替換 Spinner，按鈕會保持 focusable 狀態。",
+          "僅在操作當下不可能時才 Disable（缺少輸入、權限不足），搭配 Tooltip 解釋原因。",
+          "標籤使用 Title Case，並命名動作：「儲存專案」、「邀請成員」、「刪除金鑰」。避免裸動詞（提交）和通用確認（確定）。",
+          "破壞性按鈕遵循「動詞 + 名詞」並與 Toast 配對：「刪除專案」→「專案已刪除」。",
+          "Icon-only 按鈕必須包含 aria-label，命名動作和目標（「複製部署 URL」），而非圖示（「複製」）。",
+        ].map((t,i)=>(
+          <div key={i} style={{display:"flex",gap:10,fontSize:14,color:"var(--fg-2)",lineHeight:1.6,fontFamily:"var(--font-sans)"}}>
+            <span style={{color:"var(--fg-3)",flexShrink:0,fontFamily:"var(--font-mono)",fontSize:12,marginTop:3}}>•</span>
+            <span>{t}</span>
+          </div>
+        ))}
+      </div>
+
+      <Anchor id="specs">Specs</Anchor>
+      <GTable headers={["Property","Small (sm)","Medium (md)","Large (lg)"]} rows={[
+        ["Height","32px","40px","48px"],
+        ["Font size","12px","14px","16px"],
+        ["Line height","18px","22px","24px"],
+        ["Padding X","12px","20px","24px"],
+        ["Border radius","4px","8px","8px"],
+        ["Icon size","16px","16px","20px"],
+        ["Gap","4px","4px","8px"],
+        ["Icon-only (square)","32×32px","40×40px","48×48px"],
+        ["Icon-only (circle)","32×32px","40×40px","48×48px"],
+        ["Rounded height","—","—","44px / full"],
+      ]} />
+
+      <Anchor id="color-tokens">Color Tokens</Anchor>
+      <GTable headers={["Variant","Default","Hovered","Pressed","Disabled"]} rows={[
+        ["Primary","#0A2B41","#2E4A5E","#061A28","#F0F0F0"],
+        ["Secondary","#FFFFFF","#FAFAFA","#F5F5F5","#F0F0F0"],
+        ["Error","#F5222D","#FF4D4F","#CF1322","#F0F0F0"],
+        ["Tertiary","transparent","#FAFAFA","#F5F5F5","—"],
+        ["Warning","#FDB338","#FFC861","#D68C24","#F0F0F0"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// CHECKBOX
+// ═══════════════════════════════════════
+
+function CheckboxPage() {
+  const [checks, setChecks] = useState({a:false,b:true,c:false});
+  const [indeterminate, setIndeterminate] = useState(true);
+
+  const Checkbox = ({checked,onChange,label,disabled,indeterminate:ind}) => {
+    const [h,setH]=useState(false);
+    const isChecked = ind ? false : checked;
+    return (
+      <label style={{
+        display:"inline-flex",alignItems:"center",gap:8,cursor:disabled?"not-allowed":"pointer",
+        opacity:disabled?0.5:1,fontSize:14,color:"var(--fg)",fontFamily:"var(--font-sans)",
+        userSelect:"none",
+      }}
+        onMouseEnter={()=>!disabled&&setH(true)} onMouseLeave={()=>setH(false)}
+      >
+        <div style={{
+          width:16,height:16,borderRadius:4,flexShrink:0,
+          border:isChecked||ind?"none":"1.5px solid "+(h?"#0A2B41":"var(--border)"),
+          background:isChecked||ind?"#0A2B41":h?"var(--bg-2)":"var(--bg)",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          transition:"all .15s ease",
+        }} onClick={e=>{e.preventDefault();!disabled&&onChange&&onChange(!checked)}}>
+          {isChecked && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          {ind && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M3 6H9" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>}
+        </div>
+        {label && <span>{label}</span>}
+      </label>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        在勾選與未勾選兩種狀態間切換的控制元件。
+      </p>
+
+      <Anchor id="cb-default">Default</Anchor>
+      <DemoBox style={{flexDirection:"column",alignItems:"flex-start",gap:12}}>
+        <Checkbox checked={checks.a} onChange={v=>setChecks({...checks,a:v})} label="選項 1" />
+        <Checkbox checked={checks.b} onChange={v=>setChecks({...checks,b:v})} label="選項 2" />
+        <Checkbox checked={checks.c} onChange={v=>setChecks({...checks,c:v})} label="選項 3" />
+      </DemoBox>
+
+      <Anchor id="cb-disabled">Disabled</Anchor>
+      <DemoBox style={{gap:24}}>
+        <Checkbox checked={false} disabled label="Disabled" />
+        <Checkbox checked={true} disabled label="Disabled Checked" />
+        <Checkbox indeterminate={true} disabled label="Disabled Indeterminate" />
+      </DemoBox>
+
+      <Anchor id="cb-indeterminate">Indeterminate</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        表示部分選取狀態，常用於全選切換。
+      </p>
+      <DemoBox>
+        <Checkbox indeterminate={indeterminate} checked={false}
+          onChange={()=>setIndeterminate(!indeterminate)}
+          label="全部選取" />
+      </DemoBox>
+
+      <Anchor id="cb-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Size","16 × 16px"],
+        ["Border radius","4px"],
+        ["Border (unchecked)","1.5px solid #D9D9D9"],
+        ["Fill (checked)","#0A2B41"],
+        ["Checkmark","#FFFFFF"],
+        ["Label gap","8px"],
+        ["Label font","14px / Regular 400"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// RADIO
+// ═══════════════════════════════════════
+
+function RadioPage() {
+  const [selected, setSelected] = useState("opt1");
+  const [selected2, setSelected2] = useState("a");
+
+  const Radio = ({value,checked,onChange,label,disabled}) => {
+    const [h,setH]=useState(false);
+    return (
+      <label style={{
+        display:"inline-flex",alignItems:"center",gap:8,cursor:disabled?"not-allowed":"pointer",
+        opacity:disabled?0.5:1,fontSize:14,color:"var(--fg)",fontFamily:"var(--font-sans)",
+        userSelect:"none",
+      }}
+        onMouseEnter={()=>!disabled&&setH(true)} onMouseLeave={()=>setH(false)}
+      >
+        <div style={{
+          width:16,height:16,borderRadius:"50%",flexShrink:0,
+          border:checked?"5px solid #0A2B41":"1.5px solid "+(h?"#0A2B41":"var(--border)"),
+          background:"var(--bg)",
+          transition:"all .15s ease",
+        }} onClick={e=>{e.preventDefault();!disabled&&onChange&&onChange(value)}} />
+        {label && <span>{label}</span>}
+      </label>
+    );
+  };
+
+  const RadioGroup = ({value,onChange,options,disabled,direction="column"}) => (
+    <div style={{display:"flex",flexDirection:direction,gap:12}}>
+      {options.map(opt => (
+        <Radio key={opt.value} value={opt.value} checked={value===opt.value}
+          onChange={onChange} label={opt.label} disabled={disabled} />
+      ))}
+    </div>
+  );
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        在多個選項中提供單一選擇。
+      </p>
+
+      <Anchor id="rd-default">Default</Anchor>
+      <DemoBox style={{flexDirection:"column",alignItems:"flex-start"}}>
+        <RadioGroup value={selected} onChange={setSelected} options={[
+          {value:"opt1",label:"選項 1"},{value:"opt2",label:"選項 2"},{value:"opt3",label:"選項 3"},
+        ]} />
+      </DemoBox>
+
+      <Anchor id="rd-horizontal">Horizontal</Anchor>
+      <DemoBox>
+        <RadioGroup value={selected2} onChange={setSelected2} direction="row" options={[
+          {value:"a",label:"選項 A"},{value:"b",label:"選項 B"},{value:"c",label:"選項 C"},
+        ]} />
+      </DemoBox>
+
+      <Anchor id="rd-disabled">Disabled</Anchor>
+      <DemoBox style={{gap:24}}>
+        <Radio value="x" checked={false} disabled label="Disabled" />
+        <Radio value="y" checked={true} disabled label="Disabled Selected" />
+      </DemoBox>
+
+      <Anchor id="rd-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Size","16 × 16px"],
+        ["Border radius","50% (circle)"],
+        ["Border (unselected)","1.5px solid #D9D9D9"],
+        ["Border (selected)","5px solid #0A2B41"],
+        ["Inner fill","#FFFFFF"],
+        ["Label gap","8px"],
+        ["Option gap","12px"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// INPUT
+// ═══════════════════════════════════════
+
+function InputPage() {
+  const [val1,setVal1]=useState("");
+  const [val2,setVal2]=useState("");
+  const [val3,setVal3]=useState("");
+  const [valSearch,setValSearch]=useState("");
+
+  const InputField = ({value,onChange,placeholder,disabled,prefix,suffix,error,errorMsg,label,type="text",size="md"}) => {
+    const [focused,setFocused]=useState(false);
+    const sizes = {sm:{height:32,fontSize:13,px:10},md:{height:40,fontSize:14,px:12},lg:{height:48,fontSize:16,px:16}};
+    const sz = sizes[size];
+    return (
+      <div style={{width:"100%"}}>
+        {label && <label style={{display:"block",fontSize:13,fontWeight:500,color:"var(--fg)",marginBottom:6,fontFamily:"var(--font-sans)"}}>{label}</label>}
+        <div style={{
+          display:"flex",alignItems:"center",height:sz.height,
+          border:"1px solid "+(error?"#F5222D":focused?"#0A2B41":"var(--border)"),
+          borderRadius:8,background:disabled?"var(--bg-2)":"var(--bg)",
+          transition:"border-color .15s",overflow:"hidden",
+          boxShadow:focused&&!error?"0 0 0 3px rgba(10,43,65,0.08)":error&&focused?"0 0 0 3px rgba(245,34,45,0.08)":"none",
+          opacity:disabled?0.5:1,
+        }}>
+          {prefix && <span style={{padding:"0 0 0 "+sz.px+"px",fontSize:sz.fontSize,color:"var(--fg-3)",fontFamily:"var(--font-sans)",whiteSpace:"nowrap",userSelect:"none"}}>{prefix}</span>}
+          <input value={value} onChange={e=>onChange&&onChange(e.target.value)}
+            placeholder={placeholder} disabled={disabled} type={type}
+            onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+            style={{
+              flex:1,height:"100%",border:"none",outline:"none",background:"transparent",
+              padding:"0 "+sz.px+"px",fontSize:sz.fontSize,color:"var(--fg)",
+              fontFamily:"var(--font-sans)",
+              paddingLeft:prefix?"6px":sz.px+"px",
+              paddingRight:suffix?"6px":sz.px+"px",
+            }}
+          />
+          {suffix && <span style={{padding:"0 "+sz.px+"px 0 0",fontSize:sz.fontSize,color:"var(--fg-3)",fontFamily:"var(--font-sans)",whiteSpace:"nowrap",userSelect:"none"}}>{suffix}</span>}
+        </div>
+        {error && errorMsg && <div style={{fontSize:13,color:"#F5222D",marginTop:6,fontFamily:"var(--font-sans)"}}>{errorMsg}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        從使用者取得文字輸入。
+      </p>
+
+      <Anchor id="in-default">Default</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <InputField value={val1} onChange={setVal1} placeholder="請輸入內容" />
+      </DemoBox>
+
+      <Anchor id="in-sizes">Sizes</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:360}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>small</span>
+          <InputField value="" placeholder="Small" size="sm" />
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>medium</span>
+          <InputField value="" placeholder="Medium" size="md" />
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>large</span>
+          <InputField value="" placeholder="Large" size="lg" />
+        </div>
+      </DemoBox>
+
+      <Anchor id="in-prefix">Prefix and Suffix</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:360}}>
+        <InputField value={val2} onChange={setVal2} prefix="https://" suffix=".com" placeholder="younilab" />
+        <InputField value={val3} onChange={setVal3} prefix="NT$" placeholder="0.00" />
+      </DemoBox>
+
+      <Anchor id="in-label">Label</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <InputField value="" placeholder="請輸入姓名" label="姓名" />
+      </DemoBox>
+
+      <Anchor id="in-disabled">Disabled</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <InputField value="" placeholder="無法編輯" disabled prefix="https://" suffix=".com" />
+      </DemoBox>
+
+      <Anchor id="in-error">Error</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:360}}>
+        <InputField value="" placeholder="請輸入" error errorMsg="此欄位為必填。" />
+        <InputField value="invalid@" placeholder="Email" error errorMsg="請輸入有效的電子郵件。" />
+      </DemoBox>
+
+      <Anchor id="in-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium","Large"]} rows={[
+        ["Height","32px","40px","48px"],
+        ["Font size","13px","14px","16px"],
+        ["Padding X","10px","12px","16px"],
+        ["Border radius","8px","8px","8px"],
+        ["Border (default)","1px solid #D9D9D9","—","—"],
+        ["Border (focus)","1px solid #0A2B41","—","—"],
+        ["Border (error)","1px solid #F5222D","—","—"],
+        ["Focus ring","0 0 0 3px rgba(10,43,65,0.08)","—","—"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// SELECT
+// ═══════════════════════════════════════
+
+function SelectPage() {
+  const [sel1,setSel1]=useState("");
+  const [sel2,setSel2]=useState("");
+
+  const SelectField = ({value,onChange,options,placeholder,disabled,error,errorMsg,label,size="md",prefix}) => {
+    const [focused,setFocused]=useState(false);
+    const sizes = {sm:{height:32,fontSize:13,px:10},md:{height:40,fontSize:14,px:12},lg:{height:48,fontSize:16,px:16}};
+    const sz = sizes[size];
+    return (
+      <div style={{width:"100%"}}>
+        {label && <label style={{display:"block",fontSize:13,fontWeight:500,color:"var(--fg)",marginBottom:6,fontFamily:"var(--font-sans)"}}>{label}</label>}
+        <div style={{
+          display:"flex",alignItems:"center",height:sz.height,position:"relative",
+          border:"1px solid "+(error?"#F5222D":focused?"#0A2B41":"var(--border)"),
+          borderRadius:8,background:disabled?"var(--bg-2)":"var(--bg)",
+          transition:"border-color .15s",overflow:"hidden",
+          boxShadow:focused&&!error?"0 0 0 3px rgba(10,43,65,0.08)":"none",
+          opacity:disabled?0.5:1,
+        }}>
+          {prefix && <span style={{padding:"0 0 0 "+sz.px+"px",fontSize:sz.fontSize,color:"var(--fg-3)",fontFamily:"var(--font-sans)",whiteSpace:"nowrap"}}>{prefix}</span>}
+          <select value={value} onChange={e=>onChange&&onChange(e.target.value)}
+            disabled={disabled}
+            onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+            style={{
+              flex:1,height:"100%",border:"none",outline:"none",
+              background:"transparent",appearance:"none",WebkitAppearance:"none",
+              padding:"0 "+((sz.px+20)+"px")+" 0 "+(prefix?"6px":sz.px+"px"),
+              fontSize:sz.fontSize,color:value?"var(--fg)":"var(--fg-3)",
+              fontFamily:"var(--font-sans)",cursor:disabled?"not-allowed":"pointer",
+            }}
+          >
+            {placeholder && <option value="" disabled>{placeholder}</option>}
+            {options.map(opt=>(
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          {/* Chevron */}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+            style={{position:"absolute",right:sz.px,pointerEvents:"none",color:"var(--fg-3)"}}>
+            <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        {error && errorMsg && <div style={{fontSize:13,color:"#F5222D",marginTop:6,fontFamily:"var(--font-sans)"}}>{errorMsg}</div>}
+      </div>
+    );
+  };
+
+  const options = [{value:"opt1",label:"選項 1"},{value:"opt2",label:"選項 2"},{value:"opt3",label:"選項 3"}];
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        顯示下拉式選項列表。
+      </p>
+
+      <Anchor id="se-sizes">Sizes</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:360}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>small</span>
+          <SelectField value={sel1} onChange={setSel1} options={options} placeholder="請選擇" size="sm" />
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>medium</span>
+          <SelectField value={sel1} onChange={setSel1} options={options} placeholder="請選擇" size="md" />
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)",width:48,flexShrink:0}}>large</span>
+          <SelectField value={sel1} onChange={setSel1} options={options} placeholder="請選擇" size="lg" />
+        </div>
+      </DemoBox>
+
+      <Anchor id="se-default">Default</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <SelectField value={sel2} onChange={setSel2} options={options} placeholder="請選擇" />
+      </DemoBox>
+
+      <Anchor id="se-prefix">Prefix</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <SelectField value="" options={[
+          {value:"tw",label:"台灣 +886"},{value:"us",label:"美國 +1"},{value:"jp",label:"日本 +81"},
+        ]} placeholder="國碼" prefix="☎" />
+      </DemoBox>
+
+      <Anchor id="se-label">Label</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <SelectField value="" options={options} placeholder="請選擇" label="分類" />
+      </DemoBox>
+
+      <Anchor id="se-disabled">Disabled</Anchor>
+      <DemoBox style={{maxWidth:320}}>
+        <SelectField value="" options={options} placeholder="無法選擇" disabled />
+      </DemoBox>
+
+      <Anchor id="se-error">Error</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:360}}>
+        <SelectField value="" options={options} placeholder="請選擇" error errorMsg="請選擇一個值。" size="sm" />
+        <SelectField value="" options={options} placeholder="請選擇" error errorMsg="請選擇一個值。" />
+        <SelectField value="" options={options} placeholder="請選擇" error errorMsg="請選擇一個值。" size="lg" />
+      </DemoBox>
+
+      <Anchor id="se-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium","Large"]} rows={[
+        ["Height","32px","40px","48px"],
+        ["Font size","13px","14px","16px"],
+        ["Padding X","10px","12px","16px"],
+        ["Border radius","8px","8px","8px"],
+        ["Chevron size","16 × 16px","—","—"],
+        ["Border (default)","1px solid #D9D9D9","—","—"],
+        ["Border (focus)","1px solid #0A2B41","—","—"],
+        ["Border (error)","1px solid #F5222D","—","—"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TEXTAREA
+// ═══════════════════════════════════════
+
+function TextareaPage() {
+  const [val1,setVal1]=useState("");
+  const [val2,setVal2]=useState("");
+
+  const TextareaField = ({value,onChange,placeholder,disabled,error,errorMsg,label,rows=3,maxLength,resize="vertical"}) => {
+    const [focused,setFocused]=useState(false);
+    const charCount = maxLength ? `${(value||"").length}/${maxLength}` : null;
+    return (
+      <div style={{width:"100%"}}>
+        {label && <label style={{display:"block",fontSize:13,fontWeight:500,color:"var(--fg)",marginBottom:6,fontFamily:"var(--font-sans)"}}>{label}</label>}
+        <div style={{position:"relative"}}>
+          <textarea value={value} onChange={e=>onChange&&onChange(e.target.value)}
+            placeholder={placeholder} disabled={disabled} rows={rows}
+            maxLength={maxLength}
+            onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+            style={{
+              width:"100%",border:"1px solid "+(error?"#F5222D":focused?"#0A2B41":"var(--border)"),
+              borderRadius:8,padding:12,fontSize:14,color:"var(--fg)",
+              fontFamily:"var(--font-sans)",background:disabled?"var(--bg-2)":"var(--bg)",
+              outline:"none",transition:"border-color .15s",lineHeight:1.6,
+              resize:disabled?"none":resize,opacity:disabled?0.5:1,
+              boxShadow:focused&&!error?"0 0 0 3px rgba(10,43,65,0.08)":error&&focused?"0 0 0 3px rgba(245,34,45,0.08)":"none",
+            }}
+          />
+          {charCount && <span style={{position:"absolute",bottom:8,right:12,fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>{charCount}</span>}
+        </div>
+        {error && errorMsg && <div style={{fontSize:13,color:"#F5222D",marginTop:6,fontFamily:"var(--font-sans)"}}>{errorMsg}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        從使用者取得多行文字輸入。
+      </p>
+      <Anchor id="ta-default">Default</Anchor>
+      <DemoBox style={{maxWidth:400}}>
+        <TextareaField value={val1} onChange={setVal1} placeholder="請輸入描述..." />
+      </DemoBox>
+      <Anchor id="ta-label">Label & Max Length</Anchor>
+      <DemoBox style={{maxWidth:400}}>
+        <TextareaField value={val2} onChange={setVal2} placeholder="請描述需求..." label="需求描述" maxLength={200} rows={4} />
+      </DemoBox>
+      <Anchor id="ta-disabled">Disabled</Anchor>
+      <DemoBox style={{maxWidth:400}}>
+        <TextareaField value="此欄位不可編輯" disabled label="備註" />
+      </DemoBox>
+      <Anchor id="ta-error">Error</Anchor>
+      <DemoBox style={{maxWidth:400}}>
+        <TextareaField value="" placeholder="請輸入" error errorMsg="此欄位為必填。" label="描述" />
+      </DemoBox>
+      <Anchor id="ta-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Min height","3 rows (~76px)"],
+        ["Padding","12px"],
+        ["Font size","14px / Regular 400"],
+        ["Line height","1.6"],
+        ["Border radius","8px"],
+        ["Border (default)","1px solid #D9D9D9"],
+        ["Border (focus)","1px solid #0A2B41"],
+        ["Border (error)","1px solid #F5222D"],
+        ["Resize","vertical (default)"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════
+
+function TabsPage() {
+  const [tab1,setTab1]=useState(0);
+  const [tab2,setTab2]=useState(0);
+  const [tab3,setTab3]=useState(0);
+
+  const TabBar = ({tabs,active,onChange,disabled,variant="primary"}) => {
+    return (
+      <div style={{
+        display:"flex",gap:0,borderBottom:variant==="secondary"?"none":"1px solid var(--border)",
+        background:variant==="secondary"?"var(--bg-2)":"transparent",
+        borderRadius:variant==="secondary"?8:0,
+        padding:variant==="secondary"?3:0,
+      }}>
+        {tabs.map((t,i)=>{
+          const isActive = active===i;
+          const isDisabled = disabled?.includes(i);
+          return (
+            <button key={i} onClick={()=>!isDisabled&&onChange(i)}
+              style={{
+                padding:variant==="secondary"?"6px 16px":"10px 16px",
+                fontSize:14,fontWeight:isActive?500:400,fontFamily:"var(--font-sans)",
+                cursor:isDisabled?"not-allowed":"pointer",
+                opacity:isDisabled?0.4:1,
+                background:variant==="secondary"&&isActive?"var(--bg)":"transparent",
+                color:isActive?"var(--fg)":"var(--fg-3)",
+                border:"none",outline:"none",
+                borderBottom:variant==="primary"&&isActive?"2px solid #0A2B41":"2px solid transparent",
+                borderRadius:variant==="secondary"?6:0,
+                transition:"all .15s ease",
+                boxShadow:variant==="secondary"&&isActive?"0 1px 3px rgba(0,0,0,0.08)":"none",
+              }}
+            >{typeof t === "string" ? t : t.label}</button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        在相同空間中切換不同面板的內容。
+      </p>
+      <Anchor id="tabs-default">Default</Anchor>
+      <DemoBox style={{flexDirection:"column",alignItems:"stretch",gap:0,padding:0,background:"var(--bg)"}}>
+        <div style={{padding:"0 20px"}}><TabBar tabs={["全部","進行中","已完成"]} active={tab1} onChange={setTab1} /></div>
+        <div style={{padding:20,fontSize:14,color:"var(--fg-2)"}}>{["顯示全部項目","顯示進行中項目","顯示已完成項目"][tab1]}</div>
+      </DemoBox>
+      <Anchor id="tabs-disabled">Disabled</Anchor>
+      <DemoBox style={{flexDirection:"column",alignItems:"stretch",gap:0,padding:0,background:"var(--bg)"}}>
+        <div style={{padding:"0 20px"}}><TabBar tabs={["啟用","啟用","停用"]} active={tab2} onChange={setTab2} disabled={[2]} /></div>
+        <div style={{padding:20,fontSize:14,color:"var(--fg-2)"}}>第 {tab2+1} 頁內容</div>
+      </DemoBox>
+      <Anchor id="tabs-secondary">Secondary</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        pill 風格的頁籤，用於次要場景。
+      </p>
+      <DemoBox>
+        <TabBar tabs={["日","週","月","年"]} active={tab3} onChange={setTab3} variant="secondary" />
+      </DemoBox>
+      <Anchor id="tabs-specs">Specs</Anchor>
+      <GTable headers={["Property","Primary","Secondary"]} rows={[
+        ["Height","40px","32px"],
+        ["Font size","14px","14px"],
+        ["Indicator","2px bottom border #0A2B41","背景 + 陰影"],
+        ["Gap","0","0 (padding 3px)"],
+        ["Active color","var(--fg)","var(--fg)"],
+        ["Inactive color","var(--fg-3)","var(--fg-3)"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// BADGE
+// ═══════════════════════════════════════
+
+function BadgePage() {
+  const Badge = ({children,variant="default",size="md",pill}) => {
+    const colors = {
+      default: {bg:"#F5F5F5",color:"#595959",border:"#D9D9D9"},
+      primary: {bg:"#E7EAEC",color:"#0A2B41",border:"#9AABB7"},
+      info: {bg:"#E6F4FF",color:"#0958D9",border:"#91CAFF"},
+      success: {bg:"#F6FFED",color:"#389E0D",border:"#B7EB8F"},
+      warning: {bg:"#FFFCF0",color:"#D68C24",border:"#FFC861"},
+      error: {bg:"#FFF1F0",color:"#CF1322",border:"#FFA39E"},
+      purple: {bg:"#F5F3FF",color:"#7C3AED",border:"#DDD6FE"},
+    };
+    const c = colors[variant];
+    const sizes = {sm:{fontSize:11,padding:"1px 6px"},md:{fontSize:12,padding:"2px 8px"},lg:{fontSize:13,padding:"3px 10px"}};
+    const sz = sizes[size];
+    return (
+      <span style={{
+        display:"inline-flex",alignItems:"center",gap:4,
+        background:c.bg,color:c.color,
+        fontSize:sz.fontSize,fontWeight:500,fontFamily:"var(--font-sans)",
+        padding:sz.padding,borderRadius:pill?999:6,
+        border:"1px solid "+c.border,lineHeight:"16px",whiteSpace:"nowrap",
+      }}>{children}</span>
+    );
+  };
+
+  const StatusDot = ({color="#52C41A"}) => (
+    <span style={{width:6,height:6,borderRadius:"50%",background:color,display:"inline-block"}} />
+  );
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        用於標記狀態、類別或屬性的標籤元件。
+      </p>
+      <Anchor id="bd-variants">Variants</Anchor>
+      <DemoBox style={{gap:8}}>
+        <Badge variant="default">Default</Badge>
+        <Badge variant="primary">Primary</Badge>
+        <Badge variant="info">Info</Badge>
+        <Badge variant="success">Success</Badge>
+        <Badge variant="warning">Warning</Badge>
+        <Badge variant="error">Error</Badge>
+        <Badge variant="purple">Purple</Badge>
+      </DemoBox>
+      <Anchor id="bd-sizes">Sizes</Anchor>
+      <DemoBox style={{gap:8}}>
+        <Badge size="sm" variant="primary">Small</Badge>
+        <Badge size="md" variant="primary">Medium</Badge>
+        <Badge size="lg" variant="primary">Large</Badge>
+      </DemoBox>
+      <Anchor id="bd-pill">Pill</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        Pill 標籤使用 <code style={{fontFamily:"var(--font-mono)",fontSize:13,background:"var(--bg-2)",padding:"1px 6px",borderRadius:4}}>rounded-full</code>，專用於資料型態識別。
+      </p>
+      <DemoBox style={{gap:8}}>
+        <Badge pill variant="primary">整數</Badge>
+        <Badge pill variant="info">文字</Badge>
+        <Badge pill variant="success">布林</Badge>
+        <Badge pill variant="warning">日期</Badge>
+        <Badge pill variant="purple">陣列</Badge>
+        <Badge pill variant="error">必填</Badge>
+      </DemoBox>
+      <Anchor id="bd-with-dot">With Status Dot</Anchor>
+      <DemoBox style={{gap:8}}>
+        <Badge variant="success"><StatusDot color="#52C41A" /> 運行中</Badge>
+        <Badge variant="warning"><StatusDot color="#FDB338" /> 待處理</Badge>
+        <Badge variant="error"><StatusDot color="#F5222D" /> 已停止</Badge>
+        <Badge variant="default"><StatusDot color="#BFBFBF" /> 離線</Badge>
+      </DemoBox>
+      <Anchor id="bd-in-table">In Table Context</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        Badge 在表格中的典型使用。
+      </p>
+      <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"var(--font-sans)",fontSize:14}}>
+          <thead><tr>
+            {["欄位名稱","型態","狀態"].map((h,i)=>(
+              <th key={i} style={{textAlign:"left",padding:"10px 16px",fontWeight:400,color:"var(--fg-3)",fontSize:13,borderBottom:"1px solid var(--border)"}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {[
+              ["統一編號",<Badge pill variant="info">文字</Badge>,<Badge variant="success"><StatusDot /> 已完成</Badge>],
+              ["公司名稱",<Badge pill variant="info">文字</Badge>,<Badge variant="success"><StatusDot /> 已完成</Badge>],
+              ["營運資金",<Badge pill variant="primary">整數</Badge>,<Badge variant="warning"><StatusDot color="#FDB338" /> 待確認</Badge>],
+              ["建立時間",<Badge pill variant="warning">日期</Badge>,<Badge variant="error"><StatusDot color="#F5222D" /> 缺失</Badge>],
+            ].map((row,ri)=>(
+              <tr key={ri}>{row.map((cell,ci)=>(
+                <td key={ci} style={{padding:"12px 16px",borderBottom:ri<3?"1px solid var(--border-light)":"none",color:"var(--fg)"}}>{cell}</td>
+              ))}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Anchor id="bd-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium","Large"]} rows={[
+        ["Font size","11px","12px","13px"],
+        ["Padding","1px 6px","2px 8px","3px 10px"],
+        ["Border radius (badge)","6px","6px","6px"],
+        ["Border radius (pill)","full","full","full"],
+        ["Font weight","Medium 500","Medium 500","Medium 500"],
+        ["Border","1px solid","1px solid","1px solid"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TABLE
+// ═══════════════════════════════════════
+
+function TablePage() {
+  const [sortCol,setSortCol]=useState(null);
+  const [sortDir,setSortDir]=useState("asc");
+  const [hoveredRow,setHoveredRow]=useState(null);
+
+  const SortIcon = ({active,dir}) => (
+    <svg width="12" height="12" viewBox="0 0 12 12" style={{marginLeft:4,opacity:active?1:0.3}}>
+      <path d="M6 2L9 5H3L6 2Z" fill={active&&dir==="asc"?"var(--fg)":"var(--fg-3)"} />
+      <path d="M6 10L3 7H9L6 10Z" fill={active&&dir==="desc"?"var(--fg)":"var(--fg-3)"} />
+    </svg>
+  );
+
+  const data = [
+    {id:"001",name:"Youni Lab",addr:"台北市信義區",status:"營業中",capital:"NT$ 5,000,000"},
+    {id:"002",name:"未來科技",addr:"台北市大安區",status:"營業中",capital:"NT$ 12,000,000"},
+    {id:"003",name:"智慧數據",addr:"新竹市東區",status:"停業",capital:"NT$ 800,000"},
+    {id:"004",name:"創新工坊",addr:"台中市西屯區",status:"營業中",capital:"NT$ 3,200,000"},
+  ];
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        結構化資料的展示元件。遵循 design.md 的表格規範：48-52px 行高、僅水平分隔線。
+      </p>
+      <Anchor id="tb-default">Default</Anchor>
+      <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"var(--font-sans)",fontSize:14}}>
+          <thead><tr>
+            {["統一編號","公司名稱","地址","狀態","營運資金"].map((h,i)=>(
+              <th key={i} onClick={()=>{setSortCol(i);setSortDir(sortCol===i&&sortDir==="asc"?"desc":"asc")}}
+                style={{textAlign:"left",padding:"12px 16px",fontWeight:500,color:"var(--fg-2)",fontSize:13,borderBottom:"1px solid var(--border)",cursor:"pointer",userSelect:"none"}}>
+                <span style={{display:"inline-flex",alignItems:"center"}}>{h}<SortIcon active={sortCol===i} dir={sortDir}/></span>
+              </th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {data.map((row,ri)=>(
+              <tr key={ri}
+                onMouseEnter={()=>setHoveredRow(ri)} onMouseLeave={()=>setHoveredRow(null)}
+                style={{background:hoveredRow===ri?"var(--bg-2)":"var(--bg)",transition:"background .1s"}}>
+                {[row.id,row.name,row.addr,row.status,row.capital].map((cell,ci)=>(
+                  <td key={ci} style={{padding:"14px 16px",borderBottom:ri<data.length-1?"1px solid var(--border-light)":"none",color:ci===3?(cell==="停業"?"#CF1322":"#389E0D"):"var(--fg)"}}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Anchor id="tb-striped">Striped</Anchor>
+      <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"var(--font-sans)",fontSize:14}}>
+          <thead><tr>
+            {["欄位","型態","描述"].map((h,i)=>(
+              <th key={i} style={{textAlign:"left",padding:"12px 16px",fontWeight:500,color:"var(--fg-2)",fontSize:13,borderBottom:"1px solid var(--border)"}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {[["company_name","string","公司名稱"],["tax_id","string","統一編號"],["capital","number","資本額"],["created_at","datetime","建立時間"]].map((row,ri)=>(
+              <tr key={ri} style={{background:ri%2===1?"var(--bg-2)":"var(--bg)"}}>
+                {row.map((cell,ci)=>(
+                  <td key={ci} style={{padding:"14px 16px",borderBottom:ri<3?"1px solid var(--border-light)":"none",color:"var(--fg)",fontFamily:ci===0?"var(--font-mono)":"inherit"}}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Anchor id="tb-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Row height (standard)","48-52px"],
+        ["Header row height","40px"],
+        ["Cell padding (horizontal)","16px"],
+        ["Cell padding (vertical)","12-14px"],
+        ["Border","僅水平分隔線 #F0F0F0"],
+        ["Header border","1px solid #D9D9D9"],
+        ["Hover background","#FAFAFA"],
+        ["Container radius","12px"],
+        ["Font size","14px (body) / 13px (header)"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════
+
+function ModalPage() {
+  const [show1,setShow1]=useState(false);
+  const [show2,setShow2]=useState(false);
+
+  const Modal = ({open,onClose,title,children,footer,size="md"}) => {
+    if(!open) return null;
+    const widths = {sm:360,md:480,lg:640};
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center"}}
+        onClick={onClose}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)"}} />
+        <div onClick={e=>e.stopPropagation()}
+          style={{
+            position:"relative",background:"var(--bg)",borderRadius:12,
+            width:widths[size],maxWidth:"90vw",maxHeight:"85vh",overflow:"auto",
+            boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
+            animation:"modalIn .2s ease",
+          }}>
+          <div style={{padding:"20px 24px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <h3 style={{fontSize:16,fontWeight:600,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{title}</h3>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--fg-3)",fontSize:18,padding:4,borderRadius:6,display:"flex"}}
+              onMouseEnter={e=>e.currentTarget.style.background="var(--bg-2)"}
+              onMouseLeave={e=>e.currentTarget.style.background="none"}>✕</button>
+          </div>
+          <div style={{padding:"20px 24px"}}>{children}</div>
+          {footer && <div style={{padding:"16px 24px",borderTop:"1px solid var(--border)",display:"flex",justifyContent:"flex-end",gap:8}}>{footer}</div>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}`}</style>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        在疊層中顯示需要使用者注意或操作的內容。
+      </p>
+      <Anchor id="md-default">Default</Anchor>
+      <DemoBox>
+        <Btn variant="primary" onClick={()=>setShow1(true)}>開啟 Modal</Btn>
+      </DemoBox>
+      <Modal open={show1} onClose={()=>setShow1(false)} title="編輯欄位"
+        footer={<><Btn variant="secondary" onClick={()=>setShow1(false)}>取消</Btn><Btn variant="primary" onClick={()=>setShow1(false)}>儲存</Btn></>}>
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div>
+            <label style={{display:"block",fontSize:13,fontWeight:500,color:"var(--fg)",marginBottom:6}}>欄位名稱</label>
+            <input placeholder="請輸入" style={{width:"100%",height:40,border:"1px solid var(--border)",borderRadius:8,padding:"0 12px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none"}} />
+          </div>
+          <div>
+            <label style={{display:"block",fontSize:13,fontWeight:500,color:"var(--fg)",marginBottom:6}}>欄位描述</label>
+            <textarea placeholder="請輸入描述..." rows={3} style={{width:"100%",border:"1px solid var(--border)",borderRadius:8,padding:12,fontSize:14,fontFamily:"var(--font-sans)",outline:"none",resize:"vertical"}} />
+          </div>
+        </div>
+      </Modal>
+      <Anchor id="md-danger">Danger Confirmation</Anchor>
+      <DemoBox>
+        <Btn variant="error" onClick={()=>setShow2(true)}>刪除項目</Btn>
+      </DemoBox>
+      <Modal open={show2} onClose={()=>setShow2(false)} title="確認刪除" size="sm"
+        footer={<><Btn variant="secondary" onClick={()=>setShow2(false)}>取消</Btn><Btn variant="error" onClick={()=>setShow2(false)}>確認刪除</Btn></>}>
+        <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6}}>確定要刪除此欄位嗎？此操作無法復原。</p>
+      </Modal>
+      <Anchor id="md-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium","Large"]} rows={[
+        ["Width","360px","480px","640px"],
+        ["Border radius","12px","12px","12px"],
+        ["Header padding","20px 24px","20px 24px","20px 24px"],
+        ["Body padding","20px 24px","20px 24px","20px 24px"],
+        ["Footer padding","16px 24px","16px 24px","16px 24px"],
+        ["Overlay","rgba(0,0,0,0.4)","—","—"],
+        ["Title","16px / Semibold 600","—","—"],
+        ["Animation","scale 0.96 → 1","—","—"],
+      ]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════
+
+function ToastPage() {
+  const [toasts,setToasts]=useState([]);
+  let toastId = useRef(0);
+
+  const addToast = (variant,msg) => {
+    const id = ++toastId.current;
+    setToasts(prev=>[...prev,{id,variant,msg,visible:true}]);
+    setTimeout(()=>setToasts(prev=>prev.map(t=>t.id===id?{...t,visible:false}:t)),2500);
+    setTimeout(()=>setToasts(prev=>prev.filter(t=>t.id!==id)),2800);
+  };
+
+  const ToastItem = ({variant,msg,visible}) => {
+    const colors = {
+      default:{bg:"#1F1F1F",color:"#fff",icon:null},
+      success:{bg:"#1F1F1F",color:"#fff",icon:"✓",iconColor:"#52C41A"},
+      error:{bg:"#1F1F1F",color:"#fff",icon:"✕",iconColor:"#F5222D"},
+      warning:{bg:"#1F1F1F",color:"#fff",icon:"⚠",iconColor:"#FDB338"},
+    };
+    const c = colors[variant]||colors.default;
+    return (
+      <div style={{
+        background:c.bg,color:c.color,padding:"10px 16px",borderRadius:8,
+        fontSize:14,fontFamily:"var(--font-sans)",display:"flex",alignItems:"center",gap:8,
+        boxShadow:"0 4px 14px rgba(0,0,0,0.15)",minWidth:200,
+        opacity:visible?1:0,transform:`translateY(${visible?0:12}px)`,transition:"all .25s ease",
+      }}>
+        {c.icon && <span style={{color:c.iconColor,fontWeight:700}}>{c.icon}</span>}
+        {msg}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>
+        短暫顯示的操作回饋通知。
+      </p>
+      <Anchor id="to-variants">Variants</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        點擊按鈕觸發即時 Toast 通知。
+      </p>
+      <DemoBox style={{gap:8}}>
+        <Btn variant="secondary" onClick={()=>addToast("default","已複製到剪貼簿")}>Default</Btn>
+        <Btn variant="primary" onClick={()=>addToast("success","儲存成功")}>Success</Btn>
+        <Btn variant="error" onClick={()=>addToast("error","刪除失敗")}>Error</Btn>
+        <Btn variant="warning" onClick={()=>addToast("warning","請先填寫必填欄位")}>Warning</Btn>
+      </DemoBox>
+      {/* live toast stack */}
+      <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",flexDirection:"column-reverse",gap:8,alignItems:"center"}}>
+        {toasts.map(t=><ToastItem key={t.id} {...t} />)}
+      </div>
+      <Anchor id="to-preview">Preview</Anchor>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,marginBottom:20,fontFamily:"var(--font-sans)"}}>
+        靜態展示四種 Toast 樣式。
+      </p>
+      <DemoBox style={{flexDirection:"column",gap:8,alignItems:"center"}}>
+        <ToastItem variant="default" msg="已複製到剪貼簿" visible={true} />
+        <ToastItem variant="success" msg="儲存成功" visible={true} />
+        <ToastItem variant="error" msg="刪除失敗" visible={true} />
+        <ToastItem variant="warning" msg="請先填寫必填欄位" visible={true} />
+      </DemoBox>
+      <Anchor id="to-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Background","#1F1F1F"],
+        ["Text color","#FFFFFF"],
+        ["Font size","14px / Regular 400"],
+        ["Padding","10px 16px"],
+        ["Border radius","8px"],
+        ["Min width","200px"],
+        ["Position","Fixed bottom center"],
+        ["Duration","2.5s (default)"],
+        ["Animation","fade + translateY 12px"],
+        ["Shadow","0 4px 14px rgba(0,0,0,0.15)"],
+      ]} />
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════
+// AVATAR
+// ═══════════════════════════════════════
+
+function AvatarPage() {
+  const Av = ({src,name,size=40,status}) => {
+    const initials = name?name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2):"";
+    const colors = ["#0A2B41","#0958D9","#389E0D","#D68C24","#7C3AED","#CF1322"];
+    const bg = colors[name?name.charCodeAt(0)%colors.length:0];
+    const statusColors = {online:"#52C41A",offline:"#BFBFBF",busy:"#F5222D",away:"#FDB338"};
+    return (
+      <div style={{position:"relative",display:"inline-block"}}>
+        {src ? <img src={src} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover"}} />
+        : <div style={{width:size,height:size,borderRadius:"50%",background:bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:size*0.38,fontWeight:600,fontFamily:"var(--font-sans)"}}>{initials}</div>}
+        {status && <div style={{position:"absolute",bottom:0,right:0,width:size*0.28,height:size*0.28,borderRadius:"50%",background:statusColors[status],border:"2px solid var(--bg)"}} />}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>顯示使用者頭像或縮寫。</p>
+      <Anchor id="av-sizes">Sizes</Anchor>
+      <DemoBox style={{gap:16}}><Av name="Youni Lab" size={24}/><Av name="Youni Lab" size={32}/><Av name="Youni Lab" size={40}/><Av name="Youni Lab" size={48}/><Av name="Youni Lab" size={64}/></DemoBox>
+      <Anchor id="av-initials">Initials</Anchor>
+      <DemoBox style={{gap:12}}><Av name="Alice Wang"/><Av name="Bob Chen"/><Av name="Carol Li"/><Av name="David Wu"/><Av name="Eve Lin"/></DemoBox>
+      <Anchor id="av-status">Status</Anchor>
+      <DemoBox style={{gap:16}}><Av name="Online" size={48} status="online"/><Av name="Away" size={48} status="away"/><Av name="Busy" size={48} status="busy"/><Av name="Offline" size={48} status="offline"/></DemoBox>
+      <Anchor id="av-group">Group</Anchor>
+      <DemoBox>
+        <div style={{display:"flex"}}>
+          {["Alice","Bob","Carol","David"].map((n,i)=>(<div key={i} style={{marginLeft:i?-10:0,zIndex:4-i}}><Av name={n} size={36}/></div>))}
+          <div style={{marginLeft:-10,width:36,height:36,borderRadius:"50%",background:"var(--bg-2)",border:"2px solid var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"var(--fg-3)",fontFamily:"var(--font-sans)"}}>+3</div>
+        </div>
+      </DemoBox>
+      <Anchor id="av-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Shape","Circle (50%)"],["Sizes","24 / 32 / 40 / 48 / 64px"],["Font size","38% of size"],["Font weight","Semibold 600"],["Status dot","28% of size"],["Status dot border","2px solid bg"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// BREADCRUMBS
+// ═══════════════════════════════════════
+
+function BreadcrumbsPage() {
+  const Crumbs = ({items}) => (
+    <nav style={{display:"flex",alignItems:"center",gap:8,fontSize:14,fontFamily:"var(--font-sans)"}}>
+      {items.map((item,i)=>(
+        <span key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+          {i>0&&<span style={{color:"var(--fg-3)"}}>/</span>}
+          {i<items.length-1 ? <a href="#" onClick={e=>e.preventDefault()} style={{color:"var(--fg-3)",textDecoration:"none",transition:"color .12s"}} onMouseEnter={e=>e.currentTarget.style.color="var(--fg)"} onMouseLeave={e=>e.currentTarget.style.color="var(--fg-3)"}>{item}</a>
+          : <span style={{color:"var(--fg)",fontWeight:500}}>{item}</span>}
+        </span>
+      ))}
+    </nav>
+  );
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>顯示使用者在頁面層級中的位置。</p>
+      <Anchor id="bc-default">Default</Anchor>
+      <DemoBox style={{justifyContent:"flex-start"}}><Crumbs items={["首頁","專案","欄位提取工具"]}/></DemoBox>
+      <Anchor id="bc-long">Deep Nesting</Anchor>
+      <DemoBox style={{justifyContent:"flex-start"}}><Crumbs items={["首頁","設定","團隊","成員","權限管理"]}/></DemoBox>
+      <Anchor id="bc-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Font size","14px"],["Separator",'"/" #8C8C8C'],["Active (last)","var(--fg) / Medium 500"],["Inactive","var(--fg-3) / Regular 400"],["Gap","8px"],["Hover","var(--fg)"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// CARD
+// ═══════════════════════════════════════
+
+function CardPage() {
+  const Card = ({title,children,footer,padding=24,hoverable}) => {
+    const [h,setH]=useState(false);
+    return (
+      <div style={{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden",transition:"all .2s",boxShadow:h&&hoverable?"0 4px 16px rgba(0,0,0,0.06)":"none",transform:h&&hoverable?"translateY(-2px)":"none",cursor:hoverable?"pointer":"default"}}
+        onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}>
+        {title&&<div style={{padding:"16px "+padding+"px",borderBottom:"1px solid var(--border-light)",fontSize:14,fontWeight:600,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{title}</div>}
+        <div style={{padding:padding}}>{children}</div>
+        {footer&&<div style={{padding:"12px "+padding+"px",borderTop:"1px solid var(--border-light)",background:"var(--bg-2)"}}>{footer}</div>}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>內容容器，使用 12px 圓角與淺色邊框。</p>
+      <Anchor id="cd-default">Default</Anchor>
+      <Card title="欄位設定"><p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6}}>這是卡片的內容區域。卡片使用 12px 圓角、1px 邊框，內部 padding 為 24px。</p></Card>
+      <Anchor id="cd-footer">With Footer</Anchor>
+      <Card title="專案資訊" footer={<div style={{display:"flex",justifyContent:"flex-end",gap:8}}><Btn variant="secondary" size="sm">取消</Btn><Btn variant="primary" size="sm">儲存</Btn></div>}>
+        <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6}}>包含底部操作區的卡片。</p>
+      </Card>
+      <Anchor id="cd-hover">Hoverable</Anchor>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+        {[{t:"資料提取",d:"從文件中提取結構化資料"},{t:"欄位分析",d:"自動分析欄位型態與格式"},{t:"批次處理",d:"批量處理多份文件"}].map((c,i)=>(
+          <Card key={i} hoverable><div style={{fontSize:14,fontWeight:600,color:"var(--fg)",marginBottom:4}}>{c.t}</div><div style={{fontSize:13,color:"var(--fg-3)"}}>{c.d}</div></Card>
+        ))}
+      </div>
+      <Anchor id="cd-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Border radius","12px"],["Border","1px solid #D9D9D9"],["Padding (standard)","24px"],["Padding (compact)","20px"],["Header padding","16px 24px"],["Footer padding","12px 24px"],["Footer background","#FAFAFA"],["Hover shadow","0 4px 16px rgba(0,0,0,0.06)"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// CHOICEBOX
+// ═══════════════════════════════════════
+
+function ChoiceboxPage() {
+  const [sel,setSel]=useState("a");
+  const [multi,setMulti]=useState(["x"]);
+  const Choice = ({value,label,desc,selected,onClick,disabled}) => {
+    const [h,setH]=useState(false);
+    return (
+      <div onClick={()=>!disabled&&onClick(value)} style={{
+        border:"1.5px solid "+(selected?"#0A2B41":"var(--border)"),borderRadius:10,padding:"14px 16px",
+        cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,
+        background:selected?"#F0F4F7":h?"var(--bg-2)":"var(--bg)",transition:"all .15s",
+      }} onMouseEnter={()=>!disabled&&setH(true)} onMouseLeave={()=>setH(false)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:14,fontWeight:500,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{label}</div>
+            {desc&&<div style={{fontSize:13,color:"var(--fg-3)",marginTop:2}}>{desc}</div>}</div>
+          {selected&&<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="9" fill="#0A2B41"/><path d="M5.5 9L8 11.5L12.5 6.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>可選卡片式的選擇元件，比 Radio/Checkbox 更豐富。</p>
+      <Anchor id="ch-single">Single Select</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:8,alignItems:"stretch",maxWidth:400}}>
+        {[{v:"a",l:"CSV",d:"逗號分隔值檔案"},{v:"b",l:"JSON",d:"結構化資料格式"},{v:"c",l:"Excel",d:"Microsoft Excel 格式"}].map(o=>(
+          <Choice key={o.v} value={o.v} label={o.l} desc={o.d} selected={sel===o.v} onClick={setSel}/>
+        ))}
+      </DemoBox>
+      <Anchor id="ch-multi">Multi Select</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:8,alignItems:"stretch",maxWidth:400}}>
+        {[{v:"x",l:"公司名稱"},{v:"y",l:"統一編號"},{v:"z",l:"地址"}].map(o=>(
+          <Choice key={o.v} value={o.v} label={o.l} selected={multi.includes(o.v)} onClick={v=>setMulti(prev=>prev.includes(v)?prev.filter(x=>x!==v):[...prev,v])}/>
+        ))}
+      </DemoBox>
+      <Anchor id="ch-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Border radius","10px"],["Padding","14px 16px"],["Border (default)","1.5px solid #D9D9D9"],["Border (selected)","1.5px solid #0A2B41"],["Background (selected)","#F0F4F7"],["Check icon","18px circle #0A2B41"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// DRAWER
+// ═══════════════════════════════════════
+
+function DrawerPage() {
+  const [show,setShow]=useState(false);
+  const [showR,setShowR]=useState(false);
+  const DrawerComp = ({open,onClose,title,children,side="right",width=400}) => {
+    if(!open) return null;
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={onClose}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)"}}/>
+        <div onClick={e=>e.stopPropagation()} style={{
+          position:"absolute",top:0,bottom:0,[side]:0,width:width,maxWidth:"90vw",
+          background:"var(--bg)",boxShadow:"-4px 0 24px rgba(0,0,0,0.1)",
+          animation:`slideIn${side} .25s ease`,display:"flex",flexDirection:"column",
+        }}>
+          <div style={{padding:"20px 24px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <h3 style={{fontSize:16,fontWeight:600,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{title}</h3>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--fg-3)",fontSize:18,padding:4,borderRadius:6,display:"flex"}} onMouseEnter={e=>e.currentTarget.style.background="var(--bg-2)"} onMouseLeave={e=>e.currentTarget.style.background="none"}>✕</button>
+          </div>
+          <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>{children}</div>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <style>{`@keyframes slideInright{from{transform:translateX(100%)}to{transform:translateX(0)}}@keyframes slideInleft{from{transform:translateX(-100%)}to{transform:translateX(0)}}`}</style>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>從螢幕邊緣滑入的面板。</p>
+      <Anchor id="dw-right">Right</Anchor>
+      <DemoBox><Btn variant="primary" onClick={()=>setShow(true)}>開啟 Drawer (右)</Btn></DemoBox>
+      <DrawerComp open={show} onClose={()=>setShow(false)} title="欄位詳情"><p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6}}>這是一個從右側滑入的 Drawer 面板，適合用來展示詳細資訊或編輯表單。</p></DrawerComp>
+      <Anchor id="dw-left">Left</Anchor>
+      <DemoBox><Btn variant="secondary" onClick={()=>setShowR(true)}>開啟 Drawer (左)</Btn></DemoBox>
+      <DrawerComp open={showR} onClose={()=>setShowR(false)} title="導覽" side="left" width={300}><p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6}}>左側 Drawer，常用於行動裝置導覽。</p></DrawerComp>
+      <Anchor id="dw-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Width","400px (default)"],["Max width","90vw"],["Overlay","rgba(0,0,0,0.4) + blur(2px)"],["Header padding","20px 24px"],["Body padding","20px 24px"],["Animation","slideIn 0.25s ease"],["Shadow","-4px 0 24px rgba(0,0,0,0.1)"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// FEEDBACK
+// ═══════════════════════════════════════
+
+function FeedbackPage() {
+  const [rating,setRating]=useState(0);
+  const [submitted,setSubmitted]=useState(false);
+  const [emoji,setEmoji]=useState(null);
+  const emojis = [{v:"bad",e:"😞"},{v:"ok",e:"😐"},{v:"good",e:"😊"},{v:"great",e:"🤩"}];
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>收集使用者回饋的互動元件。</p>
+      <Anchor id="fb-emoji">Emoji Feedback</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12}}>
+        <div style={{fontSize:13,color:"var(--fg-2)"}}>這個功能有幫助嗎？</div>
+        <div style={{display:"flex",gap:8}}>
+          {emojis.map(em=>(
+            <button key={em.v} onClick={()=>setEmoji(em.v)} style={{fontSize:24,padding:8,borderRadius:8,border:emoji===em.v?"2px solid #0A2B41":"2px solid transparent",background:emoji===em.v?"#E7EAEC":"transparent",cursor:"pointer",transition:"all .15s"}}>{em.e}</button>
+          ))}
+        </div>
+      </DemoBox>
+      <Anchor id="fb-inline">Inline Feedback</Anchor>
+      <DemoBox>
+        {!submitted ? (
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px",borderRadius:8,border:"1px solid var(--border)"}}>
+            <span style={{fontSize:13,color:"var(--fg-2)"}}>Was this helpful?</span>
+            <div style={{display:"flex",gap:4}}>
+              <button onClick={()=>setSubmitted(true)} style={{background:"none",border:"1px solid var(--border)",borderRadius:6,padding:"4px 12px",fontSize:13,cursor:"pointer",color:"var(--fg-2)",transition:"all .12s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#0A2B41"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>Yes</button>
+              <button onClick={()=>setSubmitted(true)} style={{background:"none",border:"1px solid var(--border)",borderRadius:6,padding:"4px 12px",fontSize:13,cursor:"pointer",color:"var(--fg-2)",transition:"all .12s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#0A2B41"} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>No</button>
+            </div>
+          </div>
+        ) : <div style={{fontSize:14,color:"#389E0D",fontWeight:500}}>✓ 感謝你的回饋！</div>}
+      </DemoBox>
+      <Anchor id="fb-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Emoji size","24px"],["Selected border","2px solid #0A2B41"],["Selected background","#E7EAEC"],["Button padding","4px 12px"],["Border radius","8px (container) / 6px (buttons)"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// NOTE / ALERT
+// ═══════════════════════════════════════
+
+function NotePage() {
+  const NoteComp = ({variant="default",title,children}) => {
+    const styles = {
+      default:{bg:"var(--bg-2)",border:"var(--border)",color:"var(--fg)",icon:"ℹ"},
+      info:{bg:"#E6F4FF",border:"#91CAFF",color:"#0958D9",icon:"ℹ"},
+      success:{bg:"#F6FFED",border:"#B7EB8F",color:"#389E0D",icon:"✓"},
+      warning:{bg:"#FFFCF0",border:"#FFC861",color:"#D68C24",icon:"⚠"},
+      error:{bg:"#FFF1F0",border:"#FFA39E",color:"#CF1322",icon:"✕"},
+    };
+    const s = styles[variant];
+    return (
+      <div style={{background:s.bg,border:"1px solid "+s.border,borderRadius:8,padding:"12px 16px",display:"flex",gap:10,alignItems:"flex-start"}}>
+        <span style={{fontSize:14,fontWeight:700,color:s.color,flexShrink:0,marginTop:1}}>{s.icon}</span>
+        <div>
+          {title&&<div style={{fontSize:14,fontWeight:600,color:s.color,marginBottom:2,fontFamily:"var(--font-sans)"}}>{title}</div>}
+          <div style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.6,fontFamily:"var(--font-sans)"}}>{children}</div>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>用於顯示重要提示、警告或資訊的區塊元件。</p>
+      <Anchor id="nt-variants">Variants</Anchor>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <NoteComp variant="default" title="提示">這是一般性的提示訊息。</NoteComp>
+        <NoteComp variant="info" title="資訊">系統將於今晚 23:00 進行例行維護。</NoteComp>
+        <NoteComp variant="success" title="成功">資料已成功匯入，共 128 筆記錄。</NoteComp>
+        <NoteComp variant="warning" title="警告">此操作將覆蓋現有資料，請確認後再執行。</NoteComp>
+        <NoteComp variant="error" title="錯誤">檔案格式不正確，請上傳 CSV 或 JSON 檔案。</NoteComp>
+      </div>
+      <Anchor id="nt-notitle">Without Title</Anchor>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <NoteComp variant="info">這是一個沒有標題的資訊提示。</NoteComp>
+        <NoteComp variant="warning">請注意：免費方案每日上限 100 次查詢。</NoteComp>
+      </div>
+      <Anchor id="nt-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Border radius","8px"],["Padding","12px 16px"],["Border","1px solid"],["Icon gap","10px"],["Title","14px / Semibold 600"],["Body","14px / Regular 400"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// PROGRESS
+// ═══════════════════════════════════════
+
+function ProgressPage() {
+  const [p1,setP1]=useState(65);
+  const Bar = ({value=0,variant="primary",size="md",showLabel}) => {
+    const colors = {primary:"#0A2B41",info:"#1677FF",success:"#52C41A",warning:"#FDB338",error:"#F5222D"};
+    const heights = {sm:4,md:8,lg:12};
+    return (
+      <div style={{width:"100%"}}>
+        <div style={{width:"100%",height:heights[size],background:"var(--border-light)",borderRadius:999,overflow:"hidden"}}>
+          <div style={{height:"100%",width:Math.min(100,value)+"%",background:colors[variant],borderRadius:999,transition:"width .4s ease"}}/>
+        </div>
+        {showLabel&&<div style={{fontSize:12,color:"var(--fg-3)",marginTop:4,fontFamily:"var(--font-mono)",textAlign:"right"}}>{Math.round(value)}%</div>}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>顯示操作或任務的完成進度。</p>
+      <Anchor id="pg-default">Default</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:16,alignItems:"stretch",maxWidth:400}}>
+        <Bar value={p1} showLabel/>
+        <input type="range" min={0} max={100} value={p1} onChange={e=>setP1(+e.target.value)} style={{width:"100%"}}/>
+      </DemoBox>
+      <Anchor id="pg-sizes">Sizes</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:16,alignItems:"stretch",maxWidth:400}}>
+        <div><span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>small</span><Bar value={40} size="sm"/></div>
+        <div><span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>medium</span><Bar value={60} size="md"/></div>
+        <div><span style={{fontSize:12,color:"var(--fg-3)",fontFamily:"var(--font-mono)"}}>large</span><Bar value={80} size="lg"/></div>
+      </DemoBox>
+      <Anchor id="pg-variants">Variants</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:400}}>
+        <Bar value={80} variant="primary"/><Bar value={60} variant="info"/><Bar value={100} variant="success"/><Bar value={45} variant="warning"/><Bar value={20} variant="error"/>
+      </DemoBox>
+      <Anchor id="pg-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium","Large"]} rows={[["Height","4px","8px","12px"],["Border radius","full","full","full"],["Track color","#F0F0F0","—","—"],["Animation","width 0.4s ease","—","—"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// SEARCH INPUT
+// ═══════════════════════════════════════
+
+function SearchInputPage() {
+  const [q,setQ]=useState("");
+  const [q2,setQ2]=useState("");
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>帶搜尋圖示與清除按鈕的專用輸入框。按 Escape 可清除內容。</p>
+      <Anchor id="si-default">Default</Anchor>
+      <DemoBox style={{maxWidth:360}}>
+        <div style={{width:"100%",position:"relative"}}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--fg-3)"}}><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Escape"&&setQ("")} placeholder="搜尋..."
+            style={{width:"100%",height:40,border:"1px solid var(--border)",borderRadius:8,padding:"0 "+(q?"36":"12")+"px 0 36px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none",transition:"border-color .15s"}}
+            onFocus={e=>e.currentTarget.style.borderColor="#0A2B41"} onBlur={e=>e.currentTarget.style.borderColor="var(--border)"}/>
+          {q&&<button onClick={()=>setQ("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"var(--bg-2)",border:"none",borderRadius:4,width:24,height:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--fg-3)",fontSize:12}}>✕</button>}
+        </div>
+      </DemoBox>
+      <Anchor id="si-shortcut">With ⌘K Shortcut</Anchor>
+      <DemoBox style={{maxWidth:360}}>
+        <div style={{width:"100%",position:"relative"}}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--fg-3)"}}><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <input value={q2} onChange={e=>setQ2(e.target.value)} onKeyDown={e=>e.key==="Escape"&&setQ2("")} placeholder="搜尋..."
+            style={{width:"100%",height:40,border:"1px solid var(--border)",borderRadius:8,padding:"0 70px 0 36px",fontSize:14,fontFamily:"var(--font-sans)",outline:"none"}}/>
+          <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",display:"flex",gap:3}}>
+            {(q2?["Esc"]:["⌘","K"]).map((k,i)=>(<kbd key={i} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",height:20,minWidth:20,padding:"0 5px",borderRadius:4,border:"1px solid var(--border)",background:"var(--bg-2)",fontSize:11,color:"var(--fg-3)",fontFamily:"var(--font-sans)"}}>{k}</kbd>))}
+          </div>
+        </div>
+      </DemoBox>
+      <Anchor id="si-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Height","40px"],["Icon","16px search, left 12px"],["Clear button","24×24px, right 8px"],["⌘K badge","20px height, 4px radius"],["Escape behavior","Clear input value"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// SPINNER
+// ═══════════════════════════════════════
+
+function SpinnerPage() {
+  const Spin = ({size=20,color="#0A2B41"}) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{animation:"spin 1s linear infinite"}}>
+      <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="3" opacity="0.2"/>
+      <path d="M12 2a10 10 0 019.5 6.8" stroke={color} strokeWidth="3" strokeLinecap="round"/>
+    </svg>
+  );
+  const Dots = ({size=6,color="#0A2B41"}) => (
+    <span style={{display:"inline-flex",gap:4}}>{[0,1,2].map(i=>(<span key={i} style={{width:size,height:size,borderRadius:"50%",background:color,animation:`dotPulse 1.2s ease-in-out ${i*0.15}s infinite`}}/>))}</span>
+  );
+  return (
+    <div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>表示載入或處理中狀態的動畫元件。</p>
+      <Anchor id="sp-spinner">Spinner</Anchor>
+      <DemoBox style={{gap:24}}><Spin size={16}/><Spin size={20}/><Spin size={28}/><Spin size={36}/></DemoBox>
+      <Anchor id="sp-dots">Loading Dots</Anchor>
+      <DemoBox style={{gap:24}}><Dots size={4}/><Dots size={6}/><Dots size={8}/></DemoBox>
+      <Anchor id="sp-color">Colors</Anchor>
+      <DemoBox style={{gap:24}}><Spin color="#0A2B41"/><Spin color="#1677FF"/><Spin color="#52C41A"/><Spin color="#F5222D"/><Spin color="#8C8C8C"/></DemoBox>
+      <Anchor id="sp-context">In Context</Anchor>
+      <DemoBox style={{gap:16}}>
+        <Btn variant="primary" loading>載入中</Btn>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14,color:"var(--fg-2)"}}><Spin size={16}/> 正在分析...</div>
+      </DemoBox>
+      <Anchor id="sp-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Sizes","16 / 20 / 28 / 36px"],["Stroke width","3px"],["Track opacity","0.2"],["Animation","rotate 1s linear infinite"],["Dots animation","dotPulse 1.2s ease-in-out"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// SWITCH
+// ═══════════════════════════════════════
+
+function SwitchPage() {
+  const [s1,setS1]=useState(false);
+  const [s2,setS2]=useState(true);
+  const [s3,setS3]=useState(true);
+  const Sw = ({checked,onChange,label,disabled,size="md"}) => {
+    const sz = size==="sm"?{w:32,h:18,dot:14}:{w:40,h:22,dot:18};
+    return (
+      <label style={{display:"inline-flex",alignItems:"center",gap:8,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,userSelect:"none"}}>
+        <div onClick={e=>{e.preventDefault();!disabled&&onChange&&onChange(!checked)}} style={{
+          width:sz.w,height:sz.h,borderRadius:999,background:checked?"#0A2B41":"#D9D9D9",
+          position:"relative",transition:"background .2s",flexShrink:0,
+        }}>
+          <div style={{position:"absolute",top:(sz.h-sz.dot)/2,left:checked?sz.w-sz.dot-(sz.h-sz.dot)/2:(sz.h-sz.dot)/2,width:sz.dot,height:sz.dot,borderRadius:"50%",background:"#fff",transition:"left .2s ease",boxShadow:"0 1px 3px rgba(0,0,0,0.15)"}}/>
+        </div>
+        {label&&<span style={{fontSize:14,color:"var(--fg)",fontFamily:"var(--font-sans)"}}>{label}</span>}
+      </label>
+    );
+  };
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>在開與關之間切換的控制元件。</p>
+      <Anchor id="sw-default">Default</Anchor>
+      <DemoBox style={{gap:24}}><Sw checked={s1} onChange={setS1} label="通知"/><Sw checked={s2} onChange={setS2} label="自動儲存"/></DemoBox>
+      <Anchor id="sw-sizes">Sizes</Anchor>
+      <DemoBox style={{gap:24}}><Sw checked={s3} onChange={setS3} label="Small" size="sm"/><Sw checked={s3} onChange={setS3} label="Medium"/></DemoBox>
+      <Anchor id="sw-disabled">Disabled</Anchor>
+      <DemoBox style={{gap:24}}><Sw checked={false} disabled label="Disabled Off"/><Sw checked={true} disabled label="Disabled On"/></DemoBox>
+      <Anchor id="sw-specs">Specs</Anchor>
+      <GTable headers={["Property","Small","Medium"]} rows={[["Track size","32×18px","40×22px"],["Dot size","14px","18px"],["Border radius","full","full"],["Active color","#0A2B41","#0A2B41"],["Inactive color","#D9D9D9","#D9D9D9"],["Animation","0.2s ease","0.2s ease"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TOGGLE
+// ═══════════════════════════════════════
+
+function TogglePage() {
+  const [active,setActive]=useState(0);
+  const [active2,setActive2]=useState("grid");
+  const ToggleGroup = ({options,active:a,onChange}) => (
+    <div style={{display:"inline-flex",background:"var(--bg-2)",borderRadius:8,padding:3,border:"1px solid var(--border)"}}>
+      {options.map((opt,i)=>(
+        <button key={i} onClick={()=>onChange(typeof opt==="string"?opt:i)} style={{
+          padding:"6px 16px",fontSize:13,fontWeight:a===(typeof opt==="string"?opt:i)?500:400,
+          fontFamily:"var(--font-sans)",cursor:"pointer",border:"none",outline:"none",borderRadius:6,
+          background:a===(typeof opt==="string"?opt:i)?"var(--bg)":"transparent",
+          color:a===(typeof opt==="string"?opt:i)?"var(--fg)":"var(--fg-3)",
+          boxShadow:a===(typeof opt==="string"?opt:i)?"0 1px 3px rgba(0,0,0,0.08)":"none",
+          transition:"all .15s",
+        }}>{typeof opt==="string"?opt:opt.label}</button>
+      ))}
+    </div>
+  );
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>在一組互斥選項之間切換的按鈕群組。</p>
+      <Anchor id="tg-default">Default</Anchor>
+      <DemoBox><ToggleGroup options={[{label:"日"},{label:"週"},{label:"月"},{label:"年"}]} active={active} onChange={setActive}/></DemoBox>
+      <Anchor id="tg-string">String Values</Anchor>
+      <DemoBox><ToggleGroup options={["grid","list","table"]} active={active2} onChange={setActive2}/></DemoBox>
+      <Anchor id="tg-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Container background","#FAFAFA"],["Container padding","3px"],["Container border","1px solid #D9D9D9"],["Container radius","8px"],["Button padding","6px 16px"],["Button radius","6px"],["Active background","#FFFFFF + shadow"],["Active shadow","0 1px 3px rgba(0,0,0,0.08)"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════
+
+function TooltipPage() {
+  const Tip = ({text,children,position="top"}) => {
+    const [show,setShow]=useState(false);
+    const pos = {top:{bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)"},bottom:{top:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)"},left:{right:"calc(100% + 8px)",top:"50%",transform:"translateY(-50%)"},right:{left:"calc(100% + 8px)",top:"50%",transform:"translateY(-50%)"}};
+    return (
+      <div style={{position:"relative",display:"inline-block"}} onMouseEnter={()=>setShow(true)} onMouseLeave={()=>setShow(false)}>
+        {children}
+        {show&&<div style={{position:"absolute",...pos[position],background:"#1F1F1F",color:"#fff",padding:"5px 10px",borderRadius:6,fontSize:12,fontFamily:"var(--font-sans)",whiteSpace:"nowrap",zIndex:9999,pointerEvents:"none",animation:"fadeIn .15s ease"}}>{text}</div>}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8,fontFamily:"var(--font-sans)"}}>hover 時顯示的文字提示。</p>
+      <Anchor id="tp-positions">Positions</Anchor>
+      <DemoBox style={{gap:24,padding:48}}>
+        <Tip text="上方提示" position="top"><Btn variant="secondary">Top</Btn></Tip>
+        <Tip text="下方提示" position="bottom"><Btn variant="secondary">Bottom</Btn></Tip>
+        <Tip text="左側提示" position="left"><Btn variant="secondary">Left</Btn></Tip>
+        <Tip text="右側提示" position="right"><Btn variant="secondary">Right</Btn></Tip>
+      </DemoBox>
+      <Anchor id="tp-usage">Usage</Anchor>
+      <DemoBox style={{gap:16}}>
+        <Tip text="編輯此欄位"><button style={{background:"none",border:"1px solid var(--border)",borderRadius:6,padding:6,cursor:"pointer",display:"flex",color:"var(--fg-3)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></Tip>
+        <Tip text="刪除此項目"><button style={{background:"none",border:"1px solid var(--border)",borderRadius:6,padding:6,cursor:"pointer",display:"flex",color:"var(--fg-3)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></Tip>
+      </DemoBox>
+      <Anchor id="tp-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[["Background","#1F1F1F"],["Text color","#FFFFFF"],["Font size","12px"],["Padding","5px 10px"],["Border radius","6px"],["Offset","8px from trigger"],["Animation","fadeIn 0.15s ease"]]} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// v2.1 NEW COMPONENTS
+// ═══════════════════════════════════════
+
+// ── Material Symbols helper ──
+const MS = ({name, size=18, style:s}) => (
+  <span style={{
+    fontFamily:"'Material Symbols Rounded'",fontWeight:"normal",fontStyle:"normal",
+    fontSize:size,lineHeight:1,letterSpacing:"normal",textTransform:"none",
+    display:"inline-flex",alignItems:"center",justifyContent:"center",
+    WebkitFontSmoothing:"antialiased",
+    fontVariationSettings:"'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20",
+    ...s
+  }}>{name}</span>
+);
+
+// ── SIDEBAR ──────────────────────────
+function SidebarPage() {
+  const [activeItem, setActiveItem] = useState("members");
+  const [expanded, setExpanded]     = useState({"profile":true});
+  const [collapsed, setCollapsed]   = useState(false);
+  const toggle = (k) => setExpanded(p=>({...p,[k]:!p[k]}));
+
+  // ── inline Feather SVG helper (no CDN needed) ──
+  const FI_PATHS = {
+    "grid":         "<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
+    "user":         "<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
+    "folder":       "<path d='M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z'/>",
+    "users":        "<path d='M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 00-3-3.87'/><path d='M16 3.13a4 4 0 010 7.75'/>",
+    "share-2":      "<circle cx='18' cy='5' r='3'/><circle cx='6' cy='12' r='3'/><circle cx='18' cy='19' r='3'/><line x1='8.59' y1='13.51' x2='15.42' y2='17.49'/><line x1='15.41' y1='6.51' x2='8.59' y2='10.49'/>",
+    "home":         "<path d='M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/>",
+    "credit-card":  "<rect x='1' y='4' width='22' height='16' rx='2' ry='2'/><line x1='1' y1='10' x2='23' y2='10'/>",
+    "shield":       "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/>",
+    "user-check":   "<path d='M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='8.5' cy='7' r='4'/><polyline points='17 11 19 13 23 9'/>",
+    "bell":         "<path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/>",
+    "key":          "<path d='M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4'/>",
+    "calendar":     "<rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/>",
+    "feather":      "<path d='M20.24 12.24a6 6 0 00-8.49-8.49L5 10.5V19h8.5z'/><line x1='16' y1='8' x2='2' y2='22'/><line x1='17.5' y1='15' x2='9' y2='15'/>",
+    "sidebar":      "<rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/>",
+    "chevron-right":"<polyline points='9 18 15 12 9 6'/>",
+    "chevron-up":   "<polyline points='18 15 12 9 6 15'/>",
+    "sun":          "<circle cx='12' cy='12' r='5'/><line x1='12' y1='1' x2='12' y2='3'/><line x1='12' y1='21' x2='12' y2='23'/><line x1='4.22' y1='4.22' x2='5.64' y2='5.64'/><line x1='18.36' y1='18.36' x2='19.78' y2='19.78'/><line x1='1' y1='12' x2='3' y2='12'/><line x1='21' y1='12' x2='23' y2='12'/><line x1='4.22' y1='19.78' x2='5.64' y2='18.36'/><line x1='18.36' y1='5.64' x2='19.78' y2='4.22'/>",
+    "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
+    "map-pin":      "<path d='M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z'/><circle cx='12' cy='10' r='3'/>",
+    "event":        "<rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/>",
+    "balance":      "<line x1='12' y1='2' x2='12' y2='22'/><path d='M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'/>",
+    "search":       "<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>",
+  };
+
+  const FI = ({name, size=20, color="currentColor"}) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{display:"block",flexShrink:0}}
+      dangerouslySetInnerHTML={{__html: FI_PATHS[name] || ""}}
+    />
+  );
+
+  const navItems = [
+    { id:"overview", icon:"grid",     label:"總覽" },
+    { id:"profile",  icon:"user",     label:"個人主頁", children:[
+      {id:"profile-default",label:"Default"},
+      {id:"profile-creator",label:"Creator"},
+      {id:"profile-company",label:"Company"},
+    ]},
+    { id:"projects", icon:"folder",   label:"Projects" },
+    { id:"teams",    icon:"users",    label:"Teams" },
+    { id:"network",  icon:"share-2",  label:"Network" },
+  ];
+  const accountItems = [
+    { id:"home",    icon:"home",        label:"Account Home" },
+    { id:"billing", icon:"credit-card", label:"Billing" },
+    { id:"security",icon:"shield",      label:"Security",       badge:{text:"8",color:"amber"} },
+    { id:"members", icon:"user-check",  label:"Members & Roles" },
+    { id:"notif",   icon:"bell",        label:"Notifications",  badge:{text:"3",color:"blue"} },
+    { id:"apikeys", icon:"key",         label:"API Keys" },
+  ];
+  const spaces = [
+    {name:"Metrics Hub",color:"#1677FF"},{name:"Data Lab",color:"#52C41A"},
+    {name:"Creative Commons",color:"#7C3AED"},{name:"KPI Monitor",color:"#FDB338"},
+  ];
+  const favs = [
+    {icon:"event",   name:"Post Date"},
+    {icon:"balance", name:"Creative Licenses"},
+    {icon:"map-pin", name:"Open Content"},
+  ];
+
+  const badgeColors = {
+    blue: {bg:"#E6F4FF", color:"#0958D9"},
+    amber:{bg:"#FFFCF0", color:"#AD6800"},
+    green:{bg:"#F6FFED", color:"#389E0D"},
+  };
+
+  const NavItem = ({item, sub=false}) => {
+    const isActive = activeItem===item.id || (item.children&&item.children.some(c=>c.id===activeItem));
+    const isExp    = expanded[item.id];
+    const [hov,setHov] = useState(false);
+    return (
+      <>
+        <div onClick={()=>{ setActiveItem(item.id); if(item.children) toggle(item.id); }}
+          onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+          style={{display:"flex",alignItems:"center",gap:8,
+            padding: sub?"8px 10px":"10px 12px",
+            margin:"1px 8px", borderRadius:8, cursor:"pointer",
+            background: isActive?"#E7EAEC": hov?"#FAFAFA":"transparent",
+            color: isActive?"#0A2B41":"#595959",
+            fontWeight: isActive?500:400,
+            fontSize: sub?13:16,
+            transition:"all .12s",
+          }}>
+          {!sub && <FI name={item.icon} size={20} color={isActive?"#0A2B41":"#8C8C8C"}/>}
+          {sub && <div style={{width:5,height:5,borderRadius:"50%",background:isActive?"#0A2B41":"#BFBFBF",marginLeft:6,flexShrink:0}}/>}
+          <span style={{flex:1}}>{item.label}</span>
+          {item.badge && <span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:9999,...badgeColors[item.badge.color]}}>{item.badge.text}</span>}
+          {item.children && <FI name={isExp?"chevron-up":"chevron-right"} size={14} color="#BFBFBF"/>}
+        </div>
+        {item.children && isExp && (
+          <div style={{paddingLeft:10}}>
+            {item.children.map(c=><NavItem key={c.id} item={c} sub/>)}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Section heading — 12px / 400 (細體)
+  const SectionHead = ({label}) => (
+    <div style={{fontSize:12,fontWeight:400,letterSpacing:"0.06em",textTransform:"uppercase",color:"#BFBFBF",padding:"16px 16px 6px"}}>{label}</div>
+  );
+
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>後台主要導覽元件，Light 風格。白底深字，圖標使用 Feather Icons（stroke-width 2）。</p>
+
+      <Anchor id="sb-preview">Preview</Anchor>
+      <DemoBox style={{padding:0,background:"#E8EBEE",justifyContent:"flex-start",alignItems:"flex-start",minHeight:600,overflow:"hidden"}}>
+        <div style={{width:collapsed?56:240,background:"#fff",borderRight:"1px solid #E5E7EB",height:"100%",minHeight:580,display:"flex",flexDirection:"column",flexShrink:0,transition:"width 200ms ease",overflow:"hidden"}}>
+
+          {/* Logo + collapse btn */}
+          <div style={{height:56,padding:"0 14px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+            {/* Logo 靠左 — 收合時隱藏 */}
+            {!collapsed && (
+              <img
+                src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCA1NSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iNTAuMjUiIHdpZHRoPSI0LjUiIGhlaWdodD0iNC41IiByeD0iMi4yNSIgZmlsbD0iI0ZEQjMzOCIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTQ2Ljg3NSAxOS41QzQ3LjA4MjEgMTkuNSA0Ny4yNSAxOS42Njc5IDQ3LjI1IDE5Ljg3NUw0Ny4yNSAyMi43NUM0Ny4yNSAyMi45MzkzIDQ3LjM1NTIgMjMuMTA0IDQ3LjUxMDMgMjMuMTg4OUM0Ny42MzE0IDIzLjI1NTIgNDcuNzUgMjMuMzYxOSA0Ny43NSAyMy41QzQ3Ljc1IDIzLjc3NjEgNDcuNTE3NCAyNC4wMDkzIDQ3LjI2MzEgMjMuOTAxNkM0Ni44MTQ3IDIzLjcxMTggNDYuNSAyMy4yNjc2IDQ2LjUgMjIuNzVMNDYuNSAxOS44NzVDNDYuNSAxOS42Njc5IDQ2LjY2NzkgMTkuNSA0Ni44NzUgMTkuNVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik01MS42MjUgMTkuNUM1MS44MzIxIDE5LjUgNTIgMTkuNjY3OSA1MiAxOS44NzVWMjMuNjI1QzUyIDIzLjgzMjEgNTEuODMyMSAyNCA1MS42MjUgMjRDNTEuNDE3OSAyNCA1MS4yNSAyMy44MzIxIDUxLjI1IDIzLjYyNVYxOS44NzVDNTEuMjUgMTkuNjY3OSA1MS40MTc5IDE5LjUgNTEuNjI1IDE5LjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTQuMzc1IDIzLjI1QzU0LjU4MjEgMjMuMjUgNTQuNzUgMjMuNDE3OSA1NC43NSAyMy42MjVDNTQuNzUgMjMuODMyMSA1NC41ODIxIDI0IDU0LjM3NSAyNEM1NC4xNjc5IDI0IDU0IDIzLjgzMjEgNTQgMjMuNjI1QzU0IDIzLjQxNzkgNTQuMTY3OSAyMy4yNSA1NC4zNzUgMjMuMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTAuMzc1IDIxQzUwLjU4MjEgMjEgNTAuNzUgMjEuMTY3OSA1MC43NSAyMS4zNzVWMjNDNTAuNzUgMjMuMDQ5OCA1MC43NjQ1IDIzLjA5NjEgNTAuNzg5NiAyMy4xMzUxQzUwLjg2NDMgMjMuMjUxMiA1MSAyMy4zNjE5IDUxIDIzLjVDNTEgMjMuNzc2MSA1MC43NjI3IDI0LjAxMDQgNTAuNTIwNSAyMy44Nzc4QzUwLjIxMDMgMjMuNzA4IDUwIDIzLjM3ODUgNTAgMjNWMjEuMzc1QzUwIDIxLjE2NzkgNTAuMTY3OSAyMSA1MC4zNzUgMjFaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMjAuMjUgOC4yNUMxOC4xNzg5IDguMjUgMTYuNSA5LjkyODkzIDE2LjUgMTJDMTYuNSAxNC4wNzExIDE4LjE3ODkgMTUuNzUgMjAuMjUgMTUuNzVDMjIuMzIxMSAxNS43NSAyNCAxNC4wNzExIDI0IDEyQzI0IDkuOTI4OTMgMjIuMzIxMSA4LjI1IDIwLjI1IDguMjVaTTEzLjUgMTJDMTMuNSA4LjI3MjA4IDE2LjUyMjEgNS4yNSAyMC4yNSA1LjI1QzIzLjk3NzkgNS4yNSAyNyA4LjI3MjA4IDI3IDEyQzI3IDE1LjcyNzkgMjMuOTc3OSAxOC43NSAyMC4yNSAxOC43NUMxNi41MjIxIDE4Ljc1IDEzLjUgMTUuNzI3OSAxMy41IDEyWiIgZmlsbD0iIzA4MkI0MSIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTUxLjI1IDIyLjM3NUM1MS4yNSAyMS42MTU2IDUxLjg2NTYgMjEgNTIuNjI1IDIxQzUzLjM4NDQgMjEgNTQgMjEuNjE1NiA1NCAyMi4zNzVWMjIuNjI1QzU0IDIzLjM4NDQgNTMuMzg0NCAyNCA1Mi42MjUgMjRDNTEuODY1NiAyNCA1MS4yNSAyMy4zODQ0IDUxLjI1IDIyLjYyNVYyMi4zNzVaTTUyLjYyNSAyMS43NUM1Mi4yNzk4IDIxLjc1IDUyIDIyLjAyOTggNTIgMjIuMzc1VjIyLjYyNUM1MiAyMi45NzAyIDUyLjI3OTggMjMuMjUgNTIuNjI1IDIzLjI1QzUyLjk3MDIgMjMuMjUgNTMuMjUgMjIuOTcwMiA1My4yNSAyMi42MjVWMjIuMzc1QzUzLjI1IDIyLjAyOTggNTIuOTcwMiAyMS43NSA1Mi42MjUgMjEuNzVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNDggMjIuMzc1QzQ4IDIxLjYxNTYgNDguNjE1NiAyMSA0OS4zNzUgMjFDNTAuMTM0NCAyMSA1MC43NSAyMS42MTU2IDUwLjc1IDIyLjM3NVYyMi42MjVDNTAuNzUgMjMuMzg0NCA1MC4xMzQ0IDI0IDQ5LjM3NSAyNEM0OC42MTU2IDI0IDQ4IDIzLjM4NDQgNDggMjIuNjI1VjIyLjM3NVpNNDkuMzc1IDIxLjc1QzQ5LjAyOTggMjEuNzUgNDguNzUgMjIuMDI5OCA0OC43NSAyMi4zNzVWMjIuNjI1QzQ4Ljc1IDIyLjk3MDIgNDkuMDI5OCAyMy4yNSA0OS4zNzUgMjMuMjVDNDkuNzIwMiAyMy4yNSA1MCAyMi45NzAyIDUwIDIyLjYyNVYyMi4zNzVDNTAgMjIuMDI5OCA0OS43MjAyIDIxLjc1IDQ5LjM3NSAyMS43NVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00My41IDguMjVDNDEuODQzMSA4LjI1IDQwLjUgOS41OTMxNCA0MC41IDExLjI1VjEyLjc1QzQwLjUgMTYuMDYzNyAzNy44MTM3IDE4Ljc1IDM0LjUgMTguNzVDMzEuMTg2MyAxOC43NSAyOC41IDE2LjA2MzcgMjguNSAxMi43NUwyOC41IDYuNUMyOC41IDYuMjIzODYgMjguNzIzOSA2IDI5IDZMMzEgNkMzMS4yNzYxIDYgMzEuNSA2LjIyMzg2IDMxLjUgNi41TDMxLjUgMTIuNzVDMzEuNSAxNC40MDY5IDMyLjg0MzEgMTUuNzUgMzQuNSAxNS43NUMzNi4xNTY5IDE1Ljc1IDM3LjUgMTQuNDA2OSAzNy41IDEyLjc1VjExLjI1QzM3LjUgNy45MzYyOSA0MC4xODYzIDUuMjUgNDMuNSA1LjI1QzQ2LjgxMzcgNS4yNSA0OS41IDcuOTM2MjkgNDkuNSAxMS4yNUw0OS41IDE3LjVDNDkuNSAxNy43NzYxIDQ5LjI3NjEgMTggNDkgMThMNDcgMThDNDYuNzIzOSAxOCA0Ni41IDE3Ljc3NjEgNDYuNSAxNy41TDQ2LjUgMTEuMjVDNDYuNSA5LjU5MzE0IDQ1LjE1NjkgOC4yNSA0My41IDguMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTMuNSA2QzUzLjc3NjEgNiA1NCA2LjIyMzg2IDU0IDYuNUw1NCAxNy41QzU0IDE3Ljc3NjEgNTMuNzc2MSAxOCA1My41IDE4SDUxLjVDNTEuMjIzOSAxOCA1MSAxNy43NzYxIDUxIDE3LjVMNTEgNi41QzUxIDYuMjIzODYgNTEuMjIzOSA2IDUxLjUgNkw1My41IDZaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNOSAxOFYxMkgxMlYxOEMxMiAyMS4zMTM3IDkuMzEzNzEgMjQgNiAyNEgzLjVDMy4yMjM4NiAyNCAzIDIzLjc3NjEgMyAyMy41VjIxLjVDMyAyMS4yMjM5IDMuMjIzODYgMjEgMy41IDIxSDZDNy42NTY4NiAyMSA5IDE5LjY1NjkgOSAxOFoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yLjUgNkMyLjc3NjE1IDYgMyA2LjIyMzg2IDMgNi41TDMgMTJDMyAxMy42NTY5IDQuMzQzMTUgMTUgNiAxNUM3LjY1Njg2IDE1IDkgMTMuNjU2OSA5IDEyVjYuNUM5IDYuMjIzODYgOS4yMjM4NiA2IDkuNSA2SDExLjVDMTEuNzc2MSA2IDEyIDYuMjIzODYgMTIgNi41VjEyQzEyIDE1LjMxMzcgOS4zMTM3MSAxOCA2IDE4QzIuNjg2MjkgMTggMCAxNS4zMTM3IDAgMTJMMy4zODc1M2UtMDYgNi41QzMuNTU3NjFlLTA2IDYuMjIzODYgMC4yMjM4NjEgNiAwLjUwMDAwNCA2TDIuNSA2WiIgZmlsbD0iIzA4MkI0MSIvPgo8L3N2Zz4K"
+                alt="Youni Lab"
+                style={{height:24,width:"auto",display:"block",flexShrink:0}}
+              />
+            )}
+            {/* 收合按鈕：展開時靠右，收合時置中 */}
+            <div onClick={()=>setCollapsed(c=>!c)}
+              style={{
+                width:28,height:28,borderRadius:6,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                cursor:"pointer",flexShrink:0,
+                transition:"background 120ms",
+                marginLeft: collapsed ? "auto" : 0,
+                marginRight: collapsed ? "auto" : 0,
+              }}
+              onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <FI name="sidebar" size={18} color="#8C8C8C"/>
+            </div>
+          </div>
+
+          {/* Search — hidden when collapsed */}
+          {!collapsed && (
+            <div style={{margin:"10px 12px",display:"flex",alignItems:"center",gap:6,background:"#FAFAFA",border:"1px solid #D9D9D9",borderRadius:8,padding:"7px 10px",cursor:"pointer",flexShrink:0}}>
+              <FI name="search" size={14} color="#8C8C8C"/>
+              <span style={{fontSize:12,color:"#BFBFBF",flex:1}}>搜尋...</span>
+              <span style={{fontSize:10,color:"#8C8C8C",background:"#fff",border:"1px solid #D9D9D9",borderRadius:4,padding:"1px 5px"}}>⌘/</span>
+            </div>
+          )}
+
+          {/* Nav */}
+          <div style={{flex:1,overflowY:"auto",padding:"4px 0 8px"}}>
+            {navItems.map(item=> collapsed
+              ? <div key={item.id} title={item.label} onClick={()=>setActiveItem(item.id)}
+                  style={{display:"flex",justifyContent:"center",padding:"11px 0",margin:"1px 6px",borderRadius:8,cursor:"pointer",background:activeItem===item.id?"#E7EAEC":"transparent"}}>
+                  <FI name={item.icon} size={20} color={activeItem===item.id?"#0A2B41":"#8C8C8C"}/>
+                </div>
+              : <NavItem key={item.id} item={item}/>
+            )}
+
+            {!collapsed && <SectionHead label="My Account"/>}
+            {accountItems.map(item=> collapsed
+              ? <div key={item.id} title={item.label} onClick={()=>setActiveItem(item.id)}
+                  style={{display:"flex",justifyContent:"center",padding:"11px 0",margin:"1px 6px",borderRadius:8,cursor:"pointer",background:activeItem===item.id?"#E7EAEC":"transparent"}}>
+                  <FI name={item.icon} size={20} color={activeItem===item.id?"#0A2B41":"#8C8C8C"}/>
+                </div>
+              : <NavItem key={item.id} item={item}/>
+            )}
+
+            {!collapsed && (
+              <>
+                <SectionHead label="Spaces"/>
+                {spaces.map((s,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",margin:"1px 8px",borderRadius:8,cursor:"pointer"}}>
+                    <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
+                    <span style={{fontSize:14,color:"#595959"}}>{s.name}</span>
+                  </div>
+                ))}
+                <div style={{height:1,background:"#F0F0F0",margin:"8px 12px"}}/>
+                <NavItem item={{id:"planning",  icon:"calendar", label:"Project Planning"}}/>
+                <NavItem item={{id:"appearance",icon:"feather",  label:"Appearance"}}/>
+              </>
+            )}
+          </div>
+
+          {/* User card */}
+          <div style={{borderTop:"1px solid #F0F0F0",padding:collapsed?"12px 0":"12px 14px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",justifyContent:collapsed?"center":"flex-start",flexShrink:0}}>
+            <div style={{width:32,height:32,borderRadius:"50%",background:"#2E4A5E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",position:"relative",flexShrink:0}}>
+              CF
+              <div style={{position:"absolute",bottom:0,right:0,width:9,height:9,borderRadius:"50%",background:"#52C41A",border:"2px solid #fff"}}/>
+            </div>
+            {!collapsed && (
+              <>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:"#1F1F1F"}}>Cody Fisher</div>
+                  <div style={{fontSize:11,color:"#8C8C8C",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>c.fisher@gmail.com</div>
+                </div>
+                <FI name="sun"            size={18} color="#8C8C8C"/>
+                <FI name="more-horizontal" size={18} color="#8C8C8C"/>
+              </>
+            )}
+          </div>
+
+        </div>
+        <div style={{padding:"24px 20px",flex:1}}>
+          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:8}}>Active: <code style={{background:"#fff",padding:"2px 6px",borderRadius:4,fontSize:11}}>{activeItem}</code></div>
+          <div style={{fontSize:13,color:"#6B7280",lineHeight:1.6}}>點擊左上角 <strong>sidebar</strong> 圖標可收折選單</div>
+        </div>
+      </DemoBox>
+
+      <Anchor id="sb-states">Nav Item 狀態</Anchor>
+      <GTable headers={["狀態","Background","文字色","備註"]} rows={[
+        ["Default","transparent","#595959","字重 400"],
+        ["Hover","#FAFAFA","#1F1F1F","字重 400"],
+        ["Active","#E7EAEC","#0A2B41","字重 500，icon 同色"],
+        ["Sub-item Active","#E7EAEC","#0A2B41","小圓點取代 icon"],
+        ["Disabled","transparent","#BFBFBF","pointer-events: none"],
+      ]}/>
+
+      <Anchor id="sb-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Sidebar width","240px（收折 56px）"],
+        ["Background","#FFFFFF"],
+        ["Nav item padding","7px 12px"],
+        ["Nav item font","16px"],
+        ["Sub-item font","13px"],
+        ["Section heading","12px / 400 / uppercase / #BFBFBF"],
+        ["Icon library","Feather Icons，stroke-width 2"],
+        ["Icon size","20px"],
+        ["Collapse icon","sidebar（Feather）"],
+        ["User card height","56px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── PAGE HEADER ──────────────────────
+function PageHeaderPage() {
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>後台每個頁面頂部的標題列，包含 breadcrumb、標題、描述與操作按鈕。</p>
+      <Anchor id="ph-default">Default</Anchor>
+      <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:"20px 24px"}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16}}>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+              帳戶管理 <span style={{color:"#BFBFBF"}}>/</span> <span style={{color:"#1F1F1F",fontWeight:500}}>成員列表</span>
+            </div>
+            <div style={{fontSize:20,fontWeight:600,color:"#1F1F1F",lineHeight:1.2}}>團隊成員</div>
+            <div style={{fontSize:13,color:"#8C8C8C",marginTop:2}}>管理您組織內的所有成員與角色</div>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <Btn variant="secondary" size="md">匯出</Btn>
+            <Btn variant="primary" size="md">+ 新增成員</Btn>
+          </div>
+        </div>
+      </div>
+
+      <Anchor id="ph-with-tabs">With Tabs</Anchor>
+      <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:"20px 24px 0"}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,paddingBottom:16}}>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:4}}>報表 <span style={{color:"#BFBFBF"}}>/</span> <span style={{color:"#1F1F1F",fontWeight:500}}>銷售分析</span></div>
+            <div style={{fontSize:20,fontWeight:600,color:"#1F1F1F"}}>銷售報表</div>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <Btn variant="secondary" size="md">下載 PDF</Btn>
+          </div>
+        </div>
+        <div style={{borderTop:"1px solid #F0F0F0",display:"flex",gap:0}}>
+          {["總覽","月報","季報","年報"].map((t,i)=>(
+            <div key={i} style={{padding:"10px 16px",fontSize:14,fontWeight:i===0?500:400,color:i===0?"#1F1F1F":"#8C8C8C",cursor:"pointer",borderBottom:i===0?"2px solid #0A2B41":"2px solid transparent",marginBottom:-1}}>
+              {t}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Anchor id="ph-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Background","#FFFFFF"],["Border","1px solid #D9D9D9"],
+        ["Border radius","12px"],["Padding","20px 24px"],
+        ["Breadcrumb font","12px / #8C8C8C"],["Title font","20px / 600"],
+        ["Description font","13px / #8C8C8C"],["Actions gap","8px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── STAT CARD ────────────────────────
+function StatCardPage() {
+  const StatCard = ({label,value,trend,trendUp,compare,barColor,barPct,iconBg,icon}) => (
+    <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:"20px 24px",minWidth:200,flex:1}}>
+      <div style={{fontSize:12,fontWeight:500,color:"#8C8C8C",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        {label}
+        {icon&&<div style={{width:28,height:28,borderRadius:6,background:iconBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{icon}</div>}
+      </div>
+      <div style={{fontSize:28,fontWeight:600,color:"#1F1F1F",lineHeight:1.1,marginBottom:6}}>{value}</div>
+      <div style={{display:"flex",alignItems:"center",gap:3,fontSize:12,fontWeight:500,color:trendUp?"#389E0D":"#CF1322"}}>
+        {trendUp?"↑":"↓"} {trend}
+        <span style={{fontSize:12,color:"#8C8C8C",marginLeft:4,fontWeight:400}}>{compare}</span>
+      </div>
+      {barPct!==undefined&&<div style={{height:4,background:"#F0F0F0",borderRadius:999,marginTop:12}}>
+        <div style={{height:"100%",width:barPct+"%",background:barColor,borderRadius:999}}/>
+      </div>}
+    </div>
+  );
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>儀表板 KPI 數字摘要，帶趨勢指示與迷你進度條。</p>
+      <Anchor id="sc-default">Default</Anchor>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+        <StatCard label="本月收入" value="$24.8k" trend="+12.5%" trendUp compare="vs 上月" barColor="#52C41A" barPct={72} iconBg="#F6FFED" icon="💰"/>
+        <StatCard label="活躍用戶" value="3,821" trend="-3.2%" trendUp={false} compare="vs 上月" barColor="#1677FF" barPct={45} iconBg="#E6F4FF" icon="👤"/>
+        <StatCard label="完成任務" value="142" trend="+8.1%" trendUp compare="vs 上月" barColor="#0A2B41" barPct={88} iconBg="#E7EAEC" icon="✓"/>
+      </div>
+      <Anchor id="sc-minimal">Minimal（無迷你條）</Anchor>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+        <StatCard label="新增成員" value="48" trend="+5" trendUp compare="本週"/>
+        <StatCard label="待處理申請" value="12" trend="-3" trendUp={false} compare="昨日"/>
+      </div>
+      <Anchor id="sc-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Background","#FFFFFF"],["Border","1px solid #D9D9D9"],
+        ["Padding","20px 24px"],["Value font","28px / 600"],
+        ["Label font","12px / 500 / #8C8C8C"],["Trend up color","#389E0D"],
+        ["Trend down color","#CF1322"],["Mini bar height","4px"],
+        ["Icon wrap","28×28px / radius 6px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── PAGINATION ───────────────────────
+function PaginationPage() {
+  const [page, setPage] = useState(1);
+  const [page2, setPage2] = useState(3);
+  const total = 12;
+  const PgBtn = ({label,active,disabled,onClick}) => {
+    const [h,setH]=useState(false);
+    return (
+      <button onClick={!disabled?onClick:undefined}
+        onMouseEnter={()=>!disabled&&setH(true)} onMouseLeave={()=>setH(false)}
+        style={{minWidth:32,height:32,padding:"0 8px",borderRadius:8,border:"1px solid",fontSize:13,cursor:disabled?"not-allowed":"pointer",outline:"none",transition:"all .12s",
+          background:active?"#0A2B41":h?"#FAFAFA":"#fff",
+          borderColor:active?"#0A2B41":h?"#BFBFBF":"#D9D9D9",
+          color:active?"#fff":disabled?"#BFBFBF":"#595959",
+          opacity:disabled?0.4:1,fontFamily:"var(--font-sans)",fontWeight:active?500:400,
+        }}>{label}</button>
+    );
+  };
+  const pages = [1,2,3,"…",10,11,12];
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>表格與列表的分頁導覽控制元件。</p>
+      <Anchor id="pg-full">Full（帶頁碼）</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:16,alignItems:"flex-start"}}>
+        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+          <PgBtn label="‹" disabled={page===1} onClick={()=>setPage(p=>Math.max(1,p-1))}/>
+          {[1,2,3,"…",10,11,12].map((p,i)=>
+            p==="…"?<span key={i} style={{padding:"0 4px",color:"#8C8C8C",fontSize:13}}>…</span>
+            :<PgBtn key={i} label={p} active={page===p} onClick={()=>setPage(p)}/>
+          )}
+          <PgBtn label="›" disabled={page===12} onClick={()=>setPage(p=>Math.min(12,p+1))}/>
+        </div>
+      </DemoBox>
+      <Anchor id="pg-simple">Simple（前後頁 + 筆數）</Anchor>
+      <DemoBox>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{display:"flex",gap:4}}>
+            <PgBtn label="‹ 上一頁" disabled={page2===1} onClick={()=>setPage2(p=>Math.max(1,p-1))}/>
+            <PgBtn label="下一頁 ›" disabled={page2===total} onClick={()=>setPage2(p=>Math.min(total,p+1))}/>
+          </div>
+          <span style={{fontSize:13,color:"#8C8C8C"}}>共 128 筆 · 第 {page2}/{total} 頁</span>
+        </div>
+      </DemoBox>
+      <Anchor id="pg-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Button size","32×32px min"],["Button radius","8px"],
+        ["Active bg","#0A2B41"],["Active text","#FFFFFF"],
+        ["Hover border","#BFBFBF"],["Disabled opacity","0.4"],
+        ["Gap","4px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── EMPTY STATE ──────────────────────
+function EmptyStatePage() {
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>無資料時的引導性佔位元件，分為操作引導版與搜尋無結果版。</p>
+      <Anchor id="es-default">Default（帶 CTA）</Anchor>
+      <DemoBox>
+        <div style={{textAlign:"center",padding:"40px 24px",background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,width:"100%",maxWidth:360}}>
+          <div style={{width:56,height:56,background:"#FAFAFA",border:"1px dashed #D9D9D9",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 16px"}}>📋</div>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>尚無團隊成員</div>
+          <div style={{fontSize:13,color:"#8C8C8C",maxWidth:240,margin:"0 auto 20px",lineHeight:1.6}}>從這裡新增您的第一位成員，開始建立協作團隊</div>
+          <Btn variant="primary">+ 新增成員</Btn>
+        </div>
+      </DemoBox>
+      <Anchor id="es-search">Search Empty</Anchor>
+      <DemoBox>
+        <div style={{textAlign:"center",padding:"24px 16px",background:"#fff",border:"1px dashed #D9D9D9",borderRadius:12,width:"100%",maxWidth:280}}>
+          <div style={{width:40,height:40,background:"#FAFAFA",border:"1px dashed #D9D9D9",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,margin:"0 auto 12px"}}>🔍</div>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>無搜尋結果</div>
+          <div style={{fontSize:12,color:"#8C8C8C"}}>試試調整關鍵字或篩選條件</div>
+        </div>
+      </DemoBox>
+      <Anchor id="es-specs">Specs</Anchor>
+      <GTable headers={["Variant","Padding","Icon size","CTA"]} rows={[
+        ["Default","40px 24px","56px / radius 14px","button-primary"],
+        ["Search Empty","24px 16px","40px / radius 10px","none"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── NOTIFICATION ITEM ────────────────
+function NotificationItemPage() {
+  const [items, setItems] = useState([
+    {id:1,unread:true,name:"Joe Lin",color:"#0958D9",initials:"JL",typeIcon:"chat_bubble",typeColor:"#1677FF",text:"在 設計審查 中提到了您",meta:"18 分鐘前 · 設計團隊",actions:true},
+    {id:2,unread:true,name:"Guy Hawkins",color:"#389E0D",initials:"GH",typeIcon:"push_pin",typeColor:"#FDB338",text:"申請加入 AirSpace 專案",meta:"14 小時前 · 開發團隊",actions:false},
+    {id:3,unread:false,name:"Ava Peterson",color:"#7C3AED",initials:"AP",typeIcon:"check_circle",typeColor:"#52C41A",text:"已完成 Q3 報告上傳",meta:"3 天前 · ACME",actions:false},
+  ]);
+  const markRead = (id) => setItems(items.map(i=>i.id===id?{...i,unread:false}:i));
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>通知面板的單筆通知元件，含未讀狀態與內嵌操作。</p>
+      <Anchor id="ni-panel">Panel</Anchor>
+      <DemoBox style={{padding:0,alignItems:"flex-start",justifyContent:"flex-start",background:"var(--bg-2)"}}>
+        <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,overflow:"hidden",width:"100%",maxWidth:400,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+          <div style={{padding:"14px 16px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:14,fontWeight:600}}>通知</span>
+            <span onClick={()=>setItems(items.map(i=>({...i,unread:false})))} style={{fontSize:12,color:"#8C8C8C",cursor:"pointer"}}>全部標記已讀</span>
+          </div>
+          {items.map(item=>(
+            <div key={item.id} onClick={()=>markRead(item.id)} style={{display:"flex",gap:12,padding:"14px 16px",borderBottom:"1px solid #F0F0F0",cursor:"pointer",background:item.unread?"#F0F4FF":"#fff",position:"relative",transition:"background .15s"}}>
+              <div style={{position:"relative",flexShrink:0}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:item.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:600,color:"#fff"}}>{item.initials}</div>
+                <div style={{position:"absolute",bottom:-2,right:-2,width:16,height:16,borderRadius:"50%",background:item.typeColor,border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <MS name={item.typeIcon} size={8} style={{color:"#fff"}}/>
+                </div>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,color:"#1F1F1F",lineHeight:1.5}}><strong>{item.name}</strong> {item.text}</div>
+                <div style={{fontSize:11,color:"#8C8C8C",marginTop:3}}>{item.meta}</div>
+                {item.actions&&<div style={{display:"flex",gap:6,marginTop:8}}><Btn variant="secondary" size="sm">拒絕</Btn><Btn variant="primary" size="sm">接受</Btn></div>}
+              </div>
+              {item.unread&&<div style={{position:"absolute",right:16,top:"50%",transform:"translateY(-50%)",width:7,height:7,borderRadius:"50%",background:"#1677FF"}}/>}
+            </div>
+          ))}
+        </div>
+      </DemoBox>
+      <Anchor id="ni-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Unread bg","#F0F4FF"],["Unread dot","7px / #1677FF"],
+        ["Avatar","36×36px"],["Type icon","16px / 2px white border"],
+        ["Text font","13px"],["Meta font","11px / #8C8C8C"],
+        ["Panel width","400px max"],["Panel shadow","0 4px 16px rgba(0,0,0,0.08)"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── USER ROW ─────────────────────────
+function UserRowPage() {
+  const users = [
+    {initials:"JL",bg:"#0958D9",name:"Joe Lin",email:"joe.lin@younilab.com",status:"online",statusLabel:"在線"},
+    {initials:"YC",bg:"#D68C24",name:"Yu Chen",email:"yu.chen@younilab.com",status:"away",statusLabel:"離開"},
+    {initials:"WL",bg:"#8C8C8C",name:"Wendy Liu",email:"wendy@younilab.com",status:"offline",statusLabel:"離線"},
+    {initials:"AM",bg:"#7C3AED",name:"Alex Mao",email:"alex.mao@younilab.com",status:"busy",statusLabel:"忙碌"},
+  ];
+  const statusColor = {online:"#52C41A",away:"#FDB338",offline:"#BFBFBF",busy:"#F5222D"};
+  const badgeStyle = {
+    online:{background:"#F6FFED",color:"#389E0D",border:"1px solid #B7EB8F"},
+    away:{background:"#FFFCF0",color:"#AD6800",border:"1px solid #FFC861"},
+    offline:{background:"#F5F5F5",color:"#595959",border:"1px solid #D9D9D9"},
+    busy:{background:"#FFF1F0",color:"#CF1322",border:"1px solid #FFA39E"},
+  };
+  const [hov,setHov]=useState(null);
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>頭像 + 姓名 + 狀態 + 操作的複合列元件。可獨立使用，也可嵌入表格。</p>
+      <Anchor id="ur-default">Default</Anchor>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {users.map((u,i)=>(
+          <div key={i} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}
+            style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:hov===i?"#FAFAFA":"#fff",border:"1px solid #D9D9D9",borderRadius:10,cursor:"pointer",transition:"background .12s"}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:u.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600,color:"#fff",position:"relative",flexShrink:0}}>
+              {u.initials}
+              <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:statusColor[u.status],border:"2px solid #fff"}}/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:500,color:"#1F1F1F"}}>{u.name}</div>
+              <div style={{fontSize:12,color:"#8C8C8C"}}>{u.email}</div>
+            </div>
+            <span style={{fontSize:11,fontWeight:500,padding:"2px 8px",borderRadius:6,...badgeStyle[u.status]}}>{u.statusLabel}</span>
+            <Btn variant="ghost" size="sm">···</Btn>
+          </div>
+        ))}
+      </div>
+      <Anchor id="ur-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Padding","12px 16px"],["Avatar","36×36px"],
+        ["Status dot","10px / 2px white border"],["Name font","14px / 500"],
+        ["Email font","12px / #8C8C8C"],["Hover bg","#FAFAFA"],
+        ["Radius","10px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── DATE PICKER ──────────────────────
+function DatePickerPage() {
+  const [sel, setSel] = useState(19);
+  const [rangeStart, setRangeStart] = useState(15);
+  const [rangeEnd, setRangeEnd] = useState(19);
+  const days = Array.from({length:31},(_,i)=>i+1);
+  const weekdays = ["日","一","二","三","四","五","六"];
+  const offset = 2; // Oct 2024 starts on Tuesday
+  const allCells = [...Array(offset).fill(null), ...days];
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>日期選擇器，支援單日選取與日期範圍選取。</p>
+      <Anchor id="dp-single">Single Date</Anchor>
+      <DemoBox style={{gap:24,alignItems:"flex-start",flexWrap:"wrap"}}>
+        <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:16,width:280,boxShadow:"0 4px 12px rgba(0,0,0,0.08)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <button style={{width:28,height:28,borderRadius:6,border:"1px solid #D9D9D9",background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>‹</button>
+            <span style={{fontSize:14,fontWeight:600}}>2024年 10月</span>
+            <button style={{width:28,height:28,borderRadius:6,border:"1px solid #D9D9D9",background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>›</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",textAlign:"center",gap:2,marginBottom:4}}>
+            {weekdays.map(d=><div key={d} style={{fontSize:11,fontWeight:500,color:"#8C8C8C",padding:"4px 0"}}>{d}</div>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+            {allCells.map((d,i)=>{
+              if(!d) return <div key={i}/>;
+              const isRange = d>=rangeStart && d<=rangeEnd;
+              const isSel = d===sel;
+              return (
+                <div key={i} onClick={()=>setSel(d)} style={{
+                  aspectRatio:"1",display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:13,borderRadius:6,cursor:"pointer",
+                  background:isSel?"#0A2B41":isRange?"#E7EAEC":"transparent",
+                  color:isSel?"#fff":isRange?"#0A2B41":d===10?"#0A2B41":"#595959",
+                  fontWeight:isSel?500:d===10?600:400,
+                  transition:"background .12s",
+                }}>{d}</div>
+              );
+            })}
+          </div>
+          <div style={{borderTop:"1px solid #F0F0F0",marginTop:12,paddingTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <Btn variant="ghost" size="sm">今天</Btn>
+            <div style={{display:"flex",gap:6}}><Btn variant="secondary" size="sm">取消</Btn><Btn variant="primary" size="sm">確認</Btn></div>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:6}}>觸發輸入框</div>
+            <div style={{position:"relative",width:200}}>
+              <MS name="calendar_month" size={16} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#8C8C8C"}}/>
+              <input readOnly value="2024-10-19" style={{width:"100%",height:40,paddingLeft:36,paddingRight:12,border:"1px solid #D9D9D9",borderRadius:8,fontSize:13,fontFamily:"var(--font-sans)",outline:"none",cursor:"pointer"}}/>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:6}}>日期範圍</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{position:"relative"}}>
+                <MS name="calendar_month" size={14} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#8C8C8C"}}/>
+                <input readOnly value="10/15" style={{width:80,height:36,paddingLeft:26,paddingRight:8,border:"1px solid #0A2B41",borderRadius:8,fontSize:12,fontFamily:"var(--font-sans)",outline:"none",boxShadow:"0 0 0 3px rgba(10,43,65,0.08)"}}/>
+              </div>
+              <span style={{color:"#8C8C8C",fontSize:12}}>→</span>
+              <div style={{position:"relative"}}>
+                <MS name="calendar_month" size={14} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#8C8C8C"}}/>
+                <input readOnly value="10/19" style={{width:80,height:36,paddingLeft:26,paddingRight:8,border:"1px solid #D9D9D9",borderRadius:8,fontSize:12,fontFamily:"var(--font-sans)",outline:"none"}}/>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DemoBox>
+      <Anchor id="dp-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Calendar width","280px"],["Radius","12px"],["Day radius","6px"],
+        ["Selected bg","#0A2B41"],["Range bg","#E7EAEC"],
+        ["Today","#0A2B41 / 600"],["Trigger height","40px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── DROPDOWN MENU ────────────────────
+function DropdownMenuPage() {
+  const [open, setOpen] = useState(true);
+  const [open2, setOpen2] = useState(true);
+  const Item = ({icon,label,shortcut,badge,danger,disabled,arrow}) => (
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,fontSize:13,
+      color:danger?"#CF1322":disabled?"#BFBFBF":"#1F1F1F",cursor:disabled?"not-allowed":"pointer",
+      transition:"background .12s"}}
+      onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background=danger?"#FFF1F0":"#FAFAFA"}}
+      onMouseLeave={e=>{e.currentTarget.style.background="transparent"}}>
+      {icon&&<MS name={icon} size={16} style={{color:danger?"#CF1322":"#8C8C8C",opacity:disabled?0.4:0.7}}/>}
+      <span style={{flex:1}}>{label}</span>
+      {shortcut&&<span style={{fontSize:11,color:"#8C8C8C",marginLeft:"auto"}}>{shortcut}</span>}
+      {badge&&<span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:9999,background:"#E6F4FF",color:"#0958D9",marginLeft:"auto"}}>{badge}</span>}
+      {arrow&&<MS name="chevron_right" size={12} style={{color:"#8C8C8C",marginLeft:"auto"}}/>}
+    </div>
+  );
+  const Label = ({text}) => <div style={{fontSize:10,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase",color:"#8C8C8C",padding:"6px 10px 2px"}}>{text}</div>;
+  const Divider = () => <div style={{height:1,background:"#F0F0F0",margin:"4px 0"}}/>;
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>下拉選單，支援分隔線、群組標題、快捷鍵、子選單箭頭與危險項。</p>
+      <Anchor id="dd-variants">Variants</Anchor>
+      <DemoBox style={{gap:24,alignItems:"flex-start",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:12,color:"#8C8C8C",marginBottom:8}}>完整版</div>
+          <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:10,padding:4,minWidth:200,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+            <Label text="動作"/>
+            <Item icon="edit" label="編輯"/>
+            <Item icon="content_copy" label="複製連結" shortcut="⌘C"/>
+            <Item icon="share" label="分享" arrow/>
+            <Divider/>
+            <Label text="成員"/>
+            <Item icon="person_add" label="指派成員" badge="3"/>
+            <Divider/>
+            <Item icon="lock" label="鎖定（無權限）" disabled/>
+            <Item icon="delete" label="刪除" danger/>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:12,color:"#8C8C8C",marginBottom:8}}>簡潔版</div>
+          <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:10,padding:4,minWidth:160,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+            <Item icon="edit" label="編輯"/>
+            <Item icon="visibility" label="查看詳情"/>
+            <Divider/>
+            <Item icon="archive" label="封存"/>
+            <Item icon="delete" label="刪除" danger/>
+          </div>
+        </div>
+      </DemoBox>
+      <Anchor id="dd-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Background","#FFFFFF"],["Border","1px solid #D9D9D9"],
+        ["Radius","10px"],["Padding","4px"],
+        ["Min width","200px"],["Shadow","0 4px 16px rgba(0,0,0,0.08)"],
+        ["Item padding","8px 10px"],["Item radius","6px"],
+        ["Danger color","#CF1322 / hover #FFF1F0"],
+        ["Divider","1px / #F0F0F0 / margin 4px 0"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── SELECT MULTI-TAG ─────────────────
+function SelectMultiPage() {
+  const [tags, setTags] = useState(["設計","產品"]);
+  const options = ["設計","產品","研發","行銷","營運","客服"];
+  const remove = (t) => setTags(tags.filter(x=>x!==t));
+  const add = (t) => !tags.includes(t)&&setTags([...tags,t]);
+  const [showOpts, setShowOpts] = useState(false);
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>Select 的多選 Tag 模式，已選項目以 tag 形式展示在輸入框內。</p>
+      <Anchor id="sm-demo">Interactive Demo</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"stretch",maxWidth:400}}>
+        <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:4}}>部門標籤（多選）</div>
+        <div style={{position:"relative"}}>
+          <div onClick={()=>setShowOpts(!showOpts)} style={{minHeight:40,padding:"4px 36px 4px 12px",border:"1px solid "+( showOpts?"#0A2B41":"#D9D9D9"),borderRadius:8,background:"#fff",display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",cursor:"pointer",boxShadow:showOpts?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}>
+            {tags.map(t=>(
+              <span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,background:"#E7EAEC",color:"#0A2B41",fontSize:12,fontWeight:500,padding:"2px 6px",borderRadius:4}}>
+                {t}<span onClick={e=>{e.stopPropagation();remove(t)}} style={{cursor:"pointer",opacity:0.6,fontSize:11,lineHeight:1}}>✕</span>
+              </span>
+            ))}
+            {tags.length===0&&<span style={{fontSize:13,color:"#BFBFBF"}}>請選擇標籤...</span>}
+          </div>
+          <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"#8C8C8C",pointerEvents:"none"}}>▾</div>
+          {showOpts&&(
+            <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid #D9D9D9",borderRadius:8,padding:4,boxShadow:"0 4px 12px rgba(0,0,0,0.08)",zIndex:100}}>
+              {options.map(o=>(
+                <div key={o} onClick={()=>{add(o);setShowOpts(false)}} style={{padding:"7px 10px",borderRadius:6,fontSize:13,cursor:"pointer",color:tags.includes(o)?"#0A2B41":"#1F1F1F",background:tags.includes(o)?"#E7EAEC":"transparent",display:"flex",alignItems:"center",justifyContent:"space-between",transition:"background .12s"}}
+                  onMouseEnter={e=>{if(!tags.includes(o))e.currentTarget.style.background="#FAFAFA"}}
+                  onMouseLeave={e=>{if(!tags.includes(o))e.currentTarget.style.background="transparent"}}>
+                  {o}{tags.includes(o)&&<span style={{fontSize:12}}>✓</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{fontSize:12,color:"var(--fg-3)"}}>已選：{tags.join("、") || "無"}</div>
+      </DemoBox>
+      <Anchor id="sm-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Min height","40px"],["Tag bg","#E7EAEC"],["Tag color","#0A2B41"],
+        ["Tag radius","4px"],["Tag font","12px / 500"],
+        ["Focused border","#0A2B41"],["Focus ring","0 0 0 3px rgba(10,43,65,0.08)"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── RADIO CARD ───────────────────────
+function RadioCardPage() {
+  const [sel, setSel] = useState("pro");
+  const plans = [
+    {id:"starter",icon:"⚡",title:"Starter",desc:"$0/月 · 1 個成員"},
+    {id:"pro",icon:"🚀",title:"Pro 方案",desc:"$29/月 · 5 個成員"},
+    {id:"enterprise",icon:"🏢",title:"Enterprise",desc:"$99/月 · 無限成員"},
+  ];
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>卡片式單選元件，比標準 Radio 提供更豐富的視覺資訊，常用於方案選擇。</p>
+      <Anchor id="rc-default">Default</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:10,alignItems:"stretch",maxWidth:320}}>
+        {plans.map(p=>(
+          <div key={p.id} onClick={()=>setSel(p.id)} style={{border:`1.5px solid ${sel===p.id?"#0A2B41":"#D9D9D9"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",background:sel===p.id?"#F0F4F7":"#fff",transition:"all .15s",position:"relative"}}>
+            <div style={{position:"absolute",top:14,right:14,width:18,height:18,borderRadius:"50%",border:`1.5px solid ${sel===p.id?"#0A2B41":"#D9D9D9"}`,background:sel===p.id?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",transition:"all .15s"}}>{sel===p.id?"✓":""}</div>
+            <div style={{fontSize:20,marginBottom:6}}>{p.icon}</div>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:2}}>{p.title}</div>
+            <div style={{fontSize:12,color:"#8C8C8C"}}>{p.desc}</div>
+          </div>
+        ))}
+      </DemoBox>
+      <Anchor id="rc-horizontal">Horizontal</Anchor>
+      <DemoBox style={{gap:10,flexWrap:"wrap"}}>
+        {[{id:"monthly",label:"按月付款"},{id:"yearly",label:"按年付款",note:"省 20%"}].map(p=>(
+          <div key={p.id} onClick={()=>setSel(p.id)} style={{border:`1.5px solid ${sel===p.id?"#0A2B41":"#D9D9D9"}`,borderRadius:10,padding:"12px 20px",cursor:"pointer",background:sel===p.id?"#F0F4F7":"#fff",transition:"all .15s",position:"relative",textAlign:"center",minWidth:120}}>
+            <div style={{position:"absolute",top:10,right:10,width:16,height:16,borderRadius:"50%",border:`1.5px solid ${sel===p.id?"#0A2B41":"#D9D9D9"}`,background:sel===p.id?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}}>{sel===p.id?"✓":""}</div>
+            <div style={{fontSize:13,fontWeight:600}}>{p.label}</div>
+            {p.note&&<div style={{fontSize:11,color:"#389E0D",marginTop:2}}>{p.note}</div>}
+          </div>
+        ))}
+      </DemoBox>
+      <Anchor id="rc-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Border","1.5px solid #D9D9D9"],["Selected border","1.5px solid #0A2B41"],
+        ["Selected bg","#F0F4F7"],["Check dot size","18px"],
+        ["Check dot bg","#0A2B41"],["Radius","10px"],["Padding","14px 16px"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── STAR RATING ──────────────────────
+function StarRatingPage() {
+  const [rating, setRating] = useState(4);
+  const [hover, setHover] = useState(null);
+  const [rating2, setRating2] = useState(0);
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>星級評分元件，支援互動模式（可點選）與唯讀展示模式。</p>
+      <Anchor id="sr-interactive">Interactive</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:20,alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:8}}>Medium（可點選）</div>
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            {[1,2,3,4,5].map(i=>(
+              <span key={i} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} onClick={()=>setRating(i)}
+                style={{fontSize:24,cursor:"pointer",transition:"transform .15s",transform:(hover||rating)>=i?"scale(1.15)":"scale(1)",filter:(hover||rating)>=i?"none":"grayscale(1) opacity(0.35)"}}>⭐</span>
+            ))}
+            <span style={{fontSize:13,color:"var(--fg-2)",marginLeft:6}}>{hover||rating}.0 / 5.0</span>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:8}}>設定評分</div>
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            {[1,2,3,4,5].map(i=>(
+              <span key={i} onClick={()=>setRating2(i)}
+                style={{fontSize:24,cursor:"pointer",transition:"transform .15s",filter:rating2>=i?"none":"grayscale(1) opacity(0.35)"}}>⭐</span>
+            ))}
+            {rating2>0&&<span style={{fontSize:13,color:"var(--fg-2)",marginLeft:6}}>{rating2}.0</span>}
+            {rating2===0&&<span style={{fontSize:13,color:"#BFBFBF",marginLeft:6}}>點擊評分</span>}
+          </div>
+        </div>
+      </DemoBox>
+      <Anchor id="sr-readonly">Readonly</Anchor>
+      <DemoBox style={{flexDirection:"column",gap:12,alignItems:"flex-start"}}>
+        {[[4.5,"Large md"],[3,"Medium"],[2,"Small sm"]].map(([v,label],ri)=>(
+          <div key={ri} style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:"var(--fg-3)",width:72,fontFamily:"var(--font-mono)"}}>{label}</span>
+            <div style={{display:"flex",gap:ri===2?2:4}}>
+              {[1,2,3,4,5].map(i=>(
+                <span key={i} style={{fontSize:ri===2?14:ri===0?24:20,filter:i<=Math.floor(v)?"none":"grayscale(1) opacity(0.35)"}}>⭐</span>
+              ))}
+            </div>
+            <span style={{fontSize:13,color:"var(--fg-2)"}}>{v}</span>
+          </div>
+        ))}
+      </DemoBox>
+      <Anchor id="sr-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Sizes","14px (sm) / 20px (md) / 24px (lg)"],
+        ["Gap","2px (sm) / 4px (md/lg)"],
+        ["Active filter","none"],["Inactive filter","grayscale(1) opacity(0.35)"],
+        ["Hover scale","1.15"],["Transition","150ms"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── TOGGLE ENHANCED ──────────────────
+function TogglePlusPage() {
+  const [a1,setA1]=useState("list");
+  const [a2,setA2]=useState(1);
+  const [a3,setA3]=useState("month");
+  const Tg = ({options,active,onChange,iconOnly,vertical}) => (
+    <div style={{display:"inline-flex",flexDirection:vertical?"column":"row",background:"#FAFAFA",borderRadius:8,padding:3,border:"1px solid #D9D9D9"}}>
+      {options.map((opt,i)=>{
+        const val = opt.value||i;
+        const isActive = active===val;
+        const [h,setH]=useState(false);
+        return (
+          <button key={i} onClick={()=>onChange(val)}
+            onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+            style={{padding:iconOnly?"7px 10px":"6px 14px",borderRadius:6,fontSize:13,fontWeight:isActive?500:400,border:"none",outline:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,justifyContent:vertical?"flex-start":"center",
+              background:isActive?"#fff":"transparent",color:isActive?"#1F1F1F":"#8C8C8C",
+              boxShadow:isActive?"0 1px 3px rgba(0,0,0,0.08)":"none",transition:"all .15s",
+            }}>
+            {opt.icon&&<MS name={opt.icon} size={16}/>}
+            {!iconOnly&&<span>{opt.label}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>Toggle Group 的強化版，新增 icon-only 模式與垂直排列。</p>
+      <Anchor id="tp-text">Text + Icon</Anchor>
+      <DemoBox>
+        <Tg options={[{value:"list",icon:"view_list",label:"列表"},{value:"grid",icon:"grid_view",label:"卡片"},{value:"chart",icon:"bar_chart",label:"圖表"}]} active={a1} onChange={setA1}/>
+      </DemoBox>
+      <Anchor id="tp-icon-only">Icon Only</Anchor>
+      <DemoBox>
+        <Tg options={[{value:0,icon:"view_list"},{value:1,icon:"grid_view"},{value:2,icon:"bar_chart"},{value:3,icon:"table_chart"}]} active={a2} onChange={setA2} iconOnly/>
+      </DemoBox>
+      <Anchor id="tp-vertical">Vertical</Anchor>
+      <DemoBox>
+        <Tg options={[{value:"month",icon:"calendar_month",label:"月視圖"},{value:"week",icon:"calendar_view_week",label:"週視圖"},{value:"day",icon:"calendar_today",label:"日視圖"}]} active={a3} onChange={setA3} vertical/>
+      </DemoBox>
+      <Anchor id="tp-specs">Specs</Anchor>
+      <GTable headers={["Variant","Padding","Notes"]} rows={[
+        ["Text","6px 14px","標準文字按鈕"],
+        ["Icon + Text","6px 14px + gap 6px","icon 尺寸 16px"],
+        ["Icon only","7px 10px","更緊湊，無文字"],
+        ["Vertical","同上","flexDirection: column"],
+      ]}/>
+    </div>
+  );
+}
+
+// ── CHOICEBOX ENHANCED ────────────────
+function ChoiceboxPlusPage() {
+  const [sel1, setSel1] = useState("design");
+  const [sel2, setSel2] = useState(["design","product"]);
+  const toggle2 = (v) => setSel2(s=>s.includes(v)?s.filter(x=>x!==v):[...s,v]);
+  const roles = [
+    {id:"design",icon:"🎨",title:"設計師",desc:"UI/UX 相關"},
+    {id:"engineer",icon:"💻",title:"工程師",desc:"前端/後端"},
+    {id:"product",icon:"📈",title:"產品",desc:"PM/PO"},
+    {id:"marketing",icon:"📣",title:"行銷",desc:"Growth"},
+  ];
+  const CheckDot = ({selected}) => (
+    <div style={{width:16,height:16,borderRadius:"50%",border:`1.5px solid ${selected?"#0A2B41":"#D9D9D9"}`,background:selected?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff",transition:"all .15s"}}>{selected?"✓":""}</div>
+  );
+  return (
+    <div>
+      <p style={{fontSize:14,color:"var(--fg-2)",lineHeight:1.7,maxWidth:560,marginBottom:8}}>Choicebox 強化版，新增 icon + 描述文字的版型與橫向多欄排列。</p>
+      <Anchor id="cb-single">Single Select — Icon 版</Anchor>
+      <DemoBox style={{gap:10,flexWrap:"wrap",alignItems:"flex-start"}}>
+        {roles.map(r=>(
+          <div key={r.id} onClick={()=>setSel1(r.id)}
+            style={{border:`1.5px solid ${sel1===r.id?"#0A2B41":"#D9D9D9"}`,borderRadius:10,padding:"14px",cursor:"pointer",background:sel1===r.id?"#F0F4F7":"#fff",transition:"all .15s",position:"relative",minWidth:120,textAlign:"center"}}>
+            <div style={{position:"absolute",top:10,right:10}}><CheckDot selected={sel1===r.id}/></div>
+            <div style={{fontSize:22,marginBottom:6}}>{r.icon}</div>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{r.title}</div>
+            <div style={{fontSize:11,color:"#8C8C8C"}}>{r.desc}</div>
+          </div>
+        ))}
+      </DemoBox>
+      <Anchor id="cb-multi">Multi Select</Anchor>
+      <DemoBox style={{gap:10,flexWrap:"wrap",alignItems:"flex-start"}}>
+        {roles.map(r=>{
+          const s = sel2.includes(r.id);
+          return (
+            <div key={r.id} onClick={()=>toggle2(r.id)}
+              style={{border:`1.5px solid ${s?"#0A2B41":"#D9D9D9"}`,borderRadius:10,padding:"14px",cursor:"pointer",background:s?"#F0F4F7":"#fff",transition:"all .15s",position:"relative",minWidth:120,textAlign:"center"}}>
+              <div style={{position:"absolute",top:10,right:10}}><CheckDot selected={s}/></div>
+              <div style={{fontSize:22,marginBottom:6}}>{r.icon}</div>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{r.title}</div>
+              <div style={{fontSize:11,color:"#8C8C8C"}}>{r.desc}</div>
+            </div>
+          );
+        })}
+      </DemoBox>
+      <Anchor id="cb-specs">Specs</Anchor>
+      <GTable headers={["Property","Value"]} rows={[
+        ["Icon size","22px"],["Title","13px / 600"],["Desc","11px / #8C8C8C"],
+        ["Min width","120px"],["Padding","14px"],["Gap","10px"],
+        ["Check dot","16px / 1.5px border"],["Multi","toggle 選取"],
+      ]}/>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+const App = function App() {
+  const [page,setPage]=useState("introduction");
+  const [toast,setToast]=useState({visible:false,message:""});
+  const titles = {introduction:"Youni Lab Design System",colors:"Colors",typography:"Typography",avatar:"Avatar",badge:"Badge",breadcrumbs:"Breadcrumbs",button:"Button",card:"Card",checkbox:"Checkbox",choicebox:"Choicebox",drawer:"Drawer",feedback:"Feedback",input:"Input",modal:"Modal",note:"Note",progress:"Progress",radio:"Radio",searchinput:"Search Input",select:"Select",spinner:"Spinner",switch:"Switch",table:"Table",tabs:"Tabs",textarea:"Textarea",toast:"Toast",toggle:"Toggle",tooltip:"Tooltip",
+    sidebar:"Sidebar / Nav",pageheader:"Page Header",statcard:"Stat Card",pagination:"Pagination",emptystate:"Empty State",notificationitem:"Notification Item",userrow:"User Row",datepicker:"Date Picker",dropdownmenu:"Dropdown Menu",selectmulti:"Select (Multi-Tag)",radiocard:"Radio Card",starrating:"Star Rating",toggleplus:"Toggle (Enhanced)",choiceboxplus:"Choicebox (Enhanced)",
+  };
+  const copy = useCallback((text)=>{
+    navigator.clipboard.writeText(text).then(()=>{
+      setToast({visible:true,message:`Copied ${text}`});
+      setTimeout(()=>setToast({visible:false,message:""}),1600);
+    });
+  },[]);
+  const content = {introduction:<IntroPage/>,colors:<ColorsPage onCopy={copy}/>,typography:<TypographyPage/>,avatar:<AvatarPage/>,badge:<BadgePage/>,breadcrumbs:<BreadcrumbsPage/>,button:<ButtonPage/>,card:<CardPage/>,checkbox:<CheckboxPage/>,choicebox:<ChoiceboxPage/>,drawer:<DrawerPage/>,feedback:<FeedbackPage/>,input:<InputPage/>,modal:<ModalPage/>,note:<NotePage/>,progress:<ProgressPage/>,radio:<RadioPage/>,searchinput:<SearchInputPage/>,select:<SelectPage/>,spinner:<SpinnerPage/>,"switch":<SwitchPage/>,table:<TablePage/>,tabs:<TabsPage/>,textarea:<TextareaPage/>,toast:<ToastPage/>,toggle:<TogglePage/>,tooltip:<TooltipPage/>,
+    sidebar:<SidebarPage/>,pageheader:<PageHeaderPage/>,statcard:<StatCardPage/>,pagination:<PaginationPage/>,emptystate:<EmptyStatePage/>,notificationitem:<NotificationItemPage/>,userrow:<UserRowPage/>,datepicker:<DatePickerPage/>,dropdownmenu:<DropdownMenuPage/>,selectmulti:<SelectMultiPage/>,radiocard:<RadioCardPage/>,starrating:<StarRatingPage/>,toggleplus:<TogglePlusPage/>,choiceboxplus:<ChoiceboxPlusPage/>,
+  };
+  const flat = NAV.flatMap(s=>s.items);
+  const idx = flat.findIndex(i=>i.id===page);
+  const prev = idx>0?flat[idx-1]:null;
+  const next = idx<flat.length-1?flat[idx+1]:null;
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+        :root{
+          --font-sans:'Inter','Noto Sans TC',-apple-system,sans-serif;
+          --font-mono:'IBM Plex Mono','Menlo',monospace;
+          --fg:#0A0A0A;--fg-2:#595959;--fg-3:#8C8C8C;
+          --bg:#fff;--bg-2:#FAFAFA;
+          --border:#D9D9D9;--border-light:#F0F0F0;
+          --sidebar-w:220px;
+        }
+        body{background:var(--bg);color:var(--fg);font-family:var(--font-sans)}
+        ::-webkit-scrollbar{width:6px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:#D9D9D9;border-radius:3px}
+        @keyframes dotPulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+      `}</style>
+      <div style={{display:"flex",minHeight:"100vh"}}>
+        <aside style={{
+          width:"var(--sidebar-w)",position:"fixed",top:0,left:0,height:"100vh",
+          borderRight:"1px solid var(--border)",background:"var(--bg)",overflowY:"auto",zIndex:100,padding:"20px 0",
+        }}>
+          <div style={{padding:"0 16px 20px",borderBottom:"1px solid var(--border)",marginBottom:16}}>
+            <img src={LOGO_B64} alt="Youni Lab" style={{height:28,display:"block"}} />
+          </div>
+          {NAV.map(group=>(
+            <div key={group.section} style={{marginBottom:4}}>
+              <div style={{
+                display:"flex",alignItems:"center",justifyContent:"space-between",
+                padding:"8px 16px 4px",
+                fontSize:10,fontWeight:600,color:"var(--fg-3)",
+                textTransform:"uppercase",letterSpacing:"0.07em",
+              }}>
+                <span>{group.section}</span>
+                <span style={{
+                  fontSize:10,fontWeight:500,
+                  background:"var(--bg-2)",color:"var(--fg-3)",
+                  border:"1px solid var(--border)",
+                  padding:"1px 5px",borderRadius:9999,
+                }}>{group.items.length}</span>
+              </div>
+              {group.items.map(item=>{
+                const active=page===item.id;
+                return (
+                  <div key={item.id} data-nav={item.id}
+                    onClick={()=>{setPage(item.id);window.scrollTo(0,0)}}
+                    style={{
+                      padding:"6px 16px 6px 18px",fontSize:13,cursor:"pointer",
+                      color:active?"#0A2B41":"var(--fg-2)",
+                      fontWeight:active?500:400,
+                      background:active?"#E7EAEC":"transparent",
+                      borderLeft:active?"2px solid #0A2B41":"2px solid transparent",
+                      transition:"all .12s",
+                    }}
+                    onMouseEnter={e=>{if(!active){e.currentTarget.style.background="var(--bg-2)";e.currentTarget.style.color="var(--fg)"}}}
+                    onMouseLeave={e=>{if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color="var(--fg-2)"}}}
+                  >{item.label}</div>
+                );
+              })}
+              <div style={{height:1,background:"var(--border-light)",margin:"8px 16px 4px"}}/>
+            </div>
+          ))}
+        </aside>
+        <main style={{marginLeft:"var(--sidebar-w)",flex:1,maxWidth:720,padding:"48px 48px 100px"}}>
+          <h1 style={{fontSize:32,fontWeight:700,color:"var(--fg)",fontFamily:"var(--font-sans)",letterSpacing:"-0.02em",marginBottom:12}}>{titles[page]}</h1>
+          {content[page]}
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:64,paddingTop:24,borderTop:"1px solid var(--border)"}}>
+            {prev?(<div onClick={()=>{setPage(prev.id);window.scrollTo(0,0)}} style={{cursor:"pointer"}}
+              onMouseEnter={e=>{e.currentTarget.querySelector('.pn').style.color="var(--fg)"}}
+              onMouseLeave={e=>{e.currentTarget.querySelector('.pn').style.color="var(--fg-2)"}}
+            ><div style={{fontSize:12,color:"var(--fg-3)",marginBottom:2}}>Previous</div><div className="pn" style={{fontSize:14,color:"var(--fg-2)",fontWeight:500,transition:"color .15s"}}>{prev.label}</div></div>):<div/>}
+            {next?(<div onClick={()=>{setPage(next.id);window.scrollTo(0,0)}} style={{cursor:"pointer",textAlign:"right"}}
+              onMouseEnter={e=>{e.currentTarget.querySelector('.pn').style.color="var(--fg)"}}
+              onMouseLeave={e=>{e.currentTarget.querySelector('.pn').style.color="var(--fg-2)"}}
+            ><div style={{fontSize:12,color:"var(--fg-3)",marginBottom:2}}>Next</div><div className="pn" style={{fontSize:14,color:"var(--fg-2)",fontWeight:500,transition:"color .15s"}}>{next.label}</div></div>):<div/>}
+          </div>
+        </main>
+      </div>
+      <Toast message={toast.message} visible={toast.visible} />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>

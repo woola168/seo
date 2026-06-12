@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from fastapi.security import HTTPAuthorizationCredentials
 
 from younilab_access_control_api.presentation.dependencies import (
     CurrentPrincipal,
@@ -6,7 +7,10 @@ from younilab_access_control_api.presentation.dependencies import (
     current_principal,
 )
 from younilab_access_control_api.presentation.dtos import LoginRequest, TokenResponse
-from fastapi.security import HTTPAuthorizationCredentials
+from younilab_access_control_api.presentation.request_parsing import (
+    access_token_from_credentials,
+    refresh_token_from_cookie,
+)
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -28,10 +32,7 @@ async def login(
         tokens.refresh_token_expires_at,
         secure=request.app.state.secure_cookies,
     )
-    return TokenResponse(
-        access_token=tokens.access_token,
-        expires_at=tokens.access_token_expires_at,
-    )
+    return TokenResponse.from_tokens(tokens)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -40,21 +41,16 @@ async def refresh(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias="refreshToken"),
 ) -> TokenResponse:
-    if refresh_token is None:
-        from younilab_access_control_application import InvalidSession
-
-        raise InvalidSession
-    tokens = await request.app.state.authentication.refresh(refresh_token)
+    tokens = await request.app.state.authentication.refresh(
+        refresh_token_from_cookie(refresh_token)
+    )
     _set_refresh_cookie(
         response,
         tokens.refresh_token,
         tokens.refresh_token_expires_at,
         secure=request.app.state.secure_cookies,
     )
-    return TokenResponse(
-        access_token=tokens.access_token,
-        expires_at=tokens.access_token_expires_at,
-    )
+    return TokenResponse.from_tokens(tokens)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -64,8 +60,9 @@ async def logout(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     _: CurrentPrincipal = Depends(current_principal),
 ) -> None:
-    assert credentials is not None
-    await request.app.state.authentication.logout(credentials.credentials)
+    await request.app.state.authentication.logout(
+        access_token_from_credentials(credentials)
+    )
     response.delete_cookie("refreshToken", path="/api/v1/auth")
 
 
@@ -76,8 +73,9 @@ async def logout_all(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     _: CurrentPrincipal = Depends(current_principal),
 ) -> None:
-    assert credentials is not None
-    await request.app.state.authentication.logout_all(credentials.credentials)
+    await request.app.state.authentication.logout_all(
+        access_token_from_credentials(credentials)
+    )
     response.delete_cookie("refreshToken", path="/api/v1/auth")
 
 

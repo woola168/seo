@@ -17,14 +17,7 @@ router = APIRouter(prefix="/api/v1/me", tags=["current-user"])
 async def get_me(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> UserResponse:
-    user = principal.user
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        display_name=user.display_name,
-        status=user.status.value,
-        role_ids=sorted(user.role_ids, key=str),
-    )
+    return UserResponse.from_domain(principal.user)
 
 
 @router.get("/capabilities", response_model=CapabilitiesResponse)
@@ -35,9 +28,4 @@ async def get_capabilities(
     capabilities = await request.app.state.authorization.capabilities(
         principal.user.id
     )
-    return CapabilitiesResponse(
-        permissions=sorted(capabilities.permissions),
-        has_global_resource_access=capabilities.has_global_resource_access,
-        customer_ids=sorted(capabilities.customer_ids, key=str),
-        task_ids=sorted(capabilities.task_ids, key=str),
-    )
+    return CapabilitiesResponse.from_domain(capabilities)

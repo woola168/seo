@@ -1,0 +1,266 @@
+.page {
+  width: min(100%, 1280px);
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.page-header h1 {
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 26px;
+}
+
+.page-header p {
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.page-kicker {
+  margin-bottom: 8px !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(440px, 0.75fr);
+  background: var(--surface);
+}
+
+.login-visual {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(circle at 28% 25%, rgb(55 102 126 / 58%), transparent 28%),
+    linear-gradient(135deg, #0a2b41 0%, #26485c 50%, #7d909b 100%);
+}
+
+.login-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, transparent 60%, rgb(255 255 255 / 70%));
+}
+
+.login-visual-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.15;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 8%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 8%) 1px, transparent 1px);
+  background-size: 42px 42px;
+  transform: perspective(600px) rotateX(58deg) scale(1.5);
+}
+
+.login-visual-brand {
+  position: absolute;
+  z-index: 2;
+  bottom: 32px;
+  left: 32px;
+  display: grid;
+  gap: 5px;
+}
+
+.login-visual-brand strong {
+  font-size: 20px;
+}
+
+.login-visual-brand span {
+  color: rgb(255 255 255 / 76%);
+  font-size: 13px;
+}
+
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: 40px clamp(32px, 6vw, 80px);
+}
+
+.login-form-wrap {
+  width: min(100%, 390px);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 34px;
+}
+
+.login-brand strong,
+.login-brand span {
+  display: block;
+}
+
+.login-brand span {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.brand-cube {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, transparent 32%, var(--accent) 33% 66%, transparent 67%),
+    var(--primary);
+}
+
+.login-heading {
+  margin-bottom: 26px;
+}
+
+.login-heading h1 {
+  margin-bottom: 5px;
+  font-size: 28px;
+}
+
+.login-heading p {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.google-button,
+.login-submit {
+  width: 100%;
+}
+
+.google-mark {
+  color: #4285f4;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.login-divider {
+  position: relative;
+  margin: 24px 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.login-divider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.login-divider span {
+  position: relative;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.input-with-icon {
+  position: relative;
+}
+
+.input-with-icon > .app-icon,
+.input-action {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+}
+
+.input-with-icon input {
+  padding-right: 40px;
+}
+
+.input-action {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.login-options {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0;
+}
+
+.form-error {
+  margin-bottom: 12px;
+  color: #cf1322;
+  font-size: 13px;
+}
+
+.login-signup {
+  margin: 26px 0 38px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.system-status {
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.system-status span {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+@media (max-width: 860px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .login-visual {
+    display: none;
+  }
+
+  .login-panel {
+    min-height: 100vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .page-actions,
+  .page-actions .button {
+    width: 100%;
+  }
+
+  .login-panel {
+    padding: 28px 22px;
+  }
+}

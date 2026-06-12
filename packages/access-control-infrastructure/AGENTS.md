@@ -16,3 +16,9 @@ Local rules for the access control infrastructure package. Extends the root
 - Keep secrets environment-based and never log credentials or tokens.
 - Adapter tests may use SQLite; PostgreSQL-specific behavior requires focused
   integration tests.
+
+## Structure
+
+- Keep PostgreSQL adapters in `persistence/postgres/` and in-memory adapters in
+  `persistence/memory.py`.
+- Keep password and token implementations separated under `security/`.

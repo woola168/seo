@@ -5,6 +5,9 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from younilab_access_control_application import InvalidSession
+from younilab_access_control_api.presentation.request_parsing import (
+    access_token_from_credentials,
+)
 from younilab_authorization_contracts import AuthorizationRequest
 from younilab_access_control_domain import UserAccount
 
@@ -22,10 +25,9 @@ async def current_principal(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> CurrentPrincipal:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise InvalidSession
+    access_token = access_token_from_credentials(credentials)
     claims = request.app.state.token_provider.decode_access_token(
-        credentials.credentials
+        access_token
     )
     user = await request.app.state.repository.get_user(claims.user_id)
     if user is None or not user.is_active:
