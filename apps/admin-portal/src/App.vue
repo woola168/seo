@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import AppToast from "./components/ui/AppToast.vue";
 import Layout from "./layouts/Layout.vue";
 import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
+import SessionLoadingPage from "./pages/SessionLoadingPage.vue";
+import { getLoginRedirect, getRoutePage } from "./router/routes";
 import { ApiError, api } from "./services/api";
 import type {
   AuthorizationDecision,
@@ -23,7 +26,13 @@ import type {
   UserAccess,
 } from "./types";
 import { hasPermission } from "./utils/permissions";
+import {
+  shouldRestoreSession,
+  type RecoveryMode,
+} from "./utils/session-bootstrap";
 
+const route = useRoute();
+const router = useRouter();
 const user = ref<SessionUser | null>(null);
 const capabilities = ref<Capabilities | null>(null);
 const roles = ref<Role[]>([]);
@@ -33,21 +42,24 @@ const customers = ref<CustomerSummary[]>([]);
 const tasks = ref<TaskSummary[]>([]);
 const departments = ref<Department[]>([]);
 const decision = ref<AuthorizationDecision | null>(null);
-const activePage = ref<PageId>("dashboard");
 const sidebarCollapsed = ref(false);
 const globalSearch = ref("");
 const loading = ref(false);
 const loginError = ref("");
 const toast = ref<ToastMessage | null>(null);
-const recoveryMode = ref<"request" | "reset" | "accept" | null>(
-  window.location.pathname.endsWith("/reset-password")
-    ? "reset"
-    : window.location.pathname.endsWith("/accept-invitation")
-      ? "accept"
-      : null,
+const activePage = computed<PageId>(() => getRoutePage(route.meta.page));
+const recoveryMode = computed<RecoveryMode>(() =>
+  route.meta.recoveryMode === "request" ||
+  route.meta.recoveryMode === "reset" ||
+  route.meta.recoveryMode === "accept"
+    ? route.meta.recoveryMode
+    : null,
 );
-const recoveryToken = ref(
-  new URLSearchParams(window.location.search).get("token") ?? "",
+const recoveryToken = computed(() =>
+  typeof route.query.token === "string" ? route.query.token : "",
+);
+const restoringSession = ref(
+  shouldRestoreSession(recoveryMode.value, api.hasSession()),
 );
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -57,7 +69,13 @@ const navigation = computed<NavigationItem[]>(() => [
   { id: "tasks", label: "任務", icon: "briefcase", badge: "9", disabled: true },
   { id: "war-room", label: "戰情室", icon: "activity", disabled: true },
   { id: "strategy", label: "策略分析", icon: "sparkles", disabled: true },
-  { id: "notifications", label: "通知", icon: "bell", badge: "2", disabled: true },
+  {
+    id: "notifications",
+    label: "通知",
+    icon: "bell",
+    badge: "2",
+    disabled: true,
+  },
   { id: "profile", label: "個人設定", icon: "user", disabled: true },
   {
     id: "permissions",
@@ -69,20 +87,34 @@ const navigation = computed<NavigationItem[]>(() => [
 ]);
 
 onMounted(async () => {
-  if (!recoveryMode.value && api.hasSession()) await loadSession();
+  if (restoringSession.value) await restoreSession();
 });
 
-function openPasswordResetRequest(): void {
-  recoveryMode.value = "request";
-  recoveryToken.value = "";
-  window.history.pushState({}, "", "/forgot-password");
+watch(
+  () => route.meta.requiresAuth,
+  (requiresAuth) => {
+    if (requiresAuth && !user.value && api.hasSession()) {
+      void restoreSession();
+    }
+  },
+);
+
+async function restoreSession(): Promise<void> {
+  restoringSession.value = true;
+  try {
+    await loadSession();
+  } finally {
+    restoringSession.value = false;
+  }
 }
 
-function returnToLogin(): void {
-  recoveryMode.value = null;
-  recoveryToken.value = "";
+function openPasswordResetRequest(): void {
+  void router.push({ name: "forgot-password" });
+}
+
+async function returnToLogin(): Promise<void> {
   loginError.value = "";
-  window.history.replaceState({}, "", "/");
+  await router.replace({ name: "login" });
 }
 
 async function submitRecovery(value: string): Promise<void> {
@@ -91,10 +123,7 @@ async function submitRecovery(value: string): Promise<void> {
     async () => {
       if (recoveryMode.value === "request") {
         await api.requestPasswordReset(value);
-        notify(
-          "若帳號存在，密碼重設通知已建立並等待寄送。",
-          "success",
-        );
+        notify("若帳號存在，密碼重設通知已建立並等待寄送。", "success");
       } else if (recoveryMode.value === "reset") {
         await api.resetPassword(recoveryToken.value, value);
         notify("密碼已重設，請重新登入。", "success");
@@ -102,7 +131,7 @@ async function submitRecovery(value: string): Promise<void> {
         await api.acceptInvitation(recoveryToken.value, value);
         notify("帳號已啟用，請登入。", "success");
       }
-      returnToLogin();
+      await returnToLogin();
     },
     (message) => {
       loginError.value = message;
@@ -112,10 +141,12 @@ async function submitRecovery(value: string): Promise<void> {
 
 async function login(email: string, password: string): Promise<void> {
   loginError.value = "";
+  const redirect = getLoginRedirect(route.query.redirect);
   await run(
     async () => {
       await api.login(email, password);
       await loadSessionData();
+      await router.replace(redirect);
       notify("登入成功", "success");
     },
     (message) => {
@@ -128,17 +159,22 @@ async function logout(): Promise<void> {
   await run(async () => {
     await api.logout();
     clearSession();
+    await router.replace({ name: "login" });
   });
 }
 
 async function loadSession(): Promise<void> {
-  await run(
-    loadSessionData,
-    () => {
-      clearSession();
-      loginError.value = "登入狀態已失效，請重新登入。";
-    },
-  );
+  const redirect = route.fullPath;
+  await run(loadSessionData, () => {
+    clearSession();
+    loginError.value = "登入狀態已失效，請重新登入。";
+  });
+  if (!user.value) {
+    await router.replace({
+      name: "login",
+      query: { redirect },
+    });
+  }
 }
 
 async function loadSessionData(): Promise<void> {
@@ -324,7 +360,7 @@ async function deleteDepartment(departmentId: string): Promise<void> {
     departments.value = departments.value.filter(
       (department) => department.id !== departmentId,
     );
-    notify("部門已封存", "success");
+    notify("部門已刪除", "success");
   });
 }
 
@@ -405,8 +441,11 @@ function clearSession(): void {
   tasks.value = [];
   departments.value = [];
   decision.value = null;
-  activePage.value = "dashboard";
   globalSearch.value = "";
+}
+
+function navigate(page: PageId): void {
+  void router.push({ name: page });
 }
 
 function notify(message: string, tone: ToastTone = "info"): void {
@@ -432,6 +471,8 @@ function unavailable(label: string): void {
     @back="returnToLogin"
   />
 
+  <SessionLoadingPage v-else-if="restoringSession" />
+
   <LoginPage
     v-else-if="!user || !capabilities"
     :loading="loading"
@@ -448,7 +489,7 @@ function unavailable(label: string): void {
     :navigation="navigation"
     :collapsed="sidebarCollapsed"
     :search="globalSearch"
-    @navigate="activePage = $event"
+    @navigate="navigate"
     @logout="logout"
     @refresh="refresh"
     @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"

@@ -42,7 +42,7 @@ const permissionPresentations: Record<
   },
   "departments.manage": {
     label: "管理部門",
-    description: "建立、編輯或封存部門。",
+    description: "建立、編輯或刪除部門。",
   },
   "customers.read": {
     label: "檢視客戶",
@@ -57,8 +57,8 @@ const permissionPresentations: Record<
     description: "修改既有客戶資料。",
   },
   "customers.delete": {
-    label: "封存客戶",
-    description: "將客戶資料標記為封存。",
+    label: "刪除客戶",
+    description: "將客戶資料標記為刪除。",
   },
   "tasks.read": {
     label: "檢視任務",
@@ -73,8 +73,8 @@ const permissionPresentations: Record<
     description: "修改既有 SEO 任務資料。",
   },
   "tasks.delete": {
-    label: "封存任務",
-    description: "將 SEO 任務標記為封存。",
+    label: "刪除任務",
+    description: "將 SEO 任務標記為刪除。",
   },
   "authorization.evaluate": {
     label: "執行授權判斷",
@@ -98,8 +98,7 @@ export function describePermission(permission: string): PermissionPresentation {
   return {
     key: permission,
     label: presentation?.label ?? permission,
-    description:
-      presentation?.description ?? "尚未提供此權限的中文說明。",
+    description: presentation?.description ?? "尚未提供此權限的中文說明。",
   };
 }
 

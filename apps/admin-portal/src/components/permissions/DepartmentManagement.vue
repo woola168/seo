@@ -42,7 +42,13 @@ function submit(): void {
   const name = form.name.trim();
   if (!name) return;
   if (modalMode.value === "edit") {
-    emit("update", selectedDepartmentId.value, name, form.description.trim(), closeModal);
+    emit(
+      "update",
+      selectedDepartmentId.value,
+      name,
+      form.description.trim(),
+      closeModal,
+    );
   } else {
     emit("create", name, form.description.trim(), closeModal);
   }
@@ -55,7 +61,7 @@ function closeModal(): void {
 
 <template>
   <div class="permission-content">
-    <div class="toolbar department-toolbar">
+    <div class="toolbar">
       <p class="muted">部門可供新增員工與員工資料管理使用。</p>
       <button
         v-if="canManage"
@@ -67,13 +73,21 @@ function closeModal(): void {
       </button>
     </div>
     <div class="department-grid">
-      <article v-for="department in departments" :key="department.id" class="card">
+      <article
+        v-for="department in departments"
+        :key="department.id"
+        class="card"
+      >
         <div class="department-icon"><AppIcon name="users" :size="20" /></div>
         <h2>{{ department.name }}</h2>
         <p>{{ department.description || "尚未填寫部門說明。" }}</p>
         <span>{{ department.memberCount }} 位員工</span>
         <div v-if="canManage" class="department-actions">
-          <button class="button button-secondary" type="button" @click="openEdit(department)">
+          <button
+            class="button button-secondary"
+            type="button"
+            @click="openEdit(department)"
+          >
             編輯
           </button>
           <button
@@ -82,7 +96,7 @@ function closeModal(): void {
             :disabled="loading || department.memberCount > 0"
             @click="$emit('delete', department.id)"
           >
-            封存
+            刪除
           </button>
         </div>
       </article>
@@ -113,7 +127,11 @@ function closeModal(): void {
             <textarea v-model="form.description" rows="3"></textarea>
           </label>
           <div class="modal-actions">
-            <button class="button button-secondary" type="button" @click="modalMode = null">
+            <button
+              class="button button-secondary"
+              type="button"
+              @click="modalMode = null"
+            >
               取消
             </button>
             <button

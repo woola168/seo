@@ -152,10 +152,16 @@ class PostgresAccessControlRepository:
                     select(UserRoleRow).where(UserRoleRow.user_id == user_id)
                 )
             ).all()
-            for row in existing:
+            existing_by_role_id = {row.role_id: row for row in existing}
+            for role_id, row in existing_by_role_id.items():
+                if role_id in role_ids:
+                    continue
                 await session.delete(row)
             session.add_all(
-                [UserRoleRow(user_id=user_id, role_id=role_id) for role_id in role_ids]
+                [
+                    UserRoleRow(user_id=user_id, role_id=role_id)
+                    for role_id in role_ids - existing_by_role_id.keys()
+                ]
             )
             await session.commit()
 
@@ -172,12 +178,15 @@ class PostgresAccessControlRepository:
                     )
                 )
             ).all()
-            for row in existing:
+            existing_by_customer_id = {row.customer_id: row for row in existing}
+            for customer_id, row in existing_by_customer_id.items():
+                if customer_id in customer_ids:
+                    continue
                 await session.delete(row)
             session.add_all(
                 [
                     CustomerAccessGrantRow(user_id=user_id, customer_id=customer_id)
-                    for customer_id in customer_ids
+                    for customer_id in customer_ids - existing_by_customer_id.keys()
                 ]
             )
             await session.commit()
@@ -195,12 +204,15 @@ class PostgresAccessControlRepository:
                     )
                 )
             ).all()
-            for row in existing:
+            existing_by_task_id = {row.task_id: row for row in existing}
+            for task_id, row in existing_by_task_id.items():
+                if task_id in task_ids:
+                    continue
                 await session.delete(row)
             session.add_all(
                 [
                     TaskAccessGrantRow(user_id=user_id, task_id=task_id)
-                    for task_id in task_ids
+                    for task_id in task_ids - existing_by_task_id.keys()
                 ]
             )
             await session.commit()

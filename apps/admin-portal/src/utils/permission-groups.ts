@@ -33,13 +33,13 @@ const definitions: PermissionGroup[] = [
   {
     id: "departments",
     label: "部門管理",
-    description: "查看、建立、編輯及封存部門。",
+    description: "查看、建立、編輯及刪除部門。",
     permissions: ["departments.read", "departments.manage"],
   },
   {
     id: "customers",
     label: "客戶管理",
-    description: "查看、新增、編輯及封存客戶。",
+    description: "查看、新增、編輯及刪除客戶。",
     permissions: [
       "customers.read",
       "customers.create",
@@ -50,13 +50,8 @@ const definitions: PermissionGroup[] = [
   {
     id: "tasks",
     label: "任務管理",
-    description: "查看、新增、編輯及封存 SEO 任務。",
-    permissions: [
-      "tasks.read",
-      "tasks.create",
-      "tasks.update",
-      "tasks.delete",
-    ],
+    description: "查看、新增、編輯及刪除 SEO 任務。",
+    permissions: ["tasks.read", "tasks.create", "tasks.update", "tasks.delete"],
   },
   {
     id: "audit-events",
