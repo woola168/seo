@@ -4,6 +4,30 @@
   box-sizing: border-box;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-disabled);
+}
+
 html {
   min-width: 320px;
   min-height: 100%;
@@ -29,7 +53,7 @@ button {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 h1,
@@ -83,11 +107,12 @@ code,
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 0 18px;
+  padding: 0 20px;
+  margin: 0 0 20px 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   transition:
     color 150ms ease,
     border-color 150ms ease,

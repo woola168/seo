@@ -11,6 +11,7 @@ import type {
   Role,
   TaskSummary,
 } from "../../types";
+import { getMemberStatusDisplay } from "../../utils/member-status";
 
 const props = defineProps<{
   members: MemberView[];
@@ -63,7 +64,9 @@ const departments = computed(() =>
   [...new Set(props.members.map((member) => member.department).filter(Boolean))].sort(),
 );
 const statuses = computed(() =>
-  [...new Set(props.members.map((member) => member.status))].sort(),
+  [...new Set(props.members.map((member) => member.status))]
+    .sort()
+    .map(getMemberStatusDisplay),
 );
 const selectedMember = computed(
   () => props.members.find((member) => member.id === selectedMemberId.value) ?? null,
@@ -134,8 +137,12 @@ function parseIds(value: string): string[] {
       </select>
       <select v-model="query.status" aria-label="狀態篩選">
         <option value="">所有狀態</option>
-        <option v-for="status in statuses" :key="status" :value="status">
-          {{ status }}
+        <option
+          v-for="status in statuses"
+          :key="status.value"
+          :value="status.value"
+        >
+          {{ status.label }}
         </option>
       </select>
       <button class="button button-ghost" type="button" @click="clearFilters">
@@ -160,38 +167,39 @@ function parseIds(value: string): string[] {
             <th><button type="button" @click="sort('role')">角色</button></th>
             <th><button type="button" @click="sort('department')">部門</button></th>
             <th><button type="button" @click="sort('status')">狀態</button></th>
-            <th><button type="button" @click="sort('lastLogin')">最後登入</button></th>
+            <!-- <th><button type="button" @click="sort('lastLogin')">最後登入</button></th> -->
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="member in result.items" :key="member.id">
-            <td>
-              <div class="identity-cell">
-                <span class="round-avatar" :style="{ background: member.color }">
-                  {{ member.displayName.slice(0, 1) }}
-                </span>
-                <strong>{{ member.displayName }}</strong>
-              </div>
-            </td>
-            <td>{{ member.email }}</td>
+            <td class="member-name">{{ member.displayName }}</td>
+            <td class="member-email">{{ member.email }}</td>
             <td>
               <span
                 v-for="roleName in member.roleNames"
                 :key="roleName"
-                class="badge badge-role"
+                class="badge"
+                :class="roleName === '開發者' ? 'badge-purple' : 'badge-blue'"
               >
                 {{ roleName }}
               </span>
               <span v-if="!member.roleNames.length" class="muted">未指派</span>
             </td>
             <td>{{ member.department ?? "未指定" }}</td>
-            <td><span class="status-dot"></span>{{ member.status }}</td>
-            <td>{{ member.lastLogin ?? "尚未登入" }}</td>
+            <td>
+              <span
+                class="badge"
+                :class="`badge-${getMemberStatusDisplay(member.status).tone}`"
+              >
+                {{ getMemberStatusDisplay(member.status).label }}
+              </span>
+            </td>
+            <!-- <td class="muted-time">{{ member.lastLogin ?? "尚未登入" }}</td> -->
             <td>
               <div class="row-actions">
                 <button
-                  class="icon-button"
+                  class="icon-button row-action-button"
                   type="button"
                   aria-label="檢視與編輯權限"
                   @click="selectedMemberId = member.id"
@@ -199,7 +207,7 @@ function parseIds(value: string): string[] {
                   <AppIcon name="edit" :size="16" />
                 </button>
                 <button
-                  class="icon-button"
+                  class="icon-button row-action-button"
                   type="button"
                   aria-label="更多操作"
                   @click="$emit('unavailable', `${member.displayName}帳號操作`)"

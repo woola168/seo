@@ -54,7 +54,7 @@ function toggle(groupPermissions: string[]): void {
         </span>
       </label>
 
-      <details class="permission-group-details">
+      <!-- <details class="permission-group-details">
         <summary>查看包含功能（{{ group.permissions.length }}）</summary>
         <ul>
           <li v-for="permission in group.permissions" :key="permission">
@@ -62,7 +62,7 @@ function toggle(groupPermissions: string[]): void {
             <code>{{ permission }}</code>
           </li>
         </ul>
-      </details>
+      </details> -->
     </article>
   </div>
 </template>

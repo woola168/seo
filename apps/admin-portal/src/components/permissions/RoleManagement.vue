@@ -2,7 +2,6 @@
 import { ref, watch } from "vue";
 import AppIcon from "../ui/AppIcon.vue";
 import PermissionGroupSelector from "./PermissionGroupSelector.vue";
-import { useRoleCreationForm } from "../../composables/role-creation-form";
 import type { Role } from "../../types";
 
 const props = defineProps<{
@@ -13,19 +12,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  create: [
-    name: string,
-    permissions: string[],
-    onSuccess: () => void,
-  ];
+  "open-create": [];
   update: [roleId: string, permissions: string[]];
 }>();
 
-const {
-  roleName,
-  selectedPermissions,
-  submit: submitRoleCreation,
-} = useRoleCreationForm();
 const editingRoleId = ref("");
 const editingPermissions = ref<string[]>([]);
 
@@ -42,11 +32,6 @@ function selectRole(role: Role): void {
   editingPermissions.value = [...role.permissions];
 }
 
-function createRole(): void {
-  submitRoleCreation((name, permissions, onSuccess) => {
-    emit("create", name, permissions, onSuccess);
-  });
-}
 </script>
 
 <template>
@@ -57,6 +42,15 @@ function createRole(): void {
           <h2>角色列表</h2>
           <p>{{ roles.length }} 個角色</p>
         </div>
+        <button
+          v-if="canManage"
+          class="button button-primary"
+          type="button"
+          @click="emit('open-create')"
+        >
+          <AppIcon name="plus" :size="16" />
+          建立角色
+        </button>
       </header>
       <button
         v-for="role in roles"
@@ -70,7 +64,7 @@ function createRole(): void {
           <strong>{{ role.name }}</strong>
           <small>{{ role.permissions.length }} 個權限</small>
         </span>
-        <span v-if="role.isSystem" class="badge badge-role">系統角色</span>
+        <span v-if="role.isSystem" class="badge badge-purple">系統角色</span>
         <AppIcon v-else name="chevron-right" :size="16" />
       </button>
     </section>
@@ -100,31 +94,5 @@ function createRole(): void {
       </button>
     </section>
 
-    <section class="card create-role-card">
-      <header class="card-header">
-        <div>
-          <h2>建立角色</h2>
-          <p>建立後可再調整角色權限。</p>
-        </div>
-      </header>
-      <label class="form-field">
-        <span>角色名稱</span>
-        <input v-model="roleName" placeholder="例如：Content Reviewer" />
-      </label>
-      <PermissionGroupSelector
-        :permissions="permissions"
-        :selected-permissions="selectedPermissions"
-        :disabled="!canManage"
-        @update:selected-permissions="selectedPermissions = $event"
-      />
-      <button
-        class="button button-primary"
-        type="button"
-        :disabled="!roleName.trim() || !canManage || loading"
-        @click="createRole"
-      >
-        建立角色
-      </button>
-    </section>
   </div>
 </template>

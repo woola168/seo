@@ -31,9 +31,8 @@ function submit(): void {
 <template>
   <main class="login-page">
     <section class="login-visual">
-      <div class="login-visual-pattern"></div>
       <div class="login-visual-brand">
-        <strong>Youni SEO</strong>
+        <strong>Kinsan SEO</strong>
         <span>安全地恢復您的後台帳號</span>
       </div>
     </section>

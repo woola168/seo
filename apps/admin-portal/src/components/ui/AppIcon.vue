@@ -29,6 +29,10 @@ withDefaults(
       <rect x="3" y="14" width="7" height="7" />
       <rect x="14" y="14" width="7" height="7" />
     </template>
+    <template v-else-if="name === 'list'">
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+    </template>
     <template v-else-if="name === 'users'">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
@@ -102,6 +106,18 @@ withDefaults(
     </template>
     <template v-else-if="name === 'check'">
       <path d="m20 6-11 11-5-5" />
+    </template>
+    <template v-else-if="name === 'check-circle'">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <path d="m22 4-10 10.01-3-3" />
+    </template>
+    <template v-else-if="name === 'alert-circle'">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4M12 16h.01" />
+    </template>
+    <template v-else-if="name === 'mail'">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
     </template>
     <template v-else-if="name === 'lock'">
       <rect x="4" y="10" width="16" height="11" rx="2" />

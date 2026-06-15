@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Youni Lab — Admin 後台樣板</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#0A2B41; --primary-hover:#2E4A5E; --primary-light:#E7EAEC;
+    --info:#1677FF; --info-light:#E6F4FF; --info-text:#0958D9; --info-border:#91CAFF;
+    --success-light:#F6FFED; --success-text:#389E0D; --success-border:#B7EB8F;
+    --error:#F5222D; --error-light:#FFF1F0; --error-text:#CF1322; --error-border:#FFA39E;
+    --fg:#1F1F1F; --fg-2:#595959; --fg-3:#8C8C8C; --fg-4:#BFBFBF;
+    --bg-page:#F5F5F5; --bg:#FFFFFF; --bg-2:#FAFAFA;
+    --border:#D9D9D9; --border-subtle:#F0F0F0;
+    --font:'Inter','Noto Sans TC',-apple-system,sans-serif;
+    --mono:'IBM Plex Mono','Menlo',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--font);background:var(--bg-page);color:var(--fg);-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  button{font-family:inherit;} input{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+
+const FI_PATHS = {
+  "grid":"<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
+  "list":"<line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/>",
+  "file-text":"<path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/><polyline points='10 9 9 9 8 9'/>",
+  "file":"<path d='M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z'/><polyline points='13 2 13 9 20 9'/>",
+  "settings":"<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/>",
+  "user":"<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
+  "sidebar":"<rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/>",
+  "search":"<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>",
+  "bell":"<path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/>",
+  "help-circle":"<circle cx='12' cy='12' r='10'/><path d='M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3'/><line x1='12' y1='17' x2='12.01' y2='17'/>",
+  "chevron-down":"<polyline points='6 9 12 15 18 9'/>",
+  "chevron-right":"<polyline points='9 18 15 12 9 6'/>",
+  "chevron-up":"<polyline points='18 15 12 9 6 15'/>",
+  "plus":"<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>",
+  "download":"<path d='M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/>",
+  "filter":"<polygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/>",
+  "eye":"<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
+  "edit-2":"<path d='M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z'/>",
+  "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
+  "more-vertical":"<circle cx='12' cy='12' r='1'/><circle cx='12' cy='5' r='1'/><circle cx='12' cy='19' r='1'/>",
+  "copy":"<rect x='9' y='9' width='13' height='13' rx='2' ry='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/>",
+  "trash-2":"<polyline points='3 6 5 6 21 6'/><path d='M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2'/><line x1='10' y1='11' x2='10' y2='17'/><line x1='14' y1='11' x2='14' y2='17'/>",
+  "check":"<polyline points='20 6 9 17 4 12'/>",
+  "x":"<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>",
+  "slash":"<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>",
+  "clock":"<circle cx='12' cy='12' r='10'/><polyline points='12 6 12 12 16 14'/>",
+  "alert-circle":"<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/>",
+  "check-circle":"<path d='M22 11.08V12a10 10 0 11-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/>",
+  "user-plus":"<path d='M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='8.5' cy='7' r='4'/><line x1='20' y1='8' x2='20' y2='14'/><line x1='23' y1='11' x2='17' y2='11'/>",
+  "log-out":"<path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/>",
+};
+const FI = ({name,size=20,color="currentColor",style}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    style={{display:"block",flexShrink:0,...style}}
+    dangerouslySetInnerHTML={{__html:FI_PATHS[name]||""}}/>
+);
+const LOGO = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCA1NSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iNTAuMjUiIHdpZHRoPSI0LjUiIGhlaWdodD0iNC41IiByeD0iMi4yNSIgZmlsbD0iI0ZEQjMzOCIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTQ2Ljg3NSAxOS41QzQ3LjA4MjEgMTkuNSA0Ny4yNSAxOS42Njc5IDQ3LjI1IDE5Ljg3NUw0Ny4yNSAyMi43NUM0Ny4yNSAyMi45MzkzIDQ3LjM1NTIgMjMuMTA0IDQ3LjUxMDMgMjMuMTg4OUM0Ny42MzE0IDIzLjI1NTIgNDcuNzUgMjMuMzYxOSA0Ny43NSAyMy41QzQ3Ljc1IDIzLjc3NjEgNDcuNTE3NCAyNC4wMDkzIDQ3LjI2MzEgMjMuOTAxNkM0Ni44MTQ3IDIzLjcxMTggNDYuNSAyMy4yNjc2IDQ2LjUgMjIuNzVMNDYuNSAxOS44NzVDNDYuNSAxOS42Njc5IDQ2LjY2NzkgMTkuNSA0Ni44NzUgMTkuNVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik01MS42MjUgMTkuNUM1MS44MzIxIDE5LjUgNTIgMTkuNjY3OSA1MiAxOS44NzVWMjMuNjI1QzUyIDIzLjgzMjEgNTEuODMyMSAyNCA1MS42MjUgMjRDNTEuNDE3OSAyNCA1MS4yNSAyMy44MzIxIDUxLjI1IDIzLjYyNVYxOS44NzVDNTEuMjUgMTkuNjY3OSA1MS40MTc5IDE5LjUgNTEuNjI1IDE5LjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTQuMzc1IDIzLjI1QzU0LjU4MjEgMjMuMjUgNTQuNzUgMjMuNDE3OSA1NC43NSAyMy42MjVDNTQuNzUgMjMuODMyMSA1NC41ODIxIDI0IDU0LjM3NSAyNEM1NC4xNjc5IDI0IDU0IDIzLjgzMjEgNTQgMjMuNjI1QzU0IDIzLjQxNzkgNTQuMTY3OSAyMy4yNSA1NC4zNzUgMjMuMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTAuMzc1IDIxQzUwLjU4MjEgMjEgNTAuNzUgMjEuMTY3OSA1MC43NSAyMS4zNzVWMjNDNTAuNzUgMjMuMDQ5OCA1MC43NjQ1IDIzLjA5NjEgNTAuNzg5NiAyMy4xMzUxQzUwLjg2NDMgMjMuMjUxMiA1MSAyMy4zNjE5IDUxIDIzLjVDNTEgMjMuNzc2MSA1MC43NjI3IDI0LjAxMDQgNTAuNTIwNSAyMy44Nzc4QzUwLjIxMDMgMjMuNzA4IDUwIDIzLjM3ODUgNTAgMjNWMjEuMzc1QzUwIDIxLjE2NzkgNTAuMTY3OSAyMSA1MC4zNzUgMjFaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMjAuMjUgOC4yNUMxOC4xNzg5IDguMjUgMTYuNSA5LjkyODkzIDE2LjUgMTJDMTYuNSAxNC4wNzExIDE4LjE3ODkgMTUuNzUgMjAuMjUgMTUuNzVDMjIuMzIxMSAxNS43NSAyNCAxNC4wNzExIDI0IDEyQzI0IDkuOTI4OTMgMjIuMzIxMSA4LjI1IDIwLjI1IDguMjVaTTEzLjUgMTJDMTMuNSA4LjI3MjA4IDE2LjUyMjEgNS4yNSAyMC4yNSA1LjI1QzIzLjk3NzkgNS4yNSAyNyA4LjI3MjA4IDI3IDEyQzI3IDE1LjcyNzkgMjMuOTc3OSAxOC43NSAyMC4yNSAxOC43NUMxNi41MjIxIDE4Ljc1IDEzLjUgMTUuNzI3OSAxMy41IDEyWiIgZmlsbD0iIzA4MkI0MSIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTUxLjI1IDIyLjM3NUM1MS4yNSAyMS42MTU2IDUxLjg2NTYgMjEgNTIuNjI1IDIxQzUzLjM4NDQgMjEgNTQgMjEuNjE1NiA1NCAyMi4zNzVWMjIuNjI1QzU0IDIzLjM4NDQgNTMuMzg0NCAyNCA1Mi42MjUgMjRDNTEuODY1NiAyNCA1MS4yNSAyMy4zODQ0IDUxLjI1IDIyLjYyNVYyMi4zNzVaTTUyLjYyNSAyMS43NUM1Mi4yNzk4IDIxLjc1IDUyIDIyLjAyOTggNTIgMjIuMzc1VjIyLjYyNUM1MiAyMi45NzAyIDUyLjI3OTggMjMuMjUgNTIuNjI1IDIzLjI1QzUyLjk3MDIgMjMuMjUgNTMuMjUgMjIuOTcwMiA1My4yNSAyMi42MjVWMjIuMzc1QzUzLjI1IDIyLjAyOTggNTIuOTcwMiAyMS43NSA1Mi42MjUgMjEuNzVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNDggMjIuMzc1QzQ4IDIxLjYxNTYgNDguNjE1NiAyMSA0OS4zNzUgMjFDNTAuMTM0NCAyMSA1MC43NSAyMS42MTU2IDUwLjc1IDIyLjM3NVYyMi42MjVDNTAuNzUgMjMuMzg0NCA1MC4xMzQ0IDI0IDQ5LjM3NSAyNEM0OC42MTU2IDI0IDQ4IDIzLjM4NDQgNDggMjIuNjI1VjIyLjM3NVpNNDkuMzc1IDIxLjc1QzQ5LjAyOTggMjEuNzUgNDguNzUgMjIuMDI5OCA0OC43NSAyMi4zNzVWMjIuNjI1QzQ4Ljc1IDIyLjk3MDIgNDkuMDI5OCAyMy4yNSA0OS4zNzUgMjMuMjVDNDkuNzIwMiAyMy4yNSA1MCAyMi45NzAyIDUwIDIyLjYyNVYyMi4zNzVDNTAgMjIuMDI5OCA0OS43MjAyIDIxLjc1IDQ5LjM3NSAyMS43NVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00My41IDguMjVDNDEuODQzMSA4LjI1IDQwLjUgOS41OTMxNCA0MC41IDExLjI1VjEyLjc1QzQwLjUgMTYuMDYzNyAzNy44MTM3IDE4Ljc1IDM0LjUgMTguNzVDMzEuMTg2MyAxOC43NSAyOC41IDE2LjA2MzcgMjguNSAxMi43NUwyOC41IDYuNUMyOC41IDYuMjIzODYgMjguNzIzOSA2IDI5IDZMMzEgNkMzMS4yNzYxIDYgMzEuNSA2LjIyMzg2IDMxLjUgNi41TDMxLjUgMTIuNzVDMzEuNSAxNC40MDY5IDMyLjg0MzEgMTUuNzUgMzQuNSAxNS43NUMzNi4xNTY5IDE1Ljc1IDM3LjUgMTQuNDA2OSAzNy41IDEyLjc1VjExLjI1QzM3LjUgNy45MzYyOSA0MC4xODYzIDUuMjUgNDMuNSA1LjI1QzQ2LjgxMzcgNS4yNSA0OS41IDcuOTM2MjkgNDkuNSAxMS4yNUw0OS41IDE3LjVDNDkuNSAxNy43NzYxIDQ5LjI3NjEgMTggNDkgMThMNDcgMThDNDYuNzIzOSAxOCA0Ni41IDE3Ljc3NjEgNDYuNSAxNy41TDQ2LjUgMTEuMjVDNDYuNSA5LjU5MzE0IDQ1LjE1NjkgOC4yNSA0My41IDguMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTMuNSA2QzUzLjc3NjEgNiA1NCA2LjIyMzg2IDU0IDYuNUw1NCAxNy41QzU0IDE3Ljc3NjEgNTMuNzc2MSAxOCA1My41IDE4SDUxLjVDNTEuMjIzOSAxOCA1MSAxNy43NzYxIDUxIDE3LjVMNTEgNi41QzUxIDYuMjIzODYgNTEuMjIzOSA2IDUxLjUgNkw1My41IDZaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNOSAxOFYxMkgxMlYxOEMxMiAyMS4zMTM3IDkuMzEzNzEgMjQgNiAyNEgzLjVDMy4yMjM4NiAyNCAzIDIzLjc3NjEgMyAyMy41VjIxLjVDMyAyMS4yMjM5IDMuMjIzODYgMjEgMy41IDIxSDZDNy42NTY4NiAyMSA5IDE5LjY1NjkgOSAxOFoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yLjUgNkMyLjc3NjE1IDYgMyA2LjIyMzg2IDMgNi41TDMgMTJDMyAxMy42NTY5IDQuMzQzMTUgMTUgNiAxNUM3LjY1Njg2IDE1IDkgMTMuNjU2OSA5IDEyVjYuNUM5IDYuMjIzODYgOS4yMjM4NiA2IDkuNSA2SDExLjVDMTEuNzc2MSA2IDEyIDYuMjIzODYgMTIgNi41VjEyQzEyIDE1LjMxMzcgOS4zMTM3MSAxOCA2IDE4QzIuNjg2MjkgMTggMCAxNS4zMTM3IDAgMTJMMy4zODc1M2UtMDYgNi41QzMuNTU3NjFlLTA2IDYuMjIzODYgMC4yMjM4NjEgNiAwLjUwMDAwNCA2TDIuNSA2WiIgZmlsbD0iIzA4MkI0MSIvPgo8L3N2Zz4K";
+
+const Btn = ({children,variant="primary",onClick,style}) => {
+  const [h,setH]=useState(false);
+  const base={height:40,padding:"0 16px",borderRadius:8,fontSize:14,fontWeight:500,cursor:"pointer",
+    display:"inline-flex",alignItems:"center",gap:6,outline:"none",transition:"all .15s",whiteSpace:"nowrap",...style};
+  const v={
+    primary:{border:"1px solid var(--primary)",background:h?"var(--primary-hover)":"var(--primary)",color:"#fff"},
+    secondary:{border:"1px solid var(--border)",background:h?"var(--bg-2)":"#fff",color:"var(--fg)"},
+  }[variant];
+  return <button onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{...base,...v}}>{children}</button>;
+};
+
+// 真實選單結構
+const NAV = [
+  { id:"dashboard", icon:"grid", label:"總覽" },
+  { id:"list", icon:"list", label:"列表頁", children:[
+    {id:"list-basic",label:"一般列表頁"},
+    {id:"list-card", label:"卡片列表頁"},
+  ]},
+  { id:"form", icon:"file-text", label:"表單頁", children:[
+    {id:"form-basic",label:"一般表單頁"},
+    {id:"form-steps",label:"步驟表單頁"},
+  ]},
+  { id:"detail",  icon:"file",     label:"詳情頁" },
+  { id:"settings",icon:"settings", label:"設定頁" },
+  { id:"profile", icon:"user",     label:"個人中心" },
+];
+function NavItem({item,active,setActive,expanded,toggle,collapsed}){
+  const isActive = active===item.id || (item.children&&item.children.some(c=>c.id===active));
+  const isExp = expanded[item.id];
+  const [hov,setHov]=useState(false);
+  return <React.Fragment>
+    <div onClick={()=>{setActive(item.id); if(item.children) toggle(item.id);}}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{display:"flex",alignItems:"center",gap:8,padding:collapsed?"10px 0":"10px 12px",margin:"1px 8px",borderRadius:8,cursor:"pointer",
+        justifyContent:collapsed?"center":"flex-start",
+        background:isActive?"#E7EAEC":hov?"#FAFAFA":"transparent",color:isActive?"#0A2B41":"#595959",
+        fontWeight:isActive?500:400,fontSize:14,transition:"all .12s"}}>
+      <FI name={item.icon} size={16} color={isActive?"#0A2B41":"#8C8C8C"}/>
+      {!collapsed && <span style={{flex:1}}>{item.label}</span>}
+      {!collapsed && item.children && <FI name={isExp?"chevron-up":"chevron-right"} size={14} color="#BFBFBF"/>}
+    </div>
+    {!collapsed && item.children && isExp && <div style={{paddingLeft:10}}>
+      {item.children.map(c=>{
+        const ca=active===c.id;
+        return <div key={c.id} onClick={()=>setActive(c.id)}
+          style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",margin:"1px 8px",borderRadius:8,cursor:"pointer",
+            background:ca?"#E7EAEC":"transparent",color:ca?"#0A2B41":"#595959",fontWeight:ca?500:400,fontSize:13}}
+          onMouseEnter={e=>{if(!ca)e.currentTarget.style.background="#FAFAFA";}}
+          onMouseLeave={e=>{if(!ca)e.currentTarget.style.background="transparent";}}>
+          <div style={{width:5,height:5,borderRadius:"50%",background:ca?"#0A2B41":"#BFBFBF",marginLeft:6,flexShrink:0}}/>
+          <span style={{flex:1}}>{c.label}</span>
+        </div>;
+      })}
+    </div>}
+  </React.Fragment>;
+}
+
+// 圖表色板（Blue 同色系深淺，照 DESIGN.md data-viz）
+const VIZ = ["#003EB3","#0958D9","#1677FF","#4096FF","#69B1FF"];
+const VIZ_MAIN = "#1677FF";
+
+function StatCard({label,value,icon,iconColor,iconBg,subs}){
+  return (
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"16px 18px",flex:1,minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <div style={{width:32,height:32,borderRadius:8,background:iconBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><FI name={icon} size={16} color={iconColor}/></div>
+        <span style={{fontSize:13,color:"#8C8C8C"}}>{label}</span>
+      </div>
+      <div style={{fontSize:26,fontWeight:600,color:"#1F1F1F",lineHeight:1.1,marginBottom:subs?8:0}}>{value}</div>
+      {subs&&<div style={{display:"flex",gap:12,fontSize:12,color:"#8C8C8C"}}>{subs.map((s,i)=><span key={i}>{s.l} <span style={{color:s.c||"#434343",fontWeight:600}}>{s.v}</span></span>)}</div>}
+    </div>
+  );
+}
+function Panel({title,extra,children,style}){
+  return (
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",...style}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <span style={{fontSize:14,fontWeight:600,color:"#1F1F1F"}}>{title}</span>
+        {extra&&<span style={{fontSize:12,color:"#1677FF",cursor:"pointer"}}>{extra}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const DATA = [
+  {id:"001",name:"Youni Lab 優尼實驗室",tax:"90828417",owner:"王小明",phone:"02-2345-6789",industry:"軟體服務",market:"台灣",status:"營業中",capital:"NT$ 5,000,000",date:"2019/03/15"},
+  {id:"002",name:"未來科技股份有限公司",tax:"24681357",owner:"李大華",phone:"02-8765-4321",industry:"電子製造",market:"台灣",status:"營業中",capital:"NT$ 12,000,000",date:"2020/07/22"},
+  {id:"003",name:"智慧數據有限公司",tax:"13572468",owner:"陳美玲",phone:"03-1122-3344",industry:"資料分析",market:"日本",status:"停業",capital:"NT$ 800,000",date:"2018/11/03"},
+  {id:"004",name:"創新工坊企業社",tax:"55667788",owner:"張志明",phone:"04-5566-7788",industry:"設計顧問",market:"台灣",status:"營業中",capital:"NT$ 3,200,000",date:"2021/05/18"},
+  {id:"005",name:"木介空間設計有限公司",tax:"99887766",owner:"林彥廷",phone:"02-3344-5566",industry:"室內設計",market:"台灣",status:"營業中",capital:"NT$ 1,500,000",date:"2022/01/30"},
+  {id:"006",name:"和能機械股份有限公司",tax:"11223344",owner:"黃淑芬",phone:"07-9988-7766",industry:"機械工業",market:"美國",status:"停業",capital:"NT$ 9,800,000",date:"2017/09/12"},
+  {id:"007",name:"榮懋工業計器有限公司",tax:"66778899",owner:"吳建宏",phone:"02-6677-8899",industry:"精密儀器",market:"台灣",status:"營業中",capital:"NT$ 6,400,000",date:"2020/12/05"},
+  {id:"008",name:"春澤企業股份有限公司",tax:"33445566",owner:"蔡雅婷",phone:"06-3344-5566",industry:"貿易服務",market:"日本",status:"營業中",capital:"NT$ 2,100,000",date:"2023/04/08"},
+];
+
+function StatusBadge({status}){
+  const ok = status==="營業中";
+  return <span style={{display:"inline-block",width:"max-content",maxWidth:"none",flexShrink:0,
+    fontSize:12,fontWeight:500,padding:"2px 8px",borderRadius:999,whiteSpace:"nowrap",wordBreak:"keep-all",lineHeight:"18px",
+    background:ok?"var(--success-light)":"var(--error-light)",
+    color:ok?"var(--success-text)":"var(--error-text)",
+    border:"1px solid "+(ok?"var(--success-border)":"var(--error-border)")}}>{status}</span>;
+}
+function Cb({checked,indeterminate,onChange}){
+  return <div onClick={e=>{e.stopPropagation();onChange();}}
+    style={{width:16,height:16,borderRadius:4,border:"1.5px solid "+(checked||indeterminate?"var(--primary)":"var(--border)"),
+      background:checked||indeterminate?"var(--primary)":"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+      cursor:"pointer",transition:"all .12s",margin:"0 auto"}}>
+    {checked&&<FI name="check" size={11} color="#fff"/>}
+    {!checked&&indeterminate&&<div style={{width:8,height:2,background:"#fff",borderRadius:1}}/>}
+  </div>;
+}
+function RowAction({icon,label,onClick}){
+  const [h,setH]=useState(false);
+  return <div style={{position:"relative"}}>
+    {h&&<div style={{position:"absolute",bottom:30,left:"50%",transform:"translateX(-50%)",background:"#1F1F1F",
+      color:"#fff",fontSize:12,padding:"5px 10px",borderRadius:6,whiteSpace:"nowrap",zIndex:30,pointerEvents:"none"}}>{label}</div>}
+    <div onClick={e=>{e.stopPropagation();onClick&&onClick();}} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{width:24,height:24,borderRadius:"50%",background:h?"#E5E5E5":"#F0F0F0",display:"flex",alignItems:"center",
+        justifyContent:"center",cursor:"pointer",transition:"background .12s"}}>
+      <FI name={icon} size={14} color={h?"#434343":"var(--fg-2)"}/>
+    </div>
+  </div>;
+}
+
+// ── Sidebar Nav Item（照 design system）──
+
+const CRUMBS = {
+  "dashboard":["總覽"],
+  "list-basic":["列表頁","一般列表頁"],
+  "list-card":["列表頁","卡片列表頁"],
+  "form-basic":["表單頁","一般表單頁"],
+  "form-steps":["表單頁","步驟表單頁"],
+  "detail":["詳情頁"],
+  "settings":["設定頁"],
+  "profile":["個人中心"],
+};
+
+function DashboardPage(){
+  const stages=[["企劃",6,9],["素材",2,9],["撰文",0,9],["發布",1,9],["追蹤",0,9]];
+  const pie=[["企劃",6],["素材",2],["發布",1]]; const pieTotal=9;
+  const tasks=[["延長電動工具壽命的秘密",88,"6月3日"],["工業液壓品牌怎麼選？Bosch、Parker 完整比較",13,"6月3日"],["台南室內設計公司完整指南",13,"5月18日"]];
+  return (
+<main style={{flex:1,padding:"24px 32px",background:"var(--bg-page)"}}>
+          {/* Page Header */}
+          <div style={{marginBottom:20}}>
+            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"#1F1F1F"}}>總覽</h1>
+            <p style={{fontSize:13,color:"#8C8C8C",margin:"4px 0 0"}}>2026年6月13日 星期六 · 8 個客戶 · 9 個任務</p>
+          </div>
+
+          {/* Stat Card 排 */}
+          <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+            <StatCard label="全部任務" value="9" icon="list" iconColor="#1677FF" iconBg="#E6F4FF" subs={[{l:"進行中",v:"3",c:"#1677FF"},{l:"已完成",v:"0",c:"#389E0D"}]}/>
+            <StatCard label="等待客戶" value="0" icon="clock" iconColor="#D68C24" iconBg="#FFFCF0" subs={[{l:"需催促",v:"0"}]}/>
+            <StatCard label="被退回" value="0" icon="alert-circle" iconColor="#CF1322" iconBg="#FFF1F0" subs={[{l:"需修正",v:"0"}]}/>
+            <StatCard label="本月完成" value="0" icon="check-circle" iconColor="#389E0D" iconBg="#F6FFED" subs={[{l:"目標",v:"20"}]}/>
+          </div>
+
+          {/* 主網格：階段分布 + 任務組成（1:1 均分）*/}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <Panel title="階段分布" extra="共 9 個任務">
+              <div style={{display:"flex",flexDirection:"column",gap:11}}>
+                {stages.map(([l,v,t],i)=>{const pct=Math.round(v/t*100);return(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{width:18,height:18,borderRadius:5,background:"#F0F0F0",color:"#8C8C8C",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                    <span style={{width:44,fontSize:13,color:"#434343",flexShrink:0}}>{l}</span>
+                    <div style={{flex:1,height:12,borderRadius:6,background:"#F0F0F0",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",borderRadius:6,background:VIZ_MAIN}}/></div>
+                    <span style={{width:34,textAlign:"right",fontSize:13,color:"#1F1F1F",flexShrink:0}}>{pct}%</span>
+                    <span style={{width:16,textAlign:"right",fontSize:13,color:"#8C8C8C",fontFamily:"var(--mono)",flexShrink:0}}>{v}</span>
+                  </div>
+                );})}
+              </div>
+            </Panel>
+            <Panel title="任務組成">
+              <div style={{display:"flex",alignItems:"center",gap:20}}>
+                <svg viewBox="0 0 120 120" style={{width:120,height:120,flexShrink:0}}>
+                  {(()=>{let a0=-Math.PI/2;const cx=60,cy=60,r=52,ir=32;return pie.map(([l,v],i)=>{
+                    const a1=a0,a2=a0+(v/pieTotal)*Math.PI*2;a0=a2;
+                    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+                    const xi1=cx+ir*Math.cos(a1),yi1=cy+ir*Math.sin(a1),xi2=cx+ir*Math.cos(a2),yi2=cy+ir*Math.sin(a2);
+                    const lg=a2-a1>Math.PI?1:0;
+                    return <path key={i} d={`M${x1},${y1} A${r},${r} 0 ${lg} 1 ${x2},${y2} L${xi2},${yi2} A${ir},${ir} 0 ${lg} 0 ${xi1},${yi1} Z`} fill={VIZ[i]}/>;
+                  });})()}
+                  <text x="60" y="56" textAnchor="middle" fontSize="22" fontWeight="600" fill="#1F1F1F" fontFamily="var(--font)">9</text>
+                  <text x="60" y="74" textAnchor="middle" fontSize="11" fill="#8C8C8C" fontFamily="var(--font)">總任務</text>
+                </svg>
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
+                  {pie.map(([l,v],i)=>(
+                    <div key={l} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#434343"}}>
+                      <span style={{width:10,height:10,borderRadius:3,background:VIZ[i],flexShrink:0}}/>
+                      <span style={{flex:1}}>{l}</span>
+                      <span style={{color:"#8C8C8C",fontFamily:"var(--mono)",fontSize:12}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Panel>
+          </div>
+
+          {/* 次網格：本月預測 + 進行中任務（1:1）*/}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <Panel title="本月預測">
+              <div style={{display:"flex",justifyContent:"space-around",textAlign:"center"}}>
+                {[["已完成","0","#389E0D"],["預估月底","0","#1677FF"],["日均完成","0",null],["進行中","3",null]].map(([l,v,c])=>(
+                  <div key={l}><div style={{fontSize:13,color:"#8C8C8C",marginBottom:8}}>{l}</div><div style={{fontSize:24,fontWeight:700,color:c||"#1F1F1F"}}>{v}</div></div>
+                ))}
+              </div>
+              <div style={{fontSize:13,color:"#BFBFBF",marginTop:16,paddingTop:14,borderTop:"1px solid #F0F0F0"}}>剩餘 17 天，按目前速度預估</div>
+            </Panel>
+            <Panel title="進行中的任務" extra="查看全部">
+              <div style={{display:"flex",flexDirection:"column"}}>
+                {tasks.map(([t,p,d],i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:i<tasks.length-1?"1px solid #F5F5F5":"none"}}>
+                    <span style={{flex:1,fontSize:13,color:"#434343",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{t}</span>
+                    <div style={{width:64,height:4,borderRadius:999,background:"#F0F0F0",overflow:"hidden",flexShrink:0}}><div style={{width:p+"%",height:"100%",background:VIZ_MAIN,borderRadius:999}}/></div>
+                    <span style={{fontSize:11,color:"#8C8C8C",width:30,textAlign:"right",flexShrink:0}}>{p}%</span>
+                    <span style={{fontSize:12,color:"#BFBFBF",width:48,textAlign:"right",flexShrink:0}}>{d}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </div>
+        </main>
+  );
+}
+
+function ListPage(){
+  const [selected,setSelected]=useState([]);
+  const [search,setSearch]=useState("");
+  const [tags,setTags]=useState(["狀態：營業中"]);
+  const [hovRow,setHovRow]=useState(null);
+  const [menuRow,setMenuRow]=useState(null);
+  const [page,setPage]=useState(1);
+  const allChecked = selected.length===DATA.length;
+  const toggleAll=()=>setSelected(allChecked?[]:DATA.map(d=>d.id));
+  const toggleRow=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  return (
+<main style={{flex:1,padding:"24px 32px",background:"var(--bg-page)"}}>
+          <div style={{display:"flex",alignItems:"flex-start",marginBottom:20}}>
+            <div style={{flex:1}}>
+              <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"#1F1F1F"}}>公司列表</h1>
+              <p style={{fontSize:13,color:"#8C8C8C",margin:"4px 0 0"}}>管理所有已登記的公司資料</p>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn variant="secondary"><FI name="download" size={14}/>匯出</Btn>
+              <Btn variant="primary"><FI name="plus" size={14} color="#fff"/>新增公司</Btn>
+            </div>
+          </div>
+
+          <div style={{background:"#fff",border:"1px solid var(--border)",borderRadius:12}}>
+            {selected.length===0 ? (
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",borderBottom:"1px solid #F0F0F0",flexWrap:"wrap"}}>
+                <div style={{position:"relative",width:240}}>
+                  <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}><FI name="search" size={14} color="#BFBFBF"/></div>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜尋公司名稱…"
+                    style={{width:"100%",height:40,padding:"0 12px 0 34px",fontSize:14,color:"#1F1F1F",
+                      border:"1px solid var(--border)",borderRadius:8,outline:"none",background:"#fff"}}/>
+                </div>
+                <Btn variant="secondary"><FI name="filter" size={14}/>篩選</Btn>
+                {tags.map(t=>(
+                  <div key={t} style={{display:"inline-flex",alignItems:"center",gap:6,height:28,padding:"0 6px 0 10px",
+                    borderRadius:14,background:"var(--bg-2)",border:"1px solid var(--border)",fontSize:12,color:"#595959"}}>
+                    {t}<span onClick={()=>setTags(tags.filter(x=>x!==t))} style={{display:"flex",cursor:"pointer",padding:2}}><FI name="x" size={12} color="#8C8C8C"/></span>
+                  </div>
+                ))}
+                <div style={{flex:1}}/>
+                <span style={{fontSize:13,color:"#8C8C8C"}}>共 {DATA.length} 筆</span>
+              </div>
+            ) : (
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--info-border)",background:"#F0F7FF"}}>
+                <span style={{fontSize:14,fontWeight:500,color:"#0A2B41"}}>已選 <strong>{selected.length}</strong> 筆</span>
+                <span onClick={()=>setSelected([])} style={{fontSize:13,color:"var(--info)",cursor:"pointer"}}>取消選取</span>
+                <div style={{flex:1}}/>
+                <Btn variant="secondary"><FI name="download" size={14}/>匯出所選</Btn>
+                <Btn variant="secondary" style={{border:"1px solid var(--error-border)",color:"var(--error-text)"}}><FI name="trash-2" size={14} color="var(--error-text)"/>刪除</Btn>
+              </div>
+            )}
+            <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:1280,tableLayout:"auto"}}>
+              <thead><tr>
+                <th style={{width:48,padding:"12px 0",borderBottom:"1px solid var(--border)"}}>
+                  <Cb checked={allChecked} indeterminate={selected.length>0&&!allChecked} onChange={toggleAll}/>
+                </th>
+                {["公司名稱","統一編號","負責人","聯絡電話","產業類別","市場","狀態","營運資金","成立日期"].map(h=>(
+                  <th key={h} style={{textAlign:"left",padding:"12px 16px",fontWeight:500,color:"#595959",fontSize:13,borderBottom:"1px solid var(--border)",whiteSpace:"nowrap",minWidth:h==="狀態"?100:undefined}}>{h}</th>
+                ))}
+                <th style={{textAlign:"right",padding:"12px 16px",fontWeight:500,color:"#595959",fontSize:13,borderBottom:"1px solid var(--border)",
+                  position:"sticky",right:0,background:"#fff",boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.08)",whiteSpace:"nowrap"}}>操作</th>
+              </tr></thead>
+              <tbody>
+                {DATA.map((r,ri)=>{
+                  const sel=selected.includes(r.id);
+                  const last=ri===DATA.length-1;
+                  const bb=last?"none":"1px solid #F0F0F0";
+                  return (
+                    <tr key={r.id} onClick={()=>toggleRow(r.id)} onMouseEnter={()=>setHovRow(ri)} onMouseLeave={()=>setHovRow(null)}
+                      style={{background:sel?"#F0F7FF":hovRow===ri?"var(--bg-2)":"#fff",cursor:"pointer",transition:"background .1s",height:48}}>
+                      <td style={{width:48,padding:0,borderBottom:bb,verticalAlign:"middle"}}><Cb checked={sel} onChange={()=>toggleRow(r.id)}/></td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#1F1F1F",fontWeight:500,whiteSpace:"nowrap"}}>{r.name}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",fontFamily:"var(--mono)",fontSize:13,whiteSpace:"nowrap"}}>{r.tax}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",whiteSpace:"nowrap"}}>{r.owner}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",fontFamily:"var(--mono)",fontSize:13,whiteSpace:"nowrap"}}>{r.phone}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",whiteSpace:"nowrap"}}>{r.industry}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",whiteSpace:"nowrap"}}>{r.market}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,whiteSpace:"nowrap",minWidth:100}}><StatusBadge status={r.status}/></td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",fontFamily:"var(--mono)",fontSize:13,whiteSpace:"nowrap"}}>{r.capital}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,color:"#595959",whiteSpace:"nowrap"}}>{r.date}</td>
+                      <td style={{padding:"0 16px",borderBottom:bb,position:"sticky",right:0,
+                        background:sel?"#F0F7FF":hovRow===ri?"#FAFAFA":"#fff",boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.08)"}}>
+                        <div style={{display:"flex",justifyContent:"flex-end",gap:8,position:"relative"}} onClick={e=>e.stopPropagation()}>
+                          <RowAction icon="eye" label="查看"/>
+                          <RowAction icon="edit-2" label="編輯"/>
+                          <RowAction icon="trash-2" label="刪除"/>
+                          <RowAction icon="more-horizontal" label="更多" onClick={()=>setMenuRow(menuRow===ri?null:ri)}/>
+                          {menuRow===ri&&<React.Fragment>
+                            <div onClick={()=>setMenuRow(null)} style={{position:"fixed",inset:0,zIndex:40}}/>
+                            <div style={{position:"absolute",top:34,right:0,width:140,background:"#fff",border:"1px solid var(--border)",
+                              borderRadius:10,padding:4,boxShadow:"0 4px 16px rgba(0,0,0,0.08)",zIndex:50}}>
+                              {[["copy","建立副本"],["slash","停用"],["download","匯出此筆"]].map(([ic,lb])=>(
+                                <div key={lb} onClick={()=>setMenuRow(null)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#595959"}}
+                                  onMouseEnter={e=>e.currentTarget.style.background="var(--bg-2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                  <FI name={ic} size={14} color="#8C8C8C"/>{lb}
+                                </div>
+                              ))}
+                            </div>
+                          </React.Fragment>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:"1px solid #F0F0F0"}}>
+              <span style={{fontSize:13,color:"#8C8C8C"}}>顯示 1–{DATA.length}，共 48 筆</span>
+              <div style={{display:"flex",gap:4}}>
+                {["‹",1,2,3,4,"›"].map((p,i)=>{
+                  const a=p===page;
+                  return <div key={i} onClick={()=>typeof p==="number"&&setPage(p)}
+                    style={{minWidth:32,height:32,padding:"0 8px",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:13,cursor:"pointer",background:a?"var(--primary)":"transparent",color:a?"#fff":"#595959",
+                      border:a?"none":"1px solid var(--border)"}}>{p}</div>;
+                })}
+              </div>
+            </div>
+          </div>
+        </main>
+  );
+}
+
+function PlaceholderPage({title}){
+  return (
+    <main style={{flex:1,padding:"24px 32px",background:"var(--bg-page)"}}>
+      <div style={{marginBottom:20}}>
+        <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"#1F1F1F"}}>{title}</h1>
+        <p style={{fontSize:13,color:"#8C8C8C",margin:"4px 0 0"}}>此頁面樣板待製作</p>
+      </div>
+      <div style={{background:"#fff",border:"1px dashed #D9D9D9",borderRadius:12,padding:"64px 24px",textAlign:"center",color:"#BFBFBF",fontSize:14}}>
+        <FI name="file" size={32} color="#D9D9D9" style={{margin:"0 auto 12px"}}/>
+        {title} — 內容待補
+      </div>
+    </main>
+  );
+}
+
+function App(){
+  const [userMenu,setUserMenu]=useState(false);
+  const [active,setActive]=useState("dashboard");
+  const [expanded,setExpanded]=useState({});
+  const [collapsed,setCollapsed]=useState(false);
+  const toggle=k=>setExpanded(p=>({...p,[k]:!p[k]}));
+  const crumbs = CRUMBS[active] || ["頁面"];
+
+  const renderPage = () => {
+    if(active==="dashboard") return <DashboardPage/>;
+    if(active==="list-basic") return <ListPage/>;
+    const titles={"list-card":"卡片列表頁","form-basic":"一般表單頁","form-steps":"步驟表單頁","detail":"詳情頁","settings":"設定頁","profile":"個人中心"};
+    return <PlaceholderPage title={titles[active]||"頁面"}/>;
+  };
+
+  return (
+    <div style={{display:"flex",minHeight:"100vh"}}>
+      <aside style={{width:collapsed?56:240,background:"#fff",borderRight:"1px solid #E7EAEC",
+        position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:100,transition:"width 200ms ease",overflow:"hidden"}}>
+        <div style={{height:56,padding:"0 14px",borderBottom:"1px solid #F0F0F0",
+          display:"flex",alignItems:"center",justifyContent:collapsed?"center":"space-between",flexShrink:0}}>
+          {!collapsed && <img src={LOGO} alt="Youni Lab" style={{height:24,width:"auto",display:"block",flexShrink:0}}/>}
+          <div onClick={()=>setCollapsed(c=>!c)}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"background 120ms"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="sidebar" size={18} color="#8C8C8C"/>
+          </div>
+        </div>
+        {!collapsed && <div style={{margin:"10px 12px",display:"flex",alignItems:"center",gap:6,background:"#FAFAFA",
+          border:"1px solid #D9D9D9",borderRadius:8,padding:"7px 10px",cursor:"pointer",flexShrink:0}}>
+          <FI name="search" size={14} color="#8C8C8C"/>
+          <span style={{fontSize:12,color:"#BFBFBF",flex:1}}>搜尋...</span>
+          <span style={{fontSize:10,color:"#8C8C8C",background:"#fff",border:"1px solid #D9D9D9",borderRadius:4,padding:"1px 5px"}}>⌘/</span>
+        </div>}
+        <nav style={{flex:1,padding:"4px 0",overflowY:"auto"}}>
+          {!collapsed && <div style={{fontSize:12,fontWeight:400,letterSpacing:"0.06em",textTransform:"uppercase",color:"#BFBFBF",padding:"16px 16px 6px"}}>主選單</div>}
+          {NAV.map(n=><NavItem key={n.id} item={n} active={active} setActive={setActive} expanded={expanded} toggle={toggle} collapsed={collapsed}/>)}
+        </nav>
+      </aside>
+
+      <div style={{marginLeft:collapsed?56:240,flex:1,display:"flex",flexDirection:"column",minWidth:0,transition:"margin-left 200ms ease"}}>
+        <header style={{height:56,background:"#fff",borderBottom:"1px solid #F0F0F0",
+          display:"flex",alignItems:"center",padding:"0 24px",gap:8,position:"sticky",top:0,zIndex:50}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#8C8C8C",flex:1}}>
+            {crumbs.map((c,i)=>(
+              <React.Fragment key={i}>
+                {i>0 && <span style={{color:"#D9D9D9"}}>/</span>}
+                <span style={{color:i===crumbs.length-1?"#1F1F1F":"#8C8C8C",fontWeight:i===crumbs.length-1?500:400}}>{c}</span>
+              </React.Fragment>
+            ))}
+          </div>
+          <div style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="bell" size={18} color="#595959"/>
+            <div style={{position:"absolute",top:5,right:6,width:8,height:8,borderRadius:"50%",background:"#F5222D",border:"1.5px solid #fff"}}/>
+          </div>
+          <div style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="help-circle" size={18} color="#595959"/>
+          </div>
+          <div style={{width:1,height:20,background:"#F0F0F0",margin:"0 4px"}}/>
+          <div onClick={()=>setUserMenu(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",position:"relative"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"#2E4A5E",color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>CF</div>
+            <FI name="chevron-down" size={14} color="#8C8C8C"/>
+            {userMenu&&<div style={{position:"absolute",top:40,right:0,width:200,background:"#fff",border:"1px solid #F0F0F0",
+              borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.08)",padding:6,zIndex:100}}>
+              <div style={{padding:"8px 10px",borderBottom:"1px solid #F0F0F0",marginBottom:4}}>
+                <div style={{fontSize:13,fontWeight:600}}>Cody Fisher</div>
+                <div style={{fontSize:11,color:"#8C8C8C"}}>c.fisher@gmail.com</div>
+              </div>
+              {[["user","個人資料"],["settings","帳號設定"],["log-out","登出"]].map(([ic,t])=>(
+                <div key={t} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",
+                  fontSize:13,color:t==="登出"?"#CF1322":"#595959"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <FI name={ic} size={16} color={t==="登出"?"#CF1322":"#8C8C8C"}/>{t}
+                </div>
+              ))}
+            </div>}
+          </div>
+        </header>
+        {renderPage()}
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

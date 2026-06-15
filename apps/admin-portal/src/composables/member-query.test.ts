@@ -72,6 +72,15 @@ describe("queryMembers", () => {
     expect(result.items.map((member) => member.displayName)).toEqual(["Chris"]);
   });
 
+  it("keeps API status values for filtering", () => {
+    const result = queryMembers(members, {
+      ...baseQuery,
+      status: "invited",
+    });
+
+    expect(result.items.map((member) => member.displayName)).toEqual(["Ben"]);
+  });
+
   it("sorts and paginates the filtered result", () => {
     const result = queryMembers(members, {
       ...baseQuery,

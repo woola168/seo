@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kinsan SEO — 新增員工（切版參照）</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   Design Tokens（對應 DESIGN.md，工程轉 React 時抽成 CSS variables / theme）
+   ═══════════════════════════════════════════ */
+:root {
+  --primary:#0A2B41; --primary-hover:#2E4A5E; --primary-light:#E7EAEC;
+  --info:#1677FF; --info-light:#E6F4FF; --info-text:#0958D9;
+  --success-text:#389E0D; --warning-text:#D68C24; --error-text:#CF1322;
+  --fg:#1F1F1F; --fg-2:#595959; --fg-3:#8C8C8C; --fg-4:#BFBFBF;
+  --bg-page:#F5F5F5; --bg:#FFFFFF; --bg-2:#FAFAFA;
+  --border:#D9D9D9; --border-subtle:#F0F0F0;
+  --radius-card:12px; --radius-md:8px; --radius-sm:6px;
+  --font:'Inter','Noto Sans TC',-apple-system,sans-serif;
+  --mono:'IBM Plex Mono','Menlo',monospace;
+  --sidebar-w:240px; --sidebar-w-collapsed:56px;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--font); background:var(--bg-page); color:var(--fg); -webkit-font-smoothing:antialiased; }
+.ic { display:block; flex-shrink:0; }
+/* ═══ 統一卷軸樣式（細灰、常駐）═══ */
+* { scrollbar-width:thin; scrollbar-color:#D9D9D9 transparent; }   /* Firefox */
+::-webkit-scrollbar { width:8px; height:8px; }                      /* 縱向 + 橫向同寬 */
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#D9D9D9; border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:#BFBFBF; }
+::-webkit-scrollbar-corner { background:transparent; }
+
+/* ═══ Layout shell ═══ */
+.app { display:flex; height:100vh; overflow:hidden; }
+
+/* ═══ Sidebar → <Sidebar/> ═══ */
+.sidebar { width:var(--sidebar-w); background:var(--bg); border-right:1px solid var(--border-subtle);
+  position:fixed; top:0; left:0; bottom:0; display:flex; flex-direction:column; z-index:100; }
+.sidebar__logo { height:56px; padding:0 14px; border-bottom:1px solid var(--border-subtle);
+  display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.sidebar__logo img { height:24px; width:auto; display:block; }
+.sidebar__collapse { width:28px; height:28px; border-radius:var(--radius-sm); display:flex; align-items:center;
+  justify-content:center; cursor:pointer; color:var(--fg-3); transition:background .12s; }
+.sidebar__collapse:hover { background:var(--border-subtle); }
+.sidebar__nav { flex:1; padding:4px 0; overflow-y:auto; }
+.nav-group__title { font-size:12px; font-weight:400; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--fg-4); padding:16px 16px 6px; }
+.nav-item { display:flex; align-items:center; gap:8px; padding:10px 12px; margin:1px 8px;
+  border-radius:var(--radius-md); cursor:pointer; font-size:14px; color:var(--fg-2); transition:background .12s; }
+.nav-item:hover { background:var(--bg-2); }
+.nav-item .ic { color:var(--fg-3); }
+.nav-item--active { background:var(--primary-light); color:var(--primary); font-weight:500; }
+.nav-item--active .ic { color:var(--primary); }
+
+/* ═══ Main ═══ */
+.main { margin-left:var(--sidebar-w); flex:1; display:flex; flex-direction:column; min-width:0; height:100vh; overflow:hidden; }
+
+/* ═══ Top Header → <TopHeader/> ═══ */
+.topbar { height:56px; background:var(--bg); border-bottom:1px solid var(--border-subtle);
+  display:flex; align-items:center; padding:0 24px; gap:8px; position:sticky; top:0; z-index:50; }
+.topbar__crumbs { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--fg-3); }
+.topbar__crumbs .sep { color:var(--border); }
+.topbar__crumbs .cur { color:var(--fg); font-weight:500; }
+.topbar__spacer { flex:1; }
+.topbar__btn { width:32px; height:32px; border-radius:var(--radius-sm); display:flex; align-items:center;
+  justify-content:center; cursor:pointer; color:var(--fg-2); position:relative; transition:background .12s; }
+.topbar__btn:hover { background:var(--border-subtle); }
+.topbar__badge { position:absolute; top:3px; right:4px; min-width:16px; height:16px; padding:0 4px;
+  border-radius:999px; background:var(--error-text); color:#fff; font-size:10px; font-weight:600;
+  display:flex; align-items:center; justify-content:center; border:1.5px solid #fff; }
+.topbar__divider { width:1px; height:20px; background:var(--border-subtle); margin:0 4px; }
+.topbar__user { display:flex; align-items:center; gap:4px; cursor:pointer; }
+.avatar { width:28px; height:28px; border-radius:50%; background:var(--primary-hover); color:#fff;
+  font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+/* ═══ Content ═══ */
+.content { flex:1; padding:24px 32px; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+.page-header { display:flex; align-items:flex-start; gap:12px; margin-bottom:20px; flex-wrap:wrap; flex-shrink:0; }
+.page-header__main { flex:1; min-width:240px; }
+.page-header__title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.page-header__title { font-size:20px; font-weight:600; color:var(--fg); }
+.page-header__desc { font-size:13px; color:var(--fg-3); margin-top:4px; }
+.page-header__actions { display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; }
+.btn { height:40px; padding:0 16px; border-radius:var(--radius-md); font-size:14px; font-weight:500;
+  font-family:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; white-space:nowrap; }
+.btn--primary { border:1px solid var(--primary); background:var(--primary); color:#fff; }
+.btn--primary:hover { background:var(--primary-hover); }
+.btn--secondary { border:1px solid var(--border); background:var(--bg); color:var(--fg); }
+.btn--secondary:hover { background:var(--bg-2); }
+.btn--ghost { border:1px solid var(--border); background:var(--bg); color:var(--fg-3); }
+
+/* ═══ Stat Card → <StatCard/>（規範 C 版：圖標色塊 + 標籤 + 數字 + 副指標）═══ */
+.stat-row { display:flex; gap:16px; flex-wrap:wrap; }
+.stat-card { flex:1; min-width:0; background:var(--bg); border:1px solid var(--primary-light);
+  border-radius:var(--radius-card); padding:16px 18px; }
+.stat-card__head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.stat-card__badge { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.stat-card__label { font-size:13px; color:var(--fg-3); }
+.stat-card__value { font-size:26px; font-weight:600; color:var(--fg); line-height:1.1; margin-bottom:8px; }
+.stat-card__subs { display:flex; gap:14px; font-size:12px; color:var(--fg-3); }
+.stat-card__subs b { font-weight:600; }
+/* 語意色塊（淺底 + 圖示色）*/
+.tint-info   { background:var(--info-light); color:var(--info); }
+.tint-warn   { background:#FFFCF0; color:var(--warning-text); }
+.tint-error  { background:#FFF1F0; color:var(--error-text); }
+.tint-success{ background:#F6FFED; color:var(--success-text); }
+
+/* ═══ Sidebar 收合狀態（.app--collapsed 切換）═══ */
+.app--collapsed .sidebar { width:var(--sidebar-w-collapsed); }
+.app--collapsed .main { margin-left:var(--sidebar-w-collapsed); }
+.sidebar, .main { transition:width 200ms ease, margin-left 200ms ease; }
+.sidebar { overflow:hidden; }
+.app--collapsed .sidebar__logo { justify-content:center; }
+.app--collapsed .sidebar__logo img { display:none; }
+.app--collapsed .nav-group__title { display:none; }
+.app--collapsed .nav-item { justify-content:center; padding:10px 0; }
+.app--collapsed .nav-item span { display:none; }
+.c-info { color:var(--info); } .c-success { color:var(--success-text); }
+
+/* ═══ Top Header 使用者下拉 → <UserMenu/> ═══ */
+.topbar__user { position:relative; }
+.user-menu { position:absolute; top:38px; right:0; width:200px; background:var(--bg);
+  border:1px solid var(--border-subtle); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.08);
+  padding:6px; z-index:200; display:none; }
+.user-menu--open { display:block; }
+.user-menu__head { padding:8px 10px; border-bottom:1px solid var(--border-subtle); margin-bottom:4px; }
+.user-menu__name { font-size:13px; font-weight:600; color:var(--fg); }
+.user-menu__email { font-size:11px; color:var(--fg-3); }
+.user-menu__item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px;
+  cursor:pointer; font-size:13px; color:var(--fg-2); }
+.user-menu__item:hover { background:var(--bg-2); }
+.user-menu__item--danger { color:var(--error-text); }
+
+/* ═══ Command Palette → <CommandPalette/> ═══ */
+.cmdk-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1200; display:none;
+  align-items:flex-start; justify-content:center; padding-top:120px; }
+.cmdk-overlay--open { display:flex; }
+.cmdk { width:560px; max-width:90vw; background:var(--bg); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.15); overflow:hidden; }
+.cmdk__input { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border-subtle); }
+.cmdk__input input { flex:1; border:none; outline:none; font-size:15px; font-family:inherit; color:var(--fg); background:transparent; }
+.cmdk__input input::placeholder { color:var(--fg-4); }
+.cmdk__esc { font-size:11px; color:var(--fg-3); border:1px solid var(--border); border-radius:4px; padding:2px 6px; }
+.cmdk__list { padding:8px; max-height:360px; overflow-y:auto; }
+.cmdk__section { font-size:11px; color:var(--fg-4); text-transform:uppercase; letter-spacing:0.06em; padding:8px 10px 4px; }
+.cmdk__item { display:flex; align-items:center; gap:10px; padding:10px 10px; border-radius:8px; cursor:pointer; font-size:14px; color:var(--fg); }
+.cmdk__item:hover { background:var(--bg-2); }
+
+/* ═══ 權限管理頁專用 ═══ */
+.breadcrumb { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--fg-3); margin-bottom:12px; }
+.breadcrumb .sep { color:var(--border); }
+.breadcrumb .cur { color:var(--fg); font-weight:500; }
+
+/* Tabs → <Tabs/> */
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border-subtle); margin-bottom:20px; flex-shrink:0; }
+.tab { padding:10px 16px; font-size:14px; color:var(--fg-3); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .12s; }
+.tab:hover { color:var(--fg-2); }
+.tab--active { color:var(--primary); font-weight:500; border-bottom-color:var(--primary); }
+
+/* Toolbar */
+.toolbar { display:flex; align-items:center; gap:8px; margin-bottom:16px; flex-wrap:wrap; flex-shrink:0; }
+.toolbar__search { position:relative; width:280px; }
+.toolbar__search input { width:100%; height:40px; padding:0 12px 0 36px; font-size:14px; font-family:inherit;
+  color:var(--fg); border:1px solid var(--border); border-radius:var(--radius-md); outline:none; }
+.toolbar__search input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(10,43,65,0.08); }
+.toolbar__search .ic { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--fg-4); }
+.select { height:40px; padding:0 12px; font-size:14px; color:var(--fg); background:var(--bg); border:1px solid var(--border);
+  border-radius:var(--radius-md); cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.select .ic { color:var(--fg-3); }
+.toolbar__spacer { flex:1; }
+
+/* Card + Table */
+.card { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-card); flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.table-scroll { overflow:auto; flex:1; min-height:0; }       /* A：填滿剩餘高度，只有此區垂直卷動 */
+.table-scroll thead th { position:sticky; top:0; z-index:2; background:var(--bg); }
+.table-scroll thead th.col-action { z-index:3; }              /* 操作欄表頭：橫向+縱向都固定 */
+table { width:100%; border-collapse:collapse; font-size:14px; min-width:980px; }
+thead th { text-align:left; padding:12px 16px; font-weight:500; color:var(--fg-2); font-size:13px;
+  border-bottom:1px solid var(--border); white-space:nowrap; }
+thead th.col-action { text-align:right; position:sticky; right:0; background:var(--bg); box-shadow:-4px 0 8px -4px rgba(0,0,0,0.08); }
+tbody td { padding:0 16px; height:56px; border-bottom:1px solid var(--border-subtle); color:var(--fg-2); white-space:nowrap; vertical-align:middle; }
+tbody tr:last-child td { border-bottom:none; }
+tbody tr:hover { background:var(--bg-2); }
+tbody tr:hover td.col-action { background:var(--bg-2); }
+td.col-name { color:var(--fg); font-weight:500; }
+td.col-email { font-family:var(--mono); font-size:13px; }
+td.col-action { position:sticky; right:0; background:var(--bg); box-shadow:-4px 0 8px -4px rgba(0,0,0,0.08); }
+.row-actions { display:flex; justify-content:flex-end; gap:8px; }
+.row-act { width:24px; height:24px; border-radius:50%; background:var(--border-subtle); display:flex; align-items:center;
+  justify-content:center; cursor:pointer; color:var(--fg-2); transition:background .12s; position:relative; }
+.row-act:hover { background:#E5E5E5; color:#434343; }
+
+/* Badge */
+.badge { display:inline-block; width:max-content; font-size:12px; font-weight:500; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.badge-purple { background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE; }
+.badge-blue   { background:#E6F4FF; color:#0958D9; border:1px solid #91CAFF; }
+.badge-success{ background:#F6FFED; color:#389E0D; border:1px solid #B7EB8F; }
+.badge-muted{ background:#F5F5F5; color:#8C8C8C; border:1px solid #D9D9D9; }
+.col-status { min-width:80px; }
+.col-role { min-width:88px; }
+.muted-time { color:var(--fg-3); font-size:13px; }
+
+/* 更多選單 */
+/* 更多選單改 fixed，避免被 overflow 容器裁切 */
+.more-menu { position:fixed; width:140px; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:4px; box-shadow:0 4px 16px rgba(0,0,0,0.12); z-index:1000; display:none; text-align:left; }
+.more-menu--open { display:block; }
+/* 篩選下拉 */
+.select { position:relative; }
+.select-menu { position:absolute; top:44px; left:0; min-width:140px; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:4px; box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:60; display:none; }
+.select-menu--open { display:block; }
+.select-menu__item { padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--fg-2); white-space:nowrap; }
+.select-menu__item:hover { background:var(--bg-2); }
+.select-menu__item--active { color:var(--primary); font-weight:500; background:var(--primary-light); }
+.select--active { border-color:var(--primary); color:var(--primary); }
+/* Pagination */
+.pagination { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-top:1px solid var(--border-subtle); flex-shrink:0; }
+.pagination__info { font-size:13px; color:var(--fg-3); }
+.pagination__pages { display:flex; gap:4px; }
+.page-btn { min-width:32px; height:32px; padding:0 8px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+  font-size:13px; cursor:pointer; background:transparent; color:var(--fg-2); border:1px solid var(--border); }
+.page-btn--active { background:var(--primary); color:#fff; border:none; }
+.page-btn--disabled { color:var(--fg-4); cursor:not-allowed; }
+/* 空狀態 */
+.empty-row td { text-align:center; color:var(--fg-4); font-size:14px; height:120px; }
+.more-menu--open { display:block; }
+.more-menu__item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; cursor:pointer;
+  font-size:13px; color:var(--fg-2); white-space:nowrap; }
+.more-menu__item:hover { background:var(--bg-2); }
+.more-menu__item--danger { color:var(--error-text); }
+
+/* ═══ 表單頁（窄卡 560 置中，照規範）═══ */
+.form-card { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-card); padding:24px 28px; }
+.form-card__inner { max-width:560px; margin:0 auto; }   /* 表單 560 置中 */
+.form-back { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--fg-3); cursor:pointer; margin-bottom:16px; }
+.form-back:hover { color:var(--fg-2); }
+.form-group-title { font-size:14px; font-weight:600; color:var(--fg); padding-bottom:10px; border-bottom:1px solid var(--border-subtle); margin-bottom:20px; }
+.field { margin-bottom:18px; }
+.field-row { display:grid; grid-template-columns:1fr 1fr; column-gap:20px; }
+.field-label { display:block; font-size:13px; font-weight:500; color:var(--fg); margin-bottom:6px; }
+.field-label .req { color:var(--error-text); margin-left:3px; }
+.input { width:100%; height:40px; padding:0 12px; font-size:14px; font-family:inherit; color:var(--fg); background:var(--bg);
+  border:1px solid var(--border); border-radius:var(--radius-md); outline:none; transition:border-color .15s, box-shadow .15s; }
+.input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(10,43,65,0.08); }
+.input::placeholder { color:var(--fg-4); }
+.input-wrap { position:relative; }
+.input-icon { position:absolute; right:12px; top:50%; transform:translateY(-50%); display:flex; cursor:pointer; color:var(--fg-3); }
+select.input { cursor:pointer; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238C8C8C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:34px; }
+.field-help { font-size:13px; color:var(--fg-3); margin-top:6px; }
+/* 密碼強度 */
+.pw-strength { display:flex; gap:4px; margin-top:8px; }
+.pw-bar { flex:1; height:4px; border-radius:999px; background:var(--border-subtle); transition:background .2s; }
+.pw-bar--weak { background:#F5222D; } .pw-bar--mid { background:#FDB338; } .pw-bar--strong { background:#52C41A; }
+.pw-label { font-size:12px; margin-top:6px; }
+.pw-rules { margin-top:10px; display:flex; flex-direction:column; gap:5px; }
+.pw-rule { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-4); }
+.pw-rule--ok { color:var(--success-text); }
+.form-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:28px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ════ Sidebar：對應 React <Sidebar/> ════ -->
+  <aside class="sidebar">
+    <div class="sidebar__logo">
+      <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCA1NSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iNTAuMjUiIHdpZHRoPSI0LjUiIGhlaWdodD0iNC41IiByeD0iMi4yNSIgZmlsbD0iI0ZEQjMzOCIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTQ2Ljg3NSAxOS41QzQ3LjA4MjEgMTkuNSA0Ny4yNSAxOS42Njc5IDQ3LjI1IDE5Ljg3NUw0Ny4yNSAyMi43NUM0Ny4yNSAyMi45MzkzIDQ3LjM1NTIgMjMuMTA0IDQ3LjUxMDMgMjMuMTg4OUM0Ny42MzE0IDIzLjI1NTIgNDcuNzUgMjMuMzYxOSA0Ny43NSAyMy41QzQ3Ljc1IDIzLjc3NjEgNDcuNTE3NCAyNC4wMDkzIDQ3LjI2MzEgMjMuOTAxNkM0Ni44MTQ3IDIzLjcxMTggNDYuNSAyMy4yNjc2IDQ2LjUgMjIuNzVMNDYuNSAxOS44NzVDNDYuNSAxOS42Njc5IDQ2LjY2NzkgMTkuNSA0Ni44NzUgMTkuNVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik01MS42MjUgMTkuNUM1MS44MzIxIDE5LjUgNTIgMTkuNjY3OSA1MiAxOS44NzVWMjMuNjI1QzUyIDIzLjgzMjEgNTEuODMyMSAyNCA1MS42MjUgMjRDNTEuNDE3OSAyNCA1MS4yNSAyMy44MzIxIDUxLjI1IDIzLjYyNVYxOS44NzVDNTEuMjUgMTkuNjY3OSA1MS40MTc5IDE5LjUgNTEuNjI1IDE5LjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTQuMzc1IDIzLjI1QzU0LjU4MjEgMjMuMjUgNTQuNzUgMjMuNDE3OSA1NC43NSAyMy42MjVDNTQuNzUgMjMuODMyMSA1NC41ODIxIDI0IDU0LjM3NSAyNEM1NC4xNjc5IDI0IDU0IDIzLjgzMjEgNTQgMjMuNjI1QzU0IDIzLjQxNzkgNTQuMTY3OSAyMy4yNSA1NC4zNzUgMjMuMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTAuMzc1IDIxQzUwLjU4MjEgMjEgNTAuNzUgMjEuMTY3OSA1MC43NSAyMS4zNzVWMjNDNTAuNzUgMjMuMDQ5OCA1MC43NjQ1IDIzLjA5NjEgNTAuNzg5NiAyMy4xMzUxQzUwLjg2NDMgMjMuMjUxMiA1MSAyMy4zNjE5IDUxIDIzLjVDNTEgMjMuNzc2MSA1MC43NjI3IDI0LjAxMDQgNTAuNTIwNSAyMy44Nzc4QzUwLjIxMDMgMjMuNzA4IDUwIDIzLjM3ODUgNTAgMjNWMjEuMzc1QzUwIDIxLjE2NzkgNTAuMTY3OSAyMSA1MC4zNzUgMjFaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMjAuMjUgOC4yNUMxOC4xNzg5IDguMjUgMTYuNSA5LjkyODkzIDE2LjUgMTJDMTYuNSAxNC4wNzExIDE4LjE3ODkgMTUuNzUgMjAuMjUgMTUuNzVDMjIuMzIxMSAxNS43NSAyNCAxNC4wNzExIDI0IDEyQzI0IDkuOTI4OTMgMjIuMzIxMSA4LjI1IDIwLjI1IDguMjVaTTEzLjUgMTJDMTMuNSA4LjI3MjA4IDE2LjUyMjEgNS4yNSAyMC4yNSA1LjI1QzIzLjk3NzkgNS4yNSAyNyA4LjI3MjA4IDI3IDEyQzI3IDE1LjcyNzkgMjMuOTc3OSAxOC43NSAyMC4yNSAxOC43NUMxNi41MjIxIDE4Ljc1IDEzLjUgMTUuNzI3OSAxMy41IDEyWiIgZmlsbD0iIzA4MkI0MSIvPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTUxLjI1IDIyLjM3NUM1MS4yNSAyMS42MTU2IDUxLjg2NTYgMjEgNTIuNjI1IDIxQzUzLjM4NDQgMjEgNTQgMjEuNjE1NiA1NCAyMi4zNzVWMjIuNjI1QzU0IDIzLjM4NDQgNTMuMzg0NCAyNCA1Mi42MjUgMjRDNTEuODY1NiAyNCA1MS4yNSAyMy4zODQ0IDUxLjI1IDIyLjYyNVYyMi4zNzVaTTUyLjYyNSAyMS43NUM1Mi4yNzk4IDIxLjc1IDUyIDIyLjAyOTggNTIgMjIuMzc1VjIyLjYyNUM1MiAyMi45NzAyIDUyLjI3OTggMjMuMjUgNTIuNjI1IDIzLjI1QzUyLjk3MDIgMjMuMjUgNTMuMjUgMjIuOTcwMiA1My4yNSAyMi42MjVWMjIuMzc1QzUzLjI1IDIyLjAyOTggNTIuOTcwMiAyMS43NSA1Mi42MjUgMjEuNzVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNDggMjIuMzc1QzQ4IDIxLjYxNTYgNDguNjE1NiAyMSA0OS4zNzUgMjFDNTAuMTM0NCAyMSA1MC43NSAyMS42MTU2IDUwLjc1IDIyLjM3NVYyMi42MjVDNTAuNzUgMjMuMzg0NCA1MC4xMzQ0IDI0IDQ5LjM3NSAyNEM0OC42MTU2IDI0IDQ4IDIzLjM4NDQgNDggMjIuNjI1VjIyLjM3NVpNNDkuMzc1IDIxLjc1QzQ5LjAyOTggMjEuNzUgNDguNzUgMjIuMDI5OCA0OC43NSAyMi4zNzVWMjIuNjI1QzQ4Ljc1IDIyLjk3MDIgNDkuMDI5OCAyMy4yNSA0OS4zNzUgMjMuMjVDNDkuNzIwMiAyMy4yNSA1MCAyMi45NzAyIDUwIDIyLjYyNVYyMi4zNzVDNTAgMjIuMDI5OCA0OS43MjAyIDIxLjc1IDQ5LjM3NSAyMS43NVoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00My41IDguMjVDNDEuODQzMSA4LjI1IDQwLjUgOS41OTMxNCA0MC41IDExLjI1VjEyLjc1QzQwLjUgMTYuMDYzNyAzNy44MTM3IDE4Ljc1IDM0LjUgMTguNzVDMzEuMTg2MyAxOC43NSAyOC41IDE2LjA2MzcgMjguNSAxMi43NUwyOC41IDYuNUMyOC41IDYuMjIzODYgMjguNzIzOSA2IDI5IDZMMzEgNkMzMS4yNzYxIDYgMzEuNSA2LjIyMzg2IDMxLjUgNi41TDMxLjUgMTIuNzVDMzEuNSAxNC40MDY5IDMyLjg0MzEgMTUuNzUgMzQuNSAxNS43NUMzNi4xNTY5IDE1Ljc1IDM3LjUgMTQuNDA2OSAzNy41IDEyLjc1VjExLjI1QzM3LjUgNy45MzYyOSA0MC4xODYzIDUuMjUgNDMuNSA1LjI1QzQ2LjgxMzcgNS4yNSA0OS41IDcuOTM2MjkgNDkuNSAxMS4yNUw0OS41IDE3LjVDNDkuNSAxNy43NzYxIDQ5LjI3NjEgMTggNDkgMThMNDcgMThDNDYuNzIzOSAxOCA0Ni41IDE3Ljc3NjEgNDYuNSAxNy41TDQ2LjUgMTEuMjVDNDYuNSA5LjU5MzE0IDQ1LjE1NjkgOC4yNSA0My41IDguMjVaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNTMuNSA2QzUzLjc3NjEgNiA1NCA2LjIyMzg2IDU0IDYuNUw1NCAxNy41QzU0IDE3Ljc3NjEgNTMuNzc2MSAxOCA1My41IDE4SDUxLjVDNTEuMjIzOSAxOCA1MSAxNy43NzYxIDUxIDE3LjVMNTEgNi41QzUxIDYuMjIzODYgNTEuMjIzOSA2IDUxLjUgNkw1My41IDZaIiBmaWxsPSIjMDgyQjQxIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNOSAxOFYxMkgxMlYxOEMxMiAyMS4zMTM3IDkuMzEzNzEgMjQgNiAyNEgzLjVDMy4yMjM4NiAyNCAzIDIzLjc3NjEgMyAyMy41VjIxLjVDMyAyMS4yMjM5IDMuMjIzODYgMjEgMy41IDIxSDZDNy42NTY4NiAyMSA5IDE5LjY1NjkgOSAxOFoiIGZpbGw9IiMwODJCNDEiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yLjUgNkMyLjc3NjE1IDYgMyA2LjIyMzg2IDMgNi41TDMgMTJDMyAxMy42NTY5IDQuMzQzMTUgMTUgNiAxNUM3LjY1Njg2IDE1IDkgMTMuNjU2OSA5IDEyVjYuNUM5IDYuMjIzODYgOS4yMjM4NiA2IDkuNSA2SDExLjVDMTEuNzc2MSA2IDEyIDYuMjIzODYgMTIgNi41VjEyQzEyIDE1LjMxMzcgOS4zMTM3MSAxOCA2IDE4QzIuNjg2MjkgMTggMCAxNS4zMTM3IDAgMTJMMy4zODc1M2UtMDYgNi41QzMuNTU3NjFlLTA2IDYuMjIzODYgMC4yMjM4NjEgNiAwLjUwMDAwNCA2TDIuNSA2WiIgZmlsbD0iIzA4MkI0MSIvPgo8L3N2Zz4K" alt="Kinsan SEO"/>
+      <div class="sidebar__collapse" title="收合" onclick="toggleSidebar()"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/></svg></div>
+    </div>
+    <nav class="sidebar__nav">
+      <!-- 總覽（無分組標題，置頂）-->
+      <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/></svg><span>總覽</span></div>
+
+      <!-- 群組：專案管理 -->
+      <div class="nav-group">
+        <div class="nav-group__title">專案管理</div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='2' y='7' width='20' height='14' rx='2' ry='2'/><path d='M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16'/></svg><span>客戶</span></div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points='9 11 12 14 22 4'/><path d='M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'/></svg><span>任務</span></div>
+      </div>
+
+      <!-- 群組：分析工具 -->
+      <div class="nav-group">
+        <div class="nav-group__title">分析工具</div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='6'/><circle cx='12' cy='12' r='2'/></svg><span>戰情室</span></div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/><polyline points='17 6 23 6 23 12'/></svg><span>策略分析</span></div>
+      </div>
+
+      <!-- 群組：系統 -->
+      <div class="nav-group">
+        <div class="nav-group__title">系統</div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/></svg><span>通知</span></div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/></svg><span>個人設定</span></div>
+        <div class="nav-item nav-item--active"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/></svg><span>權限管理</span></div>
+        <div class="nav-item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/></svg><span>系統設定</span></div>
+      </div>
+    </nav>
+    <!-- 底部 user 區：依需求移除（帳號由 Top Header 承載）-->
+  </aside>
+
+
+
+  <!-- ════ Main ════ -->
+  <div class="main">
+
+    <!-- ════ Top Header：對應 React <TopHeader/>（左麵包屑 + 右側操作）════ -->
+    <header class="topbar">
+      <!-- 左：麵包屑 -->
+      <div class="topbar__crumbs"><span>權限管理</span><span class="sep">/</span><span class="cur">新增員工</span></div>
+      <div class="topbar__spacer"></div>
+      <!-- 右：搜尋 icon（開 command palette）→ 通知 → 頭像 -->
+      <div class="topbar__btn" title="搜尋（⌘K）" onclick="openPalette()"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg></div>
+      <div class="topbar__btn" title="通知"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/></svg><span class="topbar__badge">2</span></div>
+      <div class="topbar__divider"></div>
+      <div class="topbar__user" onclick="toggleUserMenu(event)">
+        <div class="avatar">S</div>
+        <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points='6 9 12 15 18 9'/></svg>
+        <!-- UserMenu → <UserMenu/> -->
+        <div class="user-menu" id="user-menu">
+          <div class="user-menu__head">
+            <div class="user-menu__name">seventychi</div>
+            <div class="user-menu__email">seventychi@kinsan.com</div>
+          </div>
+          <div class="user-menu__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/></svg>個人資料</div>
+          <div class="user-menu__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/></svg>帳號設定</div>
+          <div class="user-menu__item user-menu__item--danger"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CF1322" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/></svg>登出</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ════ Command Palette → <CommandPalette/>（搜尋 icon 開啟）════ -->
+    <div class="cmdk-overlay" id="cmdk" onclick="closePalette(event)">
+      <div class="cmdk" onclick="event.stopPropagation()">
+        <div class="cmdk__input">
+          <svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>
+          <input id="cmdk-input" placeholder="搜尋客戶、任務、關鍵字…" autocomplete="off"/>
+          <span class="cmdk__esc">ESC</span>
+        </div>
+        <div class="cmdk__list">
+          <div class="cmdk__section">快速操作</div>
+          <div class="cmdk__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/></svg>新增客戶</div>
+          <div class="cmdk__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/></svg>新增任務</div>
+          <div class="cmdk__section">前往</div>
+          <div class="cmdk__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/></svg>總覽</div>
+          <div class="cmdk__item"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='2' y='7' width='20' height='14' rx='2'/><path d='M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16'/></svg>客戶</div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- ════ Content ════ -->
+    <main class="content">
+      <!-- 返回（滿版區左上）-->
+      <div class="form-back" onclick="history.back()"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points='15 18 9 12 15 6'/></svg>返回員工列表</div>
+
+      <!-- Page Header（標題移到卡外上方）-->
+      <div class="page-header">
+        <div class="page-header__main">
+          <div class="page-header__title">新增員工</div>
+          <div class="page-header__desc">建立新的員工帳號並設定角色與權限</div>
+        </div>
+      </div>
+
+      <!-- 表單卡（滿版）-->
+      <div class="form-card">
+        <div class="form-card__inner">
+
+            <!-- 姓氏 / 名字 並排 -->
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label">姓氏<span class="req">*</span></label>
+                <input class="input" id="f-last" placeholder="王" oninput="validate()"/>
+              </div>
+              <div class="field">
+                <label class="field-label">名字<span class="req">*</span></label>
+                <input class="input" id="f-first" placeholder="小明" oninput="validate()"/>
+              </div>
+            </div>
+
+            <!-- Email -->
+            <div class="field">
+              <label class="field-label">Email<span class="req">*</span></label>
+              <input class="input" id="f-email" type="email" placeholder="user@kinsan-seo.com" oninput="validate()"/>
+            </div>
+
+            <!-- 角色 / 部門 並排 -->
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label">角色<span class="req">*</span></label>
+                <select class="input"><option>開發者</option><option>部門主管</option><option>組長</option><option>執行者</option><option>協作者</option></select>
+              </div>
+              <div class="field">
+                <label class="field-label">部門</label>
+                <select class="input"><option>未指定</option><option>SEO 策略部</option><option>內容部</option><option>客戶管理部</option><option>市場開發部</option><option>決策層</option></select>
+              </div>
+            </div>
+
+            <!-- 密碼（嚴謹版）-->
+            <div class="field">
+              <label class="field-label">密碼<span class="req">*</span></label>
+              <div class="input-wrap">
+                <input class="input" id="f-pw" type="password" placeholder="設定密碼" oninput="checkPw()" style="padding-right:40px;"/>
+                <span class="input-icon" id="pw-toggle" onclick="togglePw('f-pw','pw-toggle')"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg></span>
+              </div>
+              <!-- 強度條 -->
+              <div class="pw-strength">
+                <div class="pw-bar" id="pwb-0"></div><div class="pw-bar" id="pwb-1"></div><div class="pw-bar" id="pwb-2"></div>
+              </div>
+              <div class="pw-label" id="pw-label" style="color:var(--fg-4)">請輸入密碼</div>
+              <!-- 規則清單 -->
+              <div class="pw-rules">
+                <div class="pw-rule" id="r-len"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points='20 6 9 17 4 12'/></svg>至少 8 個字元</div>
+                <div class="pw-rule" id="r-case"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points='20 6 9 17 4 12'/></svg>包含大小寫字母</div>
+                <div class="pw-rule" id="r-num"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points='20 6 9 17 4 12'/></svg>包含數字</div>
+                <div class="pw-rule" id="r-sym"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points='20 6 9 17 4 12'/></svg>包含特殊符號</div>
+              </div>
+            </div>
+
+            <!-- 確認密碼 -->
+            <div class="field">
+              <label class="field-label">確認密碼<span class="req">*</span></label>
+              <div class="input-wrap">
+                <input class="input" id="f-pw2" type="password" placeholder="再次輸入密碼" oninput="checkPw2()" style="padding-right:40px;"/>
+                <span class="input-icon" id="pw2-toggle" onclick="togglePw('f-pw2','pw2-toggle')"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/></svg></span>
+              </div>
+              <div class="field-help" id="pw2-msg"></div>
+            </div>
+
+          <!-- 按鈕列（靠右、主按鈕在右）-->
+          <div class="form-actions">
+            <button class="btn btn--secondary" onclick="history.back()">取消</button>
+            <button class="btn btn--primary">建立</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  // 切版參照用的最小互動；React 版改用 state 管理
+  function toggleSidebar(){ document.querySelector('.app').classList.toggle('app--collapsed'); }
+  function toggleUserMenu(e){ e.stopPropagation(); document.getElementById('user-menu').classList.toggle('user-menu--open'); }
+  document.addEventListener('click', function(){ document.getElementById('user-menu').classList.remove('user-menu--open'); });
+  // Command Palette
+  function openPalette(){ document.getElementById('cmdk').classList.add('cmdk-overlay--open'); setTimeout(()=>document.getElementById('cmdk-input').focus(),50); }
+  function closePalette(e){ if(!e || e.target.id==='cmdk') document.getElementById('cmdk').classList.remove('cmdk-overlay--open'); }
+  document.addEventListener('keydown', function(e){
+    if((e.metaKey||e.ctrlKey) && e.key==='k'){ e.preventDefault(); openPalette(); }
+    if(e.key==='Escape'){ document.getElementById('cmdk').classList.remove('cmdk-overlay--open'); }
+  });
+
+
+
+
+  // ════ 新增員工：密碼嚴謹驗證 ════
+  function togglePw(id, btnId){
+    const inp=document.getElementById(id), btn=document.getElementById(btnId);
+    const show = inp.type==='password';
+    inp.type = show?'text':'password';
+    btn.innerHTML = show
+      ? '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=\'M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24\'/><line x1=\'1\' y1=\'1\' x2=\'23\' y2=\'23\'/></svg>'
+      : '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=\'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\'/><circle cx=\'12\' cy=\'12\' r=\'3\'/></svg>';
+  }
+  function setRule(id, ok){
+    const el=document.getElementById(id);
+    el.classList.toggle('pw-rule--ok', ok);
+  }
+  function checkPw(){
+    const v=document.getElementById('f-pw').value;
+    const hasLen=v.length>=8;
+    const hasCase=/[a-z]/.test(v)&&/[A-Z]/.test(v);
+    const hasNum=/[0-9]/.test(v);
+    const hasSym=/[^A-Za-z0-9]/.test(v);
+    setRule('r-len',hasLen); setRule('r-case',hasCase); setRule('r-num',hasNum); setRule('r-sym',hasSym);
+    const score=[hasLen,hasCase,hasNum,hasSym].filter(Boolean).length;
+    const bars=['pwb-0','pwb-1','pwb-2'].map(id=>document.getElementById(id));
+    bars.forEach(b=>b.className='pw-bar');
+    const label=document.getElementById('pw-label');
+    if(v.length===0){ label.textContent='請輸入密碼'; label.style.color='var(--fg-4)'; return; }
+    let level = score<=1?'weak':score<=3?'mid':'strong';
+    if(level==='weak'){ bars[0].classList.add('pw-bar--weak'); label.textContent='弱'; label.style.color='#F5222D'; }
+    else if(level==='mid'){ bars[0].classList.add('pw-bar--mid'); bars[1].classList.add('pw-bar--mid'); label.textContent='中'; label.style.color='#D68C24'; }
+    else { bars.forEach(b=>b.classList.add('pw-bar--strong')); label.textContent='強'; label.style.color='#389E0D'; }
+    checkPw2();
+  }
+  function checkPw2(){
+    const a=document.getElementById('f-pw').value, b=document.getElementById('f-pw2').value;
+    const msg=document.getElementById('pw2-msg');
+    if(!b){ msg.textContent=''; return; }
+    if(a===b){ msg.textContent='密碼相符'; msg.style.color='var(--success-text)'; }
+    else { msg.textContent='兩次密碼不一致'; msg.style.color='var(--error-text)'; }
+  }
+  function validate(){ /* 切版示意：欄位即時驗證留給工程實作 */ }
+</script>
+</body>
+</html>

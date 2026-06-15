@@ -52,6 +52,18 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       meta: { requiresAuth: true, page: "permissions" },
     },
     {
+      path: "/permissions/users/new",
+      name: "permission-user-new",
+      component: () => import("../pages/EmployeeInvitationPage.vue"),
+      meta: { requiresAuth: true, page: "permissions" },
+    },
+    {
+      path: "/permissions/roles/new",
+      name: "permission-role-new",
+      component: () => import("../pages/RoleCreationPage.vue"),
+      meta: { requiresAuth: true, page: "permissions" },
+    },
+    {
       path: "/:pathMatch(.*)*",
       redirect: defaultRoute,
     },

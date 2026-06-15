@@ -1,20 +1,26 @@
 <script setup lang="ts">
+import { computed, nextTick, ref } from "vue";
+import kinsanLogo from "../assets/kinsan-logo.svg";
 import AppIcon from "../components/ui/AppIcon.vue";
 import type {
   NavigationItem,
   PageId,
   SessionUser,
 } from "../types";
+import { getFocusTargetIndex } from "../utils/focus-trap";
 
-defineProps<{
+type CommandFocusElement = HTMLInputElement | HTMLButtonElement;
+
+const props = defineProps<{
   user: SessionUser;
   activePage: PageId;
+  currentTitle: string;
   navigation: NavigationItem[];
   collapsed: boolean;
   search: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   navigate: [page: PageId];
   logout: [];
   refresh: [];
@@ -22,14 +28,111 @@ defineEmits<{
   "update:search": [value: string];
   unavailable: [label: string];
 }>();
+
+const showSearch = ref(false);
+const showUserMenu = ref(false);
+const searchButton = ref<HTMLButtonElement | null>(null);
+const commandInput = ref<HTMLInputElement | null>(null);
+const commandEscapeButton = ref<HTMLButtonElement | null>(null);
+const commandQuickActions = ref<HTMLButtonElement[]>([]);
+const commandNavigationButtons = ref<HTMLButtonElement[]>([]);
+
+const primaryNavigation = computed(() =>
+  props.navigation.filter((item) => !item.group),
+);
+const navigationGroups = computed(() => {
+  const groups = new Map<string, NavigationItem[]>();
+  for (const item of props.navigation) {
+    if (!item.group) continue;
+    groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
+  }
+  return [...groups.entries()].map(([label, items]) => ({ label, items }));
+});
+const commandNavigationItems = computed(() =>
+  props.navigation.filter((item) => item.page),
+);
+
+function selectNavigation(item: NavigationItem): void {
+  closeSearch(false);
+  if (item.page && !item.disabled) {
+    emit("navigate", item.page);
+    return;
+  }
+  emit("unavailable", item.label);
+}
+
+function openSearch(): void {
+  showUserMenu.value = false;
+  showSearch.value = true;
+}
+
+function closeSearch(restoreFocus = true): void {
+  showSearch.value = false;
+  if (restoreFocus) {
+    void nextTick(() => searchButton.value?.focus());
+  }
+}
+
+function handleSearchKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeSearch();
+    return;
+  }
+  if (event.key !== "Tab") return;
+
+  const focusableItems = [
+    commandInput.value,
+    commandEscapeButton.value,
+    ...commandQuickActions.value,
+    ...commandNavigationButtons.value,
+  ].filter((item): item is CommandFocusElement => Boolean(item));
+  if (!focusableItems.length) return;
+
+  const currentIndex = focusableItems.indexOf(
+    event.target as CommandFocusElement,
+  );
+  const targetIndex = getFocusTargetIndex(
+    currentIndex,
+    focusableItems.length,
+    event.shiftKey,
+  );
+  const isLeavingDialog =
+    currentIndex < 0 ||
+    (!event.shiftKey && currentIndex === focusableItems.length - 1) ||
+    (event.shiftKey && currentIndex === 0);
+  if (!isLeavingDialog) return;
+
+  event.preventDefault();
+  focusableItems[targetIndex]?.focus();
+}
+
+function toggleUserMenu(): void {
+  showSearch.value = false;
+  showUserMenu.value = !showUserMenu.value;
+}
+
+function closeUserMenu(): void {
+  showUserMenu.value = false;
+}
+
+function selectUserAction(label: string): void {
+  closeUserMenu();
+  emit("unavailable", label);
+}
+
+function logout(): void {
+  closeUserMenu();
+  emit("logout");
+}
 </script>
 
 <template>
   <div class="layout" :class="{ 'layout-collapsed': collapsed }">
     <aside class="layout-sidebar">
       <div class="layout-logo">
-        <div class="logo-symbol">Y</div>
-        <strong v-if="!collapsed">Youni SEO</strong>
+        <img v-if="!collapsed" :src="kinsanLogo" alt="Kinsan SEO" />
+        <span v-else class="logo-mark">K</span>
         <button
           class="icon-button"
           type="button"
@@ -44,59 +147,62 @@ defineEmits<{
       </div>
 
       <nav class="layout-navigation" aria-label="主要導覽">
-        <template v-for="item in navigation" :key="item.id">
+        <template v-for="item in primaryNavigation" :key="item.id">
           <button
             class="navigation-item"
             :class="{ active: item.page === activePage, disabled: item.disabled }"
             type="button"
             :title="collapsed ? item.label : undefined"
-            @click="
-              item.page && !item.disabled
-                ? $emit('navigate', item.page)
-                : $emit('unavailable', item.label)
-            "
+            @click="selectNavigation(item)"
           >
             <AppIcon :name="item.icon" :size="19" />
             <span v-if="!collapsed">{{ item.label }}</span>
             <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
           </button>
         </template>
-      </nav>
-
-      <div class="layout-user">
-        <span class="user-avatar">{{ user.displayName.slice(0, 1) }}</span>
-        <div v-if="!collapsed" class="user-summary">
-          <strong>{{ user.displayName }}</strong>
-          <span>{{ user.email }}</span>
-        </div>
-        <button
-          v-if="!collapsed"
-          class="icon-button"
-          type="button"
-          aria-label="登出"
-          @click="$emit('logout')"
+        <section
+          v-for="group in navigationGroups"
+          :key="group.label"
+          class="navigation-group"
         >
-          <AppIcon name="logout" :size="17" />
-        </button>
-      </div>
+          <p v-if="!collapsed">{{ group.label }}</p>
+          <button
+            v-for="item in group.items"
+            :key="item.id"
+            class="navigation-item"
+            :class="{ active: item.page === activePage, disabled: item.disabled }"
+            type="button"
+            :title="collapsed ? item.label : undefined"
+            @click="selectNavigation(item)"
+          >
+            <AppIcon :name="item.icon" :size="17" />
+            <span v-if="!collapsed">{{ item.label }}</span>
+            <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
+          </button>
+        </section>
+      </nav>
     </aside>
 
     <header class="layout-topbar">
-      <label class="global-search">
-        <AppIcon name="search" :size="17" />
-        <input
-          :value="search"
-          type="search"
-          placeholder="搜尋客戶、任務、關鍵字..."
-          @input="
-            $emit(
-              'update:search',
-              ($event.target as HTMLInputElement).value,
-            )
-          "
+      <div class="topbar-breadcrumbs">
+        <span v-if="activePage === 'permissions'">儀表板</span>
+        <AppIcon
+          v-if="activePage === 'permissions'"
+          name="chevron-right"
+          :size="13"
         />
-      </label>
+        <strong>{{ currentTitle }}</strong>
+      </div>
       <div class="topbar-actions">
+        <button
+          ref="searchButton"
+          class="icon-button"
+          type="button"
+          aria-label="搜尋"
+          @click="openSearch"
+        >
+          <AppIcon name="search" :size="18" />
+        </button>
         <button
           class="icon-button"
           type="button"
@@ -114,11 +220,107 @@ defineEmits<{
           <AppIcon name="bell" :size="18" />
           <span>2</span>
         </button>
+        <span class="topbar-divider"></span>
+        <div class="topbar-user-wrap">
+          <button
+            class="topbar-user"
+            type="button"
+            :aria-expanded="showUserMenu"
+            aria-haspopup="menu"
+            @click="toggleUserMenu"
+          >
+            <span class="user-avatar">{{ user.displayName.slice(0, 1) }}</span>
+            <AppIcon name="chevron-right" :size="13" />
+          </button>
+          <button
+            v-if="showUserMenu"
+            class="user-menu-backdrop"
+            type="button"
+            aria-label="關閉使用者選單"
+            @click="closeUserMenu"
+          ></button>
+          <div v-if="showUserMenu" class="user-menu" role="menu">
+            <div class="user-menu-head">
+              <strong>{{ user.displayName }}</strong>
+              <span>{{ user.email }}</span>
+            </div>
+            <button type="button" role="menuitem" @click="selectUserAction('個人資料')">
+              <AppIcon name="user" :size="16" />個人資料
+            </button>
+            <button type="button" role="menuitem" @click="selectUserAction('帳號設定')">
+              <AppIcon name="settings" :size="16" />帳號設定
+            </button>
+            <button class="danger" type="button" role="menuitem" @click="logout">
+              <AppIcon name="logout" :size="16" />登出
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
     <main class="layout-content">
       <slot />
     </main>
+
+    <div
+      v-if="showSearch"
+      class="command-overlay"
+      @click.self="closeSearch()"
+      @keydown="handleSearchKeydown"
+    >
+      <section
+        class="command-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="搜尋"
+      >
+        <label class="command-input">
+          <AppIcon name="search" :size="18" />
+          <input
+            ref="commandInput"
+            :value="search"
+            type="search"
+            autofocus
+            placeholder="搜尋客戶、任務、關鍵字..."
+            @input="
+              $emit(
+                'update:search',
+                ($event.target as HTMLInputElement).value,
+              )
+            "
+          />
+          <button ref="commandEscapeButton" type="button" @click="closeSearch()">
+            ESC
+          </button>
+        </label>
+        <div class="command-list">
+          <p>快速操作</p>
+          <button
+            ref="commandQuickActions"
+            type="button"
+            @click="$emit('unavailable', '新增客戶')"
+          >
+            <AppIcon name="plus" :size="16" />新增客戶
+          </button>
+          <button
+            ref="commandQuickActions"
+            type="button"
+            @click="$emit('unavailable', '新增任務')"
+          >
+            <AppIcon name="plus" :size="16" />新增任務
+          </button>
+          <p>前往</p>
+          <button
+            v-for="item in commandNavigationItems"
+            ref="commandNavigationButtons"
+            :key="item.id"
+            type="button"
+            @click="selectNavigation(item)"
+          >
+            <AppIcon :name="item.icon" :size="16" />{{ item.label }}
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>

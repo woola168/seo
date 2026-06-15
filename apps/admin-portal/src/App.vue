@@ -5,8 +5,10 @@ import AppToast from "./components/ui/AppToast.vue";
 import Layout from "./layouts/Layout.vue";
 import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
+import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
+import RoleCreationPage from "./pages/RoleCreationPage.vue";
 import SessionLoadingPage from "./pages/SessionLoadingPage.vue";
 import { getLoginRedirect, getRoutePage } from "./router/routes";
 import { ApiError, api } from "./services/api";
@@ -48,6 +50,18 @@ const loading = ref(false);
 const loginError = ref("");
 const toast = ref<ToastMessage | null>(null);
 const activePage = computed<PageId>(() => getRoutePage(route.meta.page));
+const currentTitle = computed(() =>
+  route.name === "permission-user-new"
+    ? "新增員工"
+    : route.name === "permission-role-new"
+      ? "建立角色"
+    : activePage.value === "permissions"
+      ? "權限管理"
+      : "總覽",
+);
+const permissionInitialTab = computed(() =>
+  route.query.tab === "roles" ? "roles" as const : undefined,
+);
 const recoveryMode = computed<RecoveryMode>(() =>
   route.meta.recoveryMode === "request" ||
   route.meta.recoveryMode === "reset" ||
@@ -65,25 +79,64 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const navigation = computed<NavigationItem[]>(() => [
   { id: "dashboard", label: "總覽", icon: "grid", page: "dashboard" },
-  { id: "clients", label: "客戶", icon: "users", disabled: true },
-  { id: "tasks", label: "任務", icon: "briefcase", badge: "9", disabled: true },
-  { id: "war-room", label: "戰情室", icon: "activity", disabled: true },
-  { id: "strategy", label: "策略分析", icon: "sparkles", disabled: true },
+  {
+    id: "clients",
+    label: "客戶",
+    icon: "users",
+    group: "專案管理",
+    disabled: true,
+  },
+  {
+    id: "tasks",
+    label: "任務",
+    icon: "briefcase",
+    group: "專案管理",
+    badge: "9",
+    disabled: true,
+  },
+  {
+    id: "war-room",
+    label: "戰情室",
+    icon: "activity",
+    group: "分析工具",
+    disabled: true,
+  },
+  {
+    id: "strategy",
+    label: "策略分析",
+    icon: "sparkles",
+    group: "分析工具",
+    disabled: true,
+  },
   {
     id: "notifications",
     label: "通知",
     icon: "bell",
+    group: "系統",
     badge: "2",
     disabled: true,
   },
-  { id: "profile", label: "個人設定", icon: "user", disabled: true },
+  {
+    id: "profile",
+    label: "個人設定",
+    icon: "user",
+    group: "系統",
+    disabled: true,
+  },
   {
     id: "permissions",
     label: "權限管理",
     icon: "shield",
+    group: "系統",
     page: "permissions",
   },
-  { id: "settings", label: "系統設定", icon: "settings", disabled: true },
+  {
+    id: "settings",
+    label: "系統設定",
+    icon: "settings",
+    group: "系統",
+    disabled: true,
+  },
 ]);
 
 onMounted(async () => {
@@ -448,6 +501,22 @@ function navigate(page: PageId): void {
   void router.push({ name: page });
 }
 
+function openEmployeeInvitation(): void {
+  void router.push({ name: "permission-user-new" });
+}
+
+function closeEmployeeInvitation(): void {
+  void router.replace({ name: "permissions" });
+}
+
+function openRoleCreation(): void {
+  void router.push({ name: "permission-role-new" });
+}
+
+function closeRoleCreation(): void {
+  void router.replace({ name: "permissions", query: { tab: "roles" } });
+}
+
 function notify(message: string, tone: ToastTone = "info"): void {
   if (toastTimer) clearTimeout(toastTimer);
   toast.value = { id: Date.now(), message, tone };
@@ -486,6 +555,7 @@ function unavailable(label: string): void {
     v-else
     :user="user"
     :active-page="activePage"
+    :current-title="currentTitle"
     :navigation="navigation"
     :collapsed="sidebarCollapsed"
     :search="globalSearch"
@@ -496,8 +566,27 @@ function unavailable(label: string): void {
     @update:search="globalSearch = $event"
     @unavailable="unavailable"
   >
+    <EmployeeInvitationPage
+      v-if="route.name === 'permission-user-new'"
+      :capabilities="capabilities"
+      :roles="roles"
+      :departments="departments"
+      :customers="customers"
+      :tasks="tasks"
+      :loading="loading"
+      @back="closeEmployeeInvitation"
+      @submit="inviteUser"
+    />
+    <RoleCreationPage
+      v-else-if="route.name === 'permission-role-new'"
+      :capabilities="capabilities"
+      :permissions="permissions"
+      :loading="loading"
+      @back="closeRoleCreation"
+      @submit="createRole"
+    />
     <DashboardPage
-      v-if="activePage === 'dashboard'"
+      v-else-if="activePage === 'dashboard'"
       :capabilities="capabilities"
       :search="globalSearch"
       @unavailable="unavailable"
@@ -514,13 +603,14 @@ function unavailable(label: string): void {
       :departments="departments"
       :decision="decision"
       :loading="loading"
+      :initial-tab="permissionInitialTab"
       @unavailable="unavailable"
-      @create-role="createRole"
+      @open-role-creation="openRoleCreation"
       @update-role="updateRole"
       @update-user-roles="updateUserRoles"
       @update-customers="updateCustomerGrants"
       @update-tasks="updateTaskGrants"
-      @invite-user="inviteUser"
+      @open-invitation="openEmployeeInvitation"
       @create-department="createDepartment"
       @update-department="updateDepartment"
       @delete-department="deleteDepartment"

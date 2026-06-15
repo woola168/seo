@@ -1,11 +1,11 @@
 ---
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Youni Lab — Component Specs
-# 元件規格書（24 個元件）
+# 元件規格書（v2.2）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 name:     Youni Lab Component Specs
-version:  "2.1"
+version:  "2.2"
 total:    38
 note:     All colors synced from Figma Design Tokens (ref → sys → comp).
           Refer to DESIGN.md for brand foundations.
@@ -54,6 +54,9 @@ avatar:
 badge:
   font-weight:   500
   border-width:  1px
+  display:       inline-flex          # v2.2：固定不換行
+  white-space:   nowrap               # ⚠ 必須：內容定義寬度，永不被欄寬擠成直排
+  align-items:   center
 
   # 三種尺寸
   sizes:
@@ -641,6 +644,14 @@ switch:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 table:
+  # ── 儲存格規則（v2.2 新增）──
+  cell:
+    white-space:    nowrap            # B 端表格不換行；內容過長以橫向卷動處理（見 RWD）
+    vertical-align: middle            # 所有儲存格垂直置中，避免列高變動時 checkbox/內容對不齊
+    overflow-x:     auto              # 欄位總寬超出時容器橫向卷動
+  # ⚠ 含 Badge 的儲存格：nowrap 之外，務必設欄位最小寬度（min-width）
+  #    CJK 文字在空間不足時即使 nowrap 仍會直排，根因是欄寬不夠而非屬性。
+  #    狀態欄（「營業中」三字 Badge）min-width ≥ 100px（內容約 54px + padding 32px + 餘裕）
 
   container:                                   # 外層容器
     radius:   12px
@@ -914,7 +925,7 @@ sidebar:
 
   # ── 圖標規格（此元件單獨使用 Feather Icons）──
   icon:
-    family:       'Feather Icons'               # 僅 Sidebar/Nav 使用，全站其他元件用 Material Symbols
+    family:       'Feather Icons'               # 全站統一 Feather
     size:         20px
     stroke-width: 2
     stroke-linecap:  round
@@ -977,10 +988,11 @@ sidebar:
 
   # ── Nav item ──────────────────────────
   nav-item:
+    icon-size:  16px                            # v2.2：20px → 16px
     padding:    '10px 12px'                     # 7px 12px → 10px 12px
     margin:     '1px 8px'
     radius:     8px
-    fontSize:   16px                            # 13px → 16px
+    fontSize:   14px                            # v2.2 調整為 14px
     gap:        8px
     states:
       default:  { bg: transparent,  color: '#595959', weight: 400 }
@@ -1028,20 +1040,10 @@ sidebar:
   # ── Favorites 已移除 ──────────────────
   # favorites: removed
 
-  # ── User card ─────────────────────────
-  user-card:
-    height:    56px
-    padding:   '12px 14px'
-    borderTop: '1px solid #F0F0F0'
-    hoverBg:   '#FAFAFA'
-    gap:       8px
-    avatar:    { size: 32px, radius: 50%, fontSize: 11px, fontWeight: 700 }
-    status-dot:{ size: 9px, border: '2px solid #FFFFFF' }
-    name:      { fontSize: 13px, fontWeight: 600, color: '#1F1F1F' }
-    email:     { fontSize: 11px, color: '#8C8C8C', truncate: true }
-    actions:
-      btn:     { size: 28px, radius: 6px, hoverBg: '#F0F0F0' }
-      icons:   [sun, more-horizontal]           # Feather Icons 命名
+  # ── User card 已移除（v2.2）──────────
+  # 帳號區塊移至 Top Header 右側使用者選單，避免與 Top Header 重複。
+  # Sidebar 不再包含底部 user-card。
+  user-card: removed
 
   # ── 收折狀態 ──────────────────────────
   collapsed:
@@ -1063,6 +1065,11 @@ sidebar:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 page-header:
+  responsive:                                  # v2.2：防止標題與操作按鈕擠壓
+    layout:    'flex-wrap：標題區 flex:1 min-width:240px（過長省略）；操作區 flex-shrink:0'
+    behavior:  '寬度不足時操作按鈕整組換行至標題下方、靠左（換行堆疊）'
+    applies-to: '所有「左標題 + 右操作」列：Page Header、Table Toolbar、Panel 標題列'
+
   bg:       '#FFFFFF'
   border:   '1px solid #D9D9D9'
   radius:   12px
@@ -1103,47 +1110,44 @@ page-header:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 stat-card:
+  # v2.2：圖標色塊 + 標籤 + 主數字 + 副指標細分（一卡一指標）
   bg:       '#FFFFFF'
-  border:   '1px solid #D9D9D9'
+  border:   '1px solid #E7EAEC'
   radius:   12px
-  padding:  '20px 24px'
+  padding:  '18px 20px'
   minWidth: 180px
 
-  label:
-    fontSize:     12px
-    fontWeight:   500
-    color:        '#8C8C8C'
-    marginBottom: 8px
+  icon-badge:
+    size:    36px
+    radius:  9px
+    # 淺底用語意色系，圖示為對應語意色 Feather 18px
+    tints:
+      info:    { bg: '#E6F4FF', icon: '#1677FF' }
+      success: { bg: '#F6FFED', icon: '#389E0D' }
+      warning: { bg: '#FFFCF0', icon: '#D68C24' }
+      error:   { bg: '#FFF1F0', icon: '#CF1322' }
+      brand:   { bg: '#E7EAEC', icon: '#0A2B41' }
+    icon-size: 18px
 
-  icon-wrap:
-    size:    28px
-    radius:  6px
+  label:
+    fontSize:   13px
+    color:      '#8C8C8C'
+    gap:        10px            # 與圖標色塊間距
 
   value:
-    fontSize:     28px
-    fontWeight:   600
-    color:        '#1F1F1F'
-    lineHeight:   1.1
-    marginBottom: 6px
+    fontSize:   28px
+    fontWeight: 600
+    color:      '#1F1F1F'
+    lineHeight: 1.1
 
-  trend:
+  sub-metrics:                  # 副指標細分，可 0–3 項，可省略
     fontSize:   12px
-    fontWeight: 500
-    gap:        3px
-    variants:
-      up:   { color: '#389E0D', arrow: '↑' }
-      down: { color: '#CF1322', arrow: '↓' }
+    gap:        14px
+    label-color: '#8C8C8C'
+    value:      { fontWeight: 600, color: 'semantic | #434343' }
 
-  compare-label:
-    fontSize:   12px
-    color:      '#8C8C8C'
-    marginLeft: 4px
-
-  mini-bar:
-    height:    4px
-    radius:    9999px
-    track:     '#F0F0F0'
-    marginTop: 12px
+  layout:     "等寬並排 gap 16px；對應 RWD：≥1440 五欄、1024–1440 兩三欄、<1024 單欄"
+  note:       "一卡一指標用 Stat Card；一卡多指標用 Metric Group"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1370,5 +1374,220 @@ date-picker:
     gap:           6px
     separator:     '→'
     focused-input: { borderColor: '#0A2B41', shadow: '0 0 0 3px rgba(10,43,65,0.08)' }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Top Header — 全域頂欄（v2.2 新增）
+# 位於 content 區內（Sidebar 通頂），sticky 固定
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+top-header:
+  height:       56px
+  bg:           '#FFFFFF'
+  border-bottom: '1px solid #F0F0F0'
+  padding:      '0 16px'
+  position:     'sticky top'
+  scroll-shadow: '0 1px 2px rgba(0,0,0,0.04)'
+
+  left:         Breadcrumbs                  # 13px，當前層 500 #1F1F1F；末段為當前頁
+  right:        [search, bell, avatar]       # v2.2：搜尋 icon（開 Command Palette）→ 通知 → 頭像
+  removed:      help-circle                  # v2.2 移除幫助鈕
+
+  icon-button:
+    size:       32px
+    radius:     6px
+    icon:       18px Feather '#595959'
+    hoverBg:    '#F0F0F0'
+    gap:        8px
+  notify-dot:   { size: 8px, color: '#F5222D', border: '1.5px #FFFFFF' }
+  search:       'icon 按鈕（非常駐輸入框）；點擊或 ⌘K 開啟 Command Palette'
+  avatar:       '28px 圓形 + chevron-down；點擊開使用者下拉（個人資料／帳號設定／登出[danger]）'
+  divider:      '頭像前 1px #F0F0F0 分隔，高 20px'
+
+  # 分工（v2.2 更新）：搜尋改為 Top Header 右側 icon（開 Palette）；麵包屑在左；頁面標題與操作 → Page Header
+  responsibility: "Top Header：左麵包屑 + 右側搜尋 icon／通知／頭像；不放常駐搜尋框、不放幫助"
+
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Command Palette — 全域指令／搜尋（v2.2 新增）
+# 由 Top Header 搜尋 icon 或 ⌘K / Ctrl+K 開啟
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+command-palette:
+  trigger:      'Top Header 搜尋 icon、或鍵盤 ⌘K / Ctrl+K'
+  overlay:      'rgba(0,0,0,0.4) 全屏遮罩，z-index 1200（同 modal 層級）'
+  position:     '置中偏上，距頂 120px'
+  panel:        '寬 560（max 90vw）/ 圓角 12 / shadow 0 20px 60px rgba(0,0,0,0.15)'
+  input:
+    height:     '約 48（padding 14px 16px）'
+    icon:       '左側 search 18px #8C8C8C'
+    placeholder:'搜尋客戶、任務、關鍵字…'
+    esc-hint:   '右側 ESC 鍵提示（11px / 邊框 pill）'
+  list:
+    section:    '分組標題 11px #BFBFBF uppercase（快速操作／前往…）'
+    item:       '高 約 40 / 圓角 8 / icon 16px + 標籤 14px / hover #FAFAFA'
+    max-height: '360px，超出捲動'
+  close:        '點遮罩、按 ESC、或選取項目後關閉'
+  behavior:     '可搜功能、客戶、任務；鍵盤上下選擇、Enter 執行（實作層）'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Metric Group — 指標組（v2.2 新增）
+# 一卡多指標橫排，共用標題，對應「本月預測」「本週摘要」
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+metric-group:
+  bg:       '#FFFFFF'
+  border:   '1px solid #E7EAEC'
+  radius:   12px
+  padding:  '20px 24px'
+
+  title:    { fontSize: 14px, fontWeight: 600, color: '#1F1F1F', marginBottom: 18px }
+  metrics:  { layout: 'space-around', align: center }
+  metric-label: { fontSize: 13px, color: '#8C8C8C', marginBottom: 8px }
+  metric-value: { fontSize: 24px, fontWeight: 700, color: 'semantic | #1F1F1F' }
+  footer:   { fontSize: 13px, color: '#BFBFBF', borderTop: '1px solid #F0F0F0', optional: true }
+
+  count:    "建議 2–5 個指標；過多改用多張卡或表格"
+  note:     "一卡一指標且醒目 → Stat Card；一卡多指標緊湊 → Metric Group"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Chart — 圖表（v2.2 新增）
+# SVG 繪製，無外部圖表庫；配色見 DESIGN.md › data-viz
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+chart:
+  implementation: inline SVG
+  palette:        Blue 色階（同色系深淺，見 DESIGN.md）
+  single-series:  '#1677FF'                  # 主藍
+
+  line:
+    stroke:       '2px 主色 / 圓端點'
+    point:        '半徑 3.5 / 白底 + 2px 描邊 / hover tooltip'
+    area-fill:    '主色 6% 透明（選用）'
+    gridline:     '水平 1px #F0F0F0；無垂直格線'
+
+  bar:
+    radius:       4px
+    width:        '上限 36px、約欄寬 56%'
+    gridline:     '水平 1px #F0F0F0'
+
+  pie-donut:
+    slice:        '依色板取色 / 圓餅含 1.5px 白色分隔'
+    donut-inner:  '外徑 60%；中心可放總計（22px 600）'
+    legend:       '右側直列：色塊 10×10 圓角 3 + 標籤 13px + 數值 mono 12px'
+    max-categories: 6
+
+  stage-bar:                                 # 階段分布橫條
+    序號:   '20×20 圓角 5 / #F0F0F0 / 11px 600 #8C8C8C'
+    label:  '13px #434343 固定寬'
+    bar:    '高 14px / 圓角 7 / 軌道 #F0F0F0 / 填充主藍 / 過場 width .4s'
+    pct:    '13px #1F1F1F 靠右'
+    count:  '13px mono #8C8C8C 靠右'
+    row-gap: 12px
+
+  ranking-bar:                               # 排行橫條
+    bar:    '高 18px / 圓角 5 / 軌道 #F5F5F5 / 長度 = 值÷最大值'
+    normal: '主藍'
+    warning: '超門檻用 #F5222D，數值同步轉紅'
+    sort:   '由大到小'
+
+  segmented-bar:                             # 分段比例條
+    bar:    '高 32px / 圓角 8 / 整體 100% / 段間 2px 白縫'
+    segment: '依色板取色 / 段內置中白字 13px 500'
+    count:  '建議 2–4 段'
+
+  states:
+    empty:    "置中『尚無資料』13px #BFBFBF"
+    loading:  "Spinner 置中"
+    tooltip:  "深色 #1F1F1F / 圓角 6 / 白字"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Table Toolbar — 表格工具列（v2.2 新增）
+# 表格上方查詢與操作列，勾選後切換批次操作列
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+table-toolbar:
+  container:    '與表格同一張卡片（圓角 12），位於表頭上方'
+  height:       64px
+  padding:      '12px 16px'
+  border-bottom: '1px solid #F0F0F0'
+  gap:          8px
+
+  layout:       '左：搜尋 → 篩選 → 已套用標籤；右：次要操作 → 主操作（最右）'
+  search:       'Input md 40px / 寬 220px / 內嵌 search icon 14px #BFBFBF'
+  filter-tag:   '高 28 / pill / 12px / 可單獨移除（× icon 12px）'
+
+  batch-bar:                                 # 勾選 ≥1 列時整條取代
+    bg:           '#F0F7FF'
+    border-bottom: '1px solid #BAD9FF'
+    left:         '已選 N 筆（14px 500 #0A2B41，數字 600） → 取消選取（13px #1677FF）'
+    right:        '批次操作（危險操作放最右，不使用紅色 hover）'
+    exit:         '取消選取、全部取消勾選、或操作完成後自動清空'
+
+  select-col:   '寬 48px / checkbox 16px 圓角 4 / 表頭支援全選與半選'
+  selected-row: '背景 #F0F7FF（高於 hover #FAFAFA）'
+
+  # Row Actions（列操作區）
+  row-actions:
+    column:       '固定最右欄，表頭「操作」，內容靠右'
+    max-visible:  '4 顆 + 更多；順序 eye → edit-2 → trash-2 → more-horizontal（複製等低頻收進更多）'
+    button:       '24×24 圓形 / bg #F0F0F0 / hover #E5E5E5 / icon 14px #595959→#434343'
+    no-red-hover: true                       # 所有按鈕統一灰階，無紅色變化
+    danger:       '不用紅色樣式；刪除以 Modal 二次確認'
+    tooltip:      'hover 顯示操作名稱，按鈕上方 8px（沿用 Tooltip 樣式）'
+    more-menu:    '對齊按鈕右緣向下展開 / 點外部關閉 / 收納低頻操作'
+    event:        'stopPropagation，不觸發列點擊與勾選'
+    overflow:     '欄位過多時表格 overflow-x:auto，操作欄 position:sticky right:0 固定右側（-4px 0 8px 陰影區隔），永遠可見'
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Description List — 描述列表（v2.2 新增）
+# 詳情頁 label–value 成對排列
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+description-list:
+  label:    { fontSize: 13px, color: '#8C8C8C' }
+  value:    { fontSize: 14px, color: '#1F1F1F', lineHeight: 22px }
+  empty:    "顯示「–」#BFBFBF；不留空白、不寫「無」"
+
+  horizontal:                                # 水平式
+    label-width:  '120px（依最長 label 可調 96–160）'
+    row-padding:  '10px 0'
+    divider:      '1px #F5F5F5'
+
+  grid:                                      # 網格式
+    columns:      '2–3 欄'
+    column-gap:   32px
+    row-gap:      16px
+    label:        '在上，與 value 間距 4px'
+
+  copyable-value: 'mono 13px + 複製按鈕 24×24（icon 14px / hover #F0F0F0）/ 複製後轉 check #389E0D'
+  status-value:   '沿用 Badge md（12px / padding 2px 8px / pill）'
+  responsive:     '網格式 <1200 降 2 欄、<768 降 1 欄'
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Steps — 步驟條（v2.2 新增）
+# 多步驟流程導航，三態
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+steps:
+  circle:       '28×28 / 數字 13px / 完成後換 check 14px'
+  title:        '13px / 與圓圈間距 8px / 進行中 600、其餘 400'
+  connector:    '高 2px / 圓角 1 / 已完成段 #0A2B41、未完成段 #E5E7EB / 過場 200ms'
+
+  states:
+    done:       '圓 #0A2B41 + check #FFFFFF；標題 #434343；可點擊返回'
+    current:    '白底 + 2px #0A2B41 邊框 / 數字 600 #0A2B41；標題 600 #1F1F1F'
+    upcoming:   '白底 + 1.5px #D9D9D9 邊框 / 數字 #BFBFBF；標題 #BFBFBF；不可點擊'
+
+  navigation:   '已完成步驟可點擊返回；未完成步驟不可跳轉'
+  buttons:      '靠右：上一步在左、下一步／完成在右（精靈慣例，見 DESIGN.md button-conventions）'
+  count:        '建議 3–5 步；超過應重新切分流程'
+  responsive:   '<768 僅顯示進行中步驟與「第 N 步，共 M 步」'
+
 
 ---

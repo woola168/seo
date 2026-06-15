@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import AuthorizationEvaluator from "../components/permissions/AuthorizationEvaluator.vue";
 import DepartmentManagement from "../components/permissions/DepartmentManagement.vue";
-import EmployeeInvitationModal from "../components/permissions/EmployeeInvitationModal.vue";
 import MemberManagement from "../components/permissions/MemberManagement.vue";
 import RoleManagement from "../components/permissions/RoleManagement.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
@@ -10,7 +9,6 @@ import { mergeMemberMetadata } from "../mocks/permissions";
 import type {
   AuthorizationDecision,
   Capabilities,
-  CreateInvitationInput,
   CustomerSummary,
   Department,
   Role,
@@ -32,20 +30,17 @@ const props = defineProps<{
   departments: Department[];
   decision: AuthorizationDecision | null;
   loading: boolean;
+  initialTab?: PermissionTab;
 }>();
 
 const emit = defineEmits<{
   unavailable: [label: string];
-  "create-role": [
-    name: string,
-    permissions: string[],
-    onSuccess: () => void,
-  ];
+  "open-role-creation": [];
   "update-role": [roleId: string, permissions: string[]];
   "update-user-roles": [userId: string, roleIds: string[]];
   "update-customers": [userId: string, customerIds: string[]];
   "update-tasks": [userId: string, taskIds: string[]];
-  "invite-user": [input: CreateInvitationInput, onSuccess: () => void];
+  "open-invitation": [];
   "create-department": [name: string, description: string, onSuccess: () => void];
   "update-department": [
     departmentId: string,
@@ -66,8 +61,7 @@ const emit = defineEmits<{
 }>();
 
 type PermissionTab = "members" | "roles" | "departments" | "evaluate";
-const activeTab = ref<PermissionTab>("members");
-const showInvitation = ref(false);
+const activeTab = ref<PermissionTab>(props.initialTab ?? "members");
 const resourceModal = ref<"customer" | "task" | null>(null);
 const resourceForm = reactive({ name: "", customerId: "" });
 
@@ -93,7 +87,8 @@ const canManageGrants = computed(() =>
   hasPermission(props.capabilities.permissions, "access-grants.manage"),
 );
 const canInviteUsers = computed(() =>
-  hasPermission(props.capabilities.permissions, "users.manage"),
+  hasPermission(props.capabilities.permissions, "users.manage") &&
+  hasPermission(props.capabilities.permissions, "roles.read"),
 );
 const canReadDepartments = computed(() =>
   hasPermission(props.capabilities.permissions, "departments.read"),
@@ -118,6 +113,13 @@ const tabs: Array<{ id: PermissionTab; label: string }> = [
   { id: "evaluate", label: "授權判斷" },
 ];
 
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeTab.value = tab;
+  },
+);
+
 function updateUserRoles(userId: string, roleIds: string[]): void {
   emit("update-user-roles", userId, roleIds);
 }
@@ -128,14 +130,6 @@ function updateCustomers(userId: string, customerIds: string[]): void {
 
 function updateTasks(userId: string, taskIds: string[]): void {
   emit("update-tasks", userId, taskIds);
-}
-
-function createRole(
-  name: string,
-  selectedPermissions: string[],
-  onSuccess: () => void,
-): void {
-  emit("create-role", name, selectedPermissions, onSuccess);
 }
 
 function updateRole(roleId: string, selectedPermissions: string[]): void {
@@ -172,12 +166,6 @@ function submitResource(): void {
   }
 }
 
-function inviteUser(input: CreateInvitationInput): void {
-  emit("invite-user", input, () => {
-    showInvitation.value = false;
-  });
-}
-
 function createDepartment(
   name: string,
   description: string,
@@ -197,12 +185,11 @@ function updateDepartment(
 </script>
 
 <template>
-  <section class="page">
+  <section class="page permission-page">
     <header class="page-header">
       <div>
-        <p class="page-kicker">儀表板 / 權限管理</p>
         <h1>權限管理</h1>
-        <p>管理員工帳號、角色權限、資源範圍與授權判斷。</p>
+        <p>管理員工帳號、部門架構、角色權限與授權判斷。</p>
       </div>
       <div class="page-actions">
         <button
@@ -221,14 +208,6 @@ function updateDepartment(
           @click="openResourceModal('task')"
         >
           <AppIcon name="plus" :size="16" />新增任務
-        </button>
-        <button
-          v-if="canInviteUsers"
-          class="button button-primary"
-          type="button"
-          @click="showInvitation = true"
-        >
-          <AppIcon name="plus" :size="17" />新增員工
         </button>
       </div>
     </header>
@@ -260,7 +239,7 @@ function updateDepartment(
       @update-roles="updateUserRoles"
       @update-customers="updateCustomers"
       @update-tasks="updateTasks"
-      @invite="showInvitation = true"
+      @invite="$emit('open-invitation')"
       @unavailable="$emit('unavailable', $event)"
     />
     <RoleManagement
@@ -269,7 +248,7 @@ function updateDepartment(
       :permissions="permissions"
       :can-manage="canManageRoles"
       :loading="loading"
-      @create="createRole"
+      @open-create="$emit('open-role-creation')"
       @update="updateRole"
     />
     <DepartmentManagement
@@ -298,17 +277,6 @@ function updateDepartment(
       <strong>沒有檢視此區域的權限</strong>
       <span>請聯絡系統管理員調整 access-control 權限。</span>
     </div>
-
-    <EmployeeInvitationModal
-      v-if="showInvitation"
-      :roles="roles"
-      :departments="departments"
-      :customers="customers"
-      :tasks="tasks"
-      :loading="loading"
-      @close="showInvitation = false"
-      @submit="inviteUser"
-    />
 
     <div v-if="resourceModal" class="modal-backdrop" @click.self="resourceModal = null">
       <form class="modal modal-compact" @submit.prevent="submitResource">

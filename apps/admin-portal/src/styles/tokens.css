@@ -9,9 +9,17 @@
   --primary-soft: #e7eaec;
   --accent: #fdb338;
   --info: #1677ff;
+  --info-light: #e6f4ff;
+  --info-text: #0958d9;
   --success: #52c41a;
-  --warning: #d68c24;
+  --success-text: #389e0d;
+  --warning: #fdb338;
+  --warning-icon: #d68c24;
+  --warning-text: #ad6800;
+  --warning-light: #fffcf0;
   --danger: #f5222d;
+  --error-text: #cf1322;
+  --error-light: #fff1f0;
   --text-primary: #1f1f1f;
   --text-secondary: #595959;
   --text-muted: #8c8c8c;
@@ -22,10 +30,13 @@
   --surface-secondary: #fafafa;
   --page: #f5f5f5;
   --sidebar-width: 240px;
-  --sidebar-collapsed-width: 64px;
+  --sidebar-collapsed-width: 56px;
   --topbar-height: 56px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --shadow-focus: 0 0 0 3px rgb(10 43 65 / 8%);
+  --z-popover: 1000;
+  --z-modal: 1200;
+  --z-toast: 1300;
 }

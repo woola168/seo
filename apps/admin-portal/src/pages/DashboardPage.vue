@@ -8,6 +8,7 @@ import {
   mockDashboardNotifications,
   mockDashboardTasks,
 } from "../mocks/dashboard";
+import { createDashboardStats } from "../utils/dashboard-stats";
 import type {
   Capabilities,
   DashboardNotification,
@@ -25,6 +26,7 @@ const taskFilter = ref<"all" | DashboardTask["status"]>("all");
 const notifications = ref<DashboardNotification[]>(
   mockDashboardNotifications.map((item) => ({ ...item })),
 );
+const dashboardStats = createDashboardStats(mockDashboardTasks);
 
 const filteredTasks = computed(() => {
   const search = props.search.trim().toLocaleLowerCase("zh-TW");
@@ -56,31 +58,30 @@ function markNotificationRead(id: number): void {
   <section class="page">
     <header class="page-header">
       <div>
-        <p class="page-kicker">儀表板</p>
         <h1>總覽</h1>
-        <p>{{ currentDate }} · 暫用展示資料</p>
+        <p>{{ currentDate }} · 8 個客戶 · {{ mockDashboardTasks.length }} 個任務</p>
       </div>
       <div class="page-actions">
         <button
           class="button button-secondary"
           type="button"
-          @click="$emit('unavailable', '匯出報表')"
+          @click="$emit('unavailable', '繼續上次工作')"
         >
-          <AppIcon name="download" :size="17" />匯出報表
-        </button>
-        <button
-          class="button button-secondary"
-          type="button"
-          @click="$emit('unavailable', '新增客戶')"
-        >
-          <AppIcon name="users" :size="17" />新增客戶
+          繼續上次工作
         </button>
         <button
           class="button button-primary"
           type="button"
+          @click="$emit('unavailable', '新增客戶')"
+        >
+          <AppIcon name="plus" :size="16" />新增客戶
+        </button>
+        <button
+          class="button button-secondary"
+          type="button"
           @click="$emit('unavailable', '新增任務')"
         >
-          <AppIcon name="plus" :size="17" />新增任務
+          <AppIcon name="plus" :size="16" />新增任務
         </button>
       </div>
     </header>
@@ -90,49 +91,15 @@ function markNotificationRead(id: number): void {
       總覽、任務與通知目前使用暫時假資料，待 SEO API 完成後串接。
     </div>
 
-    <div class="filter-chips" aria-label="任務期間">
-      <button class="active" type="button">
-        <AppIcon name="layers" :size="15" />全部
-      </button>
-      <button type="button" @click="$emit('unavailable', '今日篩選')">
-        今日
-      </button>
-      <button type="button" @click="$emit('unavailable', '本週篩選')">
-        本週
-      </button>
-      <button type="button" @click="$emit('unavailable', '本月篩選')">
-        本月
-      </button>
-    </div>
-
     <div class="stat-grid">
       <StatCard
-        label="全部任務"
-        :value="mockDashboardTasks.length"
-        detail="進行中 3 · 已完成 0"
-        tone="blue"
-        icon="briefcase"
-      />
-      <StatCard
-        label="等待客戶"
-        :value="mockDashboardTasks.filter((task) => task.status === 'waiting').length"
-        detail="需催促"
-        tone="amber"
-        icon="clock"
-      />
-      <StatCard
-        label="可用權限"
-        :value="capabilities.permissions.length"
-        detail="由 access-control API 提供"
-        tone="red"
-        icon="shield"
-      />
-      <StatCard
-        label="本月完成"
-        value="0"
-        detail="目標 10 · 達成 0%"
-        tone="green"
-        icon="check"
+        v-for="stat in dashboardStats"
+        :key="stat.label"
+        :label="stat.label"
+        :value="stat.value"
+        :metrics="stat.metrics"
+        :tone="stat.tone"
+        :icon="stat.icon"
       />
     </div>
 

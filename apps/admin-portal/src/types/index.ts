@@ -4,6 +4,7 @@ export interface NavigationItem {
   id: string;
   label: string;
   icon: IconName;
+  group?: string;
   page?: PageId;
   badge?: string;
   disabled?: boolean;
@@ -11,10 +12,12 @@ export interface NavigationItem {
 
 export type IconName =
   | "activity"
+  | "alert-circle"
   | "bell"
   | "briefcase"
   | "calendar"
   | "check"
+  | "check-circle"
   | "chevron-left"
   | "chevron-right"
   | "clock"
@@ -23,8 +26,10 @@ export type IconName =
   | "eye"
   | "grid"
   | "layers"
+  | "list"
   | "lock"
   | "logout"
+  | "mail"
   | "menu"
   | "more"
   | "plus"
@@ -36,6 +41,21 @@ export type IconName =
   | "user"
   | "users"
   | "x";
+
+export type SemanticTone =
+  | "info"
+  | "warning"
+  | "error"
+  | "success"
+  | "muted"
+  | "purple"
+  | "blue";
+
+export interface StatMetric {
+  label: string;
+  value: string | number;
+  tone?: SemanticTone;
+}
 
 export interface SessionUser {
   id: string;

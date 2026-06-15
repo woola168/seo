@@ -1,23 +1,36 @@
 <script setup lang="ts">
 import AppIcon from "../ui/AppIcon.vue";
-import type { IconName } from "../../types";
+import type {
+  IconName,
+  SemanticTone,
+  StatMetric,
+} from "../../types";
 
 defineProps<{
   label: string;
   value: string | number;
-  detail: string;
-  tone: "blue" | "amber" | "red" | "green";
+  metrics: StatMetric[];
+  tone: Extract<SemanticTone, "info" | "warning" | "error" | "success">;
   icon: IconName;
 }>();
 </script>
 
 <template>
-  <article class="stat-card" :class="`stat-${tone}`">
+  <article class="stat-card">
     <div class="stat-card-heading">
+      <span class="stat-icon" :class="`tone-${tone}`">
+        <AppIcon :name="icon" :size="18" />
+      </span>
       <span>{{ label }}</span>
-      <span class="stat-icon"><AppIcon :name="icon" :size="18" /></span>
     </div>
     <strong>{{ value }}</strong>
-    <small>{{ detail }}</small>
+    <div class="stat-metrics">
+      <span v-for="metric in metrics" :key="metric.label">
+        {{ metric.label }}
+        <b :class="metric.tone ? `text-${metric.tone}` : undefined">
+          {{ metric.value }}
+        </b>
+      </span>
+    </div>
   </article>
 </template>
