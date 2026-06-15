@@ -3,6 +3,10 @@ from younilab_access_control_infrastructure.persistence.memory import (
 )
 from younilab_access_control_infrastructure.persistence.postgres import (
     CustomerAccessGrantRow,
+    DepartmentRow,
+    InvitationRow,
+    NotificationOutboxRow,
+    PasswordResetRow,
     PostgresAccessControlRepository,
     RefreshSessionRow,
     RoleRow,
@@ -15,8 +19,12 @@ from younilab_access_control_infrastructure.persistence.postgres import (
 
 __all__ = [
     "CustomerAccessGrantRow",
+    "DepartmentRow",
+    "InvitationRow",
     "MemoryAccessControlRepository",
     "PostgresAccessControlRepository",
+    "NotificationOutboxRow",
+    "PasswordResetRow",
     "RefreshSessionRow",
     "RoleRow",
     "TaskAccessGrantRow",

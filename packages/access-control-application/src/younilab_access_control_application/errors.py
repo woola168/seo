@@ -20,3 +20,11 @@ class ResourceNotFound(AccessControlError):
 
 class Conflict(AccessControlError):
     pass
+
+
+class InvalidRecoveryToken(AccessControlError):
+    pass
+
+
+class OperationNotAllowed(AccessControlError):
+    pass

@@ -1,4 +1,5 @@
 from uuid import UUID
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,7 @@ from younilab_access_control_domain import (
 from younilab_access_control_infrastructure import (
     Argon2PasswordHasher,
     MemoryAccessControlRepository,
+    MemoryNotificationPublisher,
 )
 
 
@@ -96,3 +98,62 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     refresh_response = client.post("/api/v1/auth/refresh")
     assert refresh_response.status_code == 200
     assert refresh_response.json()["accessToken"] != access_token
+
+
+def test_password_reset_creates_notification_and_replaces_password() -> None:
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    hasher = Argon2PasswordHasher()
+    repository = MemoryAccessControlRepository(
+        users=[
+            UserAccount(
+                id=user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+            )
+        ],
+        password_hashes={user_id: hasher.hash("OldPassword123!")},
+    )
+    notifications = MemoryNotificationPublisher()
+    client = TestClient(
+        create_app(
+            repository=repository,
+            password_hasher=hasher,
+            notifications=notifications,
+        )
+    )
+
+    request_response = client.post(
+        "/api/v1/auth/password-reset-requests",
+        json={"email": "admin@example.com"},
+    )
+
+    assert request_response.status_code == 202
+    reset_url = notifications.notifications[0].parameters["resetUrl"]
+    token = parse_qs(urlparse(reset_url).query)["token"][0]
+    old_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "OldPassword123!"},
+    )
+    old_headers = {
+        "Authorization": f"Bearer {old_login.json()['accessToken']}"
+    }
+    reset_response = client.post(
+        "/api/v1/auth/password-resets",
+        json={"token": token, "newPassword": "NewPassword123!"},
+    )
+    assert reset_response.status_code == 204
+    assert client.get("/api/v1/me", headers=old_headers).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "NewPassword123!"},
+    ).status_code == 200
+
+
+def test_password_reset_request_does_not_reveal_unknown_email() -> None:
+    response = TestClient(create_app()).post(
+        "/api/v1/auth/password-reset-requests",
+        json={"email": "missing@example.com"},
+    )
+
+    assert response.status_code == 202

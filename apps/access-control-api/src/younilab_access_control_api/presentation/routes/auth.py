@@ -6,7 +6,13 @@ from younilab_access_control_api.presentation.dependencies import (
     bearer_scheme,
     current_principal,
 )
-from younilab_access_control_api.presentation.dtos import LoginRequest, TokenResponse
+from younilab_access_control_api.presentation.dtos import (
+    AcceptInvitationRequest,
+    LoginRequest,
+    PasswordResetRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
 from younilab_access_control_api.presentation.request_parsing import (
     access_token_from_credentials,
     refresh_token_from_cookie,
@@ -14,6 +20,36 @@ from younilab_access_control_api.presentation.request_parsing import (
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
+
+
+@router.post("/password-reset-requests", status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    request: Request,
+) -> None:
+    await request.app.state.account_recovery.request_reset(str(payload.email))
+
+
+@router.post("/password-resets", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+) -> None:
+    await request.app.state.account_recovery.reset_password(
+        token=payload.token,
+        new_password=payload.new_password,
+    )
+
+
+@router.post("/user-invitations/accept", status_code=status.HTTP_204_NO_CONTENT)
+async def accept_invitation(
+    payload: AcceptInvitationRequest,
+    request: Request,
+) -> None:
+    await request.app.state.invitations.accept(
+        token=payload.token,
+        new_password=payload.new_password,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)

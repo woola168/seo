@@ -43,6 +43,12 @@ export interface SessionUser {
   displayName: string;
   status: string;
   roleIds: string[];
+  departmentId?: string | null;
+  authProvider?: string;
+  lastLoginAt?: string | null;
+  invitedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface UserAccess extends SessionUser {
@@ -140,4 +146,46 @@ export interface Department {
   name: string;
   description: string;
   memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInvitationInput {
+  email: string;
+  displayName: string;
+  departmentId: string | null;
+  roleIds: string[];
+  customerIds: string[];
+  taskIds: string[];
+  sendInvitation: boolean;
+}
+
+export interface UserInvitation {
+  id: string;
+  userId: string;
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+}
+
+export interface TaskSummary {
+  id: string;
+  customerId: string;
+  customerName: string;
+  name: string;
+  status: "active" | "archived";
+}
+
+export interface PageResponse<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }

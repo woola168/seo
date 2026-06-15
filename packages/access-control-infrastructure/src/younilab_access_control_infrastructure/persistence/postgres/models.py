@@ -15,6 +15,34 @@ class UserRow(SQLModel, table=True):
     password_hash: str | None = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    department_id: UUID | None = Field(default=None, foreign_key="department.id")
+    auth_provider: str = Field(default="password", nullable=False)
+    last_login_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    invited_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class DepartmentRow(SQLModel, table=True):
+    __tablename__ = "department"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    name: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
+    description: str = Field(default="", sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    archived_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
 
 
 class RoleRow(SQLModel, table=True):
@@ -71,3 +99,58 @@ class RefreshSessionRow(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True)),
     )
     replaced_by_id: UUID | None = Field(default=None)
+
+
+class PasswordResetRow(SQLModel, table=True):
+    __tablename__ = "password_reset"
+
+    id: UUID = Field(primary_key=True)
+    user_id: UUID = Field(foreign_key="user_account.id", nullable=False)
+    token_digest: str = Field(sa_column=Column(String(64), nullable=False, unique=True))
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    used_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    revoked_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class InvitationRow(SQLModel, table=True):
+    __tablename__ = "invitation"
+
+    id: UUID = Field(primary_key=True)
+    user_id: UUID = Field(foreign_key="user_account.id", nullable=False)
+    email: str = Field(sa_column=Column(String(320), nullable=False))
+    token_digest: str = Field(sa_column=Column(String(64), nullable=False, unique=True))
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    accepted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    revoked_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_by: UUID = Field(foreign_key="user_account.id", nullable=False)
+
+
+class NotificationOutboxRow(SQLModel, table=True):
+    __tablename__ = "notification_outbox"
+
+    id: UUID = Field(primary_key=True)
+    recipient: str = Field(sa_column=Column(String(320), nullable=False))
+    template: str = Field(sa_column=Column(String(100), nullable=False))
+    payload_ciphertext: str = Field(sa_column=Column(Text, nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    attempts: int = Field(default=0, nullable=False)
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    sent_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    last_error: str | None = Field(default=None, sa_column=Column(Text))

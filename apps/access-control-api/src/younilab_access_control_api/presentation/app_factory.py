@@ -6,10 +6,15 @@ from younilab_access_control_application import (
     AccessControlError,
     AccountUnavailable,
     Clock,
+    Conflict,
     IdGenerator,
+    InvalidRecoveryToken,
     InvalidCredentials,
     InvalidSession,
+    NotificationPublisher,
+    OperationNotAllowed,
     PasswordHasher,
+    RecoveryTokenProvider,
     ResourceNotFound,
     TokenProvider,
 )
@@ -32,6 +37,8 @@ def create_app(
     token_provider: TokenProvider | None = None,
     clock: Clock | None = None,
     id_generator: IdGenerator | None = None,
+    recovery_token_provider: RecoveryTokenProvider | None = None,
+    notifications: NotificationPublisher | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
         settings=settings,
@@ -40,6 +47,8 @@ def create_app(
         token_provider=token_provider,
         clock=clock,
         id_generator=id_generator,
+        recovery_token_provider=recovery_token_provider,
+        notifications=notifications,
     )
 
     app = FastAPI(title="Younilab SEO Access Control API", version="0.1.0")
@@ -51,6 +60,9 @@ def create_app(
     app.state.authentication = dependencies.authentication
     app.state.authorization = dependencies.authorization
     app.state.management = dependencies.management
+    app.state.account_recovery = dependencies.account_recovery
+    app.state.invitations = dependencies.invitations
+    app.state.notifications = dependencies.notifications
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(me_router)
@@ -109,6 +121,45 @@ def _register_error_handlers(app: FastAPI) -> None:
             detail="The requested resource was not found.",
         )
 
+    @app.exception_handler(InvalidRecoveryToken)
+    async def invalid_recovery_token(
+        request: Request,
+        exc: InvalidRecoveryToken,
+    ) -> JSONResponse:
+        return _problem(
+            request,
+            status=400,
+            title="Invalid recovery token",
+            detail="The recovery token is invalid or expired.",
+            code="RECOVERY_TOKEN_INVALID",
+        )
+
+    @app.exception_handler(Conflict)
+    async def conflict(
+        request: Request,
+        exc: Conflict,
+    ) -> JSONResponse:
+        return _problem(
+            request,
+            status=409,
+            title="Resource conflict",
+            detail=str(exc) or "The operation conflicts with current state.",
+            code="RESOURCE_CONFLICT",
+        )
+
+    @app.exception_handler(OperationNotAllowed)
+    async def operation_not_allowed(
+        request: Request,
+        exc: OperationNotAllowed,
+    ) -> JSONResponse:
+        return _problem(
+            request,
+            status=409,
+            title="Operation not allowed",
+            detail=str(exc),
+            code="OPERATION_NOT_ALLOWED",
+        )
+
     @app.exception_handler(AccessControlError)
     async def access_control_error(
         request: Request,
@@ -128,6 +179,7 @@ def _problem(
     status: int,
     title: str,
     detail: str,
+    code: str | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status,
@@ -138,5 +190,6 @@ def _problem(
             "status": status,
             "detail": detail,
             "instance": request.url.path,
+            **({"code": code} if code else {}),
         },
     )

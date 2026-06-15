@@ -14,6 +14,10 @@ members = [
     "younilab-access-control-domain",
     "younilab-access-control-infrastructure",
     "younilab-authorization-contracts",
+    "younilab-resource-catalog-api",
+    "younilab-resource-catalog-application",
+    "younilab-resource-catalog-domain",
+    "younilab-resource-catalog-infrastructure",
     "younilab-seo-python-workspace",
 ]
 
@@ -1503,6 +1507,108 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.0,<3" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-resource-catalog-api"
+version = "0.1.0"
+source = { editable = "apps/resource-catalog-api" }
+dependencies = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "younilab-resource-catalog-application" },
+    { name = "younilab-resource-catalog-domain" },
+    { name = "younilab-resource-catalog-infrastructure" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
+    { name = "younilab-resource-catalog-application", editable = "packages/resource-catalog-application" },
+    { name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" },
+    { name = "younilab-resource-catalog-infrastructure", editable = "packages/resource-catalog-infrastructure" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8.0" },
+]
+
+[[package]]
+name = "younilab-resource-catalog-application"
+version = "0.1.0"
+source = { editable = "packages/resource-catalog-application" }
+dependencies = [
+    { name = "younilab-resource-catalog-domain" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-resource-catalog-domain"
+version = "0.1.0"
+source = { editable = "packages/resource-catalog-domain" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-resource-catalog-infrastructure"
+version = "0.1.0"
+source = { editable = "packages/resource-catalog-infrastructure" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+    { name = "younilab-resource-catalog-application" },
+    { name = "younilab-resource-catalog-domain" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "aiosqlite" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = ">=0.30.0,<1" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "pydantic-settings", specifier = ">=2.0,<3" },
+    { name = "sqlalchemy", specifier = ">=2.0.14,<2.1" },
+    { name = "sqlmodel", specifier = ">=0.0.38,<0.1" },
+    { name = "younilab-resource-catalog-application", editable = "packages/resource-catalog-application" },
+    { name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiosqlite", specifier = ">=0.21.0,<1" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
 name = "younilab-seo-python-workspace"

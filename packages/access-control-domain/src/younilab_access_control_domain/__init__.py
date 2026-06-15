@@ -1,4 +1,5 @@
 from younilab_access_control_domain.accounts import AccountStatus, UserAccount
+from younilab_access_control_domain.departments import Department
 from younilab_access_control_domain.policy import (
     AccessPolicy,
     AuthorizationReason,
@@ -18,6 +19,7 @@ __all__ = [
     "AccountStatus",
     "AuthorizationReason",
     "Customer",
+    "Department",
     "PolicyDecision",
     "PERMISSIONS",
     "ProtectedResource",

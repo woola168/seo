@@ -9,3 +9,7 @@ class Clock(Protocol):
 
 class IdGenerator(Protocol):
     def new_id(self) -> UUID: ...
+
+
+class NotificationPublisher(Protocol):
+    async def publish(self, notification) -> None: ...

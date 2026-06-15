@@ -4,10 +4,12 @@ import AppIcon from "../ui/AppIcon.vue";
 import AppPagination from "../ui/AppPagination.vue";
 import { queryMembers } from "../../composables/member-query";
 import type {
+  CustomerSummary,
   MemberQuery,
   MemberSortField,
   MemberView,
   Role,
+  TaskSummary,
 } from "../../types";
 
 const props = defineProps<{
@@ -15,13 +17,17 @@ const props = defineProps<{
   roles: Role[];
   canEditRoles: boolean;
   canManageGrants: boolean;
+  canInvite: boolean;
   loading: boolean;
+  customers: CustomerSummary[];
+  tasks: TaskSummary[];
 }>();
 
 const emit = defineEmits<{
   "update-roles": [userId: string, roleIds: string[]];
   "update-customers": [userId: string, customerIds: string[]];
   "update-tasks": [userId: string, taskIds: string[]];
+  invite: [];
   unavailable: [label: string];
 }>();
 
@@ -39,6 +45,18 @@ const selectedMemberId = ref("");
 const editingRoleIds = ref<string[]>([]);
 const customerIdsText = ref("");
 const taskIdsText = ref("");
+const selectedCustomerIds = computed({
+  get: () => parseIds(customerIdsText.value),
+  set: (value: string[]) => {
+    customerIdsText.value = value.join("\n");
+  },
+});
+const selectedTaskIds = computed({
+  get: () => parseIds(taskIdsText.value),
+  set: (value: string[]) => {
+    taskIdsText.value = value.join("\n");
+  },
+});
 
 const result = computed(() => queryMembers(props.members, query));
 const departments = computed(() =>
@@ -124,16 +142,13 @@ function parseIds(value: string): string[] {
         清除篩選
       </button>
       <button
+        v-if="canInvite"
         class="button button-primary toolbar-primary"
         type="button"
-        @click="$emit('unavailable', '新增員工')"
+        @click="$emit('invite')"
       >
         <AppIcon name="plus" :size="16" />新增員工
       </button>
-    </div>
-
-    <div class="mock-notice subtle">
-      部門、最後登入與帳號來源為暫時補充資料；姓名、Email、狀態、角色與存取範圍來自 access-control API。
     </div>
 
     <div class="table-scroll card table-card">
@@ -170,7 +185,7 @@ function parseIds(value: string): string[] {
               </span>
               <span v-if="!member.roleNames.length" class="muted">未指派</span>
             </td>
-            <td>{{ member.department ?? "待 API 提供" }}</td>
+            <td>{{ member.department ?? "未指定" }}</td>
             <td><span class="status-dot"></span>{{ member.status }}</td>
             <td>{{ member.lastLogin ?? "尚未登入" }}</td>
             <td>
@@ -249,14 +264,25 @@ function parseIds(value: string): string[] {
             儲存角色
           </button>
 
-          <label class="form-field">
-            <span>客戶存取 ID（每行一筆 UUID）</span>
-            <textarea
-              v-model="customerIdsText"
-              rows="4"
-              :disabled="!canManageGrants"
-            ></textarea>
-          </label>
+          <fieldset>
+            <legend>客戶存取範圍</legend>
+            <label
+              v-for="customer in customers"
+              :key="customer.id"
+              class="checkbox-row"
+            >
+              <input
+                v-model="selectedCustomerIds"
+                type="checkbox"
+                :value="customer.id"
+                :disabled="!canManageGrants"
+              />
+              <span>{{ customer.name }}</span>
+            </label>
+            <p v-if="!customers.length" class="form-help">
+              Resource Catalog 尚無可選客戶或目前無法連線。
+            </p>
+          </fieldset>
           <button
             class="button button-secondary"
             type="button"
@@ -272,14 +298,25 @@ function parseIds(value: string): string[] {
             儲存客戶範圍
           </button>
 
-          <label class="form-field">
-            <span>任務存取 ID（每行一筆 UUID）</span>
-            <textarea
-              v-model="taskIdsText"
-              rows="4"
-              :disabled="!canManageGrants"
-            ></textarea>
-          </label>
+          <fieldset>
+            <legend>任務存取範圍</legend>
+            <label
+              v-for="task in tasks"
+              :key="task.id"
+              class="checkbox-row"
+            >
+              <input
+                v-model="selectedTaskIds"
+                type="checkbox"
+                :value="task.id"
+                :disabled="!canManageGrants"
+              />
+              <span>{{ task.customerName }} / {{ task.name }}</span>
+            </label>
+            <p v-if="!tasks.length" class="form-help">
+              Resource Catalog 尚無可選任務或目前無法連線。
+            </p>
+          </fieldset>
           <button
             class="button button-secondary"
             type="button"

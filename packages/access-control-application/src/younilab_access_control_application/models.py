@@ -38,3 +38,50 @@ class Capabilities:
     has_global_resource_access: bool
     customer_ids: frozenset[UUID]
     task_ids: frozenset[UUID]
+
+
+@dataclass(frozen=True)
+class PasswordReset:
+    id: UUID
+    user_id: UUID
+    token_digest: str
+    expires_at: datetime
+    created_at: datetime
+    used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    def is_valid(self, now: datetime) -> bool:
+        return (
+            self.used_at is None
+            and self.revoked_at is None
+            and self.expires_at > now
+        )
+
+
+@dataclass(frozen=True)
+class UserInvitation:
+    id: UUID
+    user_id: UUID
+    email: str
+    token_digest: str
+    expires_at: datetime
+    created_at: datetime
+    created_by: UUID
+    accepted_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    def is_valid(self, now: datetime) -> bool:
+        return (
+            self.accepted_at is None
+            and self.revoked_at is None
+            and self.expires_at > now
+        )
+
+
+@dataclass(frozen=True)
+class Notification:
+    id: UUID
+    recipient: str
+    template: str
+    parameters: dict[str, str]
+    created_at: datetime

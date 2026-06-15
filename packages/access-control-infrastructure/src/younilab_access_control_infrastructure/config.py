@@ -22,6 +22,8 @@ class AccessControlSettings(BaseSettings):
     jwt_audience: str = "younilab-seo"
     access_token_minutes: int = Field(default=10, ge=1, le=60)
     refresh_token_days: int = Field(default=30, ge=1, le=90)
+    portal_url: str = "http://127.0.0.1:5173"
+    notification_encryption_key: str | None = None
 
     @property
     def is_production(self) -> bool:

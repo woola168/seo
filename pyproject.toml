@@ -20,6 +20,10 @@ members = [
     "packages/access-control-application",
     "packages/access-control-infrastructure",
     "packages/authorization-contracts",
+    "apps/resource-catalog-api",
+    "packages/resource-catalog-domain",
+    "packages/resource-catalog-application",
+    "packages/resource-catalog-infrastructure",
 ]
 
 [tool.pytest.ini_options]
@@ -30,4 +34,8 @@ testpaths = [
     "packages/access-control-application/tests",
     "packages/access-control-infrastructure/tests",
     "packages/authorization-contracts/tests",
+    "apps/resource-catalog-api/tests",
+    "packages/resource-catalog-domain/tests",
+    "packages/resource-catalog-application/tests",
+    "packages/resource-catalog-infrastructure/tests",
 ]

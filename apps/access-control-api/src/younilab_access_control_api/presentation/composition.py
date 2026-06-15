@@ -1,13 +1,17 @@
 from dataclasses import dataclass
 
 from younilab_access_control_application import (
+    AccountRecoveryService,
     AccessControlRepository,
     AccessManagementService,
     AuthenticationService,
     AuthorizationService,
     Clock,
     IdGenerator,
+    InvitationService,
+    NotificationPublisher,
     PasswordHasher,
+    RecoveryTokenProvider,
     TokenProvider,
 )
 from younilab_access_control_infrastructure import (
@@ -15,9 +19,13 @@ from younilab_access_control_infrastructure import (
     Argon2PasswordHasher,
     JwtTokenProvider,
     MemoryAccessControlRepository,
+    MemoryNotificationPublisher,
+    PostgresOutboxPublisher,
+    SecureRecoveryTokenProvider,
     SystemClock,
     UuidGenerator,
     build_postgres_repository,
+    build_postgres_session_factory,
 )
 
 
@@ -30,6 +38,9 @@ class AccessControlApiDependencies:
     authentication: AuthenticationService
     authorization: AuthorizationService
     management: AccessManagementService
+    account_recovery: AccountRecoveryService
+    invitations: InvitationService
+    notifications: NotificationPublisher
     secure_cookies: bool
 
 
@@ -41,6 +52,8 @@ def build_dependencies(
     token_provider: TokenProvider | None = None,
     clock: Clock | None = None,
     id_generator: IdGenerator | None = None,
+    recovery_token_provider: RecoveryTokenProvider | None = None,
+    notifications: NotificationPublisher | None = None,
 ) -> AccessControlApiDependencies:
     resolved_settings = settings if settings is not None else AccessControlSettings()
     resolved_repository = (
@@ -58,6 +71,16 @@ def build_dependencies(
     resolved_id_generator = (
         id_generator if id_generator is not None else UuidGenerator()
     )
+    resolved_recovery_token_provider = (
+        recovery_token_provider
+        if recovery_token_provider is not None
+        else SecureRecoveryTokenProvider()
+    )
+    resolved_notifications = (
+        notifications
+        if notifications is not None
+        else _notifications(resolved_settings)
+    )
 
     return AccessControlApiDependencies(
         repository=resolved_repository,
@@ -72,7 +95,29 @@ def build_dependencies(
             id_generator=resolved_id_generator,
         ),
         authorization=AuthorizationService(resolved_repository),
-        management=AccessManagementService(resolved_repository),
+        management=AccessManagementService(
+            resolved_repository,
+            clock=resolved_clock,
+        ),
+        account_recovery=AccountRecoveryService(
+            repository=resolved_repository,
+            password_hasher=resolved_password_hasher,
+            token_provider=resolved_recovery_token_provider,
+            notifications=resolved_notifications,
+            clock=resolved_clock,
+            id_generator=resolved_id_generator,
+            portal_url=resolved_settings.portal_url,
+        ),
+        invitations=InvitationService(
+            repository=resolved_repository,
+            password_hasher=resolved_password_hasher,
+            token_provider=resolved_recovery_token_provider,
+            notifications=resolved_notifications,
+            clock=resolved_clock,
+            id_generator=resolved_id_generator,
+            portal_url=resolved_settings.portal_url,
+        ),
+        notifications=resolved_notifications,
         secure_cookies=resolved_settings.is_production,
     )
 
@@ -83,6 +128,19 @@ def _repository(settings: AccessControlSettings) -> AccessControlRepository:
     if settings.is_production:
         raise RuntimeError("ACCESS_CONTROL_DATABASE_URL is required in production")
     return MemoryAccessControlRepository()
+
+
+def _notifications(settings: AccessControlSettings) -> NotificationPublisher:
+    if settings.database_url and settings.notification_encryption_key:
+        return PostgresOutboxPublisher(
+            build_postgres_session_factory(settings.database_url),
+            settings.notification_encryption_key,
+        )
+    if settings.is_production:
+        raise RuntimeError(
+            "ACCESS_CONTROL_NOTIFICATION_ENCRYPTION_KEY is required in production"
+        )
+    return MemoryNotificationPublisher()
 
 
 def _token_provider(settings: AccessControlSettings) -> TokenProvider:

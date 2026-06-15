@@ -4,13 +4,21 @@ from younilab_access_control_application.interfaces.repositories import (
     AccessManagementRepository,
     AuthenticationRepository,
     AuthorizationRepository,
+    DepartmentRepository,
+    InvitationRepository,
+    PasswordResetRepository,
     RefreshSessionRepository,
     RoleRepository,
     UserRepository,
 )
-from younilab_access_control_application.interfaces.runtime import Clock, IdGenerator
+from younilab_access_control_application.interfaces.runtime import (
+    Clock,
+    IdGenerator,
+    NotificationPublisher,
+)
 from younilab_access_control_application.interfaces.security import (
     PasswordHasher,
+    RecoveryTokenProvider,
     TokenProvider,
 )
 
@@ -21,8 +29,13 @@ __all__ = [
     "AuthenticationRepository",
     "AuthorizationRepository",
     "Clock",
+    "DepartmentRepository",
     "IdGenerator",
+    "InvitationRepository",
+    "NotificationPublisher",
     "PasswordHasher",
+    "PasswordResetRepository",
+    "RecoveryTokenProvider",
     "RefreshSessionRepository",
     "RoleRepository",
     "TokenProvider",

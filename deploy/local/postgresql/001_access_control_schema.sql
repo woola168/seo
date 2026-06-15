@@ -1,3 +1,12 @@
+CREATE TABLE IF NOT EXISTS department (
+    id uuid PRIMARY KEY,
+    name varchar(100) NOT NULL UNIQUE,
+    description text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    archived_at timestamptz NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_account (
     id uuid PRIMARY KEY,
     email varchar(320) NOT NULL UNIQUE,
@@ -5,7 +14,12 @@ CREATE TABLE IF NOT EXISTS user_account (
     status varchar(32) NOT NULL,
     password_hash text NULL,
     created_at timestamptz NOT NULL,
-    updated_at timestamptz NOT NULL
+    updated_at timestamptz NOT NULL,
+    department_id uuid NULL REFERENCES department(id),
+    auth_provider varchar(32) NOT NULL DEFAULT 'password',
+    last_login_at timestamptz NULL,
+    invited_at timestamptz NULL,
+    deleted_at timestamptz NULL
 );
 
 CREATE TABLE IF NOT EXISTS role (
@@ -52,6 +66,7 @@ CREATE INDEX IF NOT EXISTS ix_refresh_session_family_id
 
 CREATE TABLE IF NOT EXISTS invitation (
     id uuid PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
     email varchar(320) NOT NULL,
     token_digest varchar(64) NOT NULL UNIQUE,
     expires_at timestamptz NOT NULL,
@@ -60,6 +75,31 @@ CREATE TABLE IF NOT EXISTS invitation (
     created_at timestamptz NOT NULL,
     created_by uuid NOT NULL REFERENCES user_account(id)
 );
+
+CREATE TABLE IF NOT EXISTS password_reset (
+    id uuid PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+    token_digest varchar(64) NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL,
+    used_at timestamptz NULL,
+    revoked_at timestamptz NULL
+);
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id uuid PRIMARY KEY,
+    recipient varchar(320) NOT NULL,
+    template varchar(100) NOT NULL,
+    payload_ciphertext text NOT NULL,
+    status varchar(32) NOT NULL,
+    attempts integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL,
+    sent_at timestamptz NULL,
+    last_error text NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_notification_outbox_pending
+    ON notification_outbox (status, created_at);
 
 CREATE TABLE IF NOT EXISTS security_audit_event (
     id uuid PRIMARY KEY,

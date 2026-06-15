@@ -25,6 +25,8 @@ VALUES
         "customers.delete",
         "customers.read",
         "customers.update",
+        "departments.manage",
+        "departments.read",
         "permissions.read",
         "roles.manage",
         "roles.read",

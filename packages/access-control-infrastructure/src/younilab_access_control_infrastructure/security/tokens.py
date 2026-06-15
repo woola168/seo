@@ -73,3 +73,11 @@ class JwtTokenProvider:
 
     def refresh_token_expires_at(self) -> datetime:
         return datetime.now(UTC) + timedelta(days=self._refresh_token_days)
+
+
+class SecureRecoveryTokenProvider:
+    def new_token(self) -> str:
+        return secrets.token_urlsafe(48)
+
+    def digest(self, token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()

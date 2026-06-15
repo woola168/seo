@@ -4,7 +4,7 @@ import { mergeMemberMetadata } from "./permissions";
 import type { Role, UserAccess } from "../types";
 
 describe("mergeMemberMetadata", () => {
-  it("keeps API fields and adds temporary metadata", () => {
+  it("maps lifecycle metadata and department names from API fields", () => {
     const users: UserAccess[] = [
       {
         id: "user-1",
@@ -14,6 +14,9 @@ describe("mergeMemberMetadata", () => {
         roleIds: ["role-1"],
         customerIds: ["customer-1"],
         taskIds: ["task-1"],
+        departmentId: "department-1",
+        authProvider: "password",
+        lastLoginAt: "2026-06-12T02:30:00Z",
       },
     ];
     const roles: Role[] = [
@@ -26,14 +29,19 @@ describe("mergeMemberMetadata", () => {
       },
     ];
 
-    const [member] = mergeMemberMetadata(users, roles);
+    const [member] = mergeMemberMetadata(
+      users,
+      roles,
+      new Map([["department-1", "工程部"]]),
+    );
 
     expect(member).toMatchObject({
       email: "admin@example.com",
       roleNames: ["admin"],
       customerIds: ["customer-1"],
-      department: "決策層",
+      department: "工程部",
       source: "workspace",
     });
+    expect(member?.lastLogin).not.toBeNull();
   });
 });

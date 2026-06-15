@@ -18,8 +18,11 @@
 | `customer_access_grant` | 指派使用者可以存取的客戶 | 已使用 |
 | `task_access_grant` | 指派使用者可以單獨存取的任務 | 已使用 |
 | `refresh_session` | Refresh Token rotation、撤銷及多裝置工作階段 | 已使用 |
-| `invitation` | 未來邀請新使用者建立帳號 | 已建表，尚未接入程式 |
+| `invitation` | 邀請新使用者建立帳號 | 已使用 |
 | `security_audit_event` | 未來記錄登入、權限異動與安全事件 | 已建表，尚未接入程式 |
+| `department` | 員工部門主檔 | 已使用 |
+| `password_reset` | 一次性密碼重設 Token digest | 已使用 |
+| `notification_outbox` | 加密的待寄通知 | 已使用，尚未串接寄信 provider |
 
 ## 關聯圖
 
@@ -289,6 +292,7 @@ AND expires_at > 現在時間
 - `customer_id` 與 `task_id` 是外部 bounded context 的識別碼，因此目前沒有資料庫外鍵。
 - `permissions` 使用 JSONB 保存字串陣列，合法權限由 Application allowlist 驗證。
 - 密碼只保存 Argon2id hash；Refresh Token 與 Invitation Token 只保存 digest。
-- `invitation` 與 `security_audit_event` 目前是預留 schema，不代表相關功能已可使用。
+- `invitation` 已接入員工邀請流程；`security_audit_event` 仍為預留 schema。
+- `notification_outbox` 僅保存加密 payload，寄送 dispatcher 與外部 provider 尚待實作。
 - Schema 目前由 SQL 檔管理，尚未導入 Alembic 等 migration framework。
 - `security_audit_event.metadata` 不應保存密碼、JWT、Refresh Token、邀請 Token或其他秘密資訊。

@@ -10,6 +10,20 @@ services:
     volumes:
       - access-control-postgresql-data:/var/lib/postgresql
       - ./postgresql/001_access_control_schema.sql:/docker-entrypoint-initdb.d/001_access_control_schema.sql:ro
+      - ./postgresql/003_access_control_lifecycle.sql:/docker-entrypoint-initdb.d/003_access_control_lifecycle.sql:ro
+
+  resource-catalog-postgresql:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: resource_catalog
+      POSTGRES_USER: resource_catalog
+      POSTGRES_PASSWORD: resource_catalog
+    ports:
+      - "5433:5432"
+    volumes:
+      - resource-catalog-postgresql-data:/var/lib/postgresql
+      - ./postgresql/001_resource_catalog_schema.sql:/docker-entrypoint-initdb.d/001_resource_catalog_schema.sql:ro
 
 volumes:
   access-control-postgresql-data:
+  resource-catalog-postgresql-data:

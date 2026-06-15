@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import AppIcon from "../ui/AppIcon.vue";
+import PermissionGroupSelector from "./PermissionGroupSelector.vue";
 import { useRoleCreationForm } from "../../composables/role-creation-form";
 import type { Role } from "../../types";
 
@@ -81,21 +82,13 @@ function createRole(): void {
           <p>選擇角色後調整允許的操作。</p>
         </div>
       </header>
-      <div v-if="editingRoleId" class="permission-grid">
-        <label
-          v-for="permission in permissions"
-          :key="permission"
-          class="permission-choice"
-        >
-          <input
-            v-model="editingPermissions"
-            type="checkbox"
-            :value="permission"
-            :disabled="!canManage"
-          />
-          <span>{{ permission }}</span>
-        </label>
-      </div>
+      <PermissionGroupSelector
+        v-if="editingRoleId"
+        :permissions="permissions"
+        :selected-permissions="editingPermissions"
+        :disabled="!canManage"
+        @update:selected-permissions="editingPermissions = $event"
+      />
       <div v-else class="empty-state">尚無可編輯的角色。</div>
       <button
         class="button button-primary"
@@ -118,21 +111,12 @@ function createRole(): void {
         <span>角色名稱</span>
         <input v-model="roleName" placeholder="例如：Content Reviewer" />
       </label>
-      <div class="permission-grid compact-permissions">
-        <label
-          v-for="permission in permissions"
-          :key="permission"
-          class="permission-choice"
-        >
-          <input
-            v-model="selectedPermissions"
-            type="checkbox"
-            :value="permission"
-            :disabled="!canManage"
-          />
-          <span>{{ permission }}</span>
-        </label>
-      </div>
+      <PermissionGroupSelector
+        :permissions="permissions"
+        :selected-permissions="selectedPermissions"
+        :disabled="!canManage"
+        @update:selected-permissions="selectedPermissions = $event"
+      />
       <button
         class="button button-primary"
         type="button"

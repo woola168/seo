@@ -20,6 +20,9 @@ uv run uvicorn younilab_access_control_api.main:app --reload
 API 預設使用 `ACCESS_CONTROL_DATABASE_URL` 連接 PostgreSQL。測試使用記憶體內的
 repository，不需要啟動外部服務。
 
+客戶與任務主檔由獨立的 `resource-catalog-api` 擁有，開發環境預設使用
+`http://127.0.0.1:8001` 與 PostgreSQL `localhost:5433/resource_catalog`。
+
 套用 `deploy/local/postgresql/001_access_control_schema.sql` 後，以互動方式建立
 第一位管理員：
 
@@ -48,6 +51,17 @@ uv run python -m younilab_access_control_api.bootstrap `
 $env:ACCESS_CONTROL_DATABASE_URL="postgresql+asyncpg://access_control:access_control@localhost:5432/access_control"
 uv run uvicorn younilab_access_control_api.main:app --reload
 ```
+
+另一個終端啟動 Resource Catalog：
+
+```powershell
+$env:RESOURCE_CATALOG_DATABASE_URL="postgresql+asyncpg://resource_catalog:resource_catalog@localhost:5433/resource_catalog"
+uv run uvicorn younilab_resource_catalog_api.main:app --port 8001 --reload
+```
+
+忘記密碼與員工邀請會建立加密的 `notification_outbox` 資料。目前尚未設定外部
+寄信 provider，因此通知會維持 `pending`；未來 dispatcher 可透過公開的
+`NotificationPublisher` 邊界串接寄信服務。
 
 另一個終端啟動 Vue portal：
 

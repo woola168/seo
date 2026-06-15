@@ -113,6 +113,16 @@ code,
   background: var(--surface-secondary);
 }
 
+.button-danger {
+  border-color: #ffccc7;
+  color: var(--danger);
+  background: #fff2f0;
+}
+
+.button-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
 .button-ghost {
   border-color: transparent;
   color: var(--text-secondary);

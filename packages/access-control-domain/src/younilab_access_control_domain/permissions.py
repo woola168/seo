@@ -7,6 +7,8 @@ PERMISSIONS = frozenset(
         "permissions.read",
         "access-grants.read",
         "access-grants.manage",
+        "departments.read",
+        "departments.manage",
         "customers.read",
         "customers.create",
         "customers.update",

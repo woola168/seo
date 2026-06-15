@@ -29,6 +29,11 @@ async def current_principal(
     claims = request.app.state.token_provider.decode_access_token(
         access_token
     )
+    session = await request.app.state.repository.get_refresh_session_by_id(
+        claims.session_id
+    )
+    if session is None or not session.is_valid(request.app.state.clock.now()):
+        raise InvalidSession
     user = await request.app.state.repository.get_user(claims.user_id)
     if user is None or not user.is_active:
         raise InvalidSession

@@ -12,6 +12,20 @@ class LoginRequest(ApiRequest):
     password: str = Field(min_length=1)
 
 
+class PasswordResetRequest(ApiRequest):
+    email: EmailStr
+
+
+class ResetPasswordRequest(ApiRequest):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class AcceptInvitationRequest(ApiRequest):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
 class TokenResponse(ApiModel):
     access_token: str
     token_type: str = "bearer"

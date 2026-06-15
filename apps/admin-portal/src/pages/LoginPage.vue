@@ -9,6 +9,7 @@ defineProps<{
 
 const emit = defineEmits<{
   login: [email: string, password: string];
+  forgot: [];
   unavailable: [label: string];
 }>();
 
@@ -102,7 +103,7 @@ function submit(): void {
             <button
               class="text-button"
               type="button"
-              @click="$emit('unavailable', '忘記密碼')"
+              @click="$emit('forgot')"
             >
               忘記密碼？
             </button>

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import AppToast from "./components/ui/AppToast.vue";
 import Layout from "./layouts/Layout.vue";
+import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
@@ -9,10 +10,14 @@ import { ApiError, api } from "./services/api";
 import type {
   AuthorizationDecision,
   Capabilities,
+  CreateInvitationInput,
+  CustomerSummary,
+  Department,
   NavigationItem,
   PageId,
   Role,
   SessionUser,
+  TaskSummary,
   ToastMessage,
   ToastTone,
   UserAccess,
@@ -24,6 +29,9 @@ const capabilities = ref<Capabilities | null>(null);
 const roles = ref<Role[]>([]);
 const users = ref<UserAccess[]>([]);
 const permissions = ref<string[]>([]);
+const customers = ref<CustomerSummary[]>([]);
+const tasks = ref<TaskSummary[]>([]);
+const departments = ref<Department[]>([]);
 const decision = ref<AuthorizationDecision | null>(null);
 const activePage = ref<PageId>("dashboard");
 const sidebarCollapsed = ref(false);
@@ -31,6 +39,16 @@ const globalSearch = ref("");
 const loading = ref(false);
 const loginError = ref("");
 const toast = ref<ToastMessage | null>(null);
+const recoveryMode = ref<"request" | "reset" | "accept" | null>(
+  window.location.pathname.endsWith("/reset-password")
+    ? "reset"
+    : window.location.pathname.endsWith("/accept-invitation")
+      ? "accept"
+      : null,
+);
+const recoveryToken = ref(
+  new URLSearchParams(window.location.search).get("token") ?? "",
+);
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const navigation = computed<NavigationItem[]>(() => [
@@ -51,8 +69,46 @@ const navigation = computed<NavigationItem[]>(() => [
 ]);
 
 onMounted(async () => {
-  if (api.hasSession()) await loadSession();
+  if (!recoveryMode.value && api.hasSession()) await loadSession();
 });
+
+function openPasswordResetRequest(): void {
+  recoveryMode.value = "request";
+  recoveryToken.value = "";
+  window.history.pushState({}, "", "/forgot-password");
+}
+
+function returnToLogin(): void {
+  recoveryMode.value = null;
+  recoveryToken.value = "";
+  loginError.value = "";
+  window.history.replaceState({}, "", "/");
+}
+
+async function submitRecovery(value: string): Promise<void> {
+  loginError.value = "";
+  await run(
+    async () => {
+      if (recoveryMode.value === "request") {
+        await api.requestPasswordReset(value);
+        notify(
+          "若帳號存在，密碼重設通知已建立並等待寄送。",
+          "success",
+        );
+      } else if (recoveryMode.value === "reset") {
+        await api.resetPassword(recoveryToken.value, value);
+        notify("密碼已重設，請重新登入。", "success");
+      } else if (recoveryMode.value === "accept") {
+        await api.acceptInvitation(recoveryToken.value, value);
+        notify("帳號已啟用，請登入。", "success");
+      }
+      returnToLogin();
+    },
+    (message) => {
+      loginError.value = message;
+    },
+  );
+}
 
 async function login(email: string, password: string): Promise<void> {
   loginError.value = "";
@@ -118,6 +174,36 @@ async function loadAccessibleData(
     );
   } else {
     permissions.value = [...available];
+  }
+  if (hasPermission(available, "departments.read")) {
+    calls.push(
+      api
+        .departments()
+        .then((value) => void (departments.value = value))
+        .catch(() => void (departments.value = [])),
+    );
+  } else {
+    departments.value = [];
+  }
+  if (hasPermission(available, "customers.read")) {
+    calls.push(
+      api
+        .customers()
+        .then((value) => void (customers.value = value.items))
+        .catch(() => void (customers.value = [])),
+    );
+  } else {
+    customers.value = [];
+  }
+  if (hasPermission(available, "tasks.read")) {
+    calls.push(
+      api
+        .tasks()
+        .then((value) => void (tasks.value = value.items))
+        .catch(() => void (tasks.value = [])),
+    );
+  } else {
+    tasks.value = [];
   }
   await Promise.all(calls);
 }
@@ -191,6 +277,82 @@ async function updateTaskGrants(
   );
 }
 
+async function inviteUser(
+  input: CreateInvitationInput,
+  onSuccess: () => void,
+): Promise<void> {
+  await run(async () => {
+    await api.inviteUser(input);
+    users.value = await api.users();
+    onSuccess();
+    notify("員工邀請已建立", "success");
+  });
+}
+
+async function createDepartment(
+  name: string,
+  description: string,
+  onSuccess: () => void,
+): Promise<void> {
+  await run(async () => {
+    const created = await api.createDepartment(name, description);
+    departments.value = [...departments.value, created];
+    onSuccess();
+    notify("部門已新增", "success");
+  });
+}
+
+async function updateDepartment(
+  departmentId: string,
+  name: string,
+  description: string,
+  onSuccess: () => void,
+): Promise<void> {
+  await run(async () => {
+    const updated = await api.updateDepartment(departmentId, name, description);
+    departments.value = departments.value.map((department) =>
+      department.id === updated.id ? updated : department,
+    );
+    onSuccess();
+    notify("部門已更新", "success");
+  });
+}
+
+async function deleteDepartment(departmentId: string): Promise<void> {
+  await run(async () => {
+    await api.deleteDepartment(departmentId);
+    departments.value = departments.value.filter(
+      (department) => department.id !== departmentId,
+    );
+    notify("部門已封存", "success");
+  });
+}
+
+async function createCustomer(
+  name: string,
+  onSuccess: () => void,
+): Promise<void> {
+  await run(async () => {
+    const created = await api.createCustomer(name);
+    customers.value = [...customers.value, created];
+    onSuccess();
+    notify("客戶已新增，可立即設定權限", "success");
+  });
+}
+
+async function createTask(
+  customerId: string,
+  name: string,
+  onSuccess: () => void,
+): Promise<void> {
+  await run(async () => {
+    const created = await api.createTask(customerId, name);
+    tasks.value = [...tasks.value, created];
+    onSuccess();
+    notify("任務已新增，可立即設定權限", "success");
+  });
+}
+
 async function updateUser(
   action: () => Promise<UserAccess>,
   successMessage: string,
@@ -239,6 +401,9 @@ function clearSession(): void {
   roles.value = [];
   users.value = [];
   permissions.value = [];
+  customers.value = [];
+  tasks.value = [];
+  departments.value = [];
   decision.value = null;
   activePage.value = "dashboard";
   globalSearch.value = "";
@@ -258,11 +423,21 @@ function unavailable(label: string): void {
 </script>
 
 <template>
+  <AccountRecoveryPage
+    v-if="recoveryMode"
+    :mode="recoveryMode"
+    :loading="loading"
+    :error="loginError"
+    @submit="submitRecovery"
+    @back="returnToLogin"
+  />
+
   <LoginPage
-    v-if="!user || !capabilities"
+    v-else-if="!user || !capabilities"
     :loading="loading"
     :error="loginError"
     @login="login"
+    @forgot="openPasswordResetRequest"
     @unavailable="unavailable"
   />
 
@@ -293,6 +468,9 @@ function unavailable(label: string): void {
       :users="users"
       :roles="roles"
       :permissions="permissions"
+      :customers="customers"
+      :tasks="tasks"
+      :departments="departments"
       :decision="decision"
       :loading="loading"
       @unavailable="unavailable"
@@ -301,6 +479,12 @@ function unavailable(label: string): void {
       @update-user-roles="updateUserRoles"
       @update-customers="updateCustomerGrants"
       @update-tasks="updateTaskGrants"
+      @invite-user="inviteUser"
+      @create-department="createDepartment"
+      @update-department="updateDepartment"
+      @delete-department="deleteDepartment"
+      @create-customer="createCustomer"
+      @create-task="createTask"
       @evaluate="evaluate"
     />
   </Layout>

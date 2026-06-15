@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import AppIcon from "../ui/AppIcon.vue";
 import {
   selectAvailablePermission,
   selectAvailableUserId,
 } from "../../composables/authorization-selection";
+import { permissionLabel } from "../../utils/permissions";
 import type {
   AuthorizationDecision,
+  CustomerSummary,
   SessionUser,
+  TaskSummary,
   UserAccess,
 } from "../../types";
 
@@ -18,6 +21,8 @@ const props = defineProps<{
   decision: AuthorizationDecision | null;
   loading: boolean;
   canEvaluateOthers: boolean;
+  customers: CustomerSummary[];
+  tasks: TaskSummary[];
 }>();
 
 const emit = defineEmits<{
@@ -35,6 +40,9 @@ const permission = ref("");
 const resourceType = ref<"customer" | "task">("task");
 const customerId = ref("");
 const taskId = ref("");
+const availableTasks = computed(() =>
+  props.tasks.filter((task) => task.customerId === customerId.value),
+);
 
 watch(
   [
@@ -49,6 +57,26 @@ watch(
       props.users.map((user) => user.id),
       props.canEvaluateOthers,
     );
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.customers,
+  (customers) => {
+    if (!customers.some((customer) => customer.id === customerId.value)) {
+      customerId.value = customers[0]?.id ?? "";
+    }
+  },
+  { deep: true, immediate: true },
+);
+
+watch(
+  availableTasks,
+  (tasks) => {
+    if (!tasks.some((task) => task.id === taskId.value)) {
+      taskId.value = tasks[0]?.id ?? "";
+    }
   },
   { immediate: true },
 );
@@ -101,10 +129,10 @@ function evaluate(): void {
         </select>
       </label>
       <label class="form-field">
-        <span>Permission</span>
+        <span>操作權限</span>
         <select v-model="permission">
           <option v-for="item in permissions" :key="item" :value="item">
-            {{ item }}
+            {{ permissionLabel(item) }}（{{ item }}）
           </option>
         </select>
       </label>
@@ -117,11 +145,25 @@ function evaluate(): void {
       </label>
       <label class="form-field">
         <span>Customer ID</span>
-        <input v-model="customerId" placeholder="UUID" />
+        <select v-model="customerId">
+          <option value="">請選擇客戶</option>
+          <option
+            v-for="customer in customers"
+            :key="customer.id"
+            :value="customer.id"
+          >
+            {{ customer.name }}
+          </option>
+        </select>
       </label>
       <label v-if="resourceType === 'task'" class="form-field">
         <span>Task ID</span>
-        <input v-model="taskId" placeholder="UUID" />
+        <select v-model="taskId">
+          <option value="">請選擇任務</option>
+          <option v-for="task in availableTasks" :key="task.id" :value="task.id">
+            {{ task.name }}
+          </option>
+        </select>
       </label>
       <button
         class="button button-primary"

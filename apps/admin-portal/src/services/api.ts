@@ -1,9 +1,15 @@
 import type {
   AuthorizationDecision,
   Capabilities,
+  CreateInvitationInput,
+  CustomerSummary,
+  Department,
+  PageResponse,
   Role,
   SessionUser,
+  TaskSummary,
   UserAccess,
+  UserInvitation,
 } from "../types";
 import { problemMessage } from "./problem-details";
 
@@ -91,6 +97,59 @@ export const api = {
   roles: () => request<Role[]>("/api/v1/roles"),
   users: () => request<UserAccess[]>("/api/v1/users"),
   permissions: () => request<string[]>("/api/v1/permissions"),
+  departments: () => request<Department[]>("/api/v1/departments"),
+  createDepartment: (name: string, description: string) =>
+    request<Department>("/api/v1/departments", {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    }),
+  updateDepartment: (departmentId: string, name: string, description: string) =>
+    request<Department>(`/api/v1/departments/${departmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, description }),
+    }),
+  deleteDepartment: (departmentId: string) =>
+    request<void>(`/api/v1/departments/${departmentId}`, {
+      method: "DELETE",
+    }),
+  inviteUser: (input: CreateInvitationInput) =>
+    request<UserInvitation>("/api/v1/user-invitations", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  customers: () =>
+    request<PageResponse<CustomerSummary>>(
+      "/api/v1/customers?page=1&pageSize=100",
+    ),
+  tasks: (customerId = "") =>
+    request<PageResponse<TaskSummary>>(
+      `/api/v1/tasks?page=1&pageSize=100${customerId ? `&customerId=${customerId}` : ""}`,
+    ),
+  createCustomer: (name: string) =>
+    request<CustomerSummary>("/api/v1/customers", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  createTask: (customerId: string, name: string) =>
+    request<TaskSummary>("/api/v1/tasks", {
+      method: "POST",
+      body: JSON.stringify({ customerId, name }),
+    }),
+  requestPasswordReset: (email: string) =>
+    request<void>("/api/v1/auth/password-reset-requests", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, newPassword: string) =>
+    request<void>("/api/v1/auth/password-resets", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+    }),
+  acceptInvitation: (token: string, newPassword: string) =>
+    request<void>("/api/v1/auth/user-invitations/accept", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+    }),
   createRole: (name: string, permissions: string[]) =>
     request<Role>("/api/v1/roles", {
       method: "POST",

@@ -1,0 +1,25 @@
+[project]
+name = "younilab-resource-catalog-infrastructure"
+version = "0.1.0"
+description = "Resource catalog infrastructure adapters."
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.30.0,<1",
+    "httpx>=0.27,<1",
+    "pydantic-settings>=2.0,<3",
+    "sqlalchemy>=2.0.14,<2.1",
+    "sqlmodel>=0.0.38,<0.1",
+    "younilab-resource-catalog-application",
+    "younilab-resource-catalog-domain",
+]
+
+[tool.uv.sources]
+younilab-resource-catalog-application = { workspace = true }
+younilab-resource-catalog-domain = { workspace = true }
+
+[dependency-groups]
+dev = ["aiosqlite>=0.21.0,<1", "pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"
