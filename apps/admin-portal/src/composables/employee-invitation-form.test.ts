@@ -55,6 +55,28 @@ describe("employee invitation form", () => {
     });
   });
 
+  it("hides tasks until at least one customer is selected", () => {
+    const invitation = useEmployeeInvitationForm(() => tasks);
+
+    expect(invitation.availableTasks.value).toEqual([]);
+
+    invitation.form.customerIds = ["customer-1"];
+
+    expect(invitation.availableTasks.value.map((task) => task.id)).toEqual([
+      "task-1",
+    ]);
+  });
+
+  it("removes selected tasks when their customer is no longer selected", () => {
+    const invitation = useEmployeeInvitationForm(() => tasks);
+    invitation.form.customerIds = ["customer-1", "customer-2"];
+    invitation.form.taskIds = ["task-1", "task-2"];
+
+    invitation.form.customerIds = ["customer-1"];
+
+    expect(invitation.form.taskIds).toEqual(["task-1"]);
+  });
+
   it("keeps input until reset is called after a successful request", () => {
     const invitation = useEmployeeInvitationForm(() => tasks);
     invitation.form.displayName = "王小明";

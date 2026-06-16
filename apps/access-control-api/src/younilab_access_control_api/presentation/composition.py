@@ -131,15 +131,12 @@ def _repository(settings: AccessControlSettings) -> AccessControlRepository:
 
 
 def _notifications(settings: AccessControlSettings) -> NotificationPublisher:
-    if settings.database_url and settings.notification_encryption_key:
+    if settings.database_url:
         return PostgresOutboxPublisher(
-            build_postgres_session_factory(settings.database_url),
-            settings.notification_encryption_key,
+            build_postgres_session_factory(settings.database_url)
         )
     if settings.is_production:
-        raise RuntimeError(
-            "ACCESS_CONTROL_NOTIFICATION_ENCRYPTION_KEY is required in production"
-        )
+        raise RuntimeError("ACCESS_CONTROL_DATABASE_URL is required in production")
     return MemoryNotificationPublisher()
 
 

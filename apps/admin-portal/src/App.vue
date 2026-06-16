@@ -32,6 +32,7 @@ import {
   shouldRestoreSession,
   type RecoveryMode,
 } from "./utils/session-bootstrap";
+import { removeRoleById } from "./utils/role-state";
 
 const route = useRoute();
 const router = useRouter();
@@ -336,6 +337,14 @@ async function updateRole(
   });
 }
 
+async function deleteRole(roleId: string): Promise<void> {
+  await run(async () => {
+    await api.deleteRole(roleId);
+    roles.value = removeRoleById(roles.value, roleId);
+    notify("角色已刪除", "success");
+  });
+}
+
 async function updateUserRoles(
   userId: string,
   roleIds: string[],
@@ -607,6 +616,7 @@ function unavailable(label: string): void {
       @unavailable="unavailable"
       @open-role-creation="openRoleCreation"
       @update-role="updateRole"
+      @delete-role="deleteRole"
       @update-user-roles="updateUserRoles"
       @update-customers="updateCustomerGrants"
       @update-tasks="updateTaskGrants"

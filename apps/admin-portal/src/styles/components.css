@@ -622,11 +622,9 @@
   min-height: 62px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  padding: 0;
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
-  text-align: left;
   background: var(--surface);
 }
 
@@ -634,18 +632,38 @@
   background: var(--primary-soft);
 }
 
-.role-item > span:first-child {
+.role-select {
+  min-width: 0;
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
 }
 
-.role-item strong,
-.role-item small {
+.role-select > span:first-child {
+  min-width: 0;
+}
+
+.role-select strong,
+.role-select small {
   display: block;
 }
 
-.role-item small {
+.role-select small {
   margin-top: 4px;
   color: var(--text-muted);
+}
+
+.role-delete-button {
+  flex: 0 0 auto;
+  margin-right: 10px;
+  color: var(--danger);
 }
 
 .role-editor {

@@ -60,6 +60,15 @@ class MemoryAccessControlRepository:
     async def save_role(self, role: Role) -> None:
         self.roles[role.id] = role
 
+    async def delete_role(self, role_id: UUID) -> None:
+        self.roles.pop(role_id, None)
+
+    async def role_member_count(self, role_id: UUID) -> int:
+        return sum(
+            role_id in user.role_ids and not user.is_deleted
+            for user in self.users.values()
+        )
+
     async def replace_user_roles(
         self,
         user_id: UUID,

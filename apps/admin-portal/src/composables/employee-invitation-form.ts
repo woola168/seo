@@ -1,4 +1,4 @@
-import { computed, reactive } from "vue";
+import { computed, reactive, watch } from "vue";
 
 import type { CreateInvitationInput, TaskSummary } from "../types";
 
@@ -8,8 +8,15 @@ export function useEmployeeInvitationForm(tasks: () => TaskSummary[]) {
   const availableTasks = computed(() =>
     form.customerIds.length
       ? tasks().filter((task) => form.customerIds.includes(task.customerId))
-      : tasks(),
+      : [],
   );
+
+  watch(availableTasks, (items) => {
+    const availableTaskIds = new Set(items.map((task) => task.id));
+    form.taskIds = form.taskIds.filter((taskId) =>
+      availableTaskIds.has(taskId),
+    );
+  }, { flush: "sync" });
 
   const canSubmit = computed(
     () =>

@@ -37,6 +37,7 @@ const emit = defineEmits<{
   unavailable: [label: string];
   "open-role-creation": [];
   "update-role": [roleId: string, permissions: string[]];
+  "delete-role": [roleId: string];
   "update-user-roles": [userId: string, roleIds: string[]];
   "update-customers": [userId: string, customerIds: string[]];
   "update-tasks": [userId: string, taskIds: string[]];
@@ -134,6 +135,10 @@ function updateTasks(userId: string, taskIds: string[]): void {
 
 function updateRole(roleId: string, selectedPermissions: string[]): void {
   emit("update-role", roleId, selectedPermissions);
+}
+
+function deleteRole(roleId: string): void {
+  emit("delete-role", roleId);
 }
 
 function evaluate(
@@ -250,6 +255,7 @@ function updateDepartment(
       :loading="loading"
       @open-create="$emit('open-role-creation')"
       @update="updateRole"
+      @delete="deleteRole"
     />
     <DepartmentManagement
       v-else-if="activeTab === 'departments' && canReadDepartments"

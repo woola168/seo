@@ -132,6 +132,17 @@ class AccessManagementService:
         await self._repository.save_role(role)
         return role
 
+    async def delete_role(self, role_id: UUID) -> None:
+        roles = await self._repository.get_roles({role_id})
+        if not roles:
+            raise ResourceNotFound
+        role = roles[0]
+        if role.is_system:
+            raise Conflict("system role cannot be deleted")
+        if await self._repository.role_member_count(role_id):
+            raise Conflict("role is still in use")
+        await self._repository.delete_role(role_id)
+
     async def replace_user_roles(
         self,
         *,

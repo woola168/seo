@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from younilab_access_control_application import (
@@ -140,6 +140,29 @@ class PostgresAccessControlRepository:
             row.is_system = role.is_system
             row.has_global_resource_access = role.has_global_resource_access
             await session.commit()
+
+    async def delete_role(self, role_id: UUID) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(UserRoleRow).where(UserRoleRow.role_id == role_id)
+            )
+            await session.execute(delete(RoleRow).where(RoleRow.id == role_id))
+            await session.commit()
+
+    async def role_member_count(self, role_id: UUID) -> int:
+        async with self._session_factory() as session:
+            return int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(UserRoleRow)
+                    .join(UserRow, UserRow.id == UserRoleRow.user_id)
+                    .where(
+                        UserRoleRow.role_id == role_id,
+                        UserRow.deleted_at.is_(None),
+                    )
+                )
+                or 0
+            )
 
     async def replace_user_roles(
         self,
@@ -399,6 +422,7 @@ class PostgresAccessControlRepository:
                         invited_at=user.invited_at,
                     )
                 )
+                await session.flush()
                 session.add_all(
                     [
                         UserRoleRow(user_id=user.id, role_id=role_id)

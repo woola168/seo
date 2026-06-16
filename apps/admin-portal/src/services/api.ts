@@ -160,6 +160,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ permissions }),
     }),
+  deleteRole: (roleId: string) =>
+    request<void>(`/api/v1/roles/${roleId}`, {
+      method: "DELETE",
+    }),
   updateUserRoles: (userId: string, roleIds: string[]) =>
     request<UserAccess>(`/api/v1/users/${userId}/roles`, {
       method: "PUT",

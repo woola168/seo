@@ -7,6 +7,8 @@ from younilab_access_control_api.presentation.composition import build_dependenc
 from younilab_access_control_infrastructure import (
     AccessControlSettings,
     MemoryAccessControlRepository,
+    MemoryNotificationPublisher,
+    PostgresOutboxPublisher,
 )
 
 
@@ -64,11 +66,25 @@ def test_build_dependencies_uses_injected_runtime_dependencies() -> None:
 
 def test_build_dependencies_uses_memory_repository_in_development() -> None:
     dependencies = build_dependencies(
-        settings=AccessControlSettings(environment="development"),
+        settings=AccessControlSettings(environment="development", database_url=None),
         token_provider=FakeTokenProvider(),
     )
 
     assert isinstance(dependencies.repository, MemoryAccessControlRepository)
+    assert isinstance(dependencies.notifications, MemoryNotificationPublisher)
+
+
+def test_build_dependencies_uses_postgres_outbox_when_database_is_configured() -> None:
+    dependencies = build_dependencies(
+        settings=AccessControlSettings(
+            environment="development",
+            database_url="sqlite+aiosqlite://",
+            notification_encryption_key=None,
+        ),
+        token_provider=FakeTokenProvider(),
+    )
+
+    assert isinstance(dependencies.notifications, PostgresOutboxPublisher)
 
 
 def test_build_dependencies_requires_database_in_production() -> None:
@@ -77,7 +93,10 @@ def test_build_dependencies_requires_database_in_production() -> None:
         match="ACCESS_CONTROL_DATABASE_URL is required in production",
     ):
         build_dependencies(
-            settings=AccessControlSettings(environment="production"),
+            settings=AccessControlSettings(
+                environment="production",
+                database_url=None,
+            ),
             token_provider=FakeTokenProvider(),
         )
 
@@ -88,6 +107,10 @@ def test_build_dependencies_requires_jwt_keys_in_production() -> None:
         match="ACCESS_CONTROL_JWT_PRIVATE_KEY and ACCESS_CONTROL_JWT_PUBLIC_KEY",
     ):
         build_dependencies(
-            settings=AccessControlSettings(environment="production"),
+            settings=AccessControlSettings(
+                environment="production",
+                database_url="sqlite+aiosqlite://",
+                notification_encryption_key=None,
+            ),
             repository=MemoryAccessControlRepository(),
         )

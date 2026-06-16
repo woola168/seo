@@ -103,32 +103,51 @@ function submit(): void {
         <fieldset class="form-section">
           <legend>角色 *</legend>
           <p class="form-help">至少選擇一個角色。</p>
-          <div class="choice-grid">
-            <label v-for="role in roles" :key="role.id" class="checkbox-row">
+          <div class="choice-grid selection-card-grid">
+            <label
+              v-for="role in roles"
+              :key="role.id"
+              class="selection-card"
+              :class="{ selected: invitation.form.roleIds.includes(role.id) }"
+            >
               <input
                 v-model="invitation.form.roleIds"
                 type="checkbox"
                 :value="role.id"
               />
-              <span>{{ role.name }}</span>
+              <span class="selection-card-check">
+                <AppIcon name="check" :size="14" />
+              </span>
+              <span class="selection-card-main">
+                <strong>{{ role.name }}</strong>
+                <small>{{ role.permissions.length }} 個權限</small>
+              </span>
             </label>
           </div>
         </fieldset>
 
         <fieldset class="form-section">
           <legend>可存取客戶</legend>
-          <div class="choice-grid">
+          <div class="choice-grid selection-card-grid">
             <label
               v-for="customer in customers"
               :key="customer.id"
-              class="checkbox-row"
+              class="selection-card"
+              :class="{
+                selected: invitation.form.customerIds.includes(customer.id),
+              }"
             >
               <input
                 v-model="invitation.form.customerIds"
                 type="checkbox"
                 :value="customer.id"
               />
-              <span>{{ customer.name }}</span>
+              <span class="selection-card-check">
+                <AppIcon name="check" :size="14" />
+              </span>
+              <span class="selection-card-main">
+                <strong>{{ customer.name }}</strong>
+              </span>
             </label>
           </div>
           <p v-if="!customers.length" class="form-help">目前尚無客戶資料。</p>
@@ -136,21 +155,31 @@ function submit(): void {
 
         <fieldset class="form-section">
           <legend>可存取任務</legend>
-          <div class="choice-grid">
+          <div class="choice-grid selection-card-grid">
             <label
               v-for="task in invitation.availableTasks.value"
               :key="task.id"
-              class="checkbox-row"
+              class="selection-card"
+              :class="{ selected: invitation.form.taskIds.includes(task.id) }"
             >
               <input
                 v-model="invitation.form.taskIds"
                 type="checkbox"
                 :value="task.id"
               />
-              <span>{{ task.customerName }} / {{ task.name }}</span>
+              <span class="selection-card-check">
+                <AppIcon name="check" :size="14" />
+              </span>
+              <span class="selection-card-main">
+                <strong>{{ task.name }}</strong>
+                <small>{{ task.customerName }}</small>
+              </span>
             </label>
           </div>
-          <p v-if="!invitation.availableTasks.value.length" class="form-help">
+          <p v-if="!invitation.form.customerIds.length" class="form-help">
+            請先選擇客戶後再選擇任務。
+          </p>
+          <p v-else-if="!invitation.availableTasks.value.length" class="form-help">
             目前尚無可選任務。
           </p>
         </fieldset>

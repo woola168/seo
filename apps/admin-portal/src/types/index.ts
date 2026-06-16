@@ -38,6 +38,7 @@ export type IconName =
   | "settings"
   | "shield"
   | "sparkles"
+  | "trash"
   | "user"
   | "users"
   | "x";

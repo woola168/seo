@@ -100,6 +100,145 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     assert refresh_response.json()["accessToken"] != access_token
 
 
+def test_delete_role_removes_unused_non_system_role() -> None:
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    admin_role_id = UUID("22222222-2222-4222-8222-222222222222")
+    deleted_role_id = UUID("33333333-3333-4333-8333-333333333333")
+    hasher = Argon2PasswordHasher()
+    repository = MemoryAccessControlRepository(
+        users=[
+            UserAccount(
+                id=user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+                role_ids={admin_role_id},
+            )
+        ],
+        roles=[
+            Role(
+                id=admin_role_id,
+                name="admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            ),
+            Role(
+                id=deleted_role_id,
+                name="SEO Viewer",
+                permissions=frozenset({"customers.read"}),
+            ),
+        ],
+        password_hashes={user_id: hasher.hash("LongPassword123!")},
+    )
+    client = TestClient(
+        create_app(repository=repository, password_hasher=hasher),
+        base_url="https://testserver",
+    )
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+    headers = {"Authorization": f"Bearer {login_response.json()['accessToken']}"}
+
+    response = client.delete(f"/api/v1/roles/{deleted_role_id}", headers=headers)
+
+    assert response.status_code == 204
+    roles_response = client.get("/api/v1/roles", headers=headers)
+    assert deleted_role_id not in {
+        UUID(role["id"]) for role in roles_response.json()
+    }
+
+
+def test_delete_role_rejects_system_in_use_missing_and_unauthorized_roles() -> None:
+    admin_user_id = UUID("11111111-1111-4111-8111-111111111111")
+    viewer_user_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    admin_role_id = UUID("22222222-2222-4222-8222-222222222222")
+    used_role_id = UUID("33333333-3333-4333-8333-333333333333")
+    viewer_role_id = UUID("44444444-4444-4444-8444-444444444444")
+    missing_role_id = UUID("55555555-5555-4555-8555-555555555555")
+    hasher = Argon2PasswordHasher()
+    repository = MemoryAccessControlRepository(
+        users=[
+            UserAccount(
+                id=admin_user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+                role_ids={admin_role_id},
+            ),
+            UserAccount(
+                id=viewer_user_id,
+                email="viewer@example.com",
+                display_name="SEO Viewer",
+                status=AccountStatus.ACTIVE,
+                role_ids={viewer_role_id, used_role_id},
+            ),
+        ],
+        roles=[
+            Role(
+                id=admin_role_id,
+                name="admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            ),
+            Role(
+                id=used_role_id,
+                name="Used Role",
+                permissions=frozenset({"customers.read"}),
+            ),
+            Role(
+                id=viewer_role_id,
+                name="viewer",
+                permissions=frozenset({"roles.read"}),
+            ),
+        ],
+        password_hashes={
+            admin_user_id: hasher.hash("LongPassword123!"),
+            viewer_user_id: hasher.hash("LongPassword123!"),
+        },
+    )
+    client = TestClient(
+        create_app(repository=repository, password_hasher=hasher),
+        base_url="https://testserver",
+    )
+    admin_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+    viewer_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "viewer@example.com", "password": "LongPassword123!"},
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['accessToken']}"}
+    viewer_headers = {"Authorization": f"Bearer {viewer_login.json()['accessToken']}"}
+
+    system_response = client.delete(
+        f"/api/v1/roles/{admin_role_id}",
+        headers=admin_headers,
+    )
+    used_response = client.delete(
+        f"/api/v1/roles/{used_role_id}",
+        headers=admin_headers,
+    )
+    missing_response = client.delete(
+        f"/api/v1/roles/{missing_role_id}",
+        headers=admin_headers,
+    )
+    unauthorized_response = client.delete(
+        f"/api/v1/roles/{used_role_id}",
+        headers=viewer_headers,
+    )
+
+    assert system_response.status_code == 409
+    assert system_response.json()["detail"] == "system role cannot be deleted"
+    assert used_response.status_code == 409
+    assert used_response.json()["detail"] == "role is still in use"
+    assert missing_response.status_code == 404
+    assert unauthorized_response.status_code == 403
+
+
 def test_password_reset_creates_notification_and_replaces_password() -> None:
     user_id = UUID("11111111-1111-4111-8111-111111111111")
     hasher = Argon2PasswordHasher()

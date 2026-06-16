@@ -127,7 +127,7 @@ function submit(): void {
           </button>
         </form>
 
-        <p class="login-signup">
+        <!-- <p class="login-signup">
           還沒有帳號？
           <button
             class="text-button"
@@ -136,7 +136,7 @@ function submit(): void {
           >
             申請試用
           </button>
-        </p>
+        </p> -->
         <p class="system-status"><span></span>系統狀態：正常 · v2.2.0</p>
       </div>
     </section>

@@ -41,6 +41,10 @@ class RoleRepository(_RoleReader, Protocol):
 
     async def save_role(self, role: Role) -> None: ...
 
+    async def delete_role(self, role_id: UUID) -> None: ...
+
+    async def role_member_count(self, role_id: UUID) -> int: ...
+
 
 @runtime_checkable
 class AccessGrantRepository(Protocol):

@@ -79,6 +79,16 @@ async def replace_role_permissions(
     return RoleResponse.from_domain(role)
 
 
+@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_role(
+    role_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal = Depends(current_principal),
+) -> None:
+    await require_permission(request, principal, "roles.manage")
+    await request.app.state.management.delete_role(role_id)
+
+
 @router.get("/users", response_model=list[UserAccessResponse])
 async def list_users(
     request: Request,
