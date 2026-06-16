@@ -62,6 +62,22 @@ jobs:
 
       - name: Health check
         run: |
-          curl --fail http://127.0.0.1:18080/health
-          curl --fail http://127.0.0.1:18000/health
-          curl --fail http://127.0.0.1:18001/health
+          for url in \
+            http://127.0.0.1:18080/health \
+            http://127.0.0.1:18000/health \
+            http://127.0.0.1:18001/health
+          do
+            for attempt in 1 2 3 4 5
+            do
+              if curl --fail --show-error --silent "$url"; then
+                echo
+                break
+              fi
+              if [ "$attempt" = 5 ]; then
+                docker compose --env-file "$DEPLOY_ENV_FILE" -f deploy/docker-compose.yml ps
+                docker compose --env-file "$DEPLOY_ENV_FILE" -f deploy/docker-compose.yml logs --tail=120
+                exit 1
+              fi
+              sleep 3
+            done
+          done
