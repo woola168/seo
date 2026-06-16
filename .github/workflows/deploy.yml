@@ -1,0 +1,54 @@
+name: Deploy Younilab SEO
+
+on:
+  push:
+    branches: ["develop", "main"]
+
+jobs:
+  build-and-deploy:
+    runs-on: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    env:
+      DEPLOY_ENV_FILE: ${{ github.ref_name == 'main' && format('{0}/deploy/.env.prod', github.workspace) || format('{0}/deploy/.env.develop', github.workspace) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Python tests
+        run: |
+          uv --cache-dir .uv-cache run pytest
+
+      - name: Install frontend dependencies
+        run: |
+          npm ci
+
+      - name: Run frontend tests
+        run: |
+          npm run test:portal
+
+      - name: Build frontend
+        run: |
+          npm run build:portal
+
+      - name: Prepare Docker network
+        run: |
+          docker network inspect web_network >/dev/null 2>&1 || docker network create web_network
+
+      - name: Validate deploy environment file
+        run: |
+          test -f "$DEPLOY_ENV_FILE"
+          test "${DEPLOY_ENV_FILE##*/}" = "${{ github.ref_name == 'main' && '.env.prod' || '.env.develop' }}"
+
+      - name: Build Docker images
+        run: |
+          docker compose --env-file "$DEPLOY_ENV_FILE" -f deploy/docker-compose.yml build
+
+      - name: Deploy app containers
+        run: |
+          docker compose --env-file "$DEPLOY_ENV_FILE" -f deploy/docker-compose.yml up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          curl --fail http://127.0.0.1:18080/health
+          curl --fail http://127.0.0.1:18000/health
+          curl --fail http://127.0.0.1:18001/health
