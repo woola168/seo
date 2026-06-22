@@ -4,6 +4,8 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class Role:
+    """可同時授予 global resource access 的 permission set。"""
+
     id: UUID
     name: str
     permissions: frozenset[str] = field(default_factory=frozenset)

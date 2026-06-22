@@ -8,6 +8,8 @@ from younilab_access_control_domain import Role
 
 
 class RoleResponse(ApiModel):
+    """管理 API 回傳的 role 定義與 resource scope 旗標。"""
+
     id: UUID
     name: str
     permissions: list[str]
@@ -26,9 +28,13 @@ class RoleResponse(ApiModel):
 
 
 class CreateRoleRequest(ApiRequest):
+    """管理員建立 role 時選定的名稱與 permissions。"""
+
     name: str = Field(min_length=1, max_length=100)
     permissions: set[str] = Field(default_factory=set)
 
 
 class ReplacePermissionsRequest(ApiRequest):
+    """既有 role 的完整替換 permission 集合。"""
+
     permissions: set[str]

@@ -4,6 +4,8 @@ from younilab_resource_catalog_application import AccessDenied
 
 
 class AccessControlAuthorizer:
+    """將 decisions 委派給 Access Control 的 PermissionAuthorizer adapter。"""
+
     def __init__(self, access_control_url: str) -> None:
         self._access_control_url = access_control_url.rstrip("/")
 
@@ -32,5 +34,7 @@ class AccessControlAuthorizer:
 
 
 class AllowAllAuthorizer:
+    """local development 使用且不執行 enforcement 的 PermissionAuthorizer adapter。"""
+
     async def require(self, access_token: str, permission: str) -> None:
         return None

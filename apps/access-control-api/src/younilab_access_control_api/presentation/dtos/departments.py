@@ -7,6 +7,8 @@ from younilab_access_control_domain import Department
 
 
 class DepartmentResponse(ApiModel):
+    """啟用中 department 的資訊與目前成員數。"""
+
     id: UUID
     name: str
     description: str
@@ -27,5 +29,7 @@ class DepartmentResponse(ApiModel):
 
 
 class SaveDepartmentRequest(ApiRequest):
+    """建立或更新 department 使用的名稱與選填描述。"""
+
     name: str
     description: str = ""

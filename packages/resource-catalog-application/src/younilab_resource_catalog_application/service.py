@@ -10,6 +10,8 @@ from younilab_resource_catalog_domain import Customer, ResourceStatus, SeoTask
 
 
 class ResourceCatalogService:
+    """協調 customer 與 SEO task master-data lifecycle rules。"""
+
     def __init__(
         self,
         repository: ResourceCatalogRepository,
@@ -85,6 +87,7 @@ class ResourceCatalogService:
         return task
 
     async def create_task(self, *, customer_id: UUID, name: str) -> SeoTask:
+        """只在 active customer 底下建立 task。"""
         customer = await self.get_customer(customer_id)
         if customer.status is not ResourceStatus.ACTIVE:
             raise Conflict("task customer is archived")
@@ -107,6 +110,7 @@ class ResourceCatalogService:
         customer_id: UUID,
         name: str,
     ) -> SeoTask:
+        """只在目標 customer 為 active 時更新 task details。"""
         customer = await self.get_customer(customer_id)
         if customer.status is not ResourceStatus.ACTIVE:
             raise Conflict("task customer is archived")

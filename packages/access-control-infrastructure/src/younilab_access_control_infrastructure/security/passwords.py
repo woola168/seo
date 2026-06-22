@@ -2,6 +2,8 @@ from pwdlib import PasswordHash
 
 
 class Argon2PasswordHasher:
+    """使用建議 Argon2 設定的 PasswordHasher adapter。"""
+
     def __init__(self) -> None:
         self._password_hash = PasswordHash.recommended()
 

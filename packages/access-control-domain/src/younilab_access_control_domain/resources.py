@@ -10,6 +10,8 @@ class ResourceType(StrEnum):
 
 @dataclass(frozen=True)
 class Customer:
+    """可作為 authorization decision scope 的 customer resource。"""
+
     id: UUID
     name: str
 
@@ -20,6 +22,8 @@ class Customer:
 
 @dataclass(frozen=True)
 class SeoTask:
+    """歸屬於 customer scope 的 SEO task resource。"""
+
     id: UUID
     customer_id: UUID
     name: str
@@ -31,6 +35,8 @@ class SeoTask:
 
 @dataclass(frozen=True)
 class ProtectedResource:
+    """評估 scoped permissions 所需的 resource context。"""
+
     type: ResourceType
     id: UUID
     customer_id: UUID | None = None

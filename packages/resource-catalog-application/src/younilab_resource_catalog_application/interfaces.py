@@ -7,6 +7,8 @@ from younilab_resource_catalog_domain import Customer, ResourceStatus, SeoTask
 
 @runtime_checkable
 class CustomerRepository(Protocol):
+    """customer master data 的 persistence port。"""
+
     async def list_customers(
         self,
         *,
@@ -21,6 +23,8 @@ class CustomerRepository(Protocol):
 
 @runtime_checkable
 class TaskRepository(Protocol):
+    """SEO task master data 的 persistence port。"""
+
     async def list_tasks(
         self,
         *,
@@ -40,16 +44,26 @@ class ResourceCatalogRepository(
     TaskRepository,
     Protocol,
 ):
+    """resource catalog use cases 使用的整合 persistence port。"""
+
     pass
 
 
 class PermissionAuthorizer(Protocol):
-    async def require(self, access_token: str, permission: str) -> None: ...
+    """透過外部 authority 授權 resource catalog operations。"""
+
+    async def require(self, access_token: str, permission: str) -> None:
+        """允許 operation，或在拒絕與不確定時 raise AccessDenied。"""
+        ...
 
 
 class Clock(Protocol):
+    """提供 resource catalog changes 使用的 application clock。"""
+
     def now(self) -> datetime: ...
 
 
 class IdGenerator(Protocol):
+    """建立 resource catalog records 的識別碼。"""
+
     def new_id(self) -> UUID: ...

@@ -4,6 +4,8 @@ from younilab_resource_catalog_domain import Customer, ResourceStatus, SeoTask
 
 
 class MemoryResourceCatalogRepository:
+    """測試與開發使用的 in-process ResourceCatalogRepository adapter。"""
+
     def __init__(self) -> None:
         self.customers: dict[UUID, Customer] = {}
         self.tasks: dict[UUID, SeoTask] = {}

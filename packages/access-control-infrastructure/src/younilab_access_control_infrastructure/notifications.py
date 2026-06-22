@@ -9,6 +9,8 @@ from younilab_access_control_infrastructure.persistence.postgres.models import (
 
 
 class MemoryNotificationPublisher:
+    """將 notifications 存在 process 內的 NotificationPublisher adapter。"""
+
     def __init__(self) -> None:
         self.notifications: list[Notification] = []
 
@@ -17,6 +19,8 @@ class MemoryNotificationPublisher:
 
 
 class PostgresOutboxPublisher:
+    """將 notifications 記錄到 outbox 的 NotificationPublisher adapter。"""
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],

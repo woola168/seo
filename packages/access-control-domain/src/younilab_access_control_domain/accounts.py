@@ -12,6 +12,8 @@ class AccountStatus(StrEnum):
 
 @dataclass
 class UserAccount:
+    """授權判斷使用的帳號狀態、roles 與 resource grants。"""
+
     id: UUID
     email: str
     display_name: str
@@ -50,6 +52,7 @@ class UserAccount:
         department_id: UUID | None,
         updated_at: datetime,
     ) -> None:
+        """更新可編輯基本資料欄位，同時保留 account identity。"""
         normalized_name = display_name.strip()
         if not normalized_name:
             raise ValueError("display name must not be empty")
@@ -58,12 +61,14 @@ class UserAccount:
         self.updated_at = updated_at
 
     def change_status(self, status: AccountStatus, updated_at: datetime) -> None:
+        """在帳號未被刪除時變更 account status。"""
         if self.is_deleted:
             raise ValueError("deleted account cannot change status")
         self.status = status
         self.updated_at = updated_at
 
     def delete(self, deleted_at: datetime) -> None:
+        """軟刪除帳號，並使其無法再通過授權。"""
         self.status = AccountStatus.DISABLED
         self.deleted_at = deleted_at
         self.updated_at = deleted_at

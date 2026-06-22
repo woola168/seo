@@ -9,6 +9,8 @@ from younilab_access_control_application import AccessClaims, InvalidSession
 
 
 class JwtTokenProvider:
+    """簽發 RS256 JWT access tokens 的 TokenProvider adapter。"""
+
     def __init__(
         self,
         *,
@@ -76,6 +78,8 @@ class JwtTokenProvider:
 
 
 class SecureRecoveryTokenProvider:
+    """使用 URL-safe random tokens 的 RecoveryTokenProvider adapter。"""
+
     def new_token(self) -> str:
         return secrets.token_urlsafe(48)
 

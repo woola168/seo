@@ -11,6 +11,8 @@ class ResourceStatus(StrEnum):
 
 @dataclass
 class Customer:
+    """封存而非刪除的 customer master-data resource。"""
+
     id: UUID
     name: str
     status: ResourceStatus
@@ -36,6 +38,8 @@ class Customer:
 
 @dataclass
 class SeoTask:
+    """歸屬於單一 customer 的 SEO task master-data resource。"""
+
     id: UUID
     customer_id: UUID
     name: str

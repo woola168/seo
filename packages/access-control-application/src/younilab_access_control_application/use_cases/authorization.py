@@ -17,6 +17,8 @@ from younilab_authorization_contracts import (
 
 
 class AuthorizationService:
+    """依 users、roles 與 grants 評估 access-control contracts。"""
+
     def __init__(
         self,
         repository: AuthorizationRepository,
@@ -29,6 +31,7 @@ class AuthorizationService:
         self,
         request: AuthorizationRequest,
     ) -> AuthorizationDecision:
+        """回傳指定 permission 的單筆 authorization decision。"""
         user = await self._repository.get_user(request.user_id)
         if user is None:
             raise ResourceNotFound
@@ -57,11 +60,13 @@ class AuthorizationService:
         self,
         request: BatchAuthorizationRequest,
     ) -> BatchAuthorizationDecision:
+        """依 request 順序獨立評估每筆 authorization request。"""
         return BatchAuthorizationDecision(
             decisions=[await self.evaluate(item) for item in request.requests]
         )
 
     async def capabilities(self, user_id: UUID) -> Capabilities:
+        """回傳使用者目前生效中的 permissions 與 resource grants。"""
         user = await self._repository.get_user(user_id)
         if user is None:
             raise ResourceNotFound

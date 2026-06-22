@@ -13,6 +13,8 @@ from younilab_access_control_application.models import Notification, PasswordRes
 
 
 class AccountRecoveryService:
+    """協調 password reset token 建立、通知與使用流程。"""
+
     def __init__(
         self,
         *,
@@ -33,6 +35,7 @@ class AccountRecoveryService:
         self._portal_url = portal_url.rstrip("/")
 
     async def request_reset(self, email: str) -> None:
+        """為 active users 建立 reset request，且不揭露帳號是否存在。"""
         user = await self._repository.get_user_by_email(email.strip().lower())
         if user is None or not user.is_active:
             return
@@ -61,6 +64,7 @@ class AccountRecoveryService:
         )
 
     async def reset_password(self, *, token: str, new_password: str) -> None:
+        """使用有效 reset token 並撤銷使用者現有 sessions。"""
         reset = await self._repository.get_password_reset(
             self._token_provider.digest(token)
         )

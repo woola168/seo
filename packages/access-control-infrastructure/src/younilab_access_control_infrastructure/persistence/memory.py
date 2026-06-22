@@ -11,6 +11,8 @@ from younilab_access_control_domain import Department, Role, UserAccount
 
 
 class MemoryAccessControlRepository:
+    """測試與開發使用的 in-process AccessControlRepository adapter。"""
+
     def __init__(
         self,
         *,

@@ -17,11 +17,15 @@ class AuthorizationReason:
 
 @dataclass(frozen=True)
 class PolicyDecision:
+    """transport mapping 前的 domain authorization outcome。"""
+
     allowed: bool
     reason_code: str
 
 
 class AccessPolicy:
+    """評估單一使用者的 role permissions 與 resource grants。"""
+
     def evaluate(
         self,
         *,
@@ -30,6 +34,7 @@ class AccessPolicy:
         permission: str,
         resource: ProtectedResource | None = None,
     ) -> PolicyDecision:
+        """回傳 request 第一個符合的允許或拒絕原因。"""
         if not user.is_active:
             return PolicyDecision(False, AuthorizationReason.ACCOUNT_INACTIVE)
 
@@ -68,6 +73,7 @@ class AccessPolicy:
         user: UserAccount,
         roles: list[Role],
     ) -> frozenset[str]:
+        """只對 active users 回傳 role permissions 的聯集。"""
         if not user.is_active:
             return frozenset()
         return frozenset().union(*(role.permissions for role in roles))

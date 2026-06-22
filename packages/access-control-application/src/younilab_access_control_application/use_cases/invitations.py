@@ -19,6 +19,8 @@ from younilab_access_control_domain import AccountStatus, UserAccount
 
 
 class InvitationService:
+    """協調受邀使用者建立、invitation 寄送與接受流程。"""
+
     def __init__(
         self,
         *,
@@ -50,6 +52,7 @@ class InvitationService:
         task_ids: set[UUID],
         send_invitation: bool,
     ) -> UserInvitation:
+        """建立包含 roles、grants 與選擇性寄送的受邀帳號。"""
         normalized_email = email.strip().lower()
         if await self._repository.get_user_by_email(normalized_email) is not None:
             raise Conflict("email already exists")
@@ -93,6 +96,7 @@ class InvitationService:
         invitation_id: UUID,
         actor_user_id: UUID,
     ) -> UserInvitation:
+        """撤銷目前 pending invitation 並寄送替代邀請。"""
         current = await self._repository.get_invitation(invitation_id)
         if current is None:
             raise ResourceNotFound
@@ -111,6 +115,7 @@ class InvitationService:
         return invitation
 
     async def cancel(self, invitation_id: UUID) -> None:
+        """撤銷 pending invitation，並刪除仍為 invited 狀態的使用者。"""
         invitation = await self._repository.get_invitation(invitation_id)
         if invitation is None:
             raise ResourceNotFound
@@ -122,6 +127,7 @@ class InvitationService:
             await self._repository.save_user(user)
 
     async def accept(self, *, token: str, new_password: str) -> UserAccount:
+        """驗證 invitation token 後啟用受邀使用者。"""
         invitation = await self._repository.get_invitation_by_token(
             self._token_provider.digest(token)
         )

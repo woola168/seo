@@ -5,6 +5,8 @@ from uuid import UUID
 
 @dataclass
 class Department:
+    """可封存且保留歷史狀態的組織單位。"""
+
     id: UUID
     name: str
     description: str

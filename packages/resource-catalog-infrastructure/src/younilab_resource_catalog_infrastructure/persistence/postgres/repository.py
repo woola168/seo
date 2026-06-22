@@ -13,6 +13,8 @@ from younilab_resource_catalog_infrastructure.persistence.postgres.models import
 
 
 class PostgresResourceCatalogRepository:
+    """catalog persistence 使用的 PostgreSQL ResourceCatalogRepository adapter。"""
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 

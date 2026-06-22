@@ -28,6 +28,8 @@ class _RoleReader(Protocol):
 
 @runtime_checkable
 class UserRepository(_UserReader, Protocol):
+    """持久化帳號基本資料、狀態與 credential 相關使用者資料。"""
+
     async def list_users(self) -> list[UserAccount]: ...
 
     async def save_user(self, user: UserAccount) -> None: ...
@@ -37,6 +39,8 @@ class UserRepository(_UserReader, Protocol):
 
 @runtime_checkable
 class RoleRepository(_RoleReader, Protocol):
+    """持久化 roles 與 role membership 限制。"""
+
     async def list_roles(self) -> list[Role]: ...
 
     async def save_role(self, role: Role) -> None: ...
@@ -48,6 +52,8 @@ class RoleRepository(_RoleReader, Protocol):
 
 @runtime_checkable
 class AccessGrantRepository(Protocol):
+    """以單一使用者為單位原子替換 role 與 resource grant assignment。"""
+
     async def replace_user_roles(
         self,
         user_id: UUID,
@@ -69,6 +75,8 @@ class AccessGrantRepository(Protocol):
 
 @runtime_checkable
 class RefreshSessionRepository(Protocol):
+    """儲存 refresh-token sessions 及其 rotation 或撤銷狀態。"""
+
     async def save_refresh_session(self, session: RefreshSession) -> None: ...
 
     async def get_refresh_session(
@@ -87,7 +95,9 @@ class RefreshSessionRepository(Protocol):
         current_session_id: UUID,
         replacement: RefreshSession,
         revoked_at: datetime,
-    ) -> None: ...
+    ) -> None:
+        """同時撤銷目前 session 並持久化 replacement。"""
+        ...
 
     async def revoke_refresh_session(
         self,
@@ -99,7 +109,9 @@ class RefreshSessionRepository(Protocol):
         self,
         family_id: UUID,
         revoked_at: datetime,
-    ) -> None: ...
+    ) -> None:
+        """撤銷同一次登入衍生出的所有 refresh sessions。"""
+        ...
 
     async def revoke_user_sessions(
         self,
@@ -110,6 +122,8 @@ class RefreshSessionRepository(Protocol):
 
 @runtime_checkable
 class PasswordResetRepository(Protocol):
+    """以 digest 儲存單次使用的 password reset tokens。"""
+
     async def save_password_reset(self, reset: PasswordReset) -> None: ...
 
     async def get_password_reset(self, token_digest: str) -> PasswordReset | None: ...
@@ -118,7 +132,9 @@ class PasswordResetRepository(Protocol):
         self,
         reset_id: UUID,
         used_at: datetime,
-    ) -> None: ...
+    ) -> None:
+        """密碼成功變更後，將 reset token 標記為已使用。"""
+        ...
 
     async def revoke_password_resets(
         self,
@@ -129,6 +145,8 @@ class PasswordResetRepository(Protocol):
 
 @runtime_checkable
 class InvitationRepository(Protocol):
+    """持久化受邀使用者與啟用帳號使用的 tokens。"""
+
     async def create_invited_user(
         self,
         *,
@@ -137,7 +155,9 @@ class InvitationRepository(Protocol):
         role_ids: set[UUID],
         customer_ids: set[UUID],
         task_ids: set[UUID],
-    ) -> None: ...
+    ) -> None:
+        """一併持久化受邀使用者、invitation、roles 與 grants。"""
+        ...
 
     async def save_invitation(self, invitation: UserInvitation) -> None: ...
 
@@ -152,7 +172,9 @@ class InvitationRepository(Protocol):
         self,
         invitation_id: UUID,
         accepted_at: datetime,
-    ) -> None: ...
+    ) -> None:
+        """帳號啟用後，將 invitation 標記為已接受。"""
+        ...
 
     async def revoke_invitation(
         self,
@@ -163,6 +185,8 @@ class InvitationRepository(Protocol):
 
 @runtime_checkable
 class DepartmentRepository(Protocol):
+    """持久化組織 departments 與成員數。"""
+
     async def list_departments(self) -> list[Department]: ...
 
     async def get_department(self, department_id: UUID) -> Department | None: ...
@@ -181,11 +205,15 @@ class AuthenticationRepository(
     InvitationRepository,
     Protocol,
 ):
+    """authentication 與 recovery workflows 所需的 repository surface。"""
+
     pass
 
 
 @runtime_checkable
 class AuthorizationRepository(_UserReader, _RoleReader, Protocol):
+    """authorization decisions 使用的唯讀 repository surface。"""
+
     pass
 
 
@@ -199,6 +227,8 @@ class AccessManagementRepository(
     DepartmentRepository,
     Protocol,
 ):
+    """account、role、grant 與 department management 使用的 repository surface。"""
+
     pass
 
 
@@ -208,4 +238,6 @@ class AccessControlRepository(
     AccessManagementRepository,
     Protocol,
 ):
+    """由 infrastructure 實作的完整 access-control persistence port。"""
+
     pass

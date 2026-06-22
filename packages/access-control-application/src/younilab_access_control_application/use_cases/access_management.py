@@ -16,6 +16,8 @@ from younilab_access_control_domain import (
 
 
 class AccessManagementService:
+    """協調 account、role、grant 與 department 的管理規則。"""
+
     def __init__(self, repository: AccessManagementRepository, *, clock=None) -> None:
         self._repository = repository
         self._clock = clock
@@ -56,6 +58,7 @@ class AccessManagementService:
         user_id: UUID,
         status: AccountStatus,
     ) -> UserAccount:
+        """變更帳號狀態，同時保留至少一位 active admin。"""
         if actor_user_id == user_id and status is not AccountStatus.ACTIVE:
             raise OperationNotAllowed("cannot disable current user")
         user = await self.get_user(user_id)
@@ -74,6 +77,7 @@ class AccessManagementService:
         actor_user_id: UUID,
         user_id: UUID,
     ) -> None:
+        """軟刪除使用者、撤銷 sessions，並保留 active admin access。"""
         if actor_user_id == user_id:
             raise OperationNotAllowed("cannot delete current user")
         user = await self.get_user(user_id)
@@ -97,6 +101,7 @@ class AccessManagementService:
         name: str,
         permissions: set[str],
     ) -> Role:
+        """只使用已知 access-control permissions 建立 role。"""
         self._validate_permissions(permissions)
         if any(
             role.name.lower() == name.strip().lower()
@@ -117,6 +122,7 @@ class AccessManagementService:
         role_id: UUID,
         permissions: set[str],
     ) -> Role:
+        """替換 role 的 permissions，但不改變 identity 或 flags。"""
         self._validate_permissions(permissions)
         roles = await self._repository.get_roles({role_id})
         if not roles:
@@ -149,6 +155,7 @@ class AccessManagementService:
         user_id: UUID,
         role_ids: set[UUID],
     ) -> UserAccount:
+        """驗證 role 存在與 admin continuity 後，替換使用者 roles。"""
         await self.get_user(user_id)
         if len(await self._repository.get_roles(role_ids)) != len(role_ids):
             raise ResourceNotFound

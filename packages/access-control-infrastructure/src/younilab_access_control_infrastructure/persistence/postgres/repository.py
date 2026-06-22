@@ -29,6 +29,8 @@ from younilab_access_control_infrastructure.persistence.postgres.models import (
 
 
 class PostgresAccessControlRepository:
+    """production persistence 使用的 PostgreSQL AccessControlRepository adapter。"""
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 

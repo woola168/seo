@@ -8,6 +8,8 @@ from younilab_access_control_domain import AccountStatus, UserAccount
 
 
 class UserResponse(ApiModel):
+    """user endpoints 回傳的帳號基本資料與 role assignment。"""
+
     id: UUID
     email: str
     display_name: str
@@ -38,6 +40,8 @@ class UserResponse(ApiModel):
 
 
 class UserAccessResponse(UserResponse):
+    """access administration 使用的使用者資料與 resource grants。"""
+
     customer_ids: list[UUID]
     task_ids: list[UUID]
 
@@ -61,19 +65,27 @@ class UserAccessResponse(UserResponse):
 
 
 class ReplaceRolesRequest(ApiRequest):
+    """單一使用者的完整替換 role assignment。"""
+
     role_ids: set[UUID]
 
 
 class UpdateUserRequest(ApiRequest):
+    """既有使用者可編輯的基本資料欄位。"""
+
     display_name: str
     department_id: UUID | None = None
 
 
 class UpdateUserStatusRequest(ApiRequest):
+    """帳號要切換到的 lifecycle status。"""
+
     status: AccountStatus
 
 
 class CreateInvitationRequest(ApiRequest):
+    """帳號邀請資訊、初始 access 與寄送偏好。"""
+
     email: str
     display_name: str
     department_id: UUID | None = None
@@ -84,6 +96,8 @@ class CreateInvitationRequest(ApiRequest):
 
 
 class UserInvitationResponse(ApiModel):
+    """回傳給管理員的已建立 invitation 中繼資料。"""
+
     id: UUID
     user_id: UUID
     email: str
