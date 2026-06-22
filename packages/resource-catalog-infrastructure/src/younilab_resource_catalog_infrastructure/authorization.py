@@ -14,13 +14,13 @@ class AccessControlAuthorizer:
             async with httpx.AsyncClient(timeout=5) as client:
                 headers = {"Authorization": f"Bearer {access_token}"}
                 me_response = await client.get(
-                    f"{self._access_control_url}/api/v1/me",
+                    f"{self._access_control_url}/api/me",
                     headers=headers,
                 )
                 if me_response.status_code != 200:
                     raise AccessDenied
                 response = await client.post(
-                    f"{self._access_control_url}/api/v1/authorization/evaluate",
+                    f"{self._access_control_url}/api/authorization/evaluate",
                     headers=headers,
                     json={
                         "userId": me_response.json()["id"],

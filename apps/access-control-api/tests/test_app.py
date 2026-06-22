@@ -1,4 +1,4 @@
-from uuid import UUID
+﻿from uuid import UUID
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
@@ -25,7 +25,7 @@ def test_health_endpoint() -> None:
 
 
 def test_me_requires_authentication() -> None:
-    response = TestClient(create_app()).get("/api/v1/me")
+    response = TestClient(create_app()).get("/api/me")
 
     assert response.status_code == 401
     assert response.headers["content-type"].startswith("application/problem+json")
@@ -33,7 +33,7 @@ def test_me_requires_authentication() -> None:
 
 def test_login_rejects_unknown_request_fields() -> None:
     response = TestClient(create_app()).post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={
             "email": "admin@example.com",
             "password": "LongPassword123!",
@@ -75,17 +75,17 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     )
 
     login_response = client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "admin@example.com", "password": "LongPassword123!"},
     )
 
     assert login_response.status_code == 200
     access_token = login_response.json()["accessToken"]
     headers = {"Authorization": f"Bearer {access_token}"}
-    assert client.get("/api/v1/me", headers=headers).status_code == 200
+    assert client.get("/api/me", headers=headers).status_code == 200
 
     create_role_response = client.post(
-        "/api/v1/roles",
+        "/api/roles",
         headers=headers,
         json={"name": "SEO Viewer", "permissions": ["customers.read", "tasks.read"]},
     )
@@ -95,7 +95,7 @@ def test_login_me_refresh_and_admin_role_management() -> None:
         "tasks.read",
     ]
 
-    refresh_response = client.post("/api/v1/auth/refresh")
+    refresh_response = client.post("/api/auth/refresh")
     assert refresh_response.status_code == 200
     assert refresh_response.json()["accessToken"] != access_token
 
@@ -136,15 +136,15 @@ def test_delete_role_removes_unused_non_system_role() -> None:
         base_url="https://testserver",
     )
     login_response = client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "admin@example.com", "password": "LongPassword123!"},
     )
     headers = {"Authorization": f"Bearer {login_response.json()['accessToken']}"}
 
-    response = client.delete(f"/api/v1/roles/{deleted_role_id}", headers=headers)
+    response = client.delete(f"/api/roles/{deleted_role_id}", headers=headers)
 
     assert response.status_code == 204
-    roles_response = client.get("/api/v1/roles", headers=headers)
+    roles_response = client.get("/api/roles", headers=headers)
     assert deleted_role_id not in {
         UUID(role["id"]) for role in roles_response.json()
     }
@@ -204,30 +204,30 @@ def test_delete_role_rejects_system_in_use_missing_and_unauthorized_roles() -> N
         base_url="https://testserver",
     )
     admin_login = client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "admin@example.com", "password": "LongPassword123!"},
     )
     viewer_login = client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "viewer@example.com", "password": "LongPassword123!"},
     )
     admin_headers = {"Authorization": f"Bearer {admin_login.json()['accessToken']}"}
     viewer_headers = {"Authorization": f"Bearer {viewer_login.json()['accessToken']}"}
 
     system_response = client.delete(
-        f"/api/v1/roles/{admin_role_id}",
+        f"/api/roles/{admin_role_id}",
         headers=admin_headers,
     )
     used_response = client.delete(
-        f"/api/v1/roles/{used_role_id}",
+        f"/api/roles/{used_role_id}",
         headers=admin_headers,
     )
     missing_response = client.delete(
-        f"/api/v1/roles/{missing_role_id}",
+        f"/api/roles/{missing_role_id}",
         headers=admin_headers,
     )
     unauthorized_response = client.delete(
-        f"/api/v1/roles/{used_role_id}",
+        f"/api/roles/{used_role_id}",
         headers=viewer_headers,
     )
 
@@ -263,7 +263,7 @@ def test_password_reset_creates_notification_and_replaces_password() -> None:
     )
 
     request_response = client.post(
-        "/api/v1/auth/password-reset-requests",
+        "/api/auth/password-reset-requests",
         json={"email": "admin@example.com"},
     )
 
@@ -271,28 +271,29 @@ def test_password_reset_creates_notification_and_replaces_password() -> None:
     reset_url = notifications.notifications[0].parameters["resetUrl"]
     token = parse_qs(urlparse(reset_url).query)["token"][0]
     old_login = client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "admin@example.com", "password": "OldPassword123!"},
     )
     old_headers = {
         "Authorization": f"Bearer {old_login.json()['accessToken']}"
     }
     reset_response = client.post(
-        "/api/v1/auth/password-resets",
+        "/api/auth/password-resets",
         json={"token": token, "newPassword": "NewPassword123!"},
     )
     assert reset_response.status_code == 204
-    assert client.get("/api/v1/me", headers=old_headers).status_code == 401
+    assert client.get("/api/me", headers=old_headers).status_code == 401
     assert client.post(
-        "/api/v1/auth/login",
+        "/api/auth/login",
         json={"email": "admin@example.com", "password": "NewPassword123!"},
     ).status_code == 200
 
 
 def test_password_reset_request_does_not_reveal_unknown_email() -> None:
     response = TestClient(create_app()).post(
-        "/api/v1/auth/password-reset-requests",
+        "/api/auth/password-reset-requests",
         json={"email": "missing@example.com"},
     )
 
     assert response.status_code == 202
+

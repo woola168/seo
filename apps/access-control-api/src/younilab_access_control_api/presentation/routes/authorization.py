@@ -12,7 +12,7 @@ from younilab_authorization_contracts import (
 )
 
 
-router = APIRouter(prefix="/api/v1/authorization", tags=["authorization"])
+router = APIRouter(prefix="/api/authorization", tags=["authorization"])
 
 
 @router.post("/evaluate", response_model=AuthorizationDecision)

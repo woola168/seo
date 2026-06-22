@@ -12,7 +12,7 @@ from younilab_resource_catalog_api.presentation.http.dtos import (
 from younilab_resource_catalog_domain import ResourceStatus
 
 
-router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
+router = APIRouter(prefix="/api/customers", tags=["customers"])
 
 
 @router.get("", response_model=PageResponse)

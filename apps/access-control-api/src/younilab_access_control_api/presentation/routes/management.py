@@ -25,7 +25,7 @@ from younilab_access_control_api.presentation.dtos import (
 from younilab_access_control_domain import PERMISSIONS
 
 
-router = APIRouter(prefix="/api/v1", tags=["access-management"])
+router = APIRouter(prefix="/api", tags=["access-management"])
 
 
 @router.get("/permissions", response_model=list[str])

@@ -1,0 +1,168 @@
+from dataclasses import dataclass, field
+import asyncio
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from younilab_geo_analysis_application import (
+    DispatchQueryRunJob,
+    ExternalRunCallback,
+    PublishResult,
+    QueryRunJobMessage,
+    ReceiveExternalRunCallback,
+)
+from younilab_geo_analysis_domain import GeoQueryRunJob, JobStatus
+
+
+@dataclass
+class FakeClock:
+    current: datetime = datetime(2026, 6, 22, tzinfo=UTC)
+
+    def now(self) -> datetime:
+        return self.current
+
+
+@dataclass
+class FakePublisher:
+    result: PublishResult
+    messages: list[QueryRunJobMessage] = field(default_factory=list)
+
+    async def publish(self, message: QueryRunJobMessage) -> PublishResult:
+        self.messages.append(message)
+        return self.result
+
+
+@dataclass
+class FakeRepository:
+    job: GeoQueryRunJob
+    dispatches: list[PublishResult] = field(default_factory=list)
+    callbacks: list[ExternalRunCallback] = field(default_factory=list)
+
+    async def get(self, job_id: UUID) -> GeoQueryRunJob:
+        assert job_id == self.job.id
+        return self.job
+
+    async def save(self, job: GeoQueryRunJob) -> None:
+        self.job = job
+
+    async def record_dispatch(
+        self,
+        *,
+        job_id: UUID,
+        result: PublishResult,
+        payload: QueryRunJobMessage,
+        occurred_at: datetime,
+    ) -> None:
+        self.dispatches.append(result)
+
+    async def record_external_callback(
+        self,
+        *,
+        callback: ExternalRunCallback,
+        occurred_at: datetime,
+    ) -> None:
+        self.callbacks.append(callback)
+
+
+def make_job() -> GeoQueryRunJob:
+    now = datetime(2026, 6, 22, tzinfo=UTC)
+    return GeoQueryRunJob(
+        id=uuid4(),
+        project_id=uuid4(),
+        query_id=uuid4(),
+        platform_id=uuid4(),
+        schedule_id=None,
+        job_type="manual_run",
+        priority="normal",
+        scheduled_for=now,
+        status=JobStatus.PENDING,
+        attempt_count=0,
+        max_attempts=3,
+        dedupe_key="dedupe",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
+    return QueryRunJobMessage(
+        job_id=job.id,
+        project_id=job.project_id,
+        query_id=job.query_id,
+        query_text="Which suppliers are recommended?",
+        platform="openai",
+        region="US",
+        language="en-US",
+        scheduled_for=job.scheduled_for,
+        callback_url="https://example.test/callback",
+    )
+
+
+def test_dispatch_records_successful_publish() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        publisher = FakePublisher(
+            PublishResult(
+                backend="fake",
+                destination="geo-jobs",
+                message_id="message-1",
+                status="published",
+            )
+        )
+
+        await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
+            job.id,
+            make_message(job),
+        )
+
+        assert repository.job.status is JobStatus.PUBLISHED
+        assert repository.job.dispatch_message_id == "message-1"
+        assert len(repository.dispatches) == 1
+        assert len(publisher.messages) == 1
+
+    asyncio.run(run())
+
+
+def test_dispatch_failure_delays_job() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        publisher = FakePublisher(
+            PublishResult(
+                backend="fake",
+                destination="geo-jobs",
+                status="failed",
+                error_message="broker unavailable",
+            )
+        )
+
+        await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
+            job.id,
+            make_message(job),
+        )
+
+        assert repository.job.status is JobStatus.DELAYED
+        assert repository.job.next_retry_at is not None
+        assert len(repository.dispatches) == 1
+
+    asyncio.run(run())
+
+
+def test_external_callback_updates_reference_state() -> None:
+    async def run() -> None:
+        job = make_job()
+        job.status = JobStatus.PUBLISHED
+        repository = FakeRepository(job)
+        callback = ExternalRunCallback(
+            job_id=job.id,
+            external_run_id="runner-1",
+            status="running",
+        )
+
+        await ReceiveExternalRunCallback(repository, FakeClock()).execute(callback)
+
+        assert repository.job.status is JobStatus.RUNNING_EXTERNAL
+        assert repository.job.external_run_id == "runner-1"
+        assert repository.callbacks == [callback]
+
+    asyncio.run(run())

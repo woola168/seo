@@ -14,6 +14,10 @@ members = [
     "younilab-access-control-domain",
     "younilab-access-control-infrastructure",
     "younilab-authorization-contracts",
+    "younilab-geo-analysis-api",
+    "younilab-geo-analysis-application",
+    "younilab-geo-analysis-domain",
+    "younilab-geo-analysis-infrastructure",
     "younilab-resource-catalog-api",
     "younilab-resource-catalog-application",
     "younilab-resource-catalog-domain",
@@ -1504,6 +1508,102 @@ dev = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.0,<3" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-geo-analysis-api"
+version = "0.1.0"
+source = { editable = "apps/geo-analysis-api" }
+dependencies = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "younilab-geo-analysis-application" },
+    { name = "younilab-geo-analysis-domain" },
+    { name = "younilab-geo-analysis-infrastructure" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
+    { name = "younilab-geo-analysis-application", editable = "packages/geo-analysis-application" },
+    { name = "younilab-geo-analysis-domain", editable = "packages/geo-analysis-domain" },
+    { name = "younilab-geo-analysis-infrastructure", editable = "packages/geo-analysis-infrastructure" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8.0" },
+]
+
+[[package]]
+name = "younilab-geo-analysis-application"
+version = "0.1.0"
+source = { editable = "packages/geo-analysis-application" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "younilab-geo-analysis-domain" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.0,<3" },
+    { name = "younilab-geo-analysis-domain", editable = "packages/geo-analysis-domain" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-geo-analysis-domain"
+version = "0.1.0"
+source = { editable = "packages/geo-analysis-domain" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-geo-analysis-infrastructure"
+version = "0.1.0"
+source = { editable = "packages/geo-analysis-infrastructure" }
+dependencies = [
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+    { name = "younilab-geo-analysis-application" },
+    { name = "younilab-geo-analysis-domain" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "sqlalchemy", specifier = ">=2.0.14,<2.1" },
+    { name = "sqlmodel", specifier = ">=0.0.38,<0.1" },
+    { name = "younilab-geo-analysis-application", editable = "packages/geo-analysis-application" },
+    { name = "younilab-geo-analysis-domain", editable = "packages/geo-analysis-domain" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]

@@ -24,6 +24,10 @@ members = [
     "packages/resource-catalog-domain",
     "packages/resource-catalog-application",
     "packages/resource-catalog-infrastructure",
+    "apps/geo-analysis-api",
+    "packages/geo-analysis-domain",
+    "packages/geo-analysis-application",
+    "packages/geo-analysis-infrastructure",
 ]
 
 [tool.pytest.ini_options]
@@ -38,4 +42,8 @@ testpaths = [
     "packages/resource-catalog-domain/tests",
     "packages/resource-catalog-application/tests",
     "packages/resource-catalog-infrastructure/tests",
+    "apps/geo-analysis-api/tests",
+    "packages/geo-analysis-domain/tests",
+    "packages/geo-analysis-application/tests",
+    "packages/geo-analysis-infrastructure/tests",
 ]

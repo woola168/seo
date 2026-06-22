@@ -1,4 +1,4 @@
-# 登入頁與權限管理後端缺口
+﻿# 登入頁與權限管理後端缺口
 
 本文只整理 Admin Portal 的登入頁與權限管理，不包含總覽、任務、通知或其他後台模組。
 
@@ -8,27 +8,27 @@
 
 | 功能 | API | 前端使用狀態 |
 | --- | --- | --- |
-| 帳號密碼登入 | `POST /api/v1/auth/login` | 已串接 |
-| 更新 Access Token | `POST /api/v1/auth/refresh` | 已串接，使用 HttpOnly refresh cookie |
-| 登出目前 Session | `POST /api/v1/auth/logout` | 已串接 |
-| 登出所有 Session | `POST /api/v1/auth/logout-all` | API 已存在，登入頁目前沒有操作入口 |
-| 目前使用者 | `GET /api/v1/me` | 已串接 |
-| 目前使用者能力 | `GET /api/v1/me/capabilities` | 已串接 |
+| 帳號密碼登入 | `POST /api/auth/login` | 已串接 |
+| 更新 Access Token | `POST /api/auth/refresh` | 已串接，使用 HttpOnly refresh cookie |
+| 登出目前 Session | `POST /api/auth/logout` | 已串接 |
+| 登出所有 Session | `POST /api/auth/logout-all` | API 已存在，登入頁目前沒有操作入口 |
+| 目前使用者 | `GET /api/me` | 已串接 |
+| 目前使用者能力 | `GET /api/me/capabilities` | 已串接 |
 
 ### 權限管理
 
 | 功能 | API | 需要的 Permission |
 | --- | --- | --- |
-| 查詢 Permission 清單 | `GET /api/v1/permissions` | `permissions.read` |
-| 查詢角色 | `GET /api/v1/roles` | `roles.read` |
-| 建立角色 | `POST /api/v1/roles` | `roles.manage` |
-| 更新角色 Permission | `PUT /api/v1/roles/{roleId}/permissions` | `roles.manage` |
-| 查詢員工 | `GET /api/v1/users` | `users.read` |
-| 查詢單一員工 | `GET /api/v1/users/{userId}` | `users.read` |
-| 更新員工角色 | `PUT /api/v1/users/{userId}/roles` | `users.manage` |
-| 更新客戶存取範圍 | `PUT /api/v1/users/{userId}/customer-access-grants` | `access-grants.manage` |
-| 更新任務存取範圍 | `PUT /api/v1/users/{userId}/task-access-grants` | `access-grants.manage` |
-| 執行授權判斷 | `POST /api/v1/authorization/evaluate` | 判斷自己不需要額外 Permission；判斷他人需要 `authorization.evaluate` |
+| 查詢 Permission 清單 | `GET /api/permissions` | `permissions.read` |
+| 查詢角色 | `GET /api/roles` | `roles.read` |
+| 建立角色 | `POST /api/roles` | `roles.manage` |
+| 更新角色 Permission | `PUT /api/roles/{roleId}/permissions` | `roles.manage` |
+| 查詢員工 | `GET /api/users` | `users.read` |
+| 查詢單一員工 | `GET /api/users/{userId}` | `users.read` |
+| 更新員工角色 | `PUT /api/users/{userId}/roles` | `users.manage` |
+| 更新客戶存取範圍 | `PUT /api/users/{userId}/customer-access-grants` | `access-grants.manage` |
+| 更新任務存取範圍 | `PUT /api/users/{userId}/task-access-grants` | `access-grants.manage` |
+| 執行授權判斷 | `POST /api/authorization/evaluate` | 判斷自己不需要額外 Permission；判斷他人需要 `authorization.evaluate` |
 
 ## 登入頁缺口
 
@@ -64,8 +64,8 @@
 
 | 功能 | 建議 API | 必要資料 |
 | --- | --- | --- |
-| 申請密碼重設 | `POST /api/v1/auth/password-reset-requests` | `email` |
-| 確認重設密碼 | `POST /api/v1/auth/password-resets` | `token`、`newPassword` |
+| 申請密碼重設 | `POST /api/auth/password-reset-requests` | `email` |
+| 確認重設密碼 | `POST /api/auth/password-resets` | `token`、`newPassword` |
 
 安全要求：
 
@@ -98,8 +98,8 @@
 
 | 功能 | 建議 API | 必要資料 |
 | --- | --- | --- |
-| 建立試用申請 | `POST /api/v1/trial-requests` | 聯絡人、Email、公司／團隊名稱、需求說明 |
-| 查詢申請狀態 | `GET /api/v1/trial-requests/{requestId}` | `requestId` 或安全查詢憑證 |
+| 建立試用申請 | `POST /api/trial-requests` | 聯絡人、Email、公司／團隊名稱、需求說明 |
+| 查詢申請狀態 | `GET /api/trial-requests/{requestId}` | `requestId` 或安全查詢憑證 |
 
 建議狀態：
 
@@ -132,14 +132,14 @@
 
 | 功能 | 建議 API | 建議 Permission |
 | --- | --- | --- |
-| 邀請員工 | `POST /api/v1/user-invitations` | `users.manage` |
-| 重寄邀請 | `POST /api/v1/user-invitations/{invitationId}/resend` | `users.manage` |
-| 取消邀請 | `DELETE /api/v1/user-invitations/{invitationId}` | `users.manage` |
-| 編輯員工基本資料 | `PATCH /api/v1/users/{userId}` | `users.manage` |
-| 啟用／停用帳號 | `PATCH /api/v1/users/{userId}/status` | `users.manage` |
-| 刪除帳號 | `DELETE /api/v1/users/{userId}` | `users.manage` |
-| 管理員觸發密碼重設 | `POST /api/v1/users/{userId}/password-reset` | `users.manage` |
-| 撤銷員工所有 Session | `POST /api/v1/users/{userId}/sessions/revoke` | `users.manage` |
+| 邀請員工 | `POST /api/user-invitations` | `users.manage` |
+| 重寄邀請 | `POST /api/user-invitations/{invitationId}/resend` | `users.manage` |
+| 取消邀請 | `DELETE /api/user-invitations/{invitationId}` | `users.manage` |
+| 編輯員工基本資料 | `PATCH /api/users/{userId}` | `users.manage` |
+| 啟用／停用帳號 | `PATCH /api/users/{userId}/status` | `users.manage` |
+| 刪除帳號 | `DELETE /api/users/{userId}` | `users.manage` |
+| 管理員觸發密碼重設 | `POST /api/users/{userId}/password-reset` | `users.manage` |
+| 撤銷員工所有 Session | `POST /api/users/{userId}/sessions/revoke` | `users.manage` |
 
 邀請／建立員工至少需要：
 
@@ -166,7 +166,7 @@
 建議擴充：
 
 ```text
-GET /api/v1/users
+GET /api/users
   ?search=
   &roleId=
   &departmentId=
@@ -203,7 +203,7 @@ GET /api/v1/users
 
 ### P0：Access Grant 讀取授權
 
-目前 `GET /api/v1/users` 與 `GET /api/v1/users/{userId}` 只要求 `users.read`，但 response 同時包含 `customerIds` 與 `taskIds`。現有 `access-grants.read` 尚未真正保護這些資料。
+目前 `GET /api/users` 與 `GET /api/users/{userId}` 只要求 `users.read`，但 response 同時包含 `customerIds` 與 `taskIds`。現有 `access-grants.read` 尚未真正保護這些資料。
 
 後端應選擇一種契約：
 
@@ -211,7 +211,7 @@ GET /api/v1/users
 2. 使用者 response 不回傳 grants，另提供受 `access-grants.read` 保護的端點：
 
 ```text
-GET /api/v1/users/{userId}/access-grants
+GET /api/users/{userId}/access-grants
 ```
 
 第二種方式能讓員工基本資料與資源授權資料的權限邊界更清楚。
@@ -229,11 +229,11 @@ GET /api/v1/users/{userId}/access-grants
 
 | 功能 | 建議 API |
 | --- | --- |
-| 查詢部門 | `GET /api/v1/departments` |
-| 建立部門 | `POST /api/v1/departments` |
-| 編輯部門 | `PATCH /api/v1/departments/{departmentId}` |
-| 刪除部門 | `DELETE /api/v1/departments/{departmentId}` |
-| 指派員工部門 | `PUT /api/v1/users/{userId}/department` |
+| 查詢部門 | `GET /api/departments` |
+| 建立部門 | `POST /api/departments` |
+| 編輯部門 | `PATCH /api/departments/{departmentId}` |
+| 刪除部門 | `DELETE /api/departments/{departmentId}` |
+| 指派員工部門 | `PUT /api/users/{userId}/department` |
 
 部門資料至少需要：
 
@@ -252,9 +252,9 @@ GET /api/v1/users/{userId}/access-grants
 
 | 功能 | 建議 API |
 | --- | --- |
-| 角色重新命名 | `PATCH /api/v1/roles/{roleId}` |
-| 設定全域資源權限 | `PATCH /api/v1/roles/{roleId}` |
-| 刪除角色 | `DELETE /api/v1/roles/{roleId}` |
+| 角色重新命名 | `PATCH /api/roles/{roleId}` |
+| 設定全域資源權限 | `PATCH /api/roles/{roleId}` |
+| 刪除角色 | `DELETE /api/roles/{roleId}` |
 
 更新 request 建議支援：
 
@@ -285,8 +285,8 @@ GET /api/v1/users/{userId}/access-grants
 建議查詢能力：
 
 ```text
-GET /api/v1/customers?search=&page=&pageSize=
-GET /api/v1/tasks?search=&customerId=&page=&pageSize=
+GET /api/customers?search=&page=&pageSize=
+GET /api/tasks?search=&customerId=&page=&pageSize=
 ```
 
 access-control API 仍只保存資源 ID；資源名稱與狀態應由資源所屬服務維護。
@@ -331,3 +331,4 @@ access-control API 仍只保存資源 ID；資源名稱與狀態應由資源所�
 6. 補齊角色重新命名、全域資源權限與刪除。
 7. 串接客戶／任務選擇資料，取代 UUID 手動輸入。
 8. 完成申請試用、系統狀態與版本資料。
+
