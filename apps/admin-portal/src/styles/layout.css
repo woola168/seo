@@ -38,9 +38,11 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.layout-logo img {
-  width: auto;
-  height: 24px;
+.layout-wordmark {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .logo-mark {
@@ -369,7 +371,7 @@
     width: var(--sidebar-collapsed-width);
   }
 
-  .layout-logo img,
+  .layout-wordmark,
   .layout-logo > .icon-button,
   .navigation-group > p,
   .navigation-item span,
@@ -378,7 +380,7 @@
   }
 
   .layout-logo::before {
-    content: "K";
+    content: "Y";
     width: 28px;
     height: 28px;
     display: grid;

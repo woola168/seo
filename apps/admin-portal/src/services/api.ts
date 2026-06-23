@@ -4,6 +4,15 @@
   CreateInvitationInput,
   CustomerSummary,
   Department,
+  GeoDummyProject,
+  GeoGeneratedQuery,
+  GeoQueryGenerationResult,
+  GeoMarketType,
+  GeoProvider,
+  GeoQueryResearchResult,
+  GeoRegion,
+  GeoRunRequestResult,
+  GeoTopicInput,
   PageResponse,
   Role,
   SessionUser,
@@ -192,6 +201,70 @@ export const api = {
     request<AuthorizationDecision>("/api/authorization/evaluate", {
       method: "POST",
       body: JSON.stringify({ userId, permission, resource }),
+    }),
+  geoDummyProject: () =>
+    request<GeoDummyProject>("/api/v1/geo-tracking/dummy-project"),
+  researchGeoQueries: (input: {
+    provider: GeoProvider;
+    brandName: string;
+    competitorBrands: string[];
+    keywords: string[];
+    region: GeoRegion;
+    language: string | null;
+    marketType: GeoMarketType;
+    audience: { name: string; description: string } | null;
+  }) =>
+    request<GeoQueryResearchResult>("/api/v1/geo-tracking/query-research", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  generateGeoQueries: (input: {
+    seoTaskId: string;
+    provider: GeoProvider;
+    brandName: string;
+    competitorBrands: string[];
+    keywords: string[];
+    region: GeoRegion;
+    language: string | null;
+    marketType: GeoMarketType;
+    topics: GeoTopicInput[];
+    topicNames: string[];
+    intents: Array<{ category: string; description: string }>;
+    audience: { name: string; description: string };
+    brandMentionRules: {
+      shouldMentionOwnBrand: boolean;
+      shouldMentionCompetitor: boolean;
+    };
+    researchContext: string | null;
+    maxQueries: number;
+  }) =>
+    request<GeoQueryGenerationResult>("/api/v1/geo-tracking/query-generation", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  runGeoQueries: (
+    seoTaskId: string,
+    provider: GeoProvider,
+    queries: GeoGeneratedQuery[],
+  ) =>
+    request<GeoRunRequestResult>("/api/v1/geo-tracking/run-requests", {
+      method: "POST",
+      body: JSON.stringify({
+        seoTaskId,
+        provider,
+        timing: "run_now",
+        queries: queries.map((query) => ({
+          id: query.id,
+          text: query.text,
+          topicName: query.topicName,
+          region: query.region,
+          language: query.language,
+          marketType: query.marketType,
+          isBranded: query.isBranded,
+          attributes: query.attributes,
+          metadata: query.metadata,
+        })),
+      }),
     }),
 };
 

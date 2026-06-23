@@ -1,0 +1,19 @@
+[project]
+name = "younilab-geo-tracking-application"
+version = "0.1.0"
+description = "GEO tracking application use cases."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.8,<3",
+    "younilab-geo-tracking-domain",
+]
+
+[tool.uv.sources]
+younilab-geo-tracking-domain = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

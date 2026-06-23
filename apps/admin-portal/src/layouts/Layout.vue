@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import kinsanLogo from "../assets/kinsan-logo.svg";
 import AppIcon from "../components/ui/AppIcon.vue";
 import type {
   NavigationItem,
@@ -131,8 +130,8 @@ function logout(): void {
   <div class="layout" :class="{ 'layout-collapsed': collapsed }">
     <aside class="layout-sidebar">
       <div class="layout-logo">
-        <img v-if="!collapsed" :src="kinsanLogo" alt="Kinsan SEO" />
-        <span v-else class="logo-mark">K</span>
+        <strong v-if="!collapsed" class="layout-wordmark">Younilab SEO</strong>
+        <span v-else class="logo-mark">Y</span>
         <button
           class="icon-button"
           type="button"

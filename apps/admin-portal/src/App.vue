@@ -7,6 +7,7 @@ import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
 import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
+import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
 import RoleCreationPage from "./pages/RoleCreationPage.vue";
@@ -59,6 +60,8 @@ const currentTitle = computed(() =>
       ? "建立角色"
     : activePage.value === "geo-analysis"
       ? "GEO 分析"
+    : activePage.value === "geo-tracking"
+      ? "GEO 跑題實驗室"
     : activePage.value === "permissions"
       ? "權限管理"
       : "總覽",
@@ -115,10 +118,10 @@ const navigation = computed<NavigationItem[]>(() => [
   },
   {
     id: "war-room",
-    label: "戰情室",
+    label: "GEO 跑題",
     icon: "activity",
     group: "分析工具",
-    disabled: true,
+    page: "geo-tracking",
   },
   {
     id: "geo-analysis",
@@ -682,6 +685,10 @@ function unavailable(label: string): void {
 
   <SessionLoadingPage v-else-if="restoringSession" />
 
+  <GeoTrackingPage
+    v-else-if="route.name === 'geo-tracking' && (!user || !capabilities)"
+  />
+
   <LoginPage
     v-else-if="!user || !capabilities"
     :loading="loading"
@@ -735,6 +742,7 @@ function unavailable(label: string): void {
       v-else-if="activePage === 'geo-analysis'"
       @unavailable="unavailable"
     />
+    <GeoTrackingPage v-else-if="activePage === 'geo-tracking'" />
     <PermissionsPage
       v-else
       :current-user="user"
