@@ -54,6 +54,7 @@ class QueryGenerationService:
                     id=self._id_generator.new_id(),
                     seo_task_id=command.seo_task_id,
                     text=draft.query,
+                    keywords=_draft_keywords(draft, command.keywords),
                     topic_id=topic.id,
                     topic_name=topic.name,
                     region=command.region,
@@ -122,6 +123,7 @@ class DummyQueryGenerationProvider:
                             query=self._query_text(
                                 command, keyword, intent.description
                             ),
+                            keywords=[keyword],
                         )
                     )
                     if len(drafts) >= command.max_queries:
@@ -191,3 +193,12 @@ def _topic_inputs(
         return command.topics
     names = command.topic_names or default_names
     return [TopicInput(name=name) for name in names]
+
+
+def _draft_keywords(draft: QueryDraft, allowed_keywords: list[str]) -> list[str]:
+    keywords = [
+        keyword
+        for keyword in dict.fromkeys(draft.keywords or [draft.attributes.keyword])
+        if keyword in allowed_keywords
+    ]
+    return keywords or [draft.attributes.keyword]

@@ -15,12 +15,16 @@
 - Gemini Run Answer 若第一輪沒有 grounding references，會自動 retry 一次，使用較強的 reference prompt。
 - 預設 Gemini model 調整為 `gemini-3.1-flash-lite`。
 - Query Generation attributes 已收斂為生成引導欄位：`intent`、`keyword`、`topicName`、`topicDescription`、`audience`、`brandMentionRules`。
+- Query Generation structured output 已調整為每筆 draft 先輸出 `attributes`、接著 `query`、最後 `keywords`；`keywords` 代表該 prompt 實際使用到的輸入 seed keywords。
 - Query Generation attributes 已移除 `sourceUrls`、`searchedKeywords`、SERP intent、evidence 類欄位。
 - Query Research output 保留 `researchContext`、`searchedKeywords`、`sourceUrls`。
 - API 新增 `/api/v1/geo-tracking/query-generation`、`/query-research`、`/run-requests`、`/dummy-project`。
 - Admin Portal 新增 GEO 跑題頁，可輸入品牌、競品、keywords、地區、語言、市場語境、topic 名稱與描述、intent、audience、brand mention rules。
 - Admin Portal 已新增 `/geo-tracking` GEO 測試頁面，作為 Phase 1 MVP 串接 Query Research、Query Generation、Run Engine 的本機操作入口。
 - Admin Portal 右側流程已對齊 PDF 架構：`Query Research 工具` 負責用輸入與背景設定生成 query draft；`Query / Topic 管理紀錄` 只呈現已生成/暫存紀錄；`Runner 跑題引擎` 才負責把 query 送到 AI provider 取得結果。
+- Admin Portal Query / Topic 管理預覽表格已對齊客戶澄清欄位：`Prompt`、`Keywords`、`Intent`、`動作`。
+- Admin Portal 的 Intent 欄位使用 `N / I / C / T` 圓圈標記，對應導航、資訊、商業調查、交易。
+- Admin Portal 的 `+ Shortlist` 目前是前端 local state，作為本輪 Runner 選取來源；尚未做後端 CRUD / 持久化。
 - Admin Portal 支援 Query Generation provider、Run provider 選擇 dummy / Gemini；Query Research backend provider 保留在 API，但前端目前不提供獨立 provider 選擇或搜尋脈絡按鈕。
 - Admin Portal 已移除右側「取得搜尋脈絡」功能，避免誤解為 Query Generation 需要先跑 Google Search。
 - 移除 UI 原始碼中的 `Kinsan SEO` 顯示字樣，改為 `Younilab SEO`。
@@ -38,8 +42,8 @@
 - `shouldMentionOwnBrand`、`shouldMentionCompetitor` 是「是否要求 query 提及」的生成前限制，不是生成後分類。
 - `audience` 是正式輸入參數，前端與 prompt payload 都需要帶入。
 - `isBranded` 目前先以自身品牌提及規則推導，後續若要更準確，應改由 query text / brand alias 判斷。
-- Shortlist 不是 UI 收藏某筆 query，也不是 intent；它是搜尋者評估後形成的候選品牌/網站名單概念，本輪不實作。
-- Keywords 暫時使用 Query Research / grounding metadata 的 searched keywords；若 Gemini 未回傳，允許 fallback 到模型輸出或原始 keywords。
+- Shortlist 依客戶最新澄清，先視為每條 prompt 右側的「加入收藏 / 候選清單」操作；不是 intent。本輪只做前端 local state，不做後端 CRUD。
+- Generated prompt 的 `keywords` 是該 prompt 實際使用到的輸入 seed keywords，透過 Query Generation structured output 在 `query` 後方回傳；後端需限制在原始輸入 keyword 清單內。
 - Source URLs 只出現在 Query Research / Run Answer 結果；若 Gemini grounding metadata 沒有 URL，允許空陣列，但流程不能失敗。
 - 模組 A 的 Google Ads API / Keyword Planner 搜尋量資料本輪略過。
 - 模組 B 的手動輸入、多題輸入、metadata、排程、CRUD、DB 持久化先交接後端設計。
@@ -87,7 +91,7 @@
 - Region / language 設定 CRUD：台灣、美國先做，schema 保留其他地區與語言擴充。
 - Research context history：保存每次 Query Research 的輸入、provider、model、searched keywords、source URLs、raw metadata、建立時間。
 - Generated query draft CRUD：保存生成出的 query draft、attributes、使用者採納狀態、淘汰原因。
-- Shortlist 資料模型：需設計為候選品牌/網站名單，不是 query favorite；來源可能是 research / SERP / 使用者手動補充。
+- Shortlist 資料模型：需保存使用者加入 Shortlist 的 prompt/query、keywords、intent、topic、建立者、建立時間、狀態；目前前端 local state 不會持久化。
 
 ### 尚未完成，表單設計
 
@@ -98,7 +102,8 @@
 - Audience 管理表單：名稱、描述、預設市場類型。
 - Brand mention rules 表單：自身品牌、競品、泛用 query 生成策略。
 - Research result 表單：顯示 research context、searched keywords、source URLs，並允許將 context 帶入 query generation。
-- Generated queries 表格：query、keyword、topic、intent、audience、brand rules、採納 / 刪除 / 編輯動作。
+- Generated prompts 表格：主欄位對齊 `Prompt`、`Keywords`、`Intent`、`動作`；topic、audience、brand rules、market metadata 可放在 detail、tooltip 或次要資訊。
+- Shortlist 動作表單：每筆 prompt 右側提供 `+ Shortlist`，本輪為 local state；後續需補持久化、取消收藏、批次操作與權限規則。
 
 ### 本輪略過
 
@@ -296,13 +301,15 @@ CRUD / actions：
 - `id`
 - `generation_run_id`
 - `topic_name`
-- `keyword`
+- `keywords` JSON
 - `intent_category`
 - `intent_description`
 - `audience_name`
 - `audience_description`
 - `brand_mention_rules` JSON
 - `query_text`
+- `shortlisted_at`
+- `shortlisted_by_user_id`
 - `decision`: `pending | accepted | rejected | edited`
 - `accepted_query_id`
 - `created_at`
@@ -312,6 +319,8 @@ CRUD / actions：
 
 - Create generation run。
 - List drafts。
+- Add draft to Shortlist。
+- Remove draft from Shortlist。
 - Accept draft as query。
 - Reject draft。
 - Edit draft then accept。
@@ -391,8 +400,9 @@ CRUD / actions：
 ### 目前完成
 
 - Query / Topic 的 API response shape 與前端預覽。
-- Generated query 目前包含 topic、region、language、marketType、isBranded、metadata、status。
-- 前端可選取 query 並送進 Run Engine。
+- Generated query 目前包含 prompt text、keywords、topic、region、language、marketType、isBranded、metadata、status。
+- 前端表格主欄位已對齊客戶澄清的 `Prompt / Keywords / Intent / 動作`。
+- 前端可用 `+ Shortlist` 把 prompt 加入 local Shortlist，並將 Shortlist 內容送進 Run Engine。
 - Dummy project 可提供前端載入範例資料。
 
 ### 尚未完成，交接後端
@@ -401,6 +411,7 @@ CRUD / actions：
 - Query CRUD：新增、編輯、刪除、啟停、掛 topic、地區、語言、市場語境。
 - 多題輸入：批次建立 query、批次掛 topic、批次設定地區 / 語言。
 - Query metadata CRUD：標籤、來源、生成 attributes、採納狀態、備註。
+- Shortlist CRUD：保存、取消、列表、批次操作、與 project / user / query draft 的關聯。
 - Brand flag / query classification：品牌字、競品字、泛用 query 的判斷與保存規則。
 - Query scheduling 設定：立即跑、下個週期跑、啟停、頻率、品牌字降頻。
 - Tracking metrics 設定欄位：PDF 有提到追蹤指標勾選，但本輪先略過，需要後端決定是否以 query-level 或 project-level 保存。
@@ -410,6 +421,7 @@ CRUD / actions：
 
 - Topic 管理表單：topic name、description、排序、啟停。
 - Query 編輯表單：query text、topic、region、language、marketType、status、metadata tags。
+- Shortlist 狀態 UI：顯示已加入、取消加入、批次加入、依使用者或 project 過濾。
 - 多題輸入表單：textarea / CSV paste、逐行 validation、批次 topic / region / language。
 - Metadata 標籤表單：tag key/value、系統標籤與自訂標籤區分。
 - 排程表單：run now、next cycle、週期、降頻規則。

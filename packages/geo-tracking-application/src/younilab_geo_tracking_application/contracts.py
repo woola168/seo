@@ -63,6 +63,7 @@ class QueryGenerationAttributes(ContractModel):
 class QueryDraft(ContractModel):
     attributes: QueryGenerationAttributes
     query: str = Field(min_length=1, max_length=500)
+    keywords: list[str] = Field(default_factory=list, max_length=10)
 
 
 class QueryDraftList(ContractModel):
@@ -73,6 +74,7 @@ class GeneratedQuery(ContractModel):
     id: UUID
     seo_task_id: UUID
     text: str
+    keywords: list[str] = Field(default_factory=list, max_length=10)
     topic_id: UUID | None
     topic_name: str
     region: RegionCode

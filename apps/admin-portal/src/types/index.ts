@@ -235,6 +235,7 @@ export interface GeoGeneratedQuery {
   id: string;
   seoTaskId: string;
   text: string;
+  keywords: string[];
   topicId: string | null;
   topicName: string;
   region: GeoRegion;
