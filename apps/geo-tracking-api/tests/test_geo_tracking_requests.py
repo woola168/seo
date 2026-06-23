@@ -52,6 +52,7 @@ class GeminiQueryGenerationStubProvider:
                     "brandMentionRules": command.brand_mention_rules,
                 },
                 query="山華塑膠氣動管採購評估需要看哪些供應商條件？",
+                keywords=[command.keywords[0]],
             )
         ]
 
@@ -119,6 +120,7 @@ def test_query_generation_request_generates_b2b_us_queries() -> None:
     assert query["region"] == "US"
     assert query["language"] == "en-US"
     assert query["marketType"] == "b2b_procurement"
+    assert query["keywords"] == ["pneumatic tubing"]
     assert query["isBranded"] is True
     assert query["attributes"]["intent"]["category"] == "commercial_investigation"
     assert query["attributes"]["brandMentionRules"]["shouldMentionOwnBrand"] is True
@@ -162,6 +164,7 @@ def test_query_generation_request_generates_b2b_taiwan_queries_in_chinese() -> N
     assert query["language"] == "zh-TW"
     assert "山華塑膠" in query["text"]
     assert "氣動管" in query["text"]
+    assert query["keywords"] == ["氣動管"]
 
 
 def test_query_generation_request_can_use_gemini_structured_provider() -> None:
@@ -183,6 +186,7 @@ def test_query_generation_request_can_use_gemini_structured_provider() -> None:
     assert response.status_code == 200
     query = response.json()["queries"][0]
     assert query["text"] == "山華塑膠氣動管採購評估需要看哪些供應商條件？"
+    assert query["keywords"] == ["pneumatic tubing"]
     assert query["attributes"]["intent"]["category"] == "commercial_investigation"
     assert query["attributes"]["topicDescription"] == TOPIC_DESCRIPTION
     assert "name" not in query["attributes"]["intent"]

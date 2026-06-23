@@ -3,7 +3,7 @@ import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from younilab_geo_tracking_application import (
     AnswerProvider,
     AnswerRequest,
@@ -52,6 +52,7 @@ class _GeminiQueryAttributes(BaseModel):
 class _GeminiQueryDraft(BaseModel):
     attributes: _GeminiQueryAttributes
     query: str
+    keywords: list[str] = Field(default_factory=list)
 
 
 class _GeminiQueryDraftList(BaseModel):
@@ -287,7 +288,9 @@ def _query_generation_system_prompt(language: str | None) -> str:
             "infer, or classify intent. Do not include searchedKeywords, sourceUrls, "
             "SERP, or evidence fields. "
             "Return only structured JSON that matches the schema. For each item, "
-            "attributes must appear before query, and query must be the final field."
+            "attributes must appear first, query must appear next, and keywords must "
+            "appear after query. keywords must be a list of the provided seed "
+            "keywords used by that query. Do not invent keywords."
         )
     return (
         "你負責產生 GEO 追蹤用的 AI 搜尋 query 候選。"
@@ -298,7 +301,8 @@ def _query_generation_system_prompt(language: str | None) -> str:
         "但不得自行推論、分類或改寫 intent。"
         "不得輸出 searchedKeywords、sourceUrls、SERP 或 evidence 欄位。"
         "只回傳符合 schema 的結構化 JSON。每筆資料必須先輸出 attributes，"
-        "最後一個欄位才是 query。"
+        "接著輸出 query，最後輸出 keywords。keywords 必須是該 query 用到的"
+        "輸入 seed keywords 陣列，不得自行發明 keyword。"
     )
 
 
@@ -366,6 +370,7 @@ def _query_drafts_from_gemini(
                     "brandMentionRules": command.brand_mention_rules,
                 },
                 query=item.query,
+                keywords=_matching_keywords(item.keywords, command.keywords),
             )
         )
     return drafts
@@ -400,6 +405,15 @@ def _matching_value(value: str, allowed_values: list[str]) -> str:
         if allowed_value and allowed_value in value:
             return allowed_value
     return allowed_values[0]
+
+
+def _matching_keywords(values: list[str], allowed_values: list[str]) -> list[str]:
+    keywords: list[str] = []
+    for value in values:
+        matched = _matching_value(value, allowed_values)
+        if matched not in keywords:
+            keywords.append(matched)
+    return keywords or [allowed_values[0]]
 
 
 def _matching_topic(value: str, allowed_topics: list[Any]) -> Any:

@@ -71,11 +71,11 @@ const queryGenerationProvider = ref<GeoProvider>("dummy");
 const loading = ref(false);
 const error = ref("");
 const queries = ref<GeoGeneratedQuery[]>([]);
-const selectedQueryIds = ref<Set<string>>(new Set());
+const shortlistedQueryIds = ref<Set<string>>(new Set());
 const runResults = ref<GeoRunResult[]>([]);
 
 const selectedQueries = computed(() =>
-  queries.value.filter((query) => selectedQueryIds.value.has(query.id)),
+  queries.value.filter((query) => shortlistedQueryIds.value.has(query.id)),
 );
 
 const keywordCount = computed(() => lines(form.keywords).length);
@@ -107,7 +107,7 @@ async function loadExample(): Promise<void> {
     form.shouldMentionOwnBrand = true;
     form.shouldMentionCompetitor = true;
     queries.value = [];
-    selectedQueryIds.value = new Set();
+    shortlistedQueryIds.value = new Set();
     runResults.value = [];
     provider.value = "dummy";
     queryGenerationProvider.value = "dummy";
@@ -146,14 +146,14 @@ async function generateQueries(): Promise<void> {
       maxQueries: form.maxQueries,
     });
     queries.value = result.queries;
-    selectedQueryIds.value = new Set(result.queries.slice(0, 3).map((query) => query.id));
+    shortlistedQueryIds.value = new Set();
     runResults.value = [];
   });
 }
 
 async function runSelectedQueries(): Promise<void> {
   if (!selectedQueries.value.length) {
-    error.value = "請先選取至少一筆 Query。";
+    error.value = "請先將至少一筆 Prompt 加入 Shortlist。";
     return;
   }
   await run(async () => {
@@ -166,11 +166,11 @@ async function runSelectedQueries(): Promise<void> {
   });
 }
 
-function toggleQuery(queryId: string): void {
-  const next = new Set(selectedQueryIds.value);
+function toggleShortlist(queryId: string): void {
+  const next = new Set(shortlistedQueryIds.value);
   if (next.has(queryId)) next.delete(queryId);
   else next.add(queryId);
-  selectedQueryIds.value = next;
+  shortlistedQueryIds.value = next;
 }
 
 function lines(value: string): string[] {
@@ -239,6 +239,30 @@ function intentCategoryLabel(category: string): string {
     intentCategoryOptions.find((option) => option.value === category)?.label ??
     category
   );
+}
+
+function intentCategoryCode(category: string): string {
+  const codeByCategory: Record<string, string> = {
+    navigational: "N",
+    informational: "I",
+    commercial_investigation: "C",
+    transactional: "T",
+  };
+  return codeByCategory[category] ?? "?";
+}
+
+function intentCodeTone(category: string): string {
+  const toneByCategory: Record<string, string> = {
+    navigational: "geo-intent-n",
+    informational: "geo-intent-i",
+    commercial_investigation: "geo-intent-c",
+    transactional: "geo-intent-t",
+  };
+  return toneByCategory[category] ?? "geo-intent-unknown";
+}
+
+function queryKeywords(query: GeoGeneratedQuery): string[] {
+  return query.keywords?.length ? query.keywords : [query.attributes.keyword];
 }
 
 function referenceDisplayLabel(
@@ -510,7 +534,7 @@ async function run(action: () => Promise<void>): Promise<void> {
               <p>呈現已生成的 topic 與 query 暫存紀錄，正式保存待 DB/CRUD。</p>
             </div>
             <span class="geo-record-count">
-              {{ queries.length }} 筆紀錄，已選 {{ selectedQueries.length }} 筆
+              {{ queries.length }} 筆紀錄，Shortlist {{ selectedQueries.length }} 筆
             </span>
           </header>
           <div v-if="!queries.length" class="empty-state">
@@ -522,62 +546,48 @@ async function run(action: () => Promise<void>): Promise<void> {
             <table class="data-table geo-query-table">
               <thead>
                 <tr>
-                  <th>選取</th>
-                  <th>Query</th>
-                  <th>Topic</th>
-                  <th>Topic 描述</th>
+                  <th>Prompt</th>
+                  <th>Keywords</th>
                   <th>Intent</th>
-                  <th>Audience</th>
-                  <th>品牌規則</th>
-                  <th>市場</th>
+                  <th>動作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="query in queries" :key="query.id">
-                  <td>
-                    <input
-                      type="checkbox"
-                      :checked="selectedQueryIds.has(query.id)"
-                      @change="toggleQuery(query.id)"
-                    />
+                  <td class="geo-prompt-cell">
+                    <strong>{{ query.text }}</strong>
+                    <small>
+                      {{ query.topicName }} · {{ query.attributes.audience.name }}
+                      · {{ query.region }} · {{ query.language }}
+                    </small>
                   </td>
-                  <td>{{ query.text }}</td>
-                  <td>{{ query.topicName }}</td>
-                  <td>
-                    <small>{{ query.attributes.topicDescription || "-" }}</small>
+                  <td class="geo-keyword-tags">
+                    <span
+                      v-for="keyword in queryKeywords(query)"
+                      :key="`${query.id}-${keyword}`"
+                      class="badge badge-muted"
+                    >
+                      {{ keyword }}
+                    </span>
                   </td>
-                  <td>
-                    <strong>{{ intentCategoryLabel(query.attributes.intent.category) }}</strong>
-                    <small>{{ query.attributes.intent.description }}</small>
-                  </td>
-                  <td>{{ query.attributes.audience.name }}</td>
                   <td>
                     <span
-                      class="badge"
-                      :class="
-                        query.attributes.brandMentionRules.shouldMentionOwnBrand
-                          ? 'badge-blue'
-                          : 'badge-muted'
-                      "
+                      class="geo-intent-pill"
+                      :class="intentCodeTone(query.attributes.intent.category)"
+                      :title="`${intentCategoryLabel(query.attributes.intent.category)}：${query.attributes.intent.description}`"
                     >
-                      自身品牌
-                    </span>
-                    <span
-                      class="badge"
-                      :class="
-                        query.attributes.brandMentionRules.shouldMentionCompetitor
-                          ? 'badge-info'
-                          : 'badge-muted'
-                      "
-                    >
-                      競品
+                      {{ intentCategoryCode(query.attributes.intent.category) }}
                     </span>
                   </td>
-                  <td>
-                    <span class="badge" :class="query.isBranded ? 'badge-blue' : 'badge-muted'">
-                      {{ query.isBranded ? "品牌字" : "泛用" }}
-                    </span>
-                    <small>{{ query.region }} · {{ query.language }}</small>
+                  <td class="geo-actions-cell">
+                    <button
+                      class="button button-secondary geo-shortlist-button"
+                      type="button"
+                      :class="{ active: shortlistedQueryIds.has(query.id) }"
+                      @click="toggleShortlist(query.id)"
+                    >
+                      {{ shortlistedQueryIds.has(query.id) ? "Shortlisted" : "+ Shortlist" }}
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -589,7 +599,7 @@ async function run(action: () => Promise<void>): Promise<void> {
           <header class="card-header geo-step-header">
             <div>
               <h2><span class="geo-step-number">3</span>Runner 跑題引擎</h2>
-              <p>把 Query / Topic 管理預覽中已選的 query 送到指定 AI adapter，取得 response 與 references。</p>
+              <p>把 Query / Topic 管理預覽中已加入 Shortlist 的 prompt 送到指定 AI adapter，取得 response 與 references。</p>
             </div>
             <div class="geo-run-actions">
               <label class="geo-provider-control">
@@ -602,17 +612,17 @@ async function run(action: () => Promise<void>): Promise<void> {
               <button
                 class="button button-primary"
                 type="button"
-                :disabled="loading || !queries.length"
+                :disabled="loading || !selectedQueries.length"
                 @click="runSelectedQueries"
               >
-                <AppIcon name="activity" :size="16" />跑選取 Query
+                <AppIcon name="activity" :size="16" />跑 Shortlist
               </button>
             </div>
           </header>
           <div v-if="!runResults.length" class="empty-state">
             <AppIcon name="activity" />
             <strong>尚未執行 Runner</strong>
-            <p>在 Query / Topic 管理紀錄選取 query 後，使用 provider 建立 run request。</p>
+            <p>先把 prompt 加入 Shortlist，再使用 provider 建立 run request。</p>
           </div>
           <div v-else class="geo-result-list">
             <article v-for="result in runResults" :key="result.id" class="geo-result-item">
