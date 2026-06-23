@@ -22,6 +22,7 @@ def test_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    assert float(response.headers["X-Process-Time-Ms"]) >= 0
 
 
 def test_me_requires_authentication() -> None:
@@ -296,4 +297,3 @@ def test_password_reset_request_does_not_reveal_unknown_email() -> None:
     )
 
     assert response.status_code == 202
-

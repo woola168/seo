@@ -20,6 +20,9 @@ def test_customer_and_task_endpoints() -> None:
     client = create_test_client()
     headers = {"Authorization": "Bearer test"}
 
+    health_response = client.get("/health")
+    assert float(health_response.headers["X-Process-Time-Ms"]) >= 0
+
     customer_response = client.post(
         "/api/customers",
         headers=headers,
@@ -92,4 +95,3 @@ def test_validation_problem_details_lists_multiple_invalid_fields() -> None:
 
 def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
-

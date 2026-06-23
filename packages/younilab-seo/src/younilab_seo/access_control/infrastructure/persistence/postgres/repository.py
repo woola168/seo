@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from uuid import UUID
 
@@ -43,7 +44,22 @@ class PostgresAccessControlRepository:
                     .order_by(UserRow.email)
                 )
             ).all()
-            return [await self._map_user(session, row) for row in rows]
+            user_ids = {row.id for row in rows}
+            role_ids_by_user = await self._list_user_role_ids(session, user_ids)
+            customer_ids_by_user = await self._list_user_customer_ids(
+                session,
+                user_ids,
+            )
+            task_ids_by_user = await self._list_user_task_ids(session, user_ids)
+            return [
+                self._user_from_row(
+                    row,
+                    role_ids=role_ids_by_user[row.id],
+                    customer_ids=customer_ids_by_user[row.id],
+                    task_ids=task_ids_by_user[row.id],
+                )
+                for row in rows
+            ]
 
     async def save_user(self, user: UserAccount) -> None:
         async with self._session_factory() as session:
@@ -576,6 +592,73 @@ class PostgresAccessControlRepository:
                 )
             )
         )
+        return self._user_from_row(
+            row,
+            role_ids=role_ids,
+            customer_ids=customer_ids,
+            task_ids=task_ids,
+        )
+
+    async def _list_user_role_ids(
+        self,
+        session: AsyncSession,
+        user_ids: set[UUID],
+    ) -> defaultdict[UUID, set[UUID]]:
+        role_ids_by_user: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        if not user_ids:
+            return role_ids_by_user
+        rows = await session.execute(
+            select(UserRoleRow.user_id, UserRoleRow.role_id).where(
+                UserRoleRow.user_id.in_(user_ids)
+            )
+        )
+        for user_id, role_id in rows:
+            role_ids_by_user[user_id].add(role_id)
+        return role_ids_by_user
+
+    async def _list_user_customer_ids(
+        self,
+        session: AsyncSession,
+        user_ids: set[UUID],
+    ) -> defaultdict[UUID, set[UUID]]:
+        customer_ids_by_user: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        if not user_ids:
+            return customer_ids_by_user
+        rows = await session.execute(
+            select(
+                CustomerAccessGrantRow.user_id,
+                CustomerAccessGrantRow.customer_id,
+            ).where(CustomerAccessGrantRow.user_id.in_(user_ids))
+        )
+        for user_id, customer_id in rows:
+            customer_ids_by_user[user_id].add(customer_id)
+        return customer_ids_by_user
+
+    async def _list_user_task_ids(
+        self,
+        session: AsyncSession,
+        user_ids: set[UUID],
+    ) -> defaultdict[UUID, set[UUID]]:
+        task_ids_by_user: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        if not user_ids:
+            return task_ids_by_user
+        rows = await session.execute(
+            select(TaskAccessGrantRow.user_id, TaskAccessGrantRow.task_id).where(
+                TaskAccessGrantRow.user_id.in_(user_ids)
+            )
+        )
+        for user_id, task_id in rows:
+            task_ids_by_user[user_id].add(task_id)
+        return task_ids_by_user
+
+    def _user_from_row(
+        self,
+        row: UserRow,
+        *,
+        role_ids: set[UUID],
+        customer_ids: set[UUID],
+        task_ids: set[UUID],
+    ) -> UserAccount:
         return UserAccount(
             id=row.id,
             email=row.email,

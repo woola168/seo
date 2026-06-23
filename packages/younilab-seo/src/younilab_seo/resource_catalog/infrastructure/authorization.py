@@ -6,30 +6,30 @@ from younilab_seo.resource_catalog.application import AccessDenied
 class AccessControlAuthorizer:
     """將 decisions 委派給 Access Control 的 PermissionAuthorizer adapter。"""
 
-    def __init__(self, access_control_url: str) -> None:
+    def __init__(
+        self,
+        access_control_url: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self._access_control_url = access_control_url.rstrip("/")
+        self._transport = transport
 
     async def require(self, access_token: str, permission: str) -> None:
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
+            async with httpx.AsyncClient(
+                timeout=5,
+                transport=self._transport,
+            ) as client:
                 headers = {"Authorization": f"Bearer {access_token}"}
-                me_response = await client.get(
-                    f"{self._access_control_url}/api/me",
+                response = await client.get(
+                    f"{self._access_control_url}/api/me/capabilities",
                     headers=headers,
-                )
-                if me_response.status_code != 200:
-                    raise AccessDenied
-                response = await client.post(
-                    f"{self._access_control_url}/api/authorization/evaluate",
-                    headers=headers,
-                    json={
-                        "userId": me_response.json()["id"],
-                        "permission": permission,
-                    },
                 )
         except httpx.HTTPError as exc:
             raise AccessDenied("authorization service unavailable") from exc
-        if response.status_code != 200 or not response.json().get("allowed", False):
+        if response.status_code != 200:
+            raise AccessDenied
+        if permission not in response.json().get("permissions", []):
             raise AccessDenied
 
 

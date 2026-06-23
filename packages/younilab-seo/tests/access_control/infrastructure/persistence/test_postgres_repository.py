@@ -188,6 +188,87 @@ def test_create_invited_user_persists_user_before_grants() -> None:
     asyncio.run(scenario())
 
 
+def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
+    async def scenario() -> None:
+        engine = create_async_engine("sqlite+aiosqlite://")
+        session_factory = async_sessionmaker(
+            engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        first_user_id = UUID("11111111-1111-4111-8111-111111111111")
+        second_user_id = UUID("22222222-2222-4222-8222-222222222222")
+        deleted_user_id = UUID("33333333-3333-4333-8333-333333333333")
+        role_id = UUID("44444444-4444-4444-8444-444444444444")
+        customer_id = UUID("55555555-5555-4555-8555-555555555555")
+        task_id = UUID("66666666-6666-4666-8666-666666666666")
+
+        async with engine.begin() as connection:
+            await connection.run_sync(create_access_control_tables)
+
+        async with session_factory() as session:
+            now = datetime.now(UTC)
+            session.add_all(
+                [
+                    UserRow(
+                        id=first_user_id,
+                        email="first@example.com",
+                        display_name="First",
+                        status="active",
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                    UserRow(
+                        id=second_user_id,
+                        email="second@example.com",
+                        display_name="Second",
+                        status="active",
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                    UserRow(
+                        id=deleted_user_id,
+                        email="deleted@example.com",
+                        display_name="Deleted",
+                        status="disabled",
+                        created_at=now,
+                        updated_at=now,
+                        deleted_at=now,
+                    ),
+                ]
+            )
+            session.add(RoleRow(id=role_id, name="Role"))
+            session.add(UserRoleRow(user_id=first_user_id, role_id=role_id))
+            session.add(
+                CustomerAccessGrantRow(
+                    user_id=first_user_id,
+                    customer_id=customer_id,
+                )
+            )
+            session.add(TaskAccessGrantRow(user_id=second_user_id, task_id=task_id))
+            await session.commit()
+
+        repository = PostgresAccessControlRepository(session_factory)
+
+        users = await repository.list_users()
+
+        assert [user.email for user in users] == [
+            "first@example.com",
+            "second@example.com",
+        ]
+        first_user = users[0]
+        second_user = users[1]
+        assert first_user.role_ids == {role_id}
+        assert first_user.customer_ids == {customer_id}
+        assert first_user.task_ids == set()
+        assert second_user.role_ids == set()
+        assert second_user.customer_ids == set()
+        assert second_user.task_ids == {task_id}
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_role_member_count_and_delete_role() -> None:
     async def scenario() -> None:
         engine = create_async_engine("sqlite+aiosqlite://")
