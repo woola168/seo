@@ -22,21 +22,21 @@ GEO 需獨立成一個 bounded context，不混入既有 `access-control` 或 `r
 
 ```text
 apps/geo-analysis-api
-packages/geo-analysis-domain
-packages/geo-analysis-application
-packages/geo-analysis-infrastructure
+packages/younilab-seo/src/younilab_seo/geo_analysis/domain
+packages/younilab-seo/src/younilab_seo/geo_analysis/application
+packages/younilab-seo/src/younilab_seo/geo_analysis/infrastructure
 ```
 
 依賴方向：
 
 ```text
 geo-analysis-api
-→ geo-analysis-application
-→ geo-analysis-domain
+→ younilab_seo.geo_analysis.application
+→ younilab_seo.geo_analysis.domain
 
-geo-analysis-infrastructure
-→ geo-analysis-application
-→ geo-analysis-domain
+younilab_seo.geo_analysis.infrastructure
+→ younilab_seo.geo_analysis.application
+→ younilab_seo.geo_analysis.domain
 ```
 
 Queue 抽象：

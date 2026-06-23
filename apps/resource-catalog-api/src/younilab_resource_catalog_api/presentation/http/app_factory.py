@@ -10,11 +10,11 @@ from younilab_resource_catalog_api.presentation.http.routes import (
     customers_router,
     tasks_router,
 )
-from younilab_resource_catalog_application import (
+from younilab_seo.resource_catalog.application import (
     PermissionAuthorizer,
     ResourceCatalogRepository,
 )
-from younilab_resource_catalog_infrastructure import ResourceCatalogSettings
+from younilab_seo.resource_catalog.infrastructure import ResourceCatalogSettings
 
 
 def create_app(

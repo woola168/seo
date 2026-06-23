@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from younilab_geo_analysis_api.presentation.http import create_app
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
-from younilab_geo_analysis_domain import JobStatus
+from younilab_seo.geo_analysis.domain import JobStatus
 
 
 def test_project_topic_query_and_job_crud_flow() -> None:

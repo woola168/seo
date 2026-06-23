@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from younilab_resource_catalog_domain import Customer, ResourceStatus, SeoTask
+from younilab_seo.resource_catalog.domain import Customer, ResourceStatus, SeoTask
 
 
 def _camel_case(value: str) -> str:

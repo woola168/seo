@@ -4,7 +4,7 @@ from younilab_access_control_api.presentation.dependencies import (
     CurrentPrincipal,
     current_principal,
 )
-from younilab_authorization_contracts import (
+from younilab_seo.access_control.contracts import (
     AuthorizationDecision,
     AuthorizationRequest,
     BatchAuthorizationDecision,
@@ -56,6 +56,6 @@ async def _ensure_can_evaluate(
         principal.user.id
     )
     if "authorization.evaluate" not in capabilities.permissions:
-        from younilab_access_control_application import AccountUnavailable
+        from younilab_seo.access_control.application import AccountUnavailable
 
         raise AccountUnavailable

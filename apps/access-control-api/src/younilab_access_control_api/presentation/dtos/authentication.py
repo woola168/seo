@@ -4,7 +4,7 @@ from typing import Self
 from pydantic import EmailStr, Field
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel, ApiRequest
-from younilab_access_control_application import IssuedTokens
+from younilab_seo.access_control.application import IssuedTokens
 
 
 class LoginRequest(ApiRequest):

@@ -13,7 +13,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     ScheduleRequest,
     TopicRequest,
 )
-from younilab_geo_analysis_domain import GeoQueryRunJob, JobStatus
+from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 
 
 @dataclass

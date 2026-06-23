@@ -1,4 +1,4 @@
-export type PageId = "dashboard" | "permissions";
+export type PageId = "dashboard" | "permissions" | "geo-analysis";
 
 export interface NavigationItem {
   id: string;
@@ -209,4 +209,164 @@ export interface PageResponse<T> {
   pageSize: number;
   total: number;
   totalPages: number;
+}
+
+export interface GeoProject {
+  id: string;
+  customerId: string;
+  customerName: string;
+  seoTaskId: string | null;
+  seoTaskName: string | null;
+  name: string;
+  defaultRegion: string;
+  defaultLanguage: string;
+  status: "active" | "paused" | "archived";
+  dailyRunBudget: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoMarket {
+  id: string;
+  projectId: string;
+  region: string;
+  language: string;
+  marketName: string;
+  promptLocaleHint: string;
+  serpGl: string | null;
+  serpHl: string | null;
+  serpLocation: string | null;
+  status: "active" | "paused";
+}
+
+export interface GeoEntity {
+  id: string;
+  projectId: string;
+  entityType: "brand" | "competitor" | "website" | "partner";
+  name: string;
+  websiteUrl: string | null;
+  description: string;
+  status: "active" | "paused" | "archived";
+}
+
+export interface GeoEntityAlias {
+  id: string;
+  entityId: string;
+  alias: string;
+  matchType: "exact" | "contains" | "domain";
+}
+
+export interface GeoTopic {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  status: "active" | "paused" | "archived";
+}
+
+export interface GeoQuery {
+  id: string;
+  projectId: string;
+  topicId: string | null;
+  queryText: string;
+  region: string;
+  language: string;
+  intent: string;
+  buyerStage: string;
+  isBranded: boolean;
+  priority: "low" | "normal" | "high";
+  status: "active" | "paused" | "archived";
+}
+
+export interface GeoPlatform {
+  id: string;
+  name: string;
+  model: string;
+  status: "active" | "paused";
+}
+
+export interface GeoQueryPlatform {
+  id: string;
+  queryId: string;
+  platformId: string;
+  model: string;
+  status: "active" | "paused";
+}
+
+export interface GeoSchedule {
+  id: string;
+  queryId: string;
+  platformId: string;
+  frequency: "daily" | "weekly" | "manual";
+  priority: "low" | "normal" | "high";
+  timezone: string;
+  nextRunAt: string | null;
+  status: "active" | "paused";
+}
+
+export interface GeoJob {
+  id: string;
+  projectId: string;
+  queryId: string;
+  platformId: string;
+  scheduleId: string | null;
+  jobType: "manual_run" | "scheduled_run";
+  priority: "low" | "normal" | "high";
+  scheduledFor: string;
+  status:
+    | "pending"
+    | "published"
+    | "running_external"
+    | "succeeded"
+    | "failed"
+    | "cancelled";
+  attemptCount: number;
+  maxAttempts: number;
+  dedupeKey: string;
+  externalRunId: string | null;
+  lastErrorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoReportMetric {
+  id: string;
+  label: string;
+  value: string;
+  delta: string;
+  tone: SemanticTone;
+  description: string;
+}
+
+export interface GeoTrendPoint {
+  label: string;
+  visibility: number;
+  sov: number;
+  mentions: number;
+}
+
+export interface GeoTopicPerformance {
+  topicId: string;
+  topicName: string;
+  visibility: number;
+  sov: number;
+  queryCount: number;
+  betterPerformer: string;
+}
+
+export interface GeoAiAnswerSample {
+  id: string;
+  platform: string;
+  queryText: string;
+  answerSummary: string;
+  mentionedEntities: string[];
+  citations: string[];
+  sentiment: "positive" | "neutral" | "negative";
+}
+
+export interface GeoRecommendation {
+  id: string;
+  title: string;
+  description: string;
+  priority: "low" | "normal" | "high";
 }

@@ -16,34 +16,16 @@ package = false
 [tool.uv.workspace]
 members = [
     "apps/access-control-api",
-    "packages/access-control-domain",
-    "packages/access-control-application",
-    "packages/access-control-infrastructure",
-    "packages/authorization-contracts",
     "apps/resource-catalog-api",
-    "packages/resource-catalog-domain",
-    "packages/resource-catalog-application",
-    "packages/resource-catalog-infrastructure",
     "apps/geo-analysis-api",
-    "packages/geo-analysis-domain",
-    "packages/geo-analysis-application",
-    "packages/geo-analysis-infrastructure",
+    "packages/younilab-seo",
 ]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
 testpaths = [
     "apps/access-control-api/tests",
-    "packages/access-control-domain/tests",
-    "packages/access-control-application/tests",
-    "packages/access-control-infrastructure/tests",
-    "packages/authorization-contracts/tests",
     "apps/resource-catalog-api/tests",
-    "packages/resource-catalog-domain/tests",
-    "packages/resource-catalog-application/tests",
-    "packages/resource-catalog-infrastructure/tests",
     "apps/geo-analysis-api/tests",
-    "packages/geo-analysis-domain/tests",
-    "packages/geo-analysis-application/tests",
-    "packages/geo-analysis-infrastructure/tests",
+    "packages/younilab-seo/tests",
 ]

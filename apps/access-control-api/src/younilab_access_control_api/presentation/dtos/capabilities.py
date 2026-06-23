@@ -2,7 +2,7 @@ from typing import Self
 from uuid import UUID
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel
-from younilab_access_control_application import Capabilities
+from younilab_seo.access_control.application import Capabilities
 
 
 class CapabilitiesResponse(ApiModel):

@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import Field
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel, ApiRequest
-from younilab_access_control_domain import Role
+from younilab_seo.access_control.domain import Role
 
 
 class RoleResponse(ApiModel):

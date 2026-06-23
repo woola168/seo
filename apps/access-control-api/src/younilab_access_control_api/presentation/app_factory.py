@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from younilab_access_control_application import (
+from younilab_seo.access_control.application import (
     AccessControlRepository,
     AccessControlError,
     AccountUnavailable,
@@ -26,7 +26,7 @@ from younilab_access_control_api.presentation.routes import (
     management_router,
     me_router,
 )
-from younilab_access_control_infrastructure import AccessControlSettings
+from younilab_seo.access_control.infrastructure import AccessControlSettings
 
 
 def create_app(

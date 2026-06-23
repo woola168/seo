@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from younilab_resource_catalog_application import (
+from younilab_seo.resource_catalog.application import (
     AccessDenied,
     Conflict,
     ResourceCatalogError,

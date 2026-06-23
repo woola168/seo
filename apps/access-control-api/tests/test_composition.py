@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from younilab_access_control_api.presentation.composition import build_dependencies
-from younilab_access_control_infrastructure import (
+from younilab_seo.access_control.infrastructure import (
     AccessControlSettings,
     MemoryAccessControlRepository,
     MemoryNotificationPublisher,

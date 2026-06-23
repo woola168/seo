@@ -3,8 +3,8 @@ from typing import Self
 from uuid import UUID
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel, ApiRequest
-from younilab_access_control_application import UserInvitation
-from younilab_access_control_domain import AccountStatus, UserAccount
+from younilab_seo.access_control.application import UserInvitation
+from younilab_seo.access_control.domain import AccountStatus, UserAccount
 
 
 class UserResponse(ApiModel):

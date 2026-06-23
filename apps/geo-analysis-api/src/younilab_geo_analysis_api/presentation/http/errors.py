@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from younilab_geo_analysis_domain import QueryRunJobStatusError
+from younilab_seo.geo_analysis.domain import QueryRunJobStatusError
 
 
 def register_error_handlers(app: FastAPI) -> None:

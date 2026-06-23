@@ -4,13 +4,13 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 
 from younilab_access_control_api import create_app
-from younilab_access_control_domain import (
+from younilab_seo.access_control.domain import (
     PERMISSIONS,
     AccountStatus,
     Role,
     UserAccount,
 )
-from younilab_access_control_infrastructure import (
+from younilab_seo.access_control.infrastructure import (
     Argon2PasswordHasher,
     MemoryAccessControlRepository,
     MemoryNotificationPublisher,

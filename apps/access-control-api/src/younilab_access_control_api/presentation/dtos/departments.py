@@ -3,7 +3,7 @@ from typing import Self
 from uuid import UUID
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel, ApiRequest
-from younilab_access_control_domain import Department
+from younilab_seo.access_control.domain import Department
 
 
 class DepartmentResponse(ApiModel):

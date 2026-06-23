@@ -1,7 +1,7 @@
 ﻿from fastapi.testclient import TestClient
 
 from younilab_resource_catalog_api import create_app
-from younilab_resource_catalog_infrastructure import (
+from younilab_seo.resource_catalog.infrastructure import (
     AllowAllAuthorizer,
     MemoryResourceCatalogRepository,
 )

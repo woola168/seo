@@ -52,6 +52,12 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       meta: { requiresAuth: true, page: "permissions" },
     },
     {
+      path: "/geo-analysis",
+      name: "geo-analysis",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis" },
+    },
+    {
       path: "/permissions/users/new",
       name: "permission-user-new",
       component: () => import("../pages/EmployeeInvitationPage.vue"),
@@ -98,7 +104,9 @@ export function createPortalRouter(
 }
 
 export function getRoutePage(page: unknown): PageId {
-  return page === "permissions" ? "permissions" : "dashboard";
+  return page === "permissions" || page === "geo-analysis"
+    ? page
+    : "dashboard";
 }
 
 export function getLoginRedirect(redirect: unknown): string {

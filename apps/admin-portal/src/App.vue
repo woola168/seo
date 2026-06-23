@@ -6,6 +6,7 @@ import Layout from "./layouts/Layout.vue";
 import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
+import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
 import RoleCreationPage from "./pages/RoleCreationPage.vue";
@@ -56,6 +57,8 @@ const currentTitle = computed(() =>
     ? "新增員工"
     : route.name === "permission-role-new"
       ? "建立角色"
+    : activePage.value === "geo-analysis"
+      ? "GEO 分析"
     : activePage.value === "permissions"
       ? "權限管理"
       : "總覽",
@@ -101,6 +104,13 @@ const navigation = computed<NavigationItem[]>(() => [
     icon: "activity",
     group: "分析工具",
     disabled: true,
+  },
+  {
+    id: "geo-analysis",
+    label: "GEO 分析",
+    icon: "sparkles",
+    group: "分析工具",
+    page: "geo-analysis",
   },
   {
     id: "strategy",
@@ -598,6 +608,10 @@ function unavailable(label: string): void {
       v-else-if="activePage === 'dashboard'"
       :capabilities="capabilities"
       :search="globalSearch"
+      @unavailable="unavailable"
+    />
+    <GeoAnalysisPage
+      v-else-if="activePage === 'geo-analysis'"
       @unavailable="unavailable"
     />
     <PermissionsPage
