@@ -24,6 +24,10 @@ members = [
     "packages/resource-catalog-domain",
     "packages/resource-catalog-application",
     "packages/resource-catalog-infrastructure",
+    "apps/geo-tracking-api",
+    "packages/geo-tracking-domain",
+    "packages/geo-tracking-application",
+    "packages/geo-tracking-infrastructure",
 ]
 
 [tool.pytest.ini_options]
@@ -38,4 +42,5 @@ testpaths = [
     "packages/resource-catalog-domain/tests",
     "packages/resource-catalog-application/tests",
     "packages/resource-catalog-infrastructure/tests",
+    "apps/geo-tracking-api/tests",
 ]

@@ -1,4 +1,4 @@
-export type PageId = "dashboard" | "permissions";
+export type PageId = "dashboard" | "permissions" | "geo-tracking";
 
 export interface NavigationItem {
   id: string;
@@ -209,4 +209,100 @@ export interface PageResponse<T> {
   pageSize: number;
   total: number;
   totalPages: number;
+}
+
+export type GeoRegion = "TW" | "US";
+export type GeoMarketType = "b2c" | "b2b_procurement";
+export type GeoProvider = "dummy" | "gemini";
+
+export interface GeoDummyProject {
+  seoTaskId: string;
+  brandName: string;
+  competitorBrands: string[];
+  keywords: string[];
+  region: GeoRegion;
+  marketType: GeoMarketType;
+  topics?: GeoTopicInput[];
+  topicNames: string[];
+}
+
+export interface GeoTopicInput {
+  name: string;
+  description: string;
+}
+
+export interface GeoGeneratedQuery {
+  id: string;
+  seoTaskId: string;
+  text: string;
+  topicId: string | null;
+  topicName: string;
+  region: GeoRegion;
+  language: string;
+  marketType: GeoMarketType;
+  isBranded: boolean;
+  attributes: {
+    intent: {
+      category: string;
+      description: string;
+    };
+    keyword: string;
+    topicName: string;
+    topicDescription: string;
+    audience: {
+      name: string;
+      description: string;
+    };
+    brandMentionRules: {
+      shouldMentionOwnBrand: boolean;
+      shouldMentionCompetitor: boolean;
+    };
+  };
+  metadata: Record<string, string>;
+  source: string;
+  status: string;
+}
+
+export interface GeoTopicSummary {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface GeoQueryResearchResult {
+  researchContext: string;
+  searchedKeywords: string[];
+  sourceUrls: string[];
+}
+
+export interface GeoQueryGenerationResult {
+  topics: GeoTopicSummary[];
+  queries: GeoGeneratedQuery[];
+}
+
+export interface GeoRunResult {
+  id: string;
+  runRequestId: string;
+  queryId: string;
+  provider: GeoProvider;
+  surface: string;
+  model: string;
+  region: GeoRegion;
+  language: string;
+  status: "completed" | "failed";
+  rawResponse: string;
+  referenceUrls: string[];
+  references: Array<{
+    url: string;
+    title: string | null;
+  }>;
+  error: string | null;
+  runAt: string;
+}
+
+export interface GeoRunRequestResult {
+  id: string;
+  seoTaskId: string;
+  timing: "run_now" | "next_cycle";
+  results: GeoRunResult[];
 }

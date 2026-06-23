@@ -27,7 +27,7 @@ function submit(): void {
   <main class="login-page">
     <section class="login-visual">
       <div class="login-visual-brand">
-        <strong>Kinsan SEO</strong>
+        <strong>Younilab SEO</strong>
         <span>以數據驅動策略，建立搜尋上的長期優勢。</span>
       </div>
     </section>
@@ -36,7 +36,7 @@ function submit(): void {
       <div class="login-form-wrap">
         <div class="login-heading">
           <h1>歡迎回來</h1>
-          <p>Kinsan SEO 文案管理系統</p>
+          <p>Younilab SEO 後台管理系統</p>
         </div>
 
         <button

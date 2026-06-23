@@ -1,0 +1,21 @@
+[project]
+name = "younilab-geo-tracking-infrastructure"
+version = "0.1.0"
+description = "GEO tracking infrastructure adapters."
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.0",
+    "younilab-geo-tracking-application",
+    "younilab-geo-tracking-domain",
+]
+
+[tool.uv.sources]
+younilab-geo-tracking-application = { workspace = true }
+younilab-geo-tracking-domain = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

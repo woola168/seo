@@ -46,6 +46,12 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       meta: { requiresAuth: true, page: "dashboard" },
     },
     {
+      path: "/geo-tracking",
+      name: "geo-tracking",
+      component: () => import("../pages/GeoTrackingPage.vue"),
+      meta: { public: true, page: "geo-tracking" },
+    },
+    {
       path: "/permissions",
       name: "permissions",
       component: () => import("../pages/PermissionsPage.vue"),
@@ -98,7 +104,9 @@ export function createPortalRouter(
 }
 
 export function getRoutePage(page: unknown): PageId {
-  return page === "permissions" ? "permissions" : "dashboard";
+  if (page === "permissions") return "permissions";
+  if (page === "geo-tracking") return "geo-tracking";
+  return "dashboard";
 }
 
 export function getLoginRedirect(redirect: unknown): string {

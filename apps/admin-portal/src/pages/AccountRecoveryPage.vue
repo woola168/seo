@@ -32,7 +32,7 @@ function submit(): void {
   <main class="login-page">
     <section class="login-visual">
       <div class="login-visual-brand">
-        <strong>Kinsan SEO</strong>
+        <strong>Younilab SEO</strong>
         <span>安全地恢復您的後台帳號</span>
       </div>
     </section>
