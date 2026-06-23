@@ -19,7 +19,7 @@ from younilab_access_control_api.presentation.request_parsing import (
 )
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
+router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
 
 @router.post("/password-reset-requests", status_code=status.HTTP_202_ACCEPTED)
@@ -99,7 +99,7 @@ async def logout(
     await request.app.state.authentication.logout(
         access_token_from_credentials(credentials)
     )
-    response.delete_cookie("refreshToken", path="/api/v1/auth")
+    response.delete_cookie("refreshToken", path="/api/auth")
 
 
 @router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
@@ -112,7 +112,7 @@ async def logout_all(
     await request.app.state.authentication.logout_all(
         access_token_from_credentials(credentials)
     )
-    response.delete_cookie("refreshToken", path="/api/v1/auth")
+    response.delete_cookie("refreshToken", path="/api/auth")
 
 
 def _set_refresh_cookie(
@@ -129,5 +129,5 @@ def _set_refresh_cookie(
         httponly=True,
         secure=secure,
         samesite="lax",
-        path="/api/v1/auth",
+        path="/api/auth",
     )

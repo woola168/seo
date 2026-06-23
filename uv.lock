@@ -10,14 +10,9 @@ resolution-markers = [
 [manifest]
 members = [
     "younilab-access-control-api",
-    "younilab-access-control-application",
-    "younilab-access-control-domain",
-    "younilab-access-control-infrastructure",
-    "younilab-authorization-contracts",
+    "younilab-geo-analysis-api",
     "younilab-resource-catalog-api",
-    "younilab-resource-catalog-application",
-    "younilab-resource-catalog-domain",
-    "younilab-resource-catalog-infrastructure",
+    "younilab-seo",
     "younilab-seo-python-workspace",
 ]
 
@@ -1381,10 +1376,7 @@ version = "0.1.0"
 source = { editable = "apps/access-control-api" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
-    { name = "younilab-access-control-application" },
-    { name = "younilab-access-control-domain" },
-    { name = "younilab-access-control-infrastructure" },
-    { name = "younilab-authorization-contracts" },
+    { name = "younilab-seo" },
 ]
 
 [package.dev-dependencies]
@@ -1396,10 +1388,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
-    { name = "younilab-access-control-application", editable = "packages/access-control-application" },
-    { name = "younilab-access-control-domain", editable = "packages/access-control-domain" },
-    { name = "younilab-access-control-infrastructure", editable = "packages/access-control-infrastructure" },
-    { name = "younilab-authorization-contracts", editable = "packages/authorization-contracts" },
+    { name = "younilab-seo", editable = "packages/younilab-seo" },
 ]
 
 [package.metadata.requires-dev]
@@ -1409,59 +1398,73 @@ dev = [
 ]
 
 [[package]]
-name = "younilab-access-control-application"
+name = "younilab-geo-analysis-api"
 version = "0.1.0"
-source = { editable = "packages/access-control-application" }
+source = { editable = "apps/geo-analysis-api" }
 dependencies = [
-    { name = "pydantic" },
-    { name = "younilab-access-control-domain" },
-    { name = "younilab-authorization-contracts" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "younilab-seo" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pydantic", specifier = ">=2.0,<3" },
-    { name = "younilab-access-control-domain", editable = "packages/access-control-domain" },
-    { name = "younilab-authorization-contracts", editable = "packages/authorization-contracts" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
+    { name = "younilab-seo", editable = "packages/younilab-seo" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
-name = "younilab-access-control-domain"
+name = "younilab-resource-catalog-api"
 version = "0.1.0"
-source = { editable = "packages/access-control-domain" }
+source = { editable = "apps/resource-catalog-api" }
+dependencies = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "younilab-seo" },
+]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
+    { name = "younilab-seo", editable = "packages/younilab-seo" },
+]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
-name = "younilab-access-control-infrastructure"
+name = "younilab-seo"
 version = "0.1.0"
-source = { editable = "packages/access-control-infrastructure" }
+source = { editable = "packages/younilab-seo" }
 dependencies = [
     { name = "asyncpg" },
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "pwdlib", extra = ["argon2"] },
+    { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "sqlalchemy" },
     { name = "sqlmodel" },
-    { name = "younilab-access-control-application" },
-    { name = "younilab-access-control-domain" },
 ]
 
 [package.dev-dependencies]
@@ -1474,134 +1477,13 @@ dev = [
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "cryptography", specifier = ">=44.0,<46" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.2.1,<1" },
+    { name = "pydantic", specifier = ">=2.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.0,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
     { name = "sqlalchemy", specifier = ">=2.0.14,<2.1" },
     { name = "sqlmodel", specifier = ">=0.0.38,<0.1" },
-    { name = "younilab-access-control-application", editable = "packages/access-control-application" },
-    { name = "younilab-access-control-domain", editable = "packages/access-control-domain" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "aiosqlite", specifier = ">=0.21.0,<1" },
-    { name = "pytest", specifier = ">=8.0" },
-]
-
-[[package]]
-name = "younilab-authorization-contracts"
-version = "0.1.0"
-source = { editable = "packages/authorization-contracts" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.0,<3" }]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
-
-[[package]]
-name = "younilab-resource-catalog-api"
-version = "0.1.0"
-source = { editable = "apps/resource-catalog-api" }
-dependencies = [
-    { name = "fastapi", extra = ["standard"] },
-    { name = "younilab-resource-catalog-application" },
-    { name = "younilab-resource-catalog-domain" },
-    { name = "younilab-resource-catalog-infrastructure" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
-    { name = "younilab-resource-catalog-application", editable = "packages/resource-catalog-application" },
-    { name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" },
-    { name = "younilab-resource-catalog-infrastructure", editable = "packages/resource-catalog-infrastructure" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", specifier = ">=8.0" },
-]
-
-[[package]]
-name = "younilab-resource-catalog-application"
-version = "0.1.0"
-source = { editable = "packages/resource-catalog-application" }
-dependencies = [
-    { name = "younilab-resource-catalog-domain" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" }]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
-
-[[package]]
-name = "younilab-resource-catalog-domain"
-version = "0.1.0"
-source = { editable = "packages/resource-catalog-domain" }
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
-
-[[package]]
-name = "younilab-resource-catalog-infrastructure"
-version = "0.1.0"
-source = { editable = "packages/resource-catalog-infrastructure" }
-dependencies = [
-    { name = "asyncpg" },
-    { name = "httpx" },
-    { name = "pydantic-settings" },
-    { name = "sqlalchemy" },
-    { name = "sqlmodel" },
-    { name = "younilab-resource-catalog-application" },
-    { name = "younilab-resource-catalog-domain" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "aiosqlite" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncpg", specifier = ">=0.30.0,<1" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "pydantic-settings", specifier = ">=2.0,<3" },
-    { name = "sqlalchemy", specifier = ">=2.0.14,<2.1" },
-    { name = "sqlmodel", specifier = ">=0.0.38,<0.1" },
-    { name = "younilab-resource-catalog-application", editable = "packages/resource-catalog-application" },
-    { name = "younilab-resource-catalog-domain", editable = "packages/resource-catalog-domain" },
 ]
 
 [package.metadata.requires-dev]

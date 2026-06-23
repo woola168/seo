@@ -9,10 +9,10 @@ from younilab_resource_catalog_api.presentation.http.dtos import (
     TaskResponse,
     page_response,
 )
-from younilab_resource_catalog_domain import ResourceStatus
+from younilab_seo.resource_catalog.domain import ResourceStatus
 
 
-router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
+router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 @router.get("", response_model=PageResponse)

@@ -6,12 +6,16 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api/v1/customers": {
+      "/api/customers": {
         target: "http://127.0.0.1:8001",
         changeOrigin: true,
       },
-      "/api/v1/tasks": {
+      "/api/tasks": {
         target: "http://127.0.0.1:8001",
+        changeOrigin: true,
+      },
+      "/api/geo": {
+        target: "http://127.0.0.1:8002",
         changeOrigin: true,
       },
       "/api": {

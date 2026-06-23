@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from younilab_access_control_application import (
+from younilab_seo.access_control.application import (
     AccountRecoveryService,
     AccessControlRepository,
     AccessManagementService,
@@ -14,7 +14,7 @@ from younilab_access_control_application import (
     RecoveryTokenProvider,
     TokenProvider,
 )
-from younilab_access_control_infrastructure import (
+from younilab_seo.access_control.infrastructure import (
     AccessControlSettings,
     Argon2PasswordHasher,
     JwtTokenProvider,

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-from younilab_resource_catalog_application import (
+from younilab_seo.resource_catalog.application import (
     PermissionAuthorizer,
     ResourceCatalogRepository,
     ResourceCatalogService,
 )
-from younilab_resource_catalog_infrastructure import (
+from younilab_seo.resource_catalog.infrastructure import (
     AccessControlAuthorizer,
     MemoryResourceCatalogRepository,
     ResourceCatalogSettings,

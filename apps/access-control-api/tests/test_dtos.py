@@ -12,8 +12,8 @@ from younilab_access_control_api.presentation.dtos import (
     UserAccessResponse,
     UserResponse,
 )
-from younilab_access_control_application import Capabilities, IssuedTokens
-from younilab_access_control_domain import AccountStatus, Role, UserAccount
+from younilab_seo.access_control.application import Capabilities, IssuedTokens
+from younilab_seo.access_control.domain import AccountStatus, Role, UserAccount
 
 
 USER_ID = UUID("11111111-1111-4111-8111-111111111111")

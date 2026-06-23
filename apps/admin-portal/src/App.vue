@@ -6,6 +6,7 @@ import Layout from "./layouts/Layout.vue";
 import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
+import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
 import RoleCreationPage from "./pages/RoleCreationPage.vue";
@@ -56,6 +57,8 @@ const currentTitle = computed(() =>
     ? "新增員工"
     : route.name === "permission-role-new"
       ? "建立角色"
+    : activePage.value === "geo-analysis"
+      ? "GEO 分析"
     : activePage.value === "permissions"
       ? "權限管理"
       : "總覽",
@@ -77,6 +80,21 @@ const restoringSession = ref(
   shouldRestoreSession(recoveryMode.value, api.hasSession()),
 );
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+type PortalDataKey =
+  | "roles"
+  | "users"
+  | "permissions"
+  | "departments"
+  | "customers"
+  | "tasks";
+type PermissionTab = "members" | "roles" | "departments" | "evaluate";
+
+const loadedData = ref<Set<PortalDataKey>>(new Set());
+const pendingData = new Map<PortalDataKey, Promise<void>>();
+const activePermissionTab = ref<PermissionTab>(
+  permissionInitialTab.value ?? "members",
+);
 
 const navigation = computed<NavigationItem[]>(() => [
   { id: "dashboard", label: "總覽", icon: "grid", page: "dashboard" },
@@ -101,6 +119,13 @@ const navigation = computed<NavigationItem[]>(() => [
     icon: "activity",
     group: "分析工具",
     disabled: true,
+  },
+  {
+    id: "geo-analysis",
+    label: "GEO 分析",
+    icon: "sparkles",
+    group: "分析工具",
+    page: "geo-analysis",
   },
   {
     id: "strategy",
@@ -151,6 +176,21 @@ watch(
       void restoreSession();
     }
   },
+);
+
+watch(
+  permissionInitialTab,
+  (tab) => {
+    activePermissionTab.value = tab ?? "members";
+  },
+);
+
+watch(
+  [activePage, () => route.name, activePermissionTab, user, capabilities],
+  () => {
+    void loadCurrentViewData();
+  },
+  { immediate: true },
 );
 
 async function restoreSession(): Promise<void> {
@@ -236,66 +276,142 @@ async function loadSessionData(): Promise<void> {
     api.me(),
     api.capabilities(),
   ]);
-  await loadAccessibleData(currentCapabilities);
   user.value = currentUser;
   capabilities.value = currentCapabilities;
 }
 
-async function loadAccessibleData(
-  currentCapabilities = capabilities.value,
-): Promise<void> {
-  if (!currentCapabilities) return;
-  const available = currentCapabilities.permissions;
-  const calls: Promise<void>[] = [];
+async function loadCurrentViewData(force = false): Promise<void> {
+  await run(() => ensureCurrentViewData(force));
+}
 
-  if (hasPermission(available, "roles.read")) {
-    calls.push(api.roles().then((value) => void (roles.value = value)));
-  } else {
-    roles.value = [];
+async function ensureCurrentViewData(force = false): Promise<void> {
+  if (!user.value || !capabilities.value) return;
+  if (route.name === "permission-user-new") {
+    await loadPortalData(["roles", "departments", "customers", "tasks"], force);
+    return;
   }
-  if (hasPermission(available, "users.read")) {
-    calls.push(api.users().then((value) => void (users.value = value)));
-  } else {
-    users.value = [];
+  if (route.name === "permission-role-new") {
+    await loadPortalData(["permissions"], force);
+    return;
   }
-  if (hasPermission(available, "permissions.read")) {
-    calls.push(
-      api.permissions().then((value) => void (permissions.value = value)),
-    );
-  } else {
-    permissions.value = [...available];
+  if (activePage.value === "permissions") {
+    await ensurePermissionTabData(activePermissionTab.value, force);
   }
-  if (hasPermission(available, "departments.read")) {
-    calls.push(
-      api
-        .departments()
-        .then((value) => void (departments.value = value))
-        .catch(() => void (departments.value = [])),
-    );
-  } else {
-    departments.value = [];
+}
+
+async function ensurePermissionTabData(
+  tab: PermissionTab,
+  force = false,
+): Promise<void> {
+  if (tab === "roles") {
+    await loadPortalData(["roles", "permissions"], force);
+    return;
   }
-  if (hasPermission(available, "customers.read")) {
-    calls.push(
-      api
-        .customers()
-        .then((value) => void (customers.value = value.items))
-        .catch(() => void (customers.value = [])),
-    );
-  } else {
-    customers.value = [];
+  if (tab === "departments") {
+    await loadPortalData(["departments"], force);
+    return;
   }
-  if (hasPermission(available, "tasks.read")) {
-    calls.push(
-      api
-        .tasks()
-        .then((value) => void (tasks.value = value.items))
-        .catch(() => void (tasks.value = [])),
-    );
-  } else {
+  if (tab === "evaluate") {
+    await loadPortalData(["users", "permissions", "customers", "tasks"], force);
+    return;
+  }
+  const keys: PortalDataKey[] = ["users", "roles", "departments"];
+  if (hasCapability("access-grants.manage")) {
+    keys.push("customers", "tasks");
+  }
+  if (hasCapability("customers.create") || hasCapability("tasks.create")) {
+    keys.push("customers");
+  }
+  await loadPortalData(keys, force);
+}
+
+async function loadPortalData(
+  keys: PortalDataKey[],
+  force = false,
+): Promise<void> {
+  await Promise.all(keys.map((key) => loadPortalDataItem(key, force)));
+}
+
+async function loadPortalDataItem(
+  key: PortalDataKey,
+  force = false,
+): Promise<void> {
+  if (!force && loadedData.value.has(key)) return;
+  const pending = pendingData.get(key);
+  if (!force && pending) {
+    await pending;
+    return;
+  }
+  const request = fetchPortalDataItem(key)
+    .then(() => markDataLoaded(key))
+    .finally(() => pendingData.delete(key));
+  pendingData.set(key, request);
+  await request;
+}
+
+async function fetchPortalDataItem(key: PortalDataKey): Promise<void> {
+  if (key === "roles") {
+    if (!hasCapability("roles.read")) {
+      roles.value = [];
+      return;
+    }
+    roles.value = await api.roles();
+    return;
+  }
+  if (key === "users") {
+    if (!hasCapability("users.read")) {
+      users.value = [];
+      return;
+    }
+    users.value = await api.users();
+    return;
+  }
+  if (key === "permissions") {
+    if (!capabilities.value) return;
+    if (!hasCapability("permissions.read")) {
+      permissions.value = [...capabilities.value.permissions];
+      return;
+    }
+    permissions.value = await api.permissions();
+    return;
+  }
+  if (key === "departments") {
+    if (!hasCapability("departments.read")) {
+      departments.value = [];
+      return;
+    }
+    departments.value = await api.departments().catch(() => []);
+    return;
+  }
+  if (key === "customers") {
+    if (!hasCapability("customers.read")) {
+      customers.value = [];
+      return;
+    }
+    customers.value = await api.customers().then((value) => value.items).catch(() => []);
+    return;
+  }
+  if (!hasCapability("tasks.read")) {
     tasks.value = [];
+    return;
   }
-  await Promise.all(calls);
+  tasks.value = await api.tasks().then((value) => value.items).catch(() => []);
+}
+
+function markDataLoaded(key: PortalDataKey): void {
+  loadedData.value = new Set([...loadedData.value, key]);
+}
+
+function forgetLoadedData(keys: PortalDataKey[]): void {
+  loadedData.value = new Set(
+    [...loadedData.value].filter((key) => !keys.includes(key)),
+  );
+}
+
+function hasCapability(permission: string): boolean {
+  return Boolean(
+    capabilities.value && hasPermission(capabilities.value.permissions, permission),
+  );
 }
 
 async function refresh(): Promise<void> {
@@ -303,7 +419,15 @@ async function refresh(): Promise<void> {
     if (!user.value) return;
     const currentCapabilities = await api.capabilities();
     capabilities.value = currentCapabilities;
-    await loadAccessibleData(currentCapabilities);
+    forgetLoadedData([
+      "roles",
+      "users",
+      "permissions",
+      "departments",
+      "customers",
+      "tasks",
+    ]);
+    await ensureCurrentViewData(true);
     notify("資料已重新整理", "success");
   });
 }
@@ -504,6 +628,8 @@ function clearSession(): void {
   departments.value = [];
   decision.value = null;
   globalSearch.value = "";
+  loadedData.value = new Set();
+  pendingData.clear();
 }
 
 function navigate(page: PageId): void {
@@ -524,6 +650,11 @@ function openRoleCreation(): void {
 
 function closeRoleCreation(): void {
   void router.replace({ name: "permissions", query: { tab: "roles" } });
+}
+
+function changePermissionTab(tab: PermissionTab): void {
+  activePermissionTab.value = tab;
+  void loadCurrentViewData();
 }
 
 function notify(message: string, tone: ToastTone = "info"): void {
@@ -600,6 +731,10 @@ function unavailable(label: string): void {
       :search="globalSearch"
       @unavailable="unavailable"
     />
+    <GeoAnalysisPage
+      v-else-if="activePage === 'geo-analysis'"
+      @unavailable="unavailable"
+    />
     <PermissionsPage
       v-else
       :current-user="user"
@@ -626,6 +761,7 @@ function unavailable(label: string): void {
       @delete-department="deleteDepartment"
       @create-customer="createCustomer"
       @create-task="createTask"
+      @tab-change="changePermissionTab"
       @evaluate="evaluate"
     />
   </Layout>

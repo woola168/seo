@@ -1,7 +1,10 @@
+import logging
+from time import perf_counter
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from younilab_access_control_application import (
+from younilab_seo.access_control.application import (
     AccessControlRepository,
     AccessControlError,
     AccountUnavailable,
@@ -26,7 +29,9 @@ from younilab_access_control_api.presentation.routes import (
     management_router,
     me_router,
 )
-from younilab_access_control_infrastructure import AccessControlSettings
+from younilab_seo.access_control.infrastructure import AccessControlSettings
+
+logger = logging.getLogger("younilab.access_control.http")
 
 
 def create_app(
@@ -69,7 +74,35 @@ def create_app(
     app.include_router(authorization_router)
     app.include_router(management_router)
     _register_error_handlers(app)
+    _register_timing_middleware(app)
     return app
+
+
+def _register_timing_middleware(app: FastAPI) -> None:
+    @app.middleware("http")
+    async def timing_middleware(request: Request, call_next):
+        started_at = perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (perf_counter() - started_at) * 1000
+            logger.exception(
+                "%s %s 500 %.2fms",
+                request.method,
+                request.url.path,
+                duration_ms,
+            )
+            raise
+        duration_ms = (perf_counter() - started_at) * 1000
+        response.headers["X-Process-Time-Ms"] = f"{duration_ms:.2f}"
+        logger.info(
+            "%s %s %s %.2fms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
 
 
 def _register_error_handlers(app: FastAPI) -> None:

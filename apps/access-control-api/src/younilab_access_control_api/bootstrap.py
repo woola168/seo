@@ -6,13 +6,13 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import select
 
-from younilab_access_control_domain import PERMISSIONS
-from younilab_access_control_infrastructure import (
+from younilab_seo.access_control.domain import PERMISSIONS
+from younilab_seo.access_control.infrastructure import (
     AccessControlSettings,
     Argon2PasswordHasher,
     build_postgres_session_factory,
 )
-from younilab_access_control_infrastructure.persistence import (
+from younilab_seo.access_control.infrastructure.persistence import (
     RoleRow,
     UserRoleRow,
     UserRow,
