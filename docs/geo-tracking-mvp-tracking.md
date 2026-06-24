@@ -86,6 +86,31 @@
 - Live API route result：使用最新版 `younilab_geo_tracking_api.main:app` 啟動本機臨時 server 後，`/api/v1/geo-tracking/run-requests` 回 `status=completed`、`provider=google_aio`、`surface=Google AI Overview`、`model=serpapi-google-ai-overview`、`rawResponse` 463 字、6 筆 references。OpenAPI `ProviderCode` enum 已包含 `dummy, gemini, google_aio`。
 - 本機注意：若 `http://127.0.0.1:8002/openapi.json` 的 `ProviderCode` 仍只有 `dummy, gemini`，表示 8002 是舊 process，需重啟 geo-tracking API 才能讓前端 Runner 選 Google AIO 後正常送出。
 
+### Google AIO Runner 交接補充
+
+- 實作入口：
+  - Provider enum：`packages/geo-tracking-domain/src/younilab_geo_tracking_domain/models.py` 的 `ProviderCode.GOOGLE_AIO`。
+  - Run contract：`packages/geo-tracking-application/src/younilab_geo_tracking_application/contracts.py`；`google_aio` 僅允許 run request，Query Generation / Query Research 會被 validation 擋下。
+  - Adapter：`packages/geo-tracking-infrastructure/src/younilab_geo_tracking_infrastructure/providers.py` 的 `SerpApiGoogleAioAnswerProvider`。
+  - Locale profile / env：`packages/geo-tracking-infrastructure/src/younilab_geo_tracking_infrastructure/config.py`。
+  - API test 覆蓋：`apps/geo-tracking-api/tests/test_geo_tracking_requests.py`。
+  - Provider test 覆蓋：`packages/geo-tracking-infrastructure/tests/test_providers.py`。
+  - 前端入口：`apps/admin-portal/src/pages/GeoTrackingPage.vue` 的 Run Provider 選項 `google_aio`。
+- Runtime 設定：
+  - 必填：`SERPAPI_API_KEY`。
+  - 選填：`SERPAPI_TIMEOUT_SECONDS`，預設 30 秒。
+  - 不要把 SerpApi key、測試 key 或 credential path 寫入 source、文件或 log。
+- 正式後端 / DB 需要保存的最小結果欄位：
+  - run identity：`runRequestId`、`queryId`、`provider=google_aio`、`vendor=serpapi`、`surface=Google AI Overview`、`model=serpapi-google-ai-overview`。
+  - locale：`region`、`language`、SerpApi 實際使用的 `hl`、`gl`、`location`，後續若支援 device 也需保存。
+  - output：`rawResponse`、`references[{ title, url }]`、相容欄位 `referenceUrls`。
+  - status/error：`completed | failed`、`error`，其中無 AIO 結果使用 `no_google_aio_result`，不要轉成 completed 或 fallback organic result。
+  - observability：request started/completed time、duration、retry count、vendor request count、HTTP status / quota / timeout 類錯誤碼。
+- Queue / worker 接線：
+  - `geo-analysis` owns project / topic / query / schedule / job orchestration；`geo-tracking` owns runner adapter and provider execution。
+  - 後續正式流程應由 `geo-analysis` job publisher 發送 query run job 給 runner worker，runner worker 再呼叫 `geo-tracking` application use case 或抽出的 runner service。
+  - `page_token` 是 SerpApi 的短效中繼 token，只在同一次 provider execution 內使用；不要設計成長期 DB 欄位。若 worker crash，重新從 `engine=google` 跑即可。
+
 ## 模組 A：Query Research 工具
 
 ### 目前完成
