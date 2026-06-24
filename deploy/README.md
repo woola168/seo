@@ -1,24 +1,39 @@
-# 本機部署
+# 部署說明
 
-啟動 PostgreSQL：
+## 遠端部署
+
+GitHub Actions 會依分支選擇環境檔：
+
+- `develop` 使用 `deploy/.env.develop`
+- `main` 使用 `deploy/.env.prod`
+
+部署流程會 build 並啟動 `deploy/docker-compose.yml` 中的服務，接著檢查各服務
+`/health`。
+
+## 服務與 Port
+
+- Admin Portal: `http://127.0.0.1:18080`
+- Access Control API: `http://127.0.0.1:18000`
+- Resource Catalog API: `http://127.0.0.1:18001`
+- GEO Analysis API: `http://127.0.0.1:18002`
+- GEO Tracking API: `http://127.0.0.1:18003`
+
+## GEO Analysis 資料庫
+
+`GEO_ANALYSIS_DATABASE_URL` 目前指向 `resource_catalog` database。遠端 DB schema
+與 seed 不會由 CI/CD 自動執行，請手動在目標 database 建立 GEO Analysis schema，
+並手動寫入 `geo_ai_platform` 的 Gemini、ChatGPT 等平台資料。
+
+## 本機 PostgreSQL
 
 ```powershell
 docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 ```
 
-此 compose 同時啟動：
+本機 PostgreSQL：
 
-- Access Control PostgreSQL：`localhost:5432/access_control`
-- Resource Catalog PostgreSQL：`localhost:5433/resource_catalog`
+- Access Control PostgreSQL: `localhost:5432/access_control`
+- Resource Catalog PostgreSQL: `localhost:5433/resource_catalog`
 
-既有 Access Control volume 必須手動套用
-`local/postgresql/003_access_control_lifecycle.sql`；全新 volume 會由
-`docker-entrypoint-initdb.d` 自動套用。
-
-複製 `apps/access-control-api/.env.example` 的設定至 repo 根目錄 `.env.local`，
-再啟動 API。正式環境不得使用範例密碼，且必須提供持久化的 RSA private/public
-keys。
-
-若資料庫已建立，可透過 DBeaver 手動執行
-`local/postgresql/002_access_control_demo_seed.sql` 加入本機測試帳號與權限。
-此 seed 僅供本機測試，不應套用至正式環境。
+若已建立過 volume，新增或修改 `docker-entrypoint-initdb.d` SQL 不會自動重跑；需要重建
+本機 volume 或手動套用 SQL。

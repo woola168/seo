@@ -39,6 +39,34 @@ services:
     networks:
       - web_network
 
+  geo-analysis-api:
+    container_name: geo-analysis-api
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-api/Dockerfile
+    image: younilab-seo-geo-analysis-api:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    ports:
+      - "127.0.0.1:18002:8002"
+    networks:
+      - web_network
+
+  geo-tracking-api:
+    container_name: geo-tracking-api
+    build:
+      context: ..
+      dockerfile: apps/geo-tracking-api/Dockerfile
+    image: younilab-seo-geo-tracking-api:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    ports:
+      - "127.0.0.1:18003:8003"
+    networks:
+      - web_network
+
 networks:
   web_network:
     external: true

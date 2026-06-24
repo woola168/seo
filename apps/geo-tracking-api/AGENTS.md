@@ -1,15 +1,18 @@
 # AGENTS.md
 
-Local rules for the GEO tracking FastAPI application. Extends the root
+Local rules for the GEO Tracking FastAPI application. Extends the root
 `AGENTS.md`.
 
 ## Local Context
 
-- This app exposes Query Research and run request MVP endpoints for GEO tracking.
-- Current MVP uses dummy data and in-memory request handling; no persistence schema is owned here yet.
+- This app exposes GEO tracking execution and provider-facing APIs.
+- Routes should stay thin and delegate behavior to application use cases as
+  tracking behavior is added.
 - Validate with `uv run --package younilab-geo-tracking-api pytest apps/geo-tracking-api/tests`.
 
 ## Boundaries
 
-- Keep routes thin and map requests to application use cases.
-- Do not persist secrets or print Vertex AI credentials.
+- Do not store GEO Analysis setup or report state in this app.
+- Do not import other app internals. Shared behavior belongs in `packages/`.
+- Keep provider integration, queue consumption, and persistence behind
+  application or infrastructure ports when they are introduced.
