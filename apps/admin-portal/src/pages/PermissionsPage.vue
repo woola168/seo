@@ -52,6 +52,7 @@ const emit = defineEmits<{
   "delete-department": [departmentId: string];
   "create-customer": [name: string, onSuccess: () => void];
   "create-task": [customerId: string, name: string, onSuccess: () => void];
+  "tab-change": [tab: PermissionTab];
   evaluate: [
     userId: string,
     permission: string,
@@ -119,6 +120,14 @@ watch(
   (tab) => {
     if (tab) activeTab.value = tab;
   },
+);
+
+watch(
+  activeTab,
+  (tab) => {
+    emit("tab-change", tab);
+  },
+  { immediate: true },
 );
 
 function updateUserRoles(userId: string, roleIds: string[]): void {

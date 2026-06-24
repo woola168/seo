@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import Header
 
-from younilab_resource_catalog_application import AccessDenied
+from younilab_seo.resource_catalog.application import AccessDenied
 
 
 async def bearer_token(

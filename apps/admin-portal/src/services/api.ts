@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AuthorizationDecision,
   Capabilities,
   CreateInvitationInput,
@@ -47,7 +47,7 @@ async function request<T>(
     headers,
     credentials: "include",
   });
-  if (response.status === 401 && retry && path !== "/api/v1/auth/login") {
+  if (response.status === 401 && retry && path !== "/api/auth/login") {
     const refreshed = await refresh();
     if (refreshed) return request<T>(path, options, false);
   }
@@ -60,7 +60,7 @@ async function request<T>(
 }
 
 async function refresh(): Promise<boolean> {
-  const response = await fetch("/api/v1/auth/refresh", {
+  const response = await fetch("/api/auth/refresh", {
     method: "POST",
     credentials: "include",
   });
@@ -87,7 +87,7 @@ export const api = {
   hasSession: () => Boolean(accessToken),
   async login(email: string, password: string): Promise<void> {
     const result = await request<{ accessToken: string }>(
-      "/api/v1/auth/login",
+      "/api/auth/login",
       {
         method: "POST",
         body: JSON.stringify({ email, password }),
@@ -97,98 +97,98 @@ export const api = {
   },
   async logout(): Promise<void> {
     try {
-      await request<void>("/api/v1/auth/logout", { method: "POST" }, false);
+      await request<void>("/api/auth/logout", { method: "POST" }, false);
     } finally {
       clearToken();
     }
   },
-  me: () => request<SessionUser>("/api/v1/me"),
-  capabilities: () => request<Capabilities>("/api/v1/me/capabilities"),
-  roles: () => request<Role[]>("/api/v1/roles"),
-  users: () => request<UserAccess[]>("/api/v1/users"),
-  permissions: () => request<string[]>("/api/v1/permissions"),
-  departments: () => request<Department[]>("/api/v1/departments"),
+  me: () => request<SessionUser>("/api/me"),
+  capabilities: () => request<Capabilities>("/api/me/capabilities"),
+  roles: () => request<Role[]>("/api/roles"),
+  users: () => request<UserAccess[]>("/api/users"),
+  permissions: () => request<string[]>("/api/permissions"),
+  departments: () => request<Department[]>("/api/departments"),
   createDepartment: (name: string, description: string) =>
-    request<Department>("/api/v1/departments", {
+    request<Department>("/api/departments", {
       method: "POST",
       body: JSON.stringify({ name, description }),
     }),
   updateDepartment: (departmentId: string, name: string, description: string) =>
-    request<Department>(`/api/v1/departments/${departmentId}`, {
+    request<Department>(`/api/departments/${departmentId}`, {
       method: "PATCH",
       body: JSON.stringify({ name, description }),
     }),
   deleteDepartment: (departmentId: string) =>
-    request<void>(`/api/v1/departments/${departmentId}`, {
+    request<void>(`/api/departments/${departmentId}`, {
       method: "DELETE",
     }),
   inviteUser: (input: CreateInvitationInput) =>
-    request<UserInvitation>("/api/v1/user-invitations", {
+    request<UserInvitation>("/api/user-invitations", {
       method: "POST",
       body: JSON.stringify(input),
     }),
   customers: () =>
     request<PageResponse<CustomerSummary>>(
-      "/api/v1/customers?page=1&pageSize=100",
+      "/api/customers?page=1&pageSize=100",
     ),
   tasks: (customerId = "") =>
     request<PageResponse<TaskSummary>>(
-      `/api/v1/tasks?page=1&pageSize=100${customerId ? `&customerId=${customerId}` : ""}`,
+      `/api/tasks?page=1&pageSize=100${customerId ? `&customerId=${customerId}` : ""}`,
     ),
   createCustomer: (name: string) =>
-    request<CustomerSummary>("/api/v1/customers", {
+    request<CustomerSummary>("/api/customers", {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
   createTask: (customerId: string, name: string) =>
-    request<TaskSummary>("/api/v1/tasks", {
+    request<TaskSummary>("/api/tasks", {
       method: "POST",
       body: JSON.stringify({ customerId, name }),
     }),
   requestPasswordReset: (email: string) =>
-    request<void>("/api/v1/auth/password-reset-requests", {
+    request<void>("/api/auth/password-reset-requests", {
       method: "POST",
       body: JSON.stringify({ email }),
     }),
   resetPassword: (token: string, newPassword: string) =>
-    request<void>("/api/v1/auth/password-resets", {
+    request<void>("/api/auth/password-resets", {
       method: "POST",
       body: JSON.stringify({ token, newPassword }),
     }),
   acceptInvitation: (token: string, newPassword: string) =>
-    request<void>("/api/v1/auth/user-invitations/accept", {
+    request<void>("/api/auth/user-invitations/accept", {
       method: "POST",
       body: JSON.stringify({ token, newPassword }),
     }),
   createRole: (name: string, permissions: string[]) =>
-    request<Role>("/api/v1/roles", {
+    request<Role>("/api/roles", {
       method: "POST",
       body: JSON.stringify({ name, permissions }),
     }),
   updateRolePermissions: (roleId: string, permissions: string[]) =>
-    request<Role>(`/api/v1/roles/${roleId}/permissions`, {
+    request<Role>(`/api/roles/${roleId}/permissions`, {
       method: "PUT",
       body: JSON.stringify({ permissions }),
     }),
   deleteRole: (roleId: string) =>
-    request<void>(`/api/v1/roles/${roleId}`, {
+    request<void>(`/api/roles/${roleId}`, {
       method: "DELETE",
     }),
   updateUserRoles: (userId: string, roleIds: string[]) =>
-    request<UserAccess>(`/api/v1/users/${userId}/roles`, {
+    request<UserAccess>(`/api/users/${userId}/roles`, {
       method: "PUT",
       body: JSON.stringify({ roleIds }),
     }),
   updateCustomerGrants: (userId: string, customerIds: string[]) =>
     request<UserAccess>(
-      `/api/v1/users/${userId}/customer-access-grants`,
+      `/api/users/${userId}/customer-access-grants`,
       {
         method: "PUT",
         body: JSON.stringify({ customerIds }),
       },
     ),
   updateTaskGrants: (userId: string, taskIds: string[]) =>
-    request<UserAccess>(`/api/v1/users/${userId}/task-access-grants`, {
+    request<UserAccess>(`/api/users/${userId}/task-access-grants`, {
       method: "PUT",
       body: JSON.stringify({ taskIds }),
     }),
@@ -199,7 +199,7 @@ export const api = {
       | { type: "customer"; id: string }
       | { type: "task"; id: string; customerId: string },
   ) =>
-    request<AuthorizationDecision>("/api/v1/authorization/evaluate", {
+    request<AuthorizationDecision>("/api/authorization/evaluate", {
       method: "POST",
       body: JSON.stringify({ userId, permission, resource }),
     }),
@@ -265,6 +265,6 @@ export const api = {
           attributes: query.attributes,
           metadata: query.metadata,
         })),
-      }),
     }),
+  }),
 };

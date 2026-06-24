@@ -1,5 +1,6 @@
 services:
   admin-portal:
+    container_name: admin-portal
     build:
       context: ..
       dockerfile: apps/admin-portal/Dockerfile
@@ -11,6 +12,7 @@ services:
       - web_network
 
   access-control-api:
+    container_name: access-control-api
     build:
       context: ..
       dockerfile: apps/access-control-api/Dockerfile
@@ -24,6 +26,7 @@ services:
       - web_network
 
   resource-catalog-api:
+    container_name: resource-catalog-api
     build:
       context: ..
       dockerfile: apps/resource-catalog-api/Dockerfile

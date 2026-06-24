@@ -4,12 +4,12 @@ from uuid import UUID
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from younilab_access_control_application import InvalidSession
+from younilab_seo.access_control.application import InvalidSession
 from younilab_access_control_api.presentation.request_parsing import (
     access_token_from_credentials,
 )
-from younilab_authorization_contracts import AuthorizationRequest
-from younilab_access_control_domain import UserAccount
+from younilab_seo.access_control.contracts import AuthorizationRequest
+from younilab_seo.access_control.domain import UserAccount
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -52,6 +52,6 @@ async def require_permission(
         )
     )
     if not decision.allowed:
-        from younilab_access_control_application import AccountUnavailable
+        from younilab_seo.access_control.application import AccountUnavailable
 
         raise AccountUnavailable

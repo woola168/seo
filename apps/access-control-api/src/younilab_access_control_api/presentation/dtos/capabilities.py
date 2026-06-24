@@ -2,10 +2,12 @@ from typing import Self
 from uuid import UUID
 
 from younilab_access_control_api.presentation.dtos.base import ApiModel
-from younilab_access_control_application import Capabilities
+from younilab_seo.access_control.application import Capabilities
 
 
 class CapabilitiesResponse(ApiModel):
+    """目前使用者生效中的 permissions 與 resource grants。"""
+
     permissions: list[str]
     has_global_resource_access: bool
     customer_ids: list[UUID]

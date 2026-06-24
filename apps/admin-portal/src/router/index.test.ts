@@ -37,6 +37,28 @@ describe("portal router", () => {
     expect(router.currentRoute.value.query.token).toBe("example");
   });
 
+  it("protects the GEO analysis page and preserves its destination", async () => {
+    const router = createPortalRouter(createMemoryHistory(), () => false);
+
+    await router.push("/geo-analysis");
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe("login");
+    expect(router.currentRoute.value.query.redirect).toBe("/geo-analysis");
+  });
+
+  it("keeps the GEO analysis route under GEO navigation", async () => {
+    const router = createPortalRouter(createMemoryHistory(), () => true);
+
+    await router.push("/geo-analysis");
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe("geo-analysis");
+    expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
+      "geo-analysis",
+    );
+  });
+
   it("protects the new employee page and preserves its destination", async () => {
     const router = createPortalRouter(createMemoryHistory(), () => false);
 
@@ -114,6 +136,7 @@ describe("portal router", () => {
 describe("route helpers", () => {
   it("maps route metadata to an available portal page", () => {
     expect(getRoutePage("permissions")).toBe("permissions");
+    expect(getRoutePage("geo-analysis")).toBe("geo-analysis");
     expect(getRoutePage(undefined)).toBe("dashboard");
   });
 

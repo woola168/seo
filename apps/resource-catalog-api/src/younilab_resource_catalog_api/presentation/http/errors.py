@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from younilab_resource_catalog_application import (
+from younilab_seo.resource_catalog.application import (
     AccessDenied,
     Conflict,
     ResourceCatalogError,
@@ -10,6 +11,18 @@ from younilab_resource_catalog_application import (
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(
+        request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        return _problem(
+            request,
+            422,
+            "Request validation failed",
+            invalid_params=_invalid_params(exc),
+        )
+
     @app.exception_handler(AccessDenied)
     async def access_denied(request: Request, exc: AccessDenied) -> JSONResponse:
         return _problem(request, 403, "Access denied")
@@ -30,7 +43,13 @@ def register_error_handlers(app: FastAPI) -> None:
         return _problem(request, 400, "Invalid request")
 
 
-def _problem(request: Request, status_code: int, detail: str) -> JSONResponse:
+def _problem(
+    request: Request,
+    status_code: int,
+    detail: str,
+    *,
+    invalid_params: list[dict[str, str]] | None = None,
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         media_type="application/problem+json",
@@ -40,5 +59,17 @@ def _problem(request: Request, status_code: int, detail: str) -> JSONResponse:
             "status": status_code,
             "detail": detail,
             "instance": request.url.path,
+            **({"invalidParams": invalid_params} if invalid_params else {}),
         },
     )
+
+
+def _invalid_params(exc: RequestValidationError) -> list[dict[str, str]]:
+    return [
+        {
+            "name": ".".join(str(part) for part in error["loc"]),
+            "reason": error["msg"],
+            "type": error["type"],
+        }
+        for error in exc.errors()
+    ]

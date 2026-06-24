@@ -5,15 +5,11 @@ description = "Customer and SEO task master-data API."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.0,<1",
-    "younilab-resource-catalog-application",
-    "younilab-resource-catalog-domain",
-    "younilab-resource-catalog-infrastructure",
+    "younilab-seo",
 ]
 
 [tool.uv.sources]
-younilab-resource-catalog-application = { workspace = true }
-younilab-resource-catalog-domain = { workspace = true }
-younilab-resource-catalog-infrastructure = { workspace = true }
+younilab-seo = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.0", "httpx>=0.27"]

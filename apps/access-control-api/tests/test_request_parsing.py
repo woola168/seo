@@ -5,7 +5,7 @@ from younilab_access_control_api.presentation.request_parsing import (
     access_token_from_credentials,
     refresh_token_from_cookie,
 )
-from younilab_access_control_application import InvalidSession
+from younilab_seo.access_control.application import InvalidSession
 
 
 def test_access_token_from_credentials_returns_bearer_token() -> None:

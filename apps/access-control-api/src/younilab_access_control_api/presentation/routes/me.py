@@ -10,7 +10,7 @@ from younilab_access_control_api.presentation.dtos import (
 )
 
 
-router = APIRouter(prefix="/api/v1/me", tags=["current-user"])
+router = APIRouter(prefix="/api/me", tags=["current-user"])
 
 
 @router.get("", response_model=UserResponse)

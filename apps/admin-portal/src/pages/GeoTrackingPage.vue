@@ -303,7 +303,7 @@ async function run(action: () => Promise<void>): Promise<void> {
 </script>
 
 <template>
-  <section class="geo-page">
+  <section class="geo-page geo-tracking-page">
     <header class="geo-header">
       <div class="geo-heading">
         <span class="geo-page-badge">Admin Portal 測試頁</span>

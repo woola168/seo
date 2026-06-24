@@ -1,6 +1,6 @@
 from fastapi.security import HTTPAuthorizationCredentials
 
-from younilab_access_control_application import InvalidSession
+from younilab_seo.access_control.application import InvalidSession
 
 
 def access_token_from_credentials(
