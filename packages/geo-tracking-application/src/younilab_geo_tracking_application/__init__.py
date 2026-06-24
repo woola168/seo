@@ -23,6 +23,7 @@ from younilab_geo_tracking_application.contracts import (
 from younilab_geo_tracking_application.interfaces import (
     AnswerProvider,
     IdGenerator,
+    ProviderRequestError,
     QueryGenerationProvider,
     QueryResearchProvider,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "DummyQueryResearchProvider",
     "GeneratedQuery",
     "IdGenerator",
+    "ProviderRequestError",
     "QueryAudience",
     "QueryDraft",
     "QueryDraftList",

@@ -13,6 +13,7 @@ from younilab_geo_tracking_application.interfaces import (
     AnswerProvider,
     Clock,
     IdGenerator,
+    ProviderRequestError,
 )
 from younilab_geo_tracking_application.prompt_templates import system_prompt
 
@@ -67,6 +68,25 @@ class RunEngineService:
                             answer.references, answer.reference_urls
                         ),
                         error=None,
+                        run_at=run_at,
+                    )
+                )
+            except ProviderRequestError as exc:
+                results.append(
+                    RunResult(
+                        id=self._id_generator.new_id(),
+                        run_request_id=run_request_id,
+                        query_id=query.id,
+                        provider=command.provider,
+                        surface=command.provider,
+                        model="",
+                        region=query.region,
+                        language=query.language,
+                        status=RunResultStatus.FAILED,
+                        raw_response="",
+                        reference_urls=[],
+                        references=[],
+                        error=exc.code,
                         run_at=run_at,
                     )
                 )

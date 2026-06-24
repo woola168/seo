@@ -12,6 +12,12 @@ from younilab_geo_tracking_application.contracts import (
 )
 
 
+class ProviderRequestError(Exception):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 class AnswerProvider(Protocol):
     async def generate_answer(self, request: AnswerRequest) -> AnswerResponse: ...
 

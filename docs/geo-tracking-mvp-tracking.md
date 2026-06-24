@@ -7,10 +7,11 @@
 - 新增 `geo-tracking` bounded context 雛形，分成 domain、application、infrastructure、FastAPI API app。
 - 新增 Query Generation use case、contract、provider interface 與 dummy provider。
 - 新增 Query Research use case、contract、provider interface 與 dummy provider。
-- 新增跑題 Run Engine use case，可依 request provider 選擇 dummy 或 Gemini answer provider。
+- 新增跑題 Run Engine use case，可依 request provider 選擇 dummy、Gemini 或 Google AIO answer provider。
 - 新增 Gemini Query Generation adapter，使用 structured output，不掛 Google Search tool。
 - 新增 Gemini Query Research backend adapter，使用 structured output 並掛 Google Search tool；前端目前不再曝光獨立「取得搜尋脈絡」步驟。
 - 新增 Gemini Run Answer adapter，使用 Google Search grounding，回傳 `referenceUrls`。
+- 新增 Google AIO Run Answer adapter，透過 SerpApi 取得 Google AI Overview，回傳 `rawResponse`、`referenceUrls` 與 `references[{ title, url }]`。
 - Run Answer result 已保留 `provider`、`surface`、`model`，可標示結果來自哪個 AI / 平台；另新增 `references[{ title, url }]` 結構化來源，前端優先顯示 title，並保留舊 `referenceUrls` 相容欄位。
 - Gemini Run Answer 若第一輪沒有 grounding references，會自動 retry 一次，使用較強的 reference prompt。
 - 預設 Gemini model 調整為 `gemini-3.1-flash-lite`。
@@ -23,12 +24,13 @@
 - Admin Portal 已新增 `/geo-tracking` GEO 測試頁面，作為 Phase 1 MVP 串接 Query Research、Query Generation、Run Engine 的本機操作入口。
 - Admin Portal 右側流程已對齊 PDF 架構：`Query Research 工具` 負責用輸入與背景設定生成 query draft；`Query / Topic 管理紀錄` 只呈現已生成/暫存紀錄；`Runner 跑題引擎` 才負責把 query 送到 AI provider 取得結果。
 - Admin Portal Query / Topic 管理預覽表格已對齊客戶澄清欄位：`Prompt`、`Keywords`、`Intent`、`動作`。
-- Admin Portal 的 Intent 欄位使用 `N / I / C / T` 圓圈標記，對應導航、資訊、商業調查、交易。
+- Admin Portal 的 Intent 欄位使用 `N / I / C / T` 圓圈標記，對應客戶提供分類名稱：導航、資訊、商業、交易。
 - Admin Portal 的 `+ Shortlist` 目前是前端 local state，作為本輪 Runner 選取來源；尚未做後端 CRUD / 持久化。
-- Admin Portal 支援 Query Generation provider、Run provider 選擇 dummy / Gemini；Query Research backend provider 保留在 API，但前端目前不提供獨立 provider 選擇或搜尋脈絡按鈕。
+- Admin Portal 支援 Query Generation provider 選擇 dummy / Gemini，Run provider 選擇 dummy / Gemini / Google AIO (SerpApi)；Query Research backend provider 保留在 API，但前端目前不提供獨立 provider 選擇或搜尋脈絡按鈕。
 - Admin Portal 已移除右側「取得搜尋脈絡」功能，避免誤解為 Query Generation 需要先跑 Google Search。
 - 移除 UI 原始碼中的 `Kinsan SEO` 顯示字樣，改為 `Younilab SEO`。
 - 台灣 / `zh-TW` dummy query 會產生繁體中文語境，不再固定英文。
+- 後端 contract 已限制 Google AIO 只支援 Run Request；Query Generation / Query Research 若直接帶 `google_aio` 會回 422，避免繞過前端造成 provider registry error。
 
 ## 已確認決策
 
@@ -37,7 +39,7 @@
 - Run Engine / Answer adapter 可使用 Google Search grounding，因為它是在跑題回答階段。
 - Intent 是使用者選擇的生成角度，不是 LLM 自行分類結果。
 - SERP intent 判斷是未來獨立 adapter/API，不參與 Query Generation attributes，也不影響其他 LLM adapter 邏輯。
-- Intent 分類先用 SEO 四類：資訊型、商業調查型、交易型、導航型。
+- Intent 分類以客戶提供名稱為主：導航、資訊、商業、交易。
 - B2B 採購差異不新增獨立分類，先放在 prompt description、audience、marketType 裡引導。
 - `shouldMentionOwnBrand`、`shouldMentionCompetitor` 是「是否要求 query 提及」的生成前限制，不是生成後分類。
 - `audience` 是正式輸入參數，前端與 prompt payload 都需要帶入。
@@ -47,7 +49,7 @@
 - Source URLs 只出現在 Query Research / Run Answer 結果；若 Gemini grounding metadata 沒有 URL，允許空陣列，但流程不能失敗。
 - 模組 A 的 Google Ads API / Keyword Planner 搜尋量資料本輪略過。
 - 模組 B 的手動輸入、多題輸入、metadata、排程、CRUD、DB 持久化先交接後端設計。
-- 模組 C 先完成 Gemini 真 adapter，其他 provider 保留 dummy 或後續 adapter。
+- 模組 C 已完成 Gemini 真 adapter 與 Google AIO (SerpApi) runner adapter；其他 provider 保留 dummy 或後續 adapter。
 - 解析提及 / 排名 / 引用 / 輿情，以及優化行動建議，本輪暫不規劃。
 
 ## Live Gemini 驗證
@@ -63,6 +65,26 @@
 - Runner live references 第 1 輪：27/31 筆有 grounding references，成功率 87.1%，未達 95%。主要問題是部分 Gemini response 沒有 grounding chunks；另有一個本機 script 輸出遇到 cp950 encoding 問題。
 - Runner live references 第 2 輪：加入無 references 時 retry 一次的 prompt 後，30/30 筆有 grounding references，成功率 100%，達標。
 - 技術修正：Vertex 不接受 application DTO 產出的完整 Pydantic schema 約束，因此 infrastructure adapter 使用 Gemini 專用簡化 schema，再轉回 application contract。
+
+## Live Google AIO / SerpApi 驗證
+
+- Google AIO runner provider code：`google_aio`，前端顯示 `Google AIO (SerpApi)`。
+- 使用 `SERPAPI_API_KEY` 環境變數提供 SerpApi key；key 不進 source、不寫入文件。
+- Google AIO adapter 使用 `aiohttp.ClientSession`，provider instance 內重用同一個 session；FastAPI lifespan shutdown 會關閉 provider session。
+- Gemini SDK dependency 已改為 `google-genai[aiohttp]>=1.0`，並保留 `aiohttp>=3.12,<4` 作為 SerpApi adapter runtime dependency。
+- Locale profile 目前支援台灣與美國，結構保留後續日本 / 日文擴充：
+  - `TW`: `hl=zh-tw`、`gl=tw`、`location=Taiwan`
+  - `US`: `hl=en`、`gl=us`、`location=United States`
+- SerpApi locations live check：`Taiwan`、`Taipei`、`Taipei City`、`New Taipei City` 可查到 `country_code=TW`；中文地名 `台灣`、`台北` 查 locations API 回空陣列，因此 location profile 先使用英文 canonical location。
+- Google AIO adapter 流程：
+  1. 先打 `engine=google`，帶入 `q`、`hl`、`gl`、`location`。
+  2. 若 `ai_overview.text_blocks` 已存在，直接組成 `rawResponse`。
+  3. 若只有 `ai_overview.page_token`，立刻打 `engine=google_ai_overview` 取得完整 AIO；`page_token` 是短效 token，不做長期保存。
+  4. 若沒有 AIO，回傳 provider error code `no_google_aio_result`，不 fallback 成 organic results。
+- Live query：`黃連膏 推薦`，`TW / zh-TW`。
+- Live result：`google_aio` 成功回傳 `rawResponse` 463 字、6 筆 references，references 含 title 與完整 URL。
+- Live API route result：使用最新版 `younilab_geo_tracking_api.main:app` 啟動本機臨時 server 後，`/api/v1/geo-tracking/run-requests` 回 `status=completed`、`provider=google_aio`、`surface=Google AI Overview`、`model=serpapi-google-ai-overview`、`rawResponse` 463 字、6 筆 references。OpenAPI `ProviderCode` enum 已包含 `dummy, gemini, google_aio`。
+- 本機注意：若 `http://127.0.0.1:8002/openapi.json` 的 `ProviderCode` 仍只有 `dummy, gemini`，表示 8002 是舊 process，需重啟 geo-tracking API 才能讓前端 Runner 選 Google AIO 後正常送出。
 
 ## 模組 A：Query Research 工具
 
@@ -434,19 +456,20 @@ CRUD / actions：
 - Run Request API 可接收多筆 query 並依 provider 執行。
 - Dummy Answer provider 可回傳穩定 raw response。
 - Gemini Answer provider 可使用 Google Search grounding。
+- Google AIO provider 可透過 SerpApi 取得 Google AI Overview；支援第一段直接 AIO 與第二段 `page_token` 流程。
 - Run result 包含 provider、surface、model、region、language、status、rawResponse、referenceUrls、error、runAt。
-- Run result 另包含 `references[{ title, url }]`，Gemini grounding 可從 web chunk 擷取 title；若 provider 未提供 title，前端 fallback 顯示 domain / URL。
-- Run failure 會回傳 `provider_request_failed`，並保留空 `referenceUrls`。
-- 前端可選取 generated queries，使用 dummy / Gemini provider 跑題。
+- Run result 另包含 `references[{ title, url }]`，Gemini grounding 可從 web chunk 擷取 title，Google AIO 可從 SerpApi `references[].title/link` 擷取；若 provider 未提供 title，前端 fallback 顯示 domain / URL。
+- Run failure 會回傳安全錯誤碼；未知錯誤為 `provider_request_failed`，Google AIO 無結果為 `no_google_aio_result`，並保留空 `referenceUrls`。
+- 前端可選取 generated queries，使用 dummy / Gemini / Google AIO provider 跑題。
 
 ### 尚未完成，交接後端
 
 - Run request / run result CRUD 與 DB 持久化。
 - Job queue / worker 設計：同步 API 只適合 MVP demo，正式跑題應改背景工作。
-- Provider adapter registry：Perplexity、ChatGPT、Gemini、Claude、Google AIO SERP 的正式 adapter 設計。
+- Provider adapter registry：Perplexity、ChatGPT、Claude 的正式 adapter 設計；Gemini 與 Google AIO 已有 MVP adapter，仍需補正式 provider config / credential 管理。
 - Provider credential 管理：不可進 source；需設計 env / secret manager / per-workspace config。
 - Provider model / surface 設定 CRUD：model name、地區支援、成本、啟停。
-- Google AIO SERP API adapter：SerpApi / DataForSEO 廠商選型與 response contract。
+- Google AIO SERP vendor abstraction：目前採 SerpApi；若後續評估 DataForSEO，需抽象 vendor response contract。
 - Cost control：每題每平台每日一次、品牌字降頻、重試與 timeout 策略。
 - Run scheduling：立即跑、下個週期、每日排程、手動重跑。
 - Grounding metadata 保存：web search queries、grounding chunks、source URLs、raw provider metadata。
@@ -470,11 +493,15 @@ CRUD / actions：
 - `uv run --package younilab-geo-tracking-api pytest apps/geo-tracking-api/tests`
 - `npm run test:portal`
 - `npm run build:portal`
+- Google AIO live smoke test：設定 `SERPAPI_API_KEY` 後，用 `SerpApiGoogleAioAnswerProvider` 跑 `黃連膏 推薦` / `TW` / `zh-TW`，確認 `rawResponse` 與 `references` 非空。
+- Google AIO API route smoke test：設定 `SERPAPI_API_KEY` 後，用最新版 app 呼叫 `/api/v1/geo-tracking/run-requests`，確認 `provider=google_aio`、`status=completed`、`references[{ title, url }]` 非空。
 
 ## 目前風險與注意事項
 
 - 尚未設計資料庫，因此目前 Query Research、Generated Queries、Run Results 都不是正式持久化資料。
 - Gemini grounding source URLs 依模型 metadata 而定，本輪 live test 有拿到 URL，但程式仍需允許空陣列。
+- Google AIO 代表 Google SERP 上實際出現的 AI Overview surface；若 query 沒有 AIO，會回 `no_google_aio_result`，不會 fallback organic results。
+- SerpApi free plan 可能一題消耗兩段 request：`engine=google` 加上必要時的 `engine=google_ai_overview`。
 - Query Generation adapter 會強制把 attributes 對齊使用者輸入，避免模型改寫 intent/audience/brand rules。
 - 前端目前是 MVP 操作面，不是完整 CRUD 後台。
 - `workduo-survey/` 是探索資料與 PDF 來源，本輪未納入程式碼變更範圍。

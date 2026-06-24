@@ -213,7 +213,8 @@ export interface PageResponse<T> {
 
 export type GeoRegion = "TW" | "US";
 export type GeoMarketType = "b2c" | "b2b_procurement";
-export type GeoProvider = "dummy" | "gemini";
+export type GeoQueryProvider = "dummy" | "gemini";
+export type GeoProvider = GeoQueryProvider | "google_aio";
 
 export interface GeoDummyProject {
   seoTaskId: string;

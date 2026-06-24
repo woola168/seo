@@ -32,6 +32,7 @@ class RunTiming(StrEnum):
 class ProviderCode(StrEnum):
     DUMMY = "dummy"
     GEMINI = "gemini"
+    GOOGLE_AIO = "google_aio"
 
 
 class RunResultStatus(StrEnum):
