@@ -19,7 +19,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/api/v1/geo-tracking": {
-        target: "http://127.0.0.1:8002",
+        target: "http://127.0.0.1:8003",
         changeOrigin: true,
       },
       "/api": {

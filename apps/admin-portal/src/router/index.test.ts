@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory } from "vue-router";
 
 import {
@@ -6,6 +6,16 @@ import {
   getLoginRedirect,
   getRoutePage,
 } from "./routes";
+
+beforeAll(() => {
+  const store = new Map<string, string>();
+  vi.stubGlobal("sessionStorage", {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+    clear: () => store.clear(),
+  });
+});
 
 describe("portal router", () => {
   it("redirects protected pages to login and preserves the destination", async () => {
@@ -40,11 +50,13 @@ describe("portal router", () => {
   it("protects the GEO analysis page and preserves its destination", async () => {
     const router = createPortalRouter(createMemoryHistory(), () => false);
 
-    await router.push("/geo-analysis");
+    await router.push("/geo-analysis/overview");
     await router.isReady();
 
     expect(router.currentRoute.value.name).toBe("login");
-    expect(router.currentRoute.value.query.redirect).toBe("/geo-analysis");
+    expect(router.currentRoute.value.query.redirect).toBe(
+      "/geo-analysis/overview",
+    );
   });
 
   it("keeps the GEO analysis route under GEO navigation", async () => {
@@ -53,9 +65,21 @@ describe("portal router", () => {
     await router.push("/geo-analysis");
     await router.isReady();
 
-    expect(router.currentRoute.value.name).toBe("geo-analysis");
+    expect(router.currentRoute.value.name).toBe("geo-analysis-overview");
     expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
-      "geo-analysis",
+      "geo-analysis-overview",
+    );
+  });
+
+  it("keeps GEO query research under GEO navigation", async () => {
+    const router = createPortalRouter(createMemoryHistory(), () => true);
+
+    await router.push("/geo-analysis/query-research");
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe("geo-analysis-query-research");
+    expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
+      "geo-analysis-query-research",
     );
   });
 
@@ -136,7 +160,12 @@ describe("portal router", () => {
 describe("route helpers", () => {
   it("maps route metadata to an available portal page", () => {
     expect(getRoutePage("permissions")).toBe("permissions");
-    expect(getRoutePage("geo-analysis")).toBe("geo-analysis");
+    expect(getRoutePage("geo-analysis-overview")).toBe(
+      "geo-analysis-overview",
+    );
+    expect(getRoutePage("geo-analysis-query-research")).toBe(
+      "geo-analysis-query-research",
+    );
     expect(getRoutePage(undefined)).toBe("dashboard");
   });
 

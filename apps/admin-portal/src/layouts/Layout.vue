@@ -35,6 +35,7 @@ const commandInput = ref<HTMLInputElement | null>(null);
 const commandEscapeButton = ref<HTMLButtonElement | null>(null);
 const commandQuickActions = ref<HTMLButtonElement[]>([]);
 const commandNavigationButtons = ref<HTMLButtonElement[]>([]);
+const expandedNavigationIds = ref<Set<string>>(new Set(["geo-analysis"]));
 
 const primaryNavigation = computed(() =>
   props.navigation.filter((item) => !item.group),
@@ -48,16 +49,49 @@ const navigationGroups = computed(() => {
   return [...groups.entries()].map(([label, items]) => ({ label, items }));
 });
 const commandNavigationItems = computed(() =>
-  props.navigation.filter((item) => item.page),
+  props.navigation.flatMap((item) => [
+    ...(item.page ? [item] : []),
+    ...(item.children?.filter((child) => child.page) ?? []),
+  ]),
 );
 
 function selectNavigation(item: NavigationItem): void {
   closeSearch(false);
+  if (item.children?.length) {
+    toggleNavigationGroup(item);
+    return;
+  }
   if (item.page && !item.disabled) {
     emit("navigate", item.page);
     return;
   }
   emit("unavailable", item.label);
+}
+
+function isNavigationActive(item: NavigationItem): boolean {
+  return (
+    item.page === props.activePage ||
+    Boolean(item.children?.some((child) => child.page === props.activePage))
+  );
+}
+
+function isNavigationExpanded(item: NavigationItem): boolean {
+  return (
+    expandedNavigationIds.value.has(item.id) ||
+    Boolean(item.children?.some((child) => child.page === props.activePage))
+  );
+}
+
+function toggleNavigationGroup(item: NavigationItem): void {
+  if (props.collapsed) {
+    const firstChild = item.children?.find((child) => child.page && !child.disabled);
+    if (firstChild?.page) emit("navigate", firstChild.page);
+    return;
+  }
+  const next = new Set(expandedNavigationIds.value);
+  if (next.has(item.id)) next.delete(item.id);
+  else next.add(item.id);
+  expandedNavigationIds.value = next;
 }
 
 function openSearch(): void {
@@ -149,7 +183,7 @@ function logout(): void {
         <template v-for="item in primaryNavigation" :key="item.id">
           <button
             class="navigation-item"
-            :class="{ active: item.page === activePage, disabled: item.disabled }"
+            :class="{ active: isNavigationActive(item), disabled: item.disabled }"
             type="button"
             :title="collapsed ? item.label : undefined"
             @click="selectNavigation(item)"
@@ -165,19 +199,46 @@ function logout(): void {
           class="navigation-group"
         >
           <p v-if="!collapsed">{{ group.label }}</p>
-          <button
-            v-for="item in group.items"
-            :key="item.id"
-            class="navigation-item"
-            :class="{ active: item.page === activePage, disabled: item.disabled }"
-            type="button"
-            :title="collapsed ? item.label : undefined"
-            @click="selectNavigation(item)"
-          >
-            <AppIcon :name="item.icon" :size="17" />
-            <span v-if="!collapsed">{{ item.label }}</span>
-            <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
-          </button>
+          <template v-for="item in group.items" :key="item.id">
+            <button
+              class="navigation-item"
+              :class="{
+                active: isNavigationActive(item),
+                disabled: item.disabled,
+                'has-children': item.children?.length,
+              }"
+              type="button"
+              :title="collapsed ? item.label : undefined"
+              @click="selectNavigation(item)"
+            >
+              <AppIcon :name="item.icon" :size="17" />
+              <span v-if="!collapsed">{{ item.label }}</span>
+              <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
+              <AppIcon
+                v-if="item.children?.length && !collapsed"
+                class="navigation-expand-icon"
+                :class="{ expanded: isNavigationExpanded(item) }"
+                name="chevron-right"
+                :size="13"
+              />
+            </button>
+            <div
+              v-if="item.children?.length && !collapsed && isNavigationExpanded(item)"
+              class="navigation-submenu"
+            >
+              <button
+                v-for="child in item.children"
+                :key="child.id"
+                class="navigation-subitem"
+                :class="{ active: child.page === activePage, disabled: child.disabled }"
+                type="button"
+                @click="selectNavigation(child)"
+              >
+                <span>{{ child.label }}</span>
+                <small v-if="child.badge">{{ child.badge }}</small>
+              </button>
+            </div>
+          </template>
         </section>
       </nav>
     </aside>

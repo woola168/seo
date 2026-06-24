@@ -20,20 +20,16 @@ type GeoTab =
   | "jobs"
   | "reports";
 
-const emit = defineEmits<{ unavailable: [label: string] }>();
+const props = defineProps<{
+  activeTab?: GeoTab;
+}>();
 
-const tabs: { id: GeoTab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "projects", label: "Projects" },
-  { id: "entities", label: "Entities" },
-  { id: "queries", label: "Topics & Queries" },
-  { id: "schedules", label: "Platforms & Schedules" },
-  { id: "jobs", label: "Run Jobs" },
-  { id: "reports", label: "Reports" },
-];
+const emit = defineEmits<{
+  unavailable: [label: string];
+}>();
 
 const state = reactive(createGeoMockState());
-const activeTab = ref<GeoTab>("overview");
+const activeTab = computed(() => props.activeTab ?? "overview");
 const selectedProjectId = ref(state.projects[0]?.id ?? "");
 const localMessage = ref("目前所有操作皆為前端記憶體中的 Mock 操作。");
 
@@ -440,7 +436,7 @@ function cancelJob(job: GeoJob): void {
 }
 
 function openCreateProject(): void {
-  activeTab.value = "projects";
+  setMessage("請從左側 GEO 子選單切換到 Projects 後建立專案。");
 }
 
 function useFirstQuery(): void {
@@ -486,18 +482,6 @@ function useFirstQuery(): void {
     </div>
 
     <div class="geo-local-message">{{ localMessage }}</div>
-
-    <nav class="tabs" aria-label="GEO analysis tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="{ active: activeTab === tab.id }"
-        type="button"
-        @click="activeTab = tab.id"
-      >
-        {{ tab.label }}
-      </button>
-    </nav>
 
     <div v-if="!selectedProject" class="empty-state">
       <AppIcon name="layers" />

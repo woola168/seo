@@ -59,9 +59,55 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
     },
     {
       path: "/geo-analysis",
-      name: "geo-analysis",
+      redirect: "/geo-analysis/overview",
+    },
+    {
+      path: "/geo-analysis/overview",
+      name: "geo-analysis-overview",
       component: () => import("../pages/GeoAnalysisPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis" },
+      meta: { requiresAuth: true, page: "geo-analysis-overview" },
+    },
+    {
+      path: "/geo-analysis/projects",
+      name: "geo-analysis-projects",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-projects" },
+    },
+    {
+      path: "/geo-analysis/entities",
+      name: "geo-analysis-entities",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-entities" },
+    },
+    {
+      path: "/geo-analysis/topics-queries",
+      name: "geo-analysis-queries",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-queries" },
+    },
+    {
+      path: "/geo-analysis/platforms-schedules",
+      name: "geo-analysis-schedules",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-schedules" },
+    },
+    {
+      path: "/geo-analysis/run-jobs",
+      name: "geo-analysis-jobs",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-jobs" },
+    },
+    {
+      path: "/geo-analysis/reports",
+      name: "geo-analysis-reports",
+      component: () => import("../pages/GeoAnalysisPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-reports" },
+    },
+    {
+      path: "/geo-analysis/query-research",
+      name: "geo-analysis-query-research",
+      component: () => import("../pages/GeoTrackingPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-query-research" },
     },
     {
       path: "/permissions/users/new",
@@ -111,7 +157,16 @@ export function createPortalRouter(
 
 export function getRoutePage(page: unknown): PageId {
   if (page === "permissions") return "permissions";
-  if (page === "geo-analysis") return "geo-analysis";
+  if (page === "geo-analysis-overview") return "geo-analysis-overview";
+  if (page === "geo-analysis-projects") return "geo-analysis-projects";
+  if (page === "geo-analysis-entities") return "geo-analysis-entities";
+  if (page === "geo-analysis-queries") return "geo-analysis-queries";
+  if (page === "geo-analysis-schedules") return "geo-analysis-schedules";
+  if (page === "geo-analysis-jobs") return "geo-analysis-jobs";
+  if (page === "geo-analysis-reports") return "geo-analysis-reports";
+  if (page === "geo-analysis-query-research") {
+    return "geo-analysis-query-research";
+  }
   if (page === "geo-tracking") return "geo-tracking";
   return "dashboard";
 }

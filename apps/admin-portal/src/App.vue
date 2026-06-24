@@ -53,19 +53,7 @@ const loading = ref(false);
 const loginError = ref("");
 const toast = ref<ToastMessage | null>(null);
 const activePage = computed<PageId>(() => getRoutePage(route.meta.page));
-const currentTitle = computed(() =>
-  route.name === "permission-user-new"
-    ? "新增員工"
-    : route.name === "permission-role-new"
-      ? "建立角色"
-    : activePage.value === "geo-analysis"
-      ? "GEO 分析"
-    : activePage.value === "geo-tracking"
-      ? "GEO 跑題實驗室"
-    : activePage.value === "permissions"
-      ? "權限管理"
-      : "總覽",
-);
+const currentTitle = computed(() => pageTitle());
 const permissionInitialTab = computed(() =>
   route.query.tab === "roles" ? "roles" as const : undefined,
 );
@@ -92,12 +80,58 @@ type PortalDataKey =
   | "customers"
   | "tasks";
 type PermissionTab = "members" | "roles" | "departments" | "evaluate";
+type GeoAnalysisTab =
+  | "overview"
+  | "projects"
+  | "entities"
+  | "queries"
+  | "schedules"
+  | "jobs"
+  | "reports";
 
 const loadedData = ref<Set<PortalDataKey>>(new Set());
 const pendingData = new Map<PortalDataKey, Promise<void>>();
 const activePermissionTab = ref<PermissionTab>(
   permissionInitialTab.value ?? "members",
 );
+const geoAnalysisTabsByPage: Partial<Record<PageId, GeoAnalysisTab>> = {
+  "geo-analysis-overview": "overview",
+  "geo-analysis-projects": "projects",
+  "geo-analysis-entities": "entities",
+  "geo-analysis-queries": "queries",
+  "geo-analysis-schedules": "schedules",
+  "geo-analysis-jobs": "jobs",
+  "geo-analysis-reports": "reports",
+};
+const geoPageTitles: Partial<Record<PageId, string>> = {
+  "geo-analysis-overview": "GEO Overview",
+  "geo-analysis-projects": "GEO Projects",
+  "geo-analysis-entities": "GEO Entities",
+  "geo-analysis-queries": "GEO Topics & Queries",
+  "geo-analysis-schedules": "GEO Platforms & Schedules",
+  "geo-analysis-jobs": "GEO Run Jobs",
+  "geo-analysis-reports": "GEO Reports",
+  "geo-analysis-query-research": "GEO Query Research",
+  "geo-tracking": "GEO 跑題實驗室",
+};
+const activeGeoAnalysisTab = computed(
+  () => geoAnalysisTabsByPage[activePage.value],
+);
+const isGeoAnalysisPage = computed(() => Boolean(activeGeoAnalysisTab.value));
+const isGeoTrackingPage = computed(
+  () =>
+    activePage.value === "geo-analysis-query-research" ||
+    activePage.value === "geo-tracking",
+);
+
+function pageTitle(): string {
+  if (route.name === "permission-user-new") return "新增員工";
+  if (route.name === "permission-role-new") return "建立角色";
+  const geoTitle = geoPageTitles[activePage.value];
+  if (geoTitle) return geoTitle;
+  if (activePage.value === "permissions") return "權限管理";
+  return "總覽";
+}
 
 const navigation = computed<NavigationItem[]>(() => [
   { id: "dashboard", label: "總覽", icon: "grid", page: "dashboard" },
@@ -117,18 +151,60 @@ const navigation = computed<NavigationItem[]>(() => [
     disabled: true,
   },
   {
-    id: "war-room",
-    label: "GEO 跑題",
-    icon: "activity",
-    group: "分析工具",
-    page: "geo-tracking",
-  },
-  {
     id: "geo-analysis",
     label: "GEO 分析",
-    icon: "sparkles",
+    icon: "activity",
     group: "分析工具",
-    page: "geo-analysis",
+    children: [
+      {
+        id: "geo-analysis-overview",
+        label: "Overview",
+        icon: "grid",
+        page: "geo-analysis-overview",
+      },
+      {
+        id: "geo-analysis-projects",
+        label: "Projects",
+        icon: "briefcase",
+        page: "geo-analysis-projects",
+      },
+      {
+        id: "geo-analysis-entities",
+        label: "Entities",
+        icon: "users",
+        page: "geo-analysis-entities",
+      },
+      {
+        id: "geo-analysis-queries",
+        label: "Topics & Queries",
+        icon: "list",
+        page: "geo-analysis-queries",
+      },
+      {
+        id: "geo-analysis-schedules",
+        label: "Platforms & Schedules",
+        icon: "calendar",
+        page: "geo-analysis-schedules",
+      },
+      {
+        id: "geo-analysis-jobs",
+        label: "Run Jobs",
+        icon: "activity",
+        page: "geo-analysis-jobs",
+      },
+      {
+        id: "geo-analysis-reports",
+        label: "Reports",
+        icon: "layers",
+        page: "geo-analysis-reports",
+      },
+      {
+        id: "geo-analysis-query-research",
+        label: "Query Research",
+        icon: "sparkles",
+        page: "geo-analysis-query-research",
+      },
+    ],
   },
   {
     id: "strategy",
@@ -739,10 +815,11 @@ function unavailable(label: string): void {
       @unavailable="unavailable"
     />
     <GeoAnalysisPage
-      v-else-if="activePage === 'geo-analysis'"
+      v-else-if="isGeoAnalysisPage && activeGeoAnalysisTab"
+      :active-tab="activeGeoAnalysisTab"
       @unavailable="unavailable"
     />
-    <GeoTrackingPage v-else-if="activePage === 'geo-tracking'" />
+    <GeoTrackingPage v-else-if="isGeoTrackingPage" />
     <PermissionsPage
       v-else
       :current-user="user"

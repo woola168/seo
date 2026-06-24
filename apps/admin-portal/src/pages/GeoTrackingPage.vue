@@ -278,11 +278,15 @@ async function run(action: () => Promise<void>): Promise<void> {
 </script>
 
 <template>
-  <section class="geo-tracking-page">
-    <header class="geo-header">
+  <section class="page geo-tracking-page">
+    <header class="page-header geo-query-header">
       <div class="geo-heading">
-        <span class="geo-page-badge">Admin Portal 測試頁</span>
-        <h1>GEO 跑題實驗室</h1>
+        <p class="page-kicker">Query Research</p>
+        <h1>GEO Query Research</h1>
+        <p>
+          依據品牌、競品、關鍵字、Topic、Intent 與 Audience 產生候選 query，
+          後續可挑選要納入 GEO tracking 的題目。
+        </p>
       </div>
       <div class="geo-header-actions">
         <button class="button button-secondary" type="button" @click="loadExample">

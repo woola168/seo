@@ -1,7 +1,14 @@
 export type PageId =
   | "dashboard"
   | "permissions"
-  | "geo-analysis"
+  | "geo-analysis-overview"
+  | "geo-analysis-projects"
+  | "geo-analysis-entities"
+  | "geo-analysis-queries"
+  | "geo-analysis-schedules"
+  | "geo-analysis-jobs"
+  | "geo-analysis-reports"
+  | "geo-analysis-query-research"
   | "geo-tracking";
 
 export interface NavigationItem {
@@ -10,6 +17,7 @@ export interface NavigationItem {
   icon: IconName;
   group?: string;
   page?: PageId;
+  children?: NavigationItem[];
   badge?: string;
   disabled?: boolean;
 }
