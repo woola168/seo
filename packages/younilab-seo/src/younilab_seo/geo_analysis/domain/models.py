@@ -5,7 +5,7 @@ from uuid import UUID
 
 
 class JobStatus(StrEnum):
-    """GEO query run job 在派送前後的生命週期狀態。"""
+    """GEO query run job lifecycle state."""
 
     PENDING = "pending"
     PUBLISHING = "publishing"
@@ -18,12 +18,12 @@ class JobStatus(StrEnum):
 
 
 class QueryRunJobStatusError(ValueError):
-    """避免 query run job 進入不合法流程時拋出的錯誤。"""
+    """Raised when a query run job receives an invalid state transition."""
 
 
 @dataclass
 class GeoQueryRunJob:
-    """由 orchestration 擁有、可派送給外部 runner 的 GEO query task。"""
+    """A GEO query task tracked through dispatch and external runner states."""
 
     id: UUID
     project_id: UUID

@@ -29,3 +29,19 @@ Local rules for the SEO Python package. Extends the root `AGENTS.md`.
   job state.
 - Add shared abstractions only when they remove real duplication across at
   least two bounded contexts.
+
+## Bounded Context Standard
+
+- Use `younilab_seo.geo_analysis` as the current reference structure for new
+  or refactored bounded contexts.
+- Put application command/result models in `application/contracts.py`.
+- Put repository, publisher, clock, id generator, and external service ports in
+  `application/interfaces.py`.
+- Put orchestration in `application/use_cases/`, split by workflow rather than
+  by transport or infrastructure concern.
+- Keep `application/use_cases/__init__.py` as the intentional public export for
+  use cases.
+- Infrastructure adapters must implement application ports and perform mapping
+  between rows, SDK payloads, external messages, and application/domain models.
+- API apps must depend on package public application exports, not package
+  internals or infrastructure models.

@@ -15,6 +15,13 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoTopicRow,
     GeoWorkerLeaseRow,
 )
+from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
+    build_postgres_repository,
+    build_postgres_session_factory,
+)
+from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository import (
+    PostgresGeoAnalysisRepository,
+)
 
 __all__ = [
     "GeoAiPlatformRow",
@@ -32,4 +39,7 @@ __all__ = [
     "GeoQueryScheduleRow",
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
+    "PostgresGeoAnalysisRepository",
+    "build_postgres_repository",
+    "build_postgres_session_factory",
 ]

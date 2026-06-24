@@ -62,6 +62,22 @@ class FakeRepository:
     ) -> None:
         self.callbacks.append(callback)
 
+    async def apply_external_callback(
+        self,
+        *,
+        callback: ExternalRunCallback,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob:
+        self.job.mark_external_status(
+            external_run_id=callback.external_run_id,
+            external_status=callback.status,
+            error_code=callback.error_code,
+            error_message=callback.error_message,
+            now=occurred_at,
+        )
+        self.callbacks.append(callback)
+        return self.job
+
 
 def make_job() -> GeoQueryRunJob:
     now = datetime(2026, 6, 22, tzinfo=UTC)

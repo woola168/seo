@@ -7,7 +7,7 @@ from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
 class GeoProjectRow(SQLModel, table=True):
-    """綁定既有 customer 的 project-level GEO setup row。"""
+    """Project-level GEO setup row for a customer."""
 
     __tablename__ = "geo_project"
 
@@ -35,7 +35,7 @@ class GeoProjectRow(SQLModel, table=True):
 
 
 class GeoMarketRow(SQLModel, table=True):
-    """準備外部 runner message 時使用的 market locale 設定。"""
+    """Market locale settings used when building runner messages."""
 
     __tablename__ = "geo_market"
     __table_args__ = (
@@ -57,7 +57,7 @@ class GeoMarketRow(SQLModel, table=True):
 
 
 class GeoEntityRow(SQLModel, table=True):
-    """GEO project 中要追蹤的品牌或競品 metadata。"""
+    """Tracked brand, competitor, or entity metadata within a GEO project."""
 
     __tablename__ = "geo_entity"
     __table_args__ = (
@@ -81,7 +81,7 @@ class GeoEntityRow(SQLModel, table=True):
 
 
 class GeoEntityAliasRow(SQLModel, table=True):
-    """傳給外部 runner 或分析模組的 tracked entity alias。"""
+    """Alias used by runner and analysis workflows to match a tracked entity."""
 
     __tablename__ = "geo_entity_alias"
     __table_args__ = (
@@ -96,7 +96,7 @@ class GeoEntityAliasRow(SQLModel, table=True):
 
 
 class GeoTopicRow(SQLModel, table=True):
-    """project 內用來群組 tracked query 的 topic。"""
+    """Topic grouping for tracked queries in a project."""
 
     __tablename__ = "geo_topic"
     __table_args__ = (
@@ -113,7 +113,7 @@ class GeoTopicRow(SQLModel, table=True):
 
 
 class GeoQueryRow(SQLModel, table=True):
-    """排程給外部 GEO runner 執行的自然語言問題。"""
+    """Tracked natural-language question dispatched to GEO runners."""
 
     __tablename__ = "geo_query"
 
@@ -141,7 +141,7 @@ class GeoQueryRow(SQLModel, table=True):
 
 
 class GeoQueryKeywordRow(SQLModel, table=True):
-    """附加在產生或人工整理 query 上的 keyword research 來源。"""
+    """Keyword research term attached to a tracked query."""
 
     __tablename__ = "geo_query_keyword"
 
@@ -160,7 +160,7 @@ class GeoQueryKeywordRow(SQLModel, table=True):
 
 
 class GeoAiPlatformRow(SQLModel, table=True):
-    """可選擇的 AI 或 SERP platform metadata，不包含 provider credential。"""
+    """Selectable AI or SERP platform metadata without provider credentials."""
 
     __tablename__ = "geo_ai_platform"
 
@@ -183,7 +183,7 @@ class GeoAiPlatformRow(SQLModel, table=True):
 
 
 class GeoQueryPlatformRow(SQLModel, table=True):
-    """job 排程前針對 query 設定的 platform selection。"""
+    """Platform selection for a tracked query."""
 
     __tablename__ = "geo_query_platform"
     __table_args__ = (
@@ -200,7 +200,7 @@ class GeoQueryPlatformRow(SQLModel, table=True):
 
 
 class GeoQueryScheduleRow(SQLModel, table=True):
-    """用來建立 dispatch job 的週期性 query/platform schedule。"""
+    """Schedule for creating query/platform dispatch jobs."""
 
     __tablename__ = "geo_query_schedule"
     __table_args__ = (
@@ -227,7 +227,7 @@ class GeoQueryScheduleRow(SQLModel, table=True):
 
 
 class GeoQueryRunJobRow(SQLModel, table=True):
-    """application 擁有、且不依賴特定 message broker 的 dispatch job 狀態。"""
+    """Persistent query run job dispatched through the configured broker."""
 
     __tablename__ = "geo_query_run_job"
 
@@ -257,7 +257,7 @@ class GeoQueryRunJobRow(SQLModel, table=True):
 
 
 class GeoMessageDispatchLogRow(SQLModel, table=True):
-    """不綁定特定 broker 產品的 message dispatch 證據。"""
+    """Message dispatch log independent from a specific broker implementation."""
 
     __tablename__ = "geo_message_dispatch_log"
 
@@ -277,7 +277,7 @@ class GeoMessageDispatchLogRow(SQLModel, table=True):
 
 
 class GeoWorkerLeaseRow(SQLModel, table=True):
-    """DB-scanning 或補償 worker 使用的 lease record。"""
+    """Lease record for worker or compensation processes."""
 
     __tablename__ = "geo_worker_lease"
 
@@ -294,7 +294,7 @@ class GeoWorkerLeaseRow(SQLModel, table=True):
 
 
 class GeoJobDispatchEventRow(SQLModel, table=True):
-    """記錄 job scheduling、dispatch、retry 與 callback transition 的 audit event。"""
+    """Audit event for job scheduling, dispatch, retry, and callback transitions."""
 
     __tablename__ = "geo_job_dispatch_event"
 
@@ -310,7 +310,7 @@ class GeoJobDispatchEventRow(SQLModel, table=True):
 
 
 class GeoExternalRunReferenceRow(SQLModel, table=True):
-    """外部 runner 狀態 reference，不儲存 AI response content。"""
+    """Reference to an external runner execution without storing AI response content."""
 
     __tablename__ = "geo_external_run_reference"
 

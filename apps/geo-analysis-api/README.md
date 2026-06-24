@@ -8,12 +8,167 @@ GEO Analysis API 提供 Phase 1 的 GEO 專案設定、market、entity、topic�
 uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 ```
 
+## Persistence 模式
+
+- Routes 只負責 HTTP DTO 與 response mapping，實際流程透過 `ManageGeoSetup` 與 `ManageQueryRunJobs` use cases 執行。
+- `presentation/http/composition.py` 負責組裝 repository、clock 與 use cases，並掛到 `app.state`。
+- 預設未設定資料庫時，API 使用 in-memory `GeoApiStore` 作為測試用 fake repository，適合單元測試與前端 stub 串接，服務重啟會遺失資料。
+- 設定 `GEO_ANALYSIS_DATABASE_URL` 後，API 會使用 `PostgresGeoAnalysisRepository` 作為 PostgreSQL infrastructure adapter。
+- Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
+- 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
+- External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
+- RabbitMQ publisher、worker、AI raw result、mention/citation/sentiment 與報表指標仍屬後續批次。
+- 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
+
+範例：
+
+```powershell
+$env:GEO_ANALYSIS_DATABASE_URL = "postgresql+asyncpg://resource_catalog:resource_catalog@127.0.0.1:5433/resource_catalog"
+uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
+```
+
+### 手動建立 AI Platform
+
+遠端部署目前不由 CI/CD 自動執行 DB schema 或 seed。執行 `004_geo_analysis_schema.sql` 後，需手動在 `geo_ai_platform` 寫入可派送的平台資料，後續建立 query platform、schedule、job 時會使用這些 `id`。
+
+建議第一版手動 insert：
+
+```sql
+INSERT INTO geo_ai_platform (
+    id,
+    code,
+    display_name,
+    provider_type,
+    default_model,
+    supports_citations,
+    supports_grounding,
+    status,
+    created_at,
+    updated_at
+) VALUES
+(
+    '11111111-1111-4111-8111-111111111101',
+    'openai',
+    'ChatGPT',
+    'llm_api',
+    'gpt-4.1',
+    false,
+    true,
+    'active',
+    now(),
+    now()
+),
+(
+    '11111111-1111-4111-8111-111111111102',
+    'gemini',
+    'Gemini',
+    'llm_api',
+    'gemini-2.5-pro',
+    true,
+    true,
+    'active',
+    now(),
+    now()
+),
+(
+    '11111111-1111-4111-8111-111111111103',
+    'claude',
+    'Claude',
+    'llm_api',
+    'claude-sonnet-4',
+    false,
+    false,
+    'active',
+    now(),
+    now()
+),
+(
+    '11111111-1111-4111-8111-111111111104',
+    'perplexity',
+    'Perplexity',
+    'llm_api',
+    'sonar',
+    true,
+    true,
+    'active',
+    now(),
+    now()
+),
+(
+    '11111111-1111-4111-8111-111111111105',
+    'google_aio',
+    'Google AIO',
+    'serp_api',
+    'ai-overview',
+    true,
+    true,
+    'paused',
+    now(),
+    now()
+)
+ON CONFLICT (code) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    provider_type = EXCLUDED.provider_type,
+    default_model = EXCLUDED.default_model,
+    supports_citations = EXCLUDED.supports_citations,
+    supports_grounding = EXCLUDED.supports_grounding,
+    status = EXCLUDED.status,
+    updated_at = now();
+```
+
+### Application Composition
+
+目前 GEO Analysis API 的呼叫路徑：
+
+```text
+routes -> application use case -> GeoAnalysisRepository port -> infrastructure adapter
+```
+
+- `apps/geo-analysis-api/.../routes.py`：保留 HTTP API contract、Problem Details 與 DTO/response mapping。
+- `packages/younilab-seo/.../geo_analysis/application/use_cases/`：依 workflow 分檔放置 application use cases，例如 `setup.py`、`jobs.py`、`dispatch.py`。
+- `packages/younilab-seo/.../geo_analysis/application/contracts.py`：定義 application command/result records，避免 API DTO 或 untyped dict 穿越 application boundary。
+- `packages/younilab-seo/.../geo_analysis/application/interfaces.py`：定義 `GeoAnalysisRepository` port。
+- `packages/younilab-seo/.../geo_analysis/infrastructure/persistence/postgres/repository.py`：實作 PostgreSQL adapter，負責 SQLModel row 與 application/domain model 互轉。
+- `apps/geo-analysis-api/.../store.py`：僅作為 API tests 與本機 stub 用的 in-memory fake repository。
+
+已移除舊的 `PostgresGeoApiStore` presentation adapter；正式 runtime 直接由 composition 建立 `PostgresGeoAnalysisRepository` 後注入 use cases。
+
+### Future Service Standard
+
+GEO Analysis 目前作為後續服務重構的標準樣板：
+
+```text
+apps/{service-api}/src/{service_package}/presentation/http/
+  app_factory.py
+  composition.py
+  routes.py 或 routes/
+  dtos.py
+  errors.py
+
+packages/younilab-seo/src/younilab_seo/{bounded_context}/
+  domain/
+  application/
+    contracts.py
+    interfaces.py
+    use_cases/
+      __init__.py
+      {workflow}.py
+  infrastructure/
+    persistence/
+```
+
+- Routes 不直接使用 repository、SQL session、id generator、queue client 或 provider SDK。
+- `composition.py` 是 runtime dependency 組裝入口，並將 application use cases 掛到 `app.state`。
+- Application use cases 只依賴 application contracts、domain model 與 application ports。
+- Infrastructure adapters 實作 application ports，並負責 row / external payload / SDK object 與 application model 的轉換。
+- API tests 使用 fake repository 或 fake port 注入 `create_app()`，不連正式 PostgreSQL 或外部服務。
+
 ## 前端介接共通規則
 
 - JSON 欄位使用 `camelCase`。
-- 目前 Phase 1 API 使用 in-memory store，服務重啟會遺失資料。
+- 未設定 `GEO_ANALYSIS_DATABASE_URL` 時會使用 in-memory store。
 - `POST /api/geo/jobs/{jobId}/dispatch` 目前會回 `501`，代表 message publisher adapter 尚未設定。
-- `cancel` 與 external callback 目前直接操作 in-memory domain entity；後續接 PostgreSQL repository 後會改走 application use case。
+- `cancel` 與 external callback 已可透過 store abstraction 套用到 in-memory 或 PostgreSQL-backed repository。
 - 錯誤回應使用 `application/problem+json`。
 
 Problem Details 格式：
@@ -36,6 +191,51 @@ Problem Details 格式：
   "total": 0
 }
 ```
+
+## API 一覽
+
+| Method | Path | 作用 |
+| --- | --- | --- |
+| `GET` | `/api/geo/projects` | 列出 GEO project，可用 `customerId` 篩選。 |
+| `POST` | `/api/geo/projects` | 建立客戶的 GEO project。 |
+| `GET` | `/api/geo/projects/{projectId}` | 取得單一 GEO project。 |
+| `PATCH` | `/api/geo/projects/{projectId}` | 更新 GEO project 基礎設定。 |
+| `DELETE` | `/api/geo/projects/{projectId}` | 刪除 GEO project。PostgreSQL 模式會連動刪除 GEO 子資料。 |
+| `GET` | `/api/geo/projects/{projectId}/markets` | 列出 project 的地區與語言市場設定。 |
+| `POST` | `/api/geo/projects/{projectId}/markets` | 建立 market locale 與 SERP 參數提示。 |
+| `PATCH` | `/api/geo/markets/{marketId}` | 更新 market 設定。 |
+| `DELETE` | `/api/geo/markets/{marketId}` | 刪除 market 設定。 |
+| `GET` | `/api/geo/projects/{projectId}/entities` | 列出 project 追蹤的品牌、競品或其他 entity。 |
+| `POST` | `/api/geo/projects/{projectId}/entities` | 建立 tracked entity。 |
+| `GET` | `/api/geo/entities/{entityId}` | 取得單一 tracked entity。 |
+| `PATCH` | `/api/geo/entities/{entityId}` | 更新 tracked entity。 |
+| `DELETE` | `/api/geo/entities/{entityId}` | 刪除 tracked entity。 |
+| `GET` | `/api/geo/entities/{entityId}/aliases` | 列出 entity alias，供 runner 或分析模組參考。 |
+| `POST` | `/api/geo/entities/{entityId}/aliases` | 建立 entity alias。 |
+| `PATCH` | `/api/geo/entity-aliases/{aliasId}` | 更新 entity alias。 |
+| `DELETE` | `/api/geo/entity-aliases/{aliasId}` | 刪除 entity alias。 |
+| `GET` | `/api/geo/projects/{projectId}/topics` | 列出 project 的 query topic。 |
+| `POST` | `/api/geo/projects/{projectId}/topics` | 建立 query topic。 |
+| `PATCH` | `/api/geo/topics/{topicId}` | 更新 query topic。 |
+| `DELETE` | `/api/geo/topics/{topicId}` | 刪除 query topic。 |
+| `GET` | `/api/geo/projects/{projectId}/queries` | 列出 project 追蹤的自然語言 query。 |
+| `POST` | `/api/geo/projects/{projectId}/queries` | 建立 tracked query。 |
+| `GET` | `/api/geo/queries/{queryId}` | 取得單一 tracked query。 |
+| `PATCH` | `/api/geo/queries/{queryId}` | 更新 tracked query。 |
+| `DELETE` | `/api/geo/queries/{queryId}` | 刪除 tracked query。 |
+| `GET` | `/api/geo/queries/{queryId}/platforms` | 列出 query 要派送的平台設定。 |
+| `PUT` | `/api/geo/queries/{queryId}/platforms` | 整批替換 query platform assignment。 |
+| `GET` | `/api/geo/queries/{queryId}/schedules` | 列出 query 的週期排程設定。 |
+| `POST` | `/api/geo/queries/{queryId}/schedules` | 建立 query/platform 的週期排程。 |
+| `PATCH` | `/api/geo/schedules/{scheduleId}` | 更新排程設定。 |
+| `DELETE` | `/api/geo/schedules/{scheduleId}` | 刪除排程設定。 |
+| `POST` | `/api/geo/queries/{queryId}/jobs` | 建立手動 query run job。 |
+| `GET` | `/api/geo/projects/{projectId}/jobs` | 列出 project 的 query run jobs。 |
+| `GET` | `/api/geo/jobs/{jobId}` | 取得單一 job orchestration 狀態。 |
+| `POST` | `/api/geo/jobs/{jobId}/dispatch` | 派送 job 到 message broker。第一批尚未設定 publisher，因此回 `501`。 |
+| `POST` | `/api/geo/jobs/{jobId}/cancel` | 取消尚未進入 terminal state 的 job。 |
+| `POST` | `/api/geo/jobs/{jobId}/external-callbacks` | 接收外部 runner 狀態 callback，不接收 AI result content。 |
+| `GET` | `/health` | 健康檢查。 |
 
 ## Projects
 

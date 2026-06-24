@@ -1,7 +1,15 @@
+from pathlib import Path
+
+from younilab_seo.geo_analysis.application import (
+    GeoAnalysisRepository,
+    GeoQueryRunJobRepository,
+)
 from younilab_seo.geo_analysis.infrastructure import (
     GeoMessageDispatchLogRow,
     GeoProjectRow,
     GeoQueryRunJobRow,
+    PostgresGeoAnalysisRepository,
+    build_postgres_session_factory,
 )
 
 
@@ -31,3 +39,30 @@ def test_no_ai_response_or_metric_tables_are_defined() -> None:
     assert "geo_ai_response" not in defined_tables
     assert "geo_response_mention" not in defined_tables
     assert "geo_daily_query_metric" not in defined_tables
+
+
+def test_postgres_repository_implements_job_repository_port() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, GeoQueryRunJobRepository)
+    assert isinstance(repository, GeoAnalysisRepository)
+
+
+def test_local_schema_file_contains_geo_orchestration_tables() -> None:
+    schema_path = (
+        Path(__file__).parents[5]
+        / "deploy"
+        / "local"
+        / "postgresql"
+        / "004_geo_analysis_schema.sql"
+    )
+    schema = schema_path.read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_query_run_job" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema

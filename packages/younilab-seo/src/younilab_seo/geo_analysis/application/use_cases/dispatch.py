@@ -15,7 +15,7 @@ from younilab_seo.geo_analysis.application.interfaces import (
 
 @dataclass(frozen=True)
 class DispatchQueryRunJob:
-    """發布 pending GEO job，並將 broker 細節隔離在 port 後方。"""
+    """派送 pending GEO job，並透過 repository 保存派送 evidence。"""
 
     repository: GeoQueryRunJobRepository
     publisher: MessagePublisher
@@ -54,23 +54,13 @@ class DispatchQueryRunJob:
 
 @dataclass(frozen=True)
 class ReceiveExternalRunCallback:
-    """套用外部 runner 狀態，但不接收 AI result payload。"""
+    """接收外部 runner callback，並將 job 狀態與 callback evidence 一起保存。"""
 
     repository: GeoQueryRunJobRepository
     clock: Clock
 
     async def execute(self, callback: ExternalRunCallback) -> None:
-        now = self.clock.now()
-        job = await self.repository.get(callback.job_id)
-        job.mark_external_status(
-            external_run_id=callback.external_run_id,
-            external_status=callback.status,
-            error_code=callback.error_code,
-            error_message=callback.error_message,
-            now=now,
-        )
-        await self.repository.save(job)
-        await self.repository.record_external_callback(
+        await self.repository.apply_external_callback(
             callback=callback,
-            occurred_at=now,
+            occurred_at=self.clock.now(),
         )

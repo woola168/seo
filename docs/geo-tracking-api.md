@@ -295,6 +295,7 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
       "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       "seoTaskId": "11111111-1111-4111-8111-111111111111",
       "text": "How does SHPI compare with CEJN for pneumatic tubing supplier evaluation?",
+      "keywords": ["pneumatic tubing"],
       "topicId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       "topicName": "Supplier Evaluation",
       "region": "US",
@@ -346,6 +347,7 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 | `id` | string UUID | tracking 產生的 query draft id。正式落 DB 時 analysis 可保留為 source id 或重新給正式 query id。 |
 | `seoTaskId` | string UUID | request 傳入的 SEO task id。 |
 | `text` | string | 產生的 query 文字。 |
+| `keywords` | string[] | 這筆 query 實際使用到的輸入 seed keywords。tracking 會限制只能來自 request 的 `keywords`，避免模型自行發明 keyword。 |
 | `topicId` | string UUID \| null | response topic id。注意這不是 analysis DB 內的正式 topic id，除非 analysis 決定沿用。 |
 | `topicName` | string | topic 名稱。 |
 | `region` | string | 市場區域。 |
@@ -361,6 +363,7 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 
 - 將 response `queries` 視為 `geo_query_drafts`。
 - 使用者接受 draft 後，再建立正式 `geo_queries`。
+- 保存 `keywords` 作為 draft 與後續 Shortlist / Runner 的 seed keyword 關聯依據。
 - 不要直接假設 `topicId` 是 analysis DB 的 topic id。
 - `attributes` 建議完整保存，後續可用於報表解釋、debug prompt、重跑。
 

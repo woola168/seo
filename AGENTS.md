@@ -167,3 +167,10 @@ apps/ingestion-api/AGENTS.md
 packages/knowledge-graph/AGENTS.md
 packages/pipeline-contracts/AGENTS.md
 ```
+
+```
+routes -> application use case -> application port -> infrastructure adapter
+composition.py 組裝 dependencies
+routes 不直接使用 repository / infrastructure / id generator
+application use cases 放 application/use_cases/
+```

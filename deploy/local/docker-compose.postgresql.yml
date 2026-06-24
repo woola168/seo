@@ -23,6 +23,7 @@ services:
     volumes:
       - resource-catalog-postgresql-data:/var/lib/postgresql
       - ./postgresql/001_resource_catalog_schema.sql:/docker-entrypoint-initdb.d/001_resource_catalog_schema.sql:ro
+      - ./postgresql/004_geo_analysis_schema.sql:/docker-entrypoint-initdb.d/004_geo_analysis_schema.sql:ro
 
 volumes:
   access-control-postgresql-data:

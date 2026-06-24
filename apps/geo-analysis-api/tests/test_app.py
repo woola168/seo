@@ -109,6 +109,22 @@ def test_terminal_job_external_callback_returns_problem_details() -> None:
     assert response.json()["detail"] == "cannot apply external status from succeeded"
 
 
+def test_external_callback_updates_job_through_application_repository() -> None:
+    client, store, job_id = _client_with_job()
+    store.jobs[job_id].status = JobStatus.PUBLISHED
+
+    response = client.post(
+        f"/api/geo/jobs/{job_id}/external-callbacks",
+        json={"externalRunId": "runner-1", "status": "running"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running_external"
+    assert response.json()["externalRunId"] == "runner-1"
+    assert len(store.callbacks) == 1
+    assert store.callbacks[0][0].job_id == job_id
+
+
 def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     client, _, query_id = _client_with_query()
     platform_id = str(uuid4())
@@ -149,7 +165,7 @@ def _client_with_job() -> tuple[TestClient, GeoApiStore, UUID]:
 
 def _client_with_query() -> tuple[TestClient, GeoApiStore, str]:
     store = GeoApiStore()
-    client = TestClient(create_app(store=store))
+    client = TestClient(create_app(repository=store))
     project_response = client.post(
         "/api/geo/projects",
         json={
