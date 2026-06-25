@@ -62,6 +62,10 @@ services:
     restart: always
     env_file:
       - ${DEPLOY_ENV_FILE}
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/gcp-key.json
+    volumes:
+      - ${GCP_CREDENTIALS_FILE_HOST}:/app/config/gcp-key.json:ro
     ports:
       - "127.0.0.1:18003:8003"
     networks:
