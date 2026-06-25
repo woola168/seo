@@ -1,4 +1,18 @@
 services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:4-management
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - web_network
+
   admin-portal:
     container_name: admin-portal
     build:
@@ -48,6 +62,8 @@ services:
     restart: always
     env_file:
       - ${DEPLOY_ENV_FILE}
+    depends_on:
+      - rabbitmq
     ports:
       - "127.0.0.1:18002:8002"
     networks:
@@ -70,6 +86,9 @@ services:
       - "127.0.0.1:18003:8003"
     networks:
       - web_network
+
+volumes:
+  rabbitmq-data:
 
 networks:
   web_network:

@@ -30,6 +30,20 @@ class QueryRunJobMessage(ContractModel):
     callback_url: str
 
 
+class GeoQueryRunJobDispatchContext(ContractModel):
+    """Read model used to build a broker message for a persisted query run job."""
+
+    job_id: UUID
+    project_id: UUID
+    query_id: UUID
+    query_text: str
+    platform: str
+    model: str | None = None
+    region: str
+    language: str
+    scheduled_for: datetime
+
+
 class PublishResult(ContractModel):
     """message publisher 回報的派送結果。"""
 

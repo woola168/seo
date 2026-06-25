@@ -17,6 +17,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
+    GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoTopicCommand,
@@ -40,6 +41,8 @@ class GeoApiStore:
     query_platforms: dict[UUID, GeoQueryPlatformRecord] = field(default_factory=dict)
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
+    platform_codes: dict[UUID, str] = field(default_factory=dict)
+    platform_models: dict[UUID, str | None] = field(default_factory=dict)
     dispatches: list[tuple[UUID, PublishResult, QueryRunJobMessage, datetime]] = field(
         default_factory=list
     )
@@ -378,6 +381,40 @@ class GeoApiStore:
 
     async def get_job(self, job_id: UUID) -> GeoQueryRunJob | None:
         return self.jobs.get(job_id)
+
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
+        job = self.jobs.get(job_id)
+        if job is None:
+            return None
+        query = self.queries.get(job.query_id)
+        if query is None:
+            return None
+        query_platform = next(
+            (
+                item
+                for item in self.query_platforms.values()
+                if item.query_id == job.query_id and item.platform_id == job.platform_id
+            ),
+            None,
+        )
+        return GeoQueryRunJobDispatchContext(
+            job_id=job.id,
+            project_id=job.project_id,
+            query_id=job.query_id,
+            query_text=query.query_text,
+            platform=self.platform_codes.get(job.platform_id, str(job.platform_id)),
+            model=(
+                query_platform.model
+                if query_platform is not None and query_platform.model
+                else self.platform_models.get(job.platform_id)
+            ),
+            region=query.region,
+            language=query.language,
+            scheduled_for=job.scheduled_for,
+        )
 
     async def save(self, job: GeoQueryRunJob) -> None:
         self.jobs[job.id] = job

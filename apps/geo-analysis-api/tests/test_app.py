@@ -1,10 +1,12 @@
 ﻿from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
 from younilab_geo_analysis_api.presentation.http import create_app
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
+from younilab_seo.geo_analysis.application import PublishResult, QueryRunJobMessage
 from younilab_seo.geo_analysis.domain import JobStatus
 
 
@@ -125,6 +127,59 @@ def test_external_callback_updates_job_through_application_repository() -> None:
     assert store.callbacks[0][0].job_id == job_id
 
 
+def test_dispatch_without_publisher_returns_not_implemented() -> None:
+    client, _, job_id = _client_with_job()
+
+    response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
+
+    assert response.status_code == 501
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "message publisher adapter is not configured"
+
+
+def test_dispatch_publishes_job_message_through_application_use_case() -> None:
+    publisher = FakePublisher()
+    client, store, query_id = _client_with_query(
+        publisher=publisher,
+        callback_base_url="http://geo-analysis-api:8002/",
+    )
+    platform_id = uuid4()
+    store.platform_codes[platform_id] = "gemini"
+    store.platform_models[platform_id] = "gemini-2.5-flash"
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={"platformId": str(platform_id)},
+    )
+    assert job_response.status_code == 201
+    job_id = job_response.json()["id"]
+
+    response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "published"
+    assert response.json()["dispatchBackend"] == "fake"
+    assert len(publisher.messages) == 1
+    message = publisher.messages[0]
+    assert message.platform == "gemini"
+    assert message.model == "gemini-2.5-flash"
+    assert message.query_id == UUID(query_id)
+    assert (
+        message.callback_url
+        == f"http://geo-analysis-api:8002/api/geo/jobs/{job_id}/external-callbacks"
+    )
+
+
+def test_app_lifespan_closes_injected_publisher() -> None:
+    publisher = FakePublisher()
+    store = GeoApiStore()
+
+    with TestClient(create_app(repository=store, publisher=publisher)) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert publisher.closed is True
+
+
 def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     client, _, query_id = _client_with_query()
     platform_id = str(uuid4())
@@ -163,9 +218,19 @@ def _client_with_job() -> tuple[TestClient, GeoApiStore, UUID]:
     return client, store, UUID(job_response.json()["id"])
 
 
-def _client_with_query() -> tuple[TestClient, GeoApiStore, str]:
+def _client_with_query(
+    *,
+    publisher=None,
+    callback_base_url: str | None = None,
+) -> tuple[TestClient, GeoApiStore, str]:
     store = GeoApiStore()
-    client = TestClient(create_app(repository=store))
+    client = TestClient(
+        create_app(
+            repository=store,
+            publisher=publisher,
+            callback_base_url=callback_base_url,
+        )
+    )
     project_response = client.post(
         "/api/geo/projects",
         json={
@@ -192,3 +257,20 @@ def _client_with_query() -> tuple[TestClient, GeoApiStore, str]:
 def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
 
+
+@dataclass
+class FakePublisher:
+    messages: list[QueryRunJobMessage] = field(default_factory=list)
+    closed: bool = False
+
+    async def publish(self, message: QueryRunJobMessage) -> PublishResult:
+        self.messages.append(message)
+        return PublishResult(
+            backend="fake",
+            destination=f"geo.query-runs.{message.platform}",
+            message_id="message-1",
+            status="published",
+        )
+
+    async def close(self) -> None:
+        self.closed = True

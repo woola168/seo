@@ -22,6 +22,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database impo
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository import (
     PostgresGeoAnalysisRepository,
 )
+from younilab_seo.geo_analysis.infrastructure.messaging import RabbitMqMessagePublisher
 
 __all__ = [
     "GeoAiPlatformRow",
@@ -40,6 +41,7 @@ __all__ = [
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
     "PostgresGeoAnalysisRepository",
+    "RabbitMqMessagePublisher",
     "build_postgres_repository",
     "build_postgres_session_factory",
 ]

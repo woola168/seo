@@ -21,6 +21,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
+    GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoTopicCommand,
@@ -30,6 +31,7 @@ from younilab_seo.geo_analysis.application.contracts import (
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
+    GeoAiPlatformRow,
     GeoEntityAliasRow,
     GeoEntityRow,
     GeoExternalRunReferenceRow,
@@ -509,6 +511,40 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await session.get(GeoQueryRunJobRow, job_id)
             return _job_from_row(row) if row is not None else None
+
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryRunJobRow, job_id)
+            if row is None:
+                return None
+            query = await session.get(GeoQueryRow, row.query_id)
+            platform = await session.get(GeoAiPlatformRow, row.platform_id)
+            if query is None or platform is None:
+                return None
+            query_platform = await session.scalar(
+                select(GeoQueryPlatformRow).where(
+                    GeoQueryPlatformRow.query_id == row.query_id,
+                    GeoQueryPlatformRow.platform_id == row.platform_id,
+                )
+            )
+            return GeoQueryRunJobDispatchContext(
+                job_id=row.id,
+                project_id=row.project_id,
+                query_id=row.query_id,
+                query_text=query.query_text,
+                platform=platform.code,
+                model=(
+                    query_platform.model
+                    if query_platform is not None and query_platform.model
+                    else platform.default_model
+                ),
+                region=query.region,
+                language=query.language,
+                scheduled_for=row.scheduled_for,
+            )
 
     async def save(self, job: GeoQueryRunJob) -> None:
         async with self._session_scope() as session:

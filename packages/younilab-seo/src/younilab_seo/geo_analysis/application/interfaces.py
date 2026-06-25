@@ -17,6 +17,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
+    GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoTopicCommand,
@@ -74,6 +75,12 @@ class GeoQueryRunJobRepository(Protocol):
         callback: ExternalRunCallback,
         occurred_at: datetime,
     ) -> None:
+        raise NotImplementedError
+
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
         raise NotImplementedError
 
     async def apply_external_callback(

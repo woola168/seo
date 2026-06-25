@@ -1,47 +1,69 @@
 # 部署說明
 
-## 遠端部署
+## 部署環境
 
-GitHub Actions 會依分支選擇環境檔：
+GitHub Actions 依分支使用不同環境檔：
 
 - `develop` 使用 `deploy/.env.develop`
 - `main` 使用 `deploy/.env.prod`
 
-部署流程會 build 並啟動 `deploy/docker-compose.yml` 中的服務，接著檢查各服務
-`/health`。
+部署流程會 build 並重啟 `deploy/docker-compose.yml` 中的服務，之後透過各服務的 `/health` 做基本檢查。
 
-## 服務與 Port
+## 對外 Port
+
+所有服務目前都只綁定在主機的 `127.0.0.1`，外部連線請透過反向代理或 SSH tunnel。
 
 - Admin Portal: `http://127.0.0.1:18080`
 - Access Control API: `http://127.0.0.1:18000`
 - Resource Catalog API: `http://127.0.0.1:18001`
 - GEO Analysis API: `http://127.0.0.1:18002`
 - GEO Tracking API: `http://127.0.0.1:18003`
+- RabbitMQ AMQP: `127.0.0.1:5672`
+- RabbitMQ Management UI: `http://127.0.0.1:15672`
 
-## GEO Analysis 資料庫
+遠端查看 RabbitMQ dashboard 可使用：
 
-`GEO_ANALYSIS_DATABASE_URL` 目前指向 `resource_catalog` database。遠端 DB schema
-與 seed 不會由 CI/CD 自動執行，請手動在目標 database 建立 GEO Analysis schema，
-並手動寫入 `geo_ai_platform` 的 Gemini、ChatGPT 等平台資料。
+```powershell
+ssh -L 15672:127.0.0.1:15672 user@server
+```
 
-## GEO Tracking 憑證
+登入帳號密碼由環境檔的 `RABBITMQ_DEFAULT_USER` 與 `RABBITMQ_DEFAULT_PASS` 決定。
 
-`geo-tracking-api` 透過掛載檔案讀取 Google Vertex AI credential，不把 service
-account JSON 放進 source control。
+## GEO Analysis
 
-在部署環境檔設定 `GCP_CREDENTIALS_FILE_HOST` 為 VM 上的 Google service account
-JSON 路徑。Docker Compose 會將該檔案掛載到容器內
-`/app/config/gcp-key.json`，並讓 `GOOGLE_APPLICATION_CREDENTIALS` 指向該容器內路徑。
+`GEO_ANALYSIS_DATABASE_URL` 指向 GEO Analysis 使用的 PostgreSQL database。遠端 DB schema 與 seed 目前不由 CI/CD 自動執行，仍需手動建立 schema，並手動在 `geo_ai_platform` 寫入 Gemini、ChatGPT 等平台資料。
 
-範例：
+RabbitMQ publisher 由以下設定啟用：
+
+```env
+GEO_ANALYSIS_PUBLISHER_BACKEND=rabbitmq
+GEO_ANALYSIS_RABBITMQ_URL=amqp://geo_worker:CHANGE_ME@rabbitmq:5672/
+GEO_ANALYSIS_RABBITMQ_EXCHANGE=geo.query-runs
+GEO_ANALYSIS_RABBITMQ_QUEUE_PREFIX=geo.query-runs
+GEO_ANALYSIS_RABBITMQ_ROUTING_KEY_PREFIX=geo.query-runs
+GEO_ANALYSIS_CALLBACK_BASE_URL=http://geo-analysis-api:8002
+```
+
+Queue 依 provider 拆分，例如：
+
+- `geo.query-runs.gemini`
+- `geo.query-runs.openai`
+- `geo.query-runs.perplexity`
+
+第三批只包含 publisher 與 dispatch evidence，不包含 worker、AI result 儲存或 `resultLocation` 內容保存。
+
+## GEO Tracking
+
+`geo-tracking-api` 會讀取 Google Vertex AI credential。Service account JSON 不可放進 source control。
+
+環境檔需設定 VM 上的 credential 檔案路徑，Docker Compose 會掛載到容器內的 `/app/config/gcp-key.json`：
 
 ```env
 GCP_CREDENTIALS_FILE_HOST=/root/kmind/deploy/credentials/dev-gcp-key.json
 GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
 ```
 
-Google AIO 使用 SerpApi；若要執行 live `google_aio` 跑題，仍需在部署環境檔設定
-`SERPAPI_API_KEY`。
+Google AIO 使用 SerpApi，正式環境需設定 `SERPAPI_API_KEY`。
 
 ## 本機 PostgreSQL
 
@@ -54,5 +76,4 @@ docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 - Access Control PostgreSQL: `localhost:5432/access_control`
 - Resource Catalog PostgreSQL: `localhost:5433/resource_catalog`
 
-若已建立過 volume，新增或修改 `docker-entrypoint-initdb.d` SQL 不會自動重跑；需要重建
-本機 volume 或手動套用 SQL。
+初始化 SQL 只會在 volume 第一次建立時執行；若已存在 volume，更新 SQL 後需要手動套用或重建對應 volume。

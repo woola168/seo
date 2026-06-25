@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from younilab_seo.geo_analysis.application import (
     DispatchQueryRunJob,
     ExternalRunCallback,
+    GeoQueryRunJobDispatchContext,
     PublishResult,
     QueryRunJobMessage,
     ReceiveExternalRunCallback,
@@ -32,8 +33,18 @@ class FakePublisher:
 
 
 @dataclass
+class FailingPublisher:
+    messages: list[QueryRunJobMessage] = field(default_factory=list)
+
+    async def publish(self, message: QueryRunJobMessage) -> PublishResult:
+        self.messages.append(message)
+        raise RuntimeError("publisher crashed")
+
+
+@dataclass
 class FakeRepository:
     job: GeoQueryRunJob
+    context: GeoQueryRunJobDispatchContext
     dispatches: list[PublishResult] = field(default_factory=list)
     callbacks: list[ExternalRunCallback] = field(default_factory=list)
 
@@ -43,6 +54,13 @@ class FakeRepository:
 
     async def save(self, job: GeoQueryRunJob) -> None:
         self.job = job
+
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
+        assert job_id == self.job.id
+        return self.context
 
     async def record_dispatch(
         self,
@@ -113,10 +131,24 @@ def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
     )
 
 
+def make_context(job: GeoQueryRunJob) -> GeoQueryRunJobDispatchContext:
+    return GeoQueryRunJobDispatchContext(
+        job_id=job.id,
+        project_id=job.project_id,
+        query_id=job.query_id,
+        query_text="Which suppliers are recommended?",
+        platform="openai",
+        model="gpt-4.1-mini",
+        region="US",
+        language="en-US",
+        scheduled_for=job.scheduled_for,
+    )
+
+
 def test_dispatch_records_successful_publish() -> None:
     async def run() -> None:
         job = make_job()
-        repository = FakeRepository(job)
+        repository = FakeRepository(job, make_context(job))
         publisher = FakePublisher(
             PublishResult(
                 backend="fake",
@@ -128,13 +160,19 @@ def test_dispatch_records_successful_publish() -> None:
 
         await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
             job.id,
-            make_message(job),
+            "https://example.test",
         )
 
         assert repository.job.status is JobStatus.PUBLISHED
         assert repository.job.dispatch_message_id == "message-1"
         assert len(repository.dispatches) == 1
         assert len(publisher.messages) == 1
+        assert publisher.messages[0].platform == "openai"
+        assert publisher.messages[0].model == "gpt-4.1-mini"
+        assert (
+            publisher.messages[0].callback_url
+            == f"https://example.test/api/geo/jobs/{job.id}/external-callbacks"
+        )
 
     asyncio.run(run())
 
@@ -142,7 +180,7 @@ def test_dispatch_records_successful_publish() -> None:
 def test_dispatch_failure_delays_job() -> None:
     async def run() -> None:
         job = make_job()
-        repository = FakeRepository(job)
+        repository = FakeRepository(job, make_context(job))
         publisher = FakePublisher(
             PublishResult(
                 backend="fake",
@@ -154,7 +192,7 @@ def test_dispatch_failure_delays_job() -> None:
 
         await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
             job.id,
-            make_message(job),
+            "https://example.test",
         )
 
         assert repository.job.status is JobStatus.DELAYED
@@ -164,20 +202,45 @@ def test_dispatch_failure_delays_job() -> None:
     asyncio.run(run())
 
 
+def test_dispatch_exception_delays_job_and_records_dispatch() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job, make_context(job))
+        publisher = FailingPublisher()
+
+        await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
+            job.id,
+            "https://example.test",
+        )
+
+        assert repository.job.status is JobStatus.DELAYED
+        assert repository.job.next_retry_at is not None
+        assert repository.job.last_error_message == "publisher crashed"
+        assert len(repository.dispatches) == 1
+        assert repository.dispatches[0].backend == "unknown"
+        assert repository.dispatches[0].destination == ""
+        assert repository.dispatches[0].status == "failed"
+
+    asyncio.run(run())
+
+
 def test_external_callback_updates_reference_state() -> None:
     async def run() -> None:
         job = make_job()
         job.status = JobStatus.PUBLISHED
-        repository = FakeRepository(job)
+        repository = FakeRepository(job, make_context(job))
         callback = ExternalRunCallback(
             job_id=job.id,
             external_run_id="runner-1",
             status="running",
         )
 
-        await ReceiveExternalRunCallback(repository, FakeClock()).execute(callback)
+        result = await ReceiveExternalRunCallback(repository, FakeClock()).execute(
+            callback,
+        )
 
         assert repository.job.status is JobStatus.RUNNING_EXTERNAL
+        assert result is repository.job
         assert repository.job.external_run_id == "runner-1"
         assert repository.callbacks == [callback]
 

@@ -44,15 +44,16 @@ Queue 抽象：
 ```text
 Application use case
 → MessagePublisher port
-→ future infrastructure adapter
+→ RabbitMqMessagePublisher infrastructure adapter
 ```
 
-Phase 1 先保留 publisher port，不實作任何 broker adapter。待決定部署環境後，再補：
+第三批已加入 RabbitMQ publisher adapter，dispatch API 會依 provider 發布到不同 queue。Worker、result storage 與 result parser 仍是後續批次。
 
-- `GcpPubSubMessagePublisher`
-- `RabbitMqMessagePublisher`
-- `NatsMessagePublisher`
-- `DatabaseMessagePublisher`
+目前 queue 命名：
+
+- `geo.query-runs.gemini`
+- `geo.query-runs.openai`
+- `geo.query-runs.{provider}`
 
 ## 主要資料流
 
@@ -423,7 +424,7 @@ ON geo_query_run_job (query_id, platform_id);
 
 ## Message Publisher Port
 
-Application 層只定義抽象介面，不實作實際 queue 工具。
+Application 層只定義抽象介面；RabbitMQ 實作放在 infrastructure adapter。
 
 ```python
 class MessagePublisher(Protocol):
@@ -433,14 +434,13 @@ class MessagePublisher(Protocol):
         ...
 ```
 
-未來 infrastructure adapter 可依部署決策補上：
+目前已實作：
 
 ```text
-GcpPubSubMessagePublisher
 RabbitMqMessagePublisher
-NatsMessagePublisher
-DatabaseMessagePublisher
 ```
+
+其他 broker adapter 如 GCP Pub/Sub、NATS 或 database queue 可在未來依部署決策新增。
 
 ## Message Payload
 
