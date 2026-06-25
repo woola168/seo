@@ -9,6 +9,7 @@
   GeoQueryGenerationResult,
   GeoMarketType,
   GeoProvider,
+  GeoQueryProvider,
   GeoQueryResearchResult,
   GeoRegion,
   GeoRunRequestResult,
@@ -205,7 +206,7 @@ export const api = {
   geoDummyProject: () =>
     request<GeoDummyProject>("/api/v1/geo-tracking/dummy-project"),
   researchGeoQueries: (input: {
-    provider: GeoProvider;
+    provider: GeoQueryProvider;
     brandName: string;
     competitorBrands: string[];
     keywords: string[];
@@ -220,7 +221,7 @@ export const api = {
     }),
   generateGeoQueries: (input: {
     seoTaskId: string;
-    provider: GeoProvider;
+    provider: GeoQueryProvider;
     brandName: string;
     competitorBrands: string[];
     keywords: string[];
@@ -264,7 +265,6 @@ export const api = {
           attributes: query.attributes,
           metadata: query.metadata,
         })),
-      }),
     }),
+  }),
 };
-

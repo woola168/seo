@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from younilab_geo_tracking_domain import ProviderCode
+from younilab_geo_tracking_domain import ProviderCode, RegionCode
 
 
 def _provider_from_env() -> ProviderCode:
@@ -12,6 +12,30 @@ def _provider_from_env() -> ProviderCode:
 
 def _float_from_env(name: str, default: str) -> float:
     return float(os.getenv(name, default))
+
+
+@dataclass(frozen=True)
+class SerpApiLocaleProfile:
+    default_language: str
+    hl: str
+    gl: str
+    location: str
+
+
+SERPAPI_LOCALE_PROFILES: dict[RegionCode, SerpApiLocaleProfile] = {
+    RegionCode.TAIWAN: SerpApiLocaleProfile(
+        default_language="zh-TW",
+        hl="zh-tw",
+        gl="tw",
+        location="Taiwan",
+    ),
+    RegionCode.UNITED_STATES: SerpApiLocaleProfile(
+        default_language="en-US",
+        hl="en",
+        gl="us",
+        location="United States",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -37,6 +61,12 @@ class GeoTrackingSettings:
     )
     gemini_thinking_level: str = field(
         default_factory=lambda: os.getenv("GEMINI_THINKING_LEVEL", "medium")
+    )
+    serpapi_api_key: str = field(
+        default_factory=lambda: os.getenv("SERPAPI_API_KEY", "")
+    )
+    serpapi_timeout_seconds: float = field(
+        default_factory=lambda: _float_from_env("SERPAPI_TIMEOUT_SECONDS", "30")
     )
 
     def resolve_vertex_project(self) -> str:

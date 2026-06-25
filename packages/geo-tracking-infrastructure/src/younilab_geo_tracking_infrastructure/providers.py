@@ -1,8 +1,9 @@
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
+import aiohttp
 from pydantic import BaseModel, Field
 from younilab_geo_tracking_application import (
     AnswerProvider,
@@ -10,6 +11,7 @@ from younilab_geo_tracking_application import (
     AnswerResponse,
     DummyQueryGenerationProvider,
     DummyQueryResearchProvider,
+    ProviderRequestError,
     QueryDraft,
     QueryGenerationCommand,
     QueryGenerationProvider,
@@ -22,7 +24,11 @@ from younilab_geo_tracking_application import (
 from younilab_geo_tracking_application.prompt_templates import default_language
 from younilab_geo_tracking_domain import MarketType, ProviderCode, RegionCode
 
-from younilab_geo_tracking_infrastructure.config import GeoTrackingSettings
+from younilab_geo_tracking_infrastructure.config import (
+    SERPAPI_LOCALE_PROFILES,
+    GeoTrackingSettings,
+    SerpApiLocaleProfile,
+)
 
 
 class _GeminiIntent(BaseModel):
@@ -79,6 +85,192 @@ class DummyAnswerProvider:
             ),
             reference_urls=[],
         )
+
+
+class SerpApiGoogleAioAnswerProvider:
+    def __init__(
+        self,
+        settings: GeoTrackingSettings,
+        fetch_json: Callable[[Mapping[str, str]], Awaitable[dict[str, Any]]]
+        | None = None,
+    ) -> None:
+        self._settings = settings
+        self._fetch_json = fetch_json
+        self._session: aiohttp.ClientSession | None = None
+
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+        if not self._settings.serpapi_api_key:
+            raise ProviderRequestError("serpapi_api_key_missing")
+
+        profile = _serpapi_locale_profile(request.region)
+        language = request.language or profile.default_language
+        search_payload = await self._request_serpapi(
+            {
+                "engine": "google",
+                "q": request.query_text,
+                "hl": _serpapi_hl(language, profile),
+                "gl": profile.gl,
+                "location": profile.location,
+            }
+        )
+        ai_overview = await self._resolve_ai_overview(search_payload)
+        raw_response = _ai_overview_text(ai_overview)
+        references = _ai_overview_references(ai_overview)
+        if not raw_response:
+            raise ProviderRequestError("no_google_aio_result")
+
+        return AnswerResponse(
+            provider=ProviderCode.GOOGLE_AIO,
+            surface="Google AI Overview",
+            model="serpapi-google-ai-overview",
+            raw_response=raw_response,
+            reference_urls=[reference.url for reference in references],
+            references=references,
+        )
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
+    async def _resolve_ai_overview(
+        self,
+        search_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        ai_overview = _payload_ai_overview(search_payload)
+        if _has_ai_overview_content(ai_overview):
+            return ai_overview
+
+        page_token = ai_overview.get("page_token")
+        if isinstance(page_token, str) and page_token:
+            ai_overview_payload = await self._request_serpapi(
+                {
+                    "engine": "google_ai_overview",
+                    "page_token": page_token,
+                }
+            )
+            ai_overview = _payload_ai_overview(ai_overview_payload)
+            if _has_ai_overview_content(ai_overview):
+                return ai_overview
+
+        raise ProviderRequestError("no_google_aio_result")
+
+    async def _request_serpapi(
+        self,
+        params: Mapping[str, str],
+    ) -> dict[str, Any]:
+        request_params = {**params, "api_key": self._settings.serpapi_api_key}
+        if self._fetch_json is not None:
+            return await self._fetch_json(request_params)
+
+        session = self._client_session()
+        try:
+            async with session.get(
+                "https://serpapi.com/search.json",
+                params=request_params,
+            ) as response:
+                payload = await response.json(content_type=None)
+        except aiohttp.ClientError as exc:
+            raise ProviderRequestError("serpapi_request_failed") from exc
+
+        if response.status >= 400 or not isinstance(payload, dict):
+            raise ProviderRequestError("serpapi_request_failed")
+        if payload.get("error"):
+            raise ProviderRequestError("serpapi_request_failed")
+        return payload
+
+    def _client_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            timeout = aiohttp.ClientTimeout(
+                total=self._settings.serpapi_timeout_seconds
+            )
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        return self._session
+
+
+def _serpapi_locale_profile(region: RegionCode) -> SerpApiLocaleProfile:
+    try:
+        return SERPAPI_LOCALE_PROFILES[region]
+    except KeyError as exc:
+        raise ProviderRequestError("serpapi_locale_not_supported") from exc
+
+
+def _serpapi_hl(language: str, profile: SerpApiLocaleProfile) -> str:
+    normalized = language.strip().lower()
+    if normalized in {"zh-tw", "zh_tw"}:
+        return "zh-tw"
+    if normalized.startswith("en"):
+        return "en"
+    if normalized.startswith("ja"):
+        return "ja"
+    return profile.hl
+
+
+def _payload_ai_overview(payload: dict[str, Any]) -> dict[str, Any]:
+    ai_overview = payload.get("ai_overview")
+    return ai_overview if isinstance(ai_overview, dict) else {}
+
+
+def _has_ai_overview_content(ai_overview: dict[str, Any]) -> bool:
+    return bool(ai_overview.get("text_blocks") or ai_overview.get("references"))
+
+
+def _ai_overview_text(ai_overview: dict[str, Any]) -> str:
+    blocks = ai_overview.get("text_blocks")
+    if not isinstance(blocks, list):
+        return ""
+    lines: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        snippet = _clean_text(block.get("snippet"))
+        block_type = block.get("type")
+        if snippet:
+            lines.append(snippet)
+        if block_type == "list":
+            lines.extend(_ai_overview_list_lines(block.get("list")))
+    return "\n\n".join(lines).strip()
+
+
+def _ai_overview_list_lines(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        title = _clean_text(item.get("title"))
+        snippet = _clean_text(item.get("snippet"))
+        if title and snippet:
+            lines.append(f"- {title} {snippet}")
+        elif title:
+            lines.append(f"- {title}")
+        elif snippet:
+            lines.append(f"- {snippet}")
+    return lines
+
+
+def _clean_text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _ai_overview_references(ai_overview: dict[str, Any]) -> list[Reference]:
+    references = ai_overview.get("references")
+    if not isinstance(references, list):
+        return []
+    references_by_url: dict[str, Reference] = {}
+    for item in references:
+        if not isinstance(item, dict):
+            continue
+        link = _clean_text(item.get("link"))
+        if not link:
+            continue
+        title = _clean_text(item.get("title"))
+        references_by_url.setdefault(
+            link,
+            Reference(url=link, title=title or None),
+        )
+    return list(references_by_url.values())
 
 
 class GeminiVertexAnswerProvider:
@@ -246,6 +438,8 @@ class GeminiQueryResearchProvider:
 def build_answer_provider(settings: GeoTrackingSettings) -> AnswerProvider:
     if settings.provider == ProviderCode.GEMINI:
         return GeminiVertexAnswerProvider(settings)
+    if settings.provider == ProviderCode.GOOGLE_AIO:
+        return SerpApiGoogleAioAnswerProvider(settings)
     return DummyAnswerProvider()
 
 
@@ -255,6 +449,7 @@ def build_answer_providers(
     return {
         ProviderCode.DUMMY: DummyAnswerProvider(),
         ProviderCode.GEMINI: GeminiVertexAnswerProvider(settings),
+        ProviderCode.GOOGLE_AIO: SerpApiGoogleAioAnswerProvider(settings),
     }
 
 

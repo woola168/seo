@@ -25,6 +25,13 @@ class GeoTrackingApiDependencies:
     query_generation: QueryGenerationService
     query_research: QueryResearchService
     run_engine: RunEngineService
+    closeables: tuple[object, ...] = ()
+
+    async def close(self) -> None:
+        for closeable in self.closeables:
+            close = getattr(closeable, "close", None)
+            if close is not None:
+                await close()
 
 
 def build_dependencies(
@@ -71,5 +78,15 @@ def build_dependencies(
             resolved_providers,
             id_generator,
             SystemClock(),
+        ),
+        closeables=tuple(
+            {
+                id(provider): provider
+                for provider in (
+                    list(resolved_providers.values())
+                    + list(resolved_query_research_providers.values())
+                    + list(resolved_query_generation_providers.values())
+                )
+            }.values()
         ),
     )

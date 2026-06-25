@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from younilab_geo_tracking_domain import (
     MarketType,
     ProviderCode,
@@ -104,6 +104,13 @@ class QueryGenerationCommand(ContractModel):
     research_context: str | None = Field(default=None, max_length=5000)
     max_queries: int = Field(default=12, ge=1, le=40)
 
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, provider: ProviderCode) -> ProviderCode:
+        if provider == ProviderCode.GOOGLE_AIO:
+            raise ValueError("google_aio is only supported by run requests")
+        return provider
+
 
 class QueryGenerationResult(ContractModel):
     topics: list[TopicSummary]
@@ -119,6 +126,13 @@ class QueryResearchCommand(ContractModel):
     language: str | None = Field(default=None, max_length=20)
     market_type: MarketType
     audience: QueryAudience | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, provider: ProviderCode) -> ProviderCode:
+        if provider == ProviderCode.GOOGLE_AIO:
+            raise ValueError("google_aio is only supported by run requests")
+        return provider
 
 
 class QueryResearchResult(ContractModel):

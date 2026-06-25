@@ -3,6 +3,7 @@ from younilab_geo_tracking_api import create_app
 from younilab_geo_tracking_application import (
     AnswerRequest,
     AnswerResponse,
+    ProviderRequestError,
     QueryDraft,
     QueryGenerationCommand,
     QueryResearchCommand,
@@ -30,6 +31,36 @@ class GeminiAnswerStubProvider:
                 )
             ],
         )
+
+
+class GoogleAioAnswerStubProvider:
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+        return AnswerResponse(
+            provider=ProviderCode.GOOGLE_AIO,
+            surface="Google AI Overview",
+            model="serpapi-google-ai-overview",
+            raw_response=f"Google AIO stub response for: {request.query_text}",
+            reference_urls=["https://example.com/aio-reference"],
+            references=[
+                Reference(
+                    url="https://example.com/aio-reference",
+                    title="AIO reference title",
+                )
+            ],
+        )
+
+
+class GoogleAioNoResultStubProvider:
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+        raise ProviderRequestError("no_google_aio_result")
+
+
+class CloseableAnswerStubProvider(GeminiAnswerStubProvider):
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 class GeminiQueryGenerationStubProvider:
@@ -194,6 +225,17 @@ def test_query_generation_request_can_use_gemini_structured_provider() -> None:
     assert "searchedKeywords" not in query["attributes"]
 
 
+def test_query_generation_request_rejects_google_aio_provider() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-generation",
+        json=_generation_payload(provider="google_aio"),
+    )
+
+    assert response.status_code == 422
+
+
 def test_query_research_request_returns_search_context() -> None:
     client = TestClient(
         create_app(
@@ -227,6 +269,25 @@ def test_query_research_request_returns_search_context() -> None:
     assert body["researchContext"] == "Research context for 山華塑膠"
     assert body["searchedKeywords"] == ["山華塑膠 氣動管", "台灣 氣動管 供應商"]
     assert body["sourceUrls"] == ["https://example.com/source"]
+
+
+def test_query_research_request_rejects_google_aio_provider() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-research",
+        json={
+            "provider": "google_aio",
+            "brandName": "山華塑膠",
+            "competitorBrands": ["主要競品"],
+            "keywords": ["氣動管"],
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2b_procurement",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_run_request_returns_dummy_result_for_generated_query() -> None:
@@ -328,6 +389,112 @@ def test_run_request_uses_provider_from_request_body() -> None:
             "title": "Example reference title",
         }
     ]
+
+
+def test_run_request_can_use_google_aio_provider() -> None:
+    client = TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: DummyAnswerProvider(),
+                ProviderCode.GEMINI: GeminiAnswerStubProvider(),
+                ProviderCode.GOOGLE_AIO: GoogleAioAnswerStubProvider(),
+            }
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/run-requests",
+        json={
+            "seoTaskId": "33333333-3333-4333-8333-333333333333",
+            "provider": "google_aio",
+            "timing": "run_now",
+            "queries": [
+                {
+                    "id": "44444444-4444-4444-8444-444444444444",
+                    "text": "黃連膏 推薦",
+                    "topicName": "產品型",
+                    "region": "TW",
+                    "language": "zh-TW",
+                    "marketType": "b2c",
+                    "isBranded": False,
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["provider"] == "google_aio"
+    assert result["surface"] == "Google AI Overview"
+    assert result["model"] == "serpapi-google-ai-overview"
+    assert result["status"] == "completed"
+    assert result["referenceUrls"] == ["https://example.com/aio-reference"]
+    assert result["references"] == [
+        {
+            "url": "https://example.com/aio-reference",
+            "title": "AIO reference title",
+        }
+    ]
+
+
+def test_run_request_preserves_google_aio_no_result_error_code() -> None:
+    client = TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: DummyAnswerProvider(),
+                ProviderCode.GEMINI: GeminiAnswerStubProvider(),
+                ProviderCode.GOOGLE_AIO: GoogleAioNoResultStubProvider(),
+            }
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/run-requests",
+        json={
+            "seoTaskId": "33333333-3333-4333-8333-333333333333",
+            "provider": "google_aio",
+            "timing": "run_now",
+            "queries": [
+                {
+                    "id": "44444444-4444-4444-8444-444444444444",
+                    "text": "沒有 AIO 的 query",
+                    "topicName": "產品型",
+                    "region": "TW",
+                    "language": "zh-TW",
+                    "marketType": "b2c",
+                    "isBranded": False,
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["provider"] == "google_aio"
+    assert result["status"] == "failed"
+    assert result["error"] == "no_google_aio_result"
+    assert result["referenceUrls"] == []
+    assert result["references"] == []
+
+
+def test_app_lifespan_closes_answer_providers() -> None:
+    closeable_provider = CloseableAnswerStubProvider()
+
+    with TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: closeable_provider,
+                ProviderCode.GEMINI: GeminiAnswerStubProvider(),
+                ProviderCode.GOOGLE_AIO: GoogleAioAnswerStubProvider(),
+            }
+        )
+    ) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert closeable_provider.closed is True
 
 
 def test_dummy_project_request_provides_frontend_seed_data() -> None:

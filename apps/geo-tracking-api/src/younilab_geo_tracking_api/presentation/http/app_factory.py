@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from younilab_geo_tracking_application import (
@@ -33,10 +34,23 @@ def create_app(
         query_generation_providers=query_generation_providers,
         query_research_providers=query_research_providers,
     )
-    app = FastAPI(title="Younilab SEO GEO Tracking API", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            await app.state.geo_tracking_dependencies.close()
+
+    app = FastAPI(
+        title="Younilab SEO GEO Tracking API",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
     app.state.query_generation = dependencies.query_generation
     app.state.query_research = dependencies.query_research
     app.state.run_engine = dependencies.run_engine
+    app.state.geo_tracking_dependencies = dependencies
 
     @app.get("/health")
     async def health() -> dict[str, str]:

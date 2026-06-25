@@ -6,6 +6,7 @@ import type {
   GeoGeneratedQuery,
   GeoMarketType,
   GeoProvider,
+  GeoQueryProvider,
   GeoRegion,
   GeoRunResult,
   GeoTopicInput,
@@ -13,24 +14,24 @@ import type {
 
 const intentCategoryOptions = [
   {
+    value: "navigational",
+    label: "導航",
+    description: "用尋找官方網站、品牌頁面、地址、登入或售後資訊的角度生成 query。",
+  },
+  {
     value: "informational",
-    label: "資訊型",
+    label: "資訊",
     description: "用查詢知識、教學、定義、常見問題的角度生成 query。",
   },
   {
     value: "commercial_investigation",
-    label: "商業調查型",
+    label: "商業",
     description: "用比較選項、評估供應商、查看評價與採購風險的角度生成 query。",
   },
   {
     value: "transactional",
-    label: "交易型",
+    label: "交易",
     description: "用準備購買、詢價、預約、取得優惠或採取行動的角度生成 query。",
-  },
-  {
-    value: "navigational",
-    label: "導航型",
-    description: "用尋找官方網站、品牌頁面、地址、登入或售後資訊的角度生成 query。",
   },
 ];
 
@@ -67,7 +68,7 @@ const form = reactive({
 });
 
 const provider = ref<GeoProvider>("dummy");
-const queryGenerationProvider = ref<GeoProvider>("dummy");
+const queryGenerationProvider = ref<GeoQueryProvider>("dummy");
 const loading = ref(false);
 const error = ref("");
 const queries = ref<GeoGeneratedQuery[]>([]);
@@ -607,6 +608,7 @@ async function run(action: () => Promise<void>): Promise<void> {
                 <select v-model="provider" aria-label="Run Provider">
                   <option value="dummy">Dummy</option>
                   <option value="gemini">Gemini Vertex AI</option>
+                  <option value="google_aio">Google AIO (SerpApi)</option>
                 </select>
               </label>
               <button

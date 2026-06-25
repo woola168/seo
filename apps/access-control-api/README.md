@@ -271,4 +271,3 @@ Request / response shape：
 | Method | Path | Auth | Response |
 | --- | --- | --- | --- |
 | `GET` | `/health` | 不需 Bearer | `{ "status": "ok" }` |
-

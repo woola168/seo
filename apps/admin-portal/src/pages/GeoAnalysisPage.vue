@@ -448,7 +448,7 @@ function useFirstQuery(): void {
 </script>
 
 <template>
-  <section class="page geo-page">
+  <section class="page geo-page geo-analysis-page">
     <header class="page-header">
       <div>
         <p class="page-kicker">Mock Preview</p>
