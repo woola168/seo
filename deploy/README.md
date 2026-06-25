@@ -24,6 +24,25 @@ GitHub Actions 會依分支選擇環境檔：
 與 seed 不會由 CI/CD 自動執行，請手動在目標 database 建立 GEO Analysis schema，
 並手動寫入 `geo_ai_platform` 的 Gemini、ChatGPT 等平台資料。
 
+## GEO Tracking 憑證
+
+`geo-tracking-api` 透過掛載檔案讀取 Google Vertex AI credential，不把 service
+account JSON 放進 source control。
+
+在部署環境檔設定 `GCP_CREDENTIALS_FILE_HOST` 為 VM 上的 Google service account
+JSON 路徑。Docker Compose 會將該檔案掛載到容器內
+`/app/config/gcp-key.json`，並讓 `GOOGLE_APPLICATION_CREDENTIALS` 指向該容器內路徑。
+
+範例：
+
+```env
+GCP_CREDENTIALS_FILE_HOST=/root/kmind/deploy/credentials/dev-gcp-key.json
+GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
+```
+
+Google AIO 使用 SerpApi；若要執行 live `google_aio` 跑題，仍需在部署環境檔設定
+`SERPAPI_API_KEY`。
+
 ## 本機 PostgreSQL
 
 ```powershell
