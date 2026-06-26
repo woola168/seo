@@ -14,7 +14,7 @@ GitHub Actions 依分支選擇部署環境檔：
 Compose 內的服務預設只綁定 `127.0.0.1`，需要從外部查看時請透過 SSH tunnel 或反向代理開放。
 
 - Admin Portal: `http://127.0.0.1:18080`
-- Access Control API: `http://127.0.0.1:18000`
+- Access Control API: `http://127.0.0.1:18004`
 - Resource Catalog API: `http://127.0.0.1:18001`
 - GEO Analysis API: `http://127.0.0.1:18002`
 - GEO Tracking API: `http://127.0.0.1:18003`
