@@ -60,6 +60,10 @@ jobs:
         run: |
           docker compose --env-file "$DEPLOY_ENV_FILE" -f deploy/docker-compose.yml up -d --remove-orphans
 
+      - name: Reload Nginx Proxy Manager
+        run: |
+          docker exec nginx_proxy_manager nginx -s reload || true
+
       - name: Health check
         run: |
           for url in \
