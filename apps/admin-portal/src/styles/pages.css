@@ -747,6 +747,20 @@
   min-height: 0;
 }
 
+.geo-analysis-page .geo-analysis-header h1 {
+  max-width: 760px;
+}
+
+.geo-analysis-page .geo-error-message {
+  margin: -6px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #ffa39e;
+  border-radius: var(--radius-md);
+  color: var(--error-text);
+  background: var(--error-light);
+  font-size: 13px;
+}
+
 .geo-analysis-page .geo-project-select {
   width: min(280px, 100%);
 }
@@ -771,6 +785,41 @@
 
 .geo-analysis-page .geo-form-card {
   overflow: hidden;
+}
+
+.geo-analysis-page .geo-card-toolbar {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.geo-analysis-page .geo-toolbar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.geo-analysis-page .geo-toolbar-controls select {
+  width: auto;
+  min-width: 130px;
+}
+
+.geo-analysis-page .geo-search-field {
+  position: relative;
+  width: min(280px, 100%);
+}
+
+.geo-analysis-page .geo-search-field .app-icon {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+}
+
+.geo-analysis-page .geo-search-field input {
+  padding-left: 34px;
 }
 
 .geo-analysis-page .geo-form-grid,
@@ -827,6 +876,12 @@
 
 .geo-analysis-page .geo-table {
   min-width: 860px;
+}
+
+.geo-analysis-page .geo-table code {
+  color: var(--text-secondary);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 12px;
 }
 
 .geo-analysis-page .geo-table td strong,

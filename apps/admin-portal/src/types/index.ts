@@ -223,6 +223,11 @@ export interface PageResponse<T> {
   totalPages: number;
 }
 
+export interface CollectionResponse<T> {
+  items: T[];
+  total: number;
+}
+
 export type GeoRegion = "TW" | "US";
 export type GeoMarketType = "b2c" | "b2b_procurement";
 export type GeoQueryProvider = "dummy" | "gemini";
@@ -501,4 +506,131 @@ export interface GeoRecommendation {
   title: string;
   description: string;
   priority: "low" | "normal" | "high";
+}
+
+export interface GeoProjectResource {
+  id: string;
+  customerId: string;
+  seoTaskId: string | null;
+  name: string;
+  defaultRegion: string;
+  defaultLanguage: string;
+  status: GeoProject["status"];
+  dailyRunBudget: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoProjectRequest {
+  customerId: string;
+  seoTaskId: string | null;
+  name: string;
+  defaultRegion: string;
+  defaultLanguage: string;
+  status: GeoProject["status"];
+  dailyRunBudget: number;
+}
+
+export interface GeoEntityResource extends GeoEntity {
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoEntityRequest {
+  entityType: GeoEntity["entityType"];
+  name: string;
+  websiteUrl: string | null;
+  description: string;
+  status: GeoEntity["status"];
+}
+
+export interface GeoEntityAliasResource extends GeoEntityAlias {
+  createdAt: string;
+}
+
+export interface GeoEntityAliasRequest {
+  alias: string;
+  matchType: GeoEntityAlias["matchType"];
+}
+
+export interface GeoTopicResource extends GeoTopic {
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoTopicRequest {
+  name: string;
+  description: string;
+  status: GeoTopic["status"];
+}
+
+export interface GeoQueryResource {
+  id: string;
+  projectId: string;
+  topicId: string | null;
+  queryText: string;
+  region: string;
+  language: string;
+  marketType: GeoMarketType;
+  intent: string | null;
+  buyerStage: string | null;
+  isBranded: boolean;
+  priority: GeoQuery["priority"];
+  status: GeoQuery["status"];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoAnalysisQueryRequest {
+  topicId: string | null;
+  queryText: string;
+  region: string;
+  language: string;
+  marketType: GeoMarketType;
+  intent: string | null;
+  buyerStage: string | null;
+  isBranded: boolean;
+  priority: GeoQuery["priority"];
+  status: GeoQuery["status"];
+  metadata: Record<string, unknown>;
+}
+
+export interface GeoQueryPlatformResource extends GeoQueryPlatform {
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoQueryPlatformRequest {
+  platformId: string;
+  model: string | null;
+  status: GeoQueryPlatform["status"];
+}
+
+export interface GeoScheduleResource extends GeoSchedule {
+  lastScheduledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoScheduleRequest {
+  platformId: string;
+  frequency: GeoSchedule["frequency"];
+  priority: GeoSchedule["priority"];
+  timezone: string;
+  nextRunAt: string | null;
+  status: GeoSchedule["status"];
+}
+
+export interface GeoJobResource extends GeoJob {
+  dispatchBackend: string | null;
+  dispatchMessageId: string | null;
+  lastErrorCode: string | null;
+}
+
+export interface GeoJobRequest {
+  platformId: string;
+  scheduledFor: string | null;
+  priority: GeoJob["priority"];
+  jobType: GeoJob["jobType"];
 }

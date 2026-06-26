@@ -1,16 +1,30 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import AppIcon from "../components/ui/AppIcon.vue";
-import { createGeoMockState } from "../mocks/geo-analysis";
+import {
+  createGeoMockState,
+  geoPlatformCatalog,
+} from "../mocks/geo-analysis";
+import { api } from "../services/api";
 import type {
-  GeoEntity,
+  CustomerSummary,
   GeoAnalysisRunResult,
+  GeoEntity,
+  GeoEntityAliasResource,
+  GeoEntityResource,
   GeoJob,
+  GeoJobResource,
   GeoMarketType,
   GeoProject,
+  GeoProjectResource,
   GeoQuery,
+  GeoQueryPlatformResource,
+  GeoQueryResource,
   GeoSchedule,
+  GeoScheduleResource,
   GeoTopic,
+  GeoTopicResource,
+  TaskSummary,
 } from "../types";
 
 type GeoTab =
@@ -30,15 +44,49 @@ const emit = defineEmits<{
   unavailable: [label: string];
 }>();
 
-const state = reactive(createGeoMockState());
+const fallback = createGeoMockState();
 const activeTab = computed(() => props.activeTab ?? "overview");
-const selectedProjectId = ref(state.projects[0]?.id ?? "");
-const localMessage = ref("目前所有操作皆為前端記憶體中的 Mock 操作。");
+const tabTitles: Record<GeoTab, string> = {
+  overview: "Overview",
+  projects: "Projects",
+  entities: "Entities",
+  queries: "Topics & Queries",
+  schedules: "Platforms & Schedules",
+  jobs: "Run Jobs",
+  reports: "Reports",
+};
+const pageTitle = computed(() => tabTitles[activeTab.value]);
+const loading = ref(false);
+const actionLoading = ref(false);
+const usingMockData = ref(false);
+const errorMessage = ref("");
+const localMessage = ref("已連接 GEO Analysis API；缺少彙總 API 的區塊會標示為示意資料。");
+const selectedProjectId = ref("");
+const projectSearch = ref("");
+const querySearch = ref("");
+const jobSearch = ref("");
+const queryStageFilter = ref("");
+const queryPriorityFilter = ref("");
+const jobPlatformFilter = ref("");
+const jobStatusFilter = ref("");
+
+const customers = ref<CustomerSummary[]>([]);
+const tasks = ref<TaskSummary[]>([]);
+const projects = ref<GeoProject[]>([]);
+const entities = ref<GeoEntityResource[]>([]);
+const aliases = ref<GeoEntityAliasResource[]>([]);
+const topics = ref<GeoTopicResource[]>([]);
+const queries = ref<GeoQueryResource[]>([]);
+const queryPlatforms = ref<GeoQueryPlatformResource[]>([]);
+const schedules = ref<GeoScheduleResource[]>([]);
+const jobs = ref<GeoJobResource[]>([]);
+const runResults = ref<GeoAnalysisRunResult[]>([]);
+let projectDetailsRequestId = 0;
 
 const projectForm = reactive({
   name: "",
-  customerName: "",
-  seoTaskName: "",
+  customerId: "",
+  seoTaskId: "",
   defaultRegion: "TW",
   defaultLanguage: "zh-TW",
   dailyRunBudget: 200,
@@ -62,14 +110,14 @@ const queryForm = reactive({
   queryText: "",
   intent: "recommendation",
   buyerStage: "consideration",
-  marketType: "b2b_procurement" as GeoMarketType,
+  marketType: "b2c" as GeoMarketType,
   isBranded: false,
   priority: "normal" as GeoQuery["priority"],
 });
 
 const scheduleForm = reactive({
   queryId: "",
-  platformId: "geo-platform-chatgpt",
+  platformId: geoPlatformCatalog[0]?.id ?? "",
   frequency: "daily" as GeoSchedule["frequency"],
   priority: "normal" as GeoSchedule["priority"],
   timezone: "Asia/Taipei",
@@ -78,123 +126,345 @@ const scheduleForm = reactive({
 
 const jobForm = reactive({
   queryId: "",
-  platformId: "geo-platform-chatgpt",
+  platformId: geoPlatformCatalog[0]?.id ?? "",
   priority: "normal" as GeoJob["priority"],
 });
 
 const selectedProject = computed(() =>
-  state.projects.find((project) => project.id === selectedProjectId.value),
+  projects.value.find((project) => project.id === selectedProjectId.value),
 );
 
-const projectMarkets = computed(() =>
-  state.markets.filter((market) => market.projectId === selectedProjectId.value),
+const selectedProjectQueries = computed(() =>
+  queries.value.filter((query) => query.projectId === selectedProjectId.value),
 );
 
-const projectEntities = computed(() =>
-  state.entities.filter((entity) => entity.projectId === selectedProjectId.value),
-);
-
-const projectTopics = computed(() =>
-  state.topics.filter((topic) => topic.projectId === selectedProjectId.value),
-);
-
-const projectQueries = computed(() =>
-  state.queries.filter((query) => query.projectId === selectedProjectId.value),
-);
-
-const projectSchedules = computed(() =>
-  state.schedules.filter((schedule) =>
-    projectQueries.value.some((query) => query.id === schedule.queryId),
-  ),
-);
-
-const projectJobs = computed(() =>
-  state.jobs
+const selectedProjectJobs = computed(() =>
+  jobs.value
     .filter((job) => job.projectId === selectedProjectId.value)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
 
-const projectRunResults = computed(() =>
-  state.runResults
+const selectedProjectRunResults = computed(() =>
+  runResults.value
     .filter((result) =>
-      projectJobs.value.some((job) => job.id === result.jobId),
+      selectedProjectJobs.value.some((job) => job.id === result.jobId),
     )
     .sort((a, b) => b.runAt.localeCompare(a.runAt)),
 );
 
 const activeQueryCount = computed(
-  () => projectQueries.value.filter((query) => query.status === "active").length,
+  () =>
+    selectedProjectQueries.value.filter((query) => query.status === "active")
+      .length,
 );
 
 const activeScheduleCount = computed(
-  () =>
-    projectSchedules.value.filter((schedule) => schedule.status === "active")
-      .length,
+  () => schedules.value.filter((schedule) => schedule.status === "active").length,
 );
 
 const runningJobCount = computed(
   () =>
-    projectJobs.value.filter(
-      (job) => job.status === "published" || job.status === "running_external",
+    selectedProjectJobs.value.filter((job) =>
+      ["pending", "published", "running_external"].includes(job.status),
     ).length,
-);
-
-const failedJobCount = computed(
-  () => projectJobs.value.filter((job) => job.status === "failed").length,
 );
 
 const overviewStats = computed(() => [
   {
     label: "Projects",
-    value: state.projects.length,
-    detail: `${state.projects.filter((project) => project.status === "active").length} active`,
+    value: projects.value.length,
+    detail: `${projects.value.filter((project) => project.status === "active").length} active`,
     tone: "tone-info",
   },
   {
     label: "Active Queries",
     value: activeQueryCount.value,
-    detail: `${projectTopics.value.length} topics`,
+    detail: `${topics.value.length} topics`,
     tone: "tone-success",
   },
   {
     label: "Schedules",
     value: activeScheduleCount.value,
-    detail: "Pub/Sub publisher 待實作",
+    detail: "目前由 query-level API 聚合",
     tone: "tone-warning",
   },
   {
     label: "Running Jobs",
     value: runningJobCount.value,
-    detail: `${failedJobCount.value} failed mock jobs`,
-    tone: failedJobCount.value > 0 ? "tone-error" : "tone-info",
+    detail: `${selectedProjectJobs.value.filter((job) => job.status === "failed").length} failed`,
+    tone: "tone-info",
   },
 ]);
 
-const projectPlatforms = computed(() =>
-  state.platforms.map((platform) => ({
+const filteredProjects = computed(() => {
+  const keyword = projectSearch.value.trim().toLowerCase();
+  if (!keyword) return projects.value;
+  return projects.value.filter((project) =>
+    [project.name, project.customerName, project.seoTaskName ?? ""]
+      .join(" ")
+      .toLowerCase()
+      .includes(keyword),
+  );
+});
+
+const filteredQueries = computed(() => {
+  const keyword = querySearch.value.trim().toLowerCase();
+  return selectedProjectQueries.value.filter((query) => {
+    const topicName = getTopic(query.topicId)?.name ?? "";
+    const matchesKeyword =
+      !keyword ||
+      [query.queryText, topicName, query.intent ?? "", query.buyerStage ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword);
+    const matchesStage =
+      !queryStageFilter.value || query.buyerStage === queryStageFilter.value;
+    const matchesPriority =
+      !queryPriorityFilter.value || query.priority === queryPriorityFilter.value;
+    return matchesKeyword && matchesStage && matchesPriority;
+  });
+});
+
+const filteredJobs = computed(() => {
+  const keyword = jobSearch.value.trim().toLowerCase();
+  return selectedProjectJobs.value.filter((job) => {
+    const queryText = getQuery(job.queryId)?.queryText ?? "";
+    const platform = getPlatform(job.platformId);
+    const matchesKeyword =
+      !keyword ||
+      [queryText, platform, job.dedupeKey].join(" ").toLowerCase().includes(keyword);
+    const matchesPlatform =
+      !jobPlatformFilter.value || job.platformId === jobPlatformFilter.value;
+    const matchesStatus = !jobStatusFilter.value || job.status === jobStatusFilter.value;
+    return matchesKeyword && matchesPlatform && matchesStatus;
+  });
+});
+
+const platformSummaries = computed(() =>
+  geoPlatformCatalog.map((platform) => ({
     ...platform,
-    assignmentCount: state.queryPlatforms.filter(
-      (item) =>
-        item.platformId === platform.id &&
-        projectQueries.value.some((query) => query.id === item.queryId),
+    assignmentCount: queryPlatforms.value.filter(
+      (item) => item.platformId === platform.id,
+    ).length,
+    scheduleCount: schedules.value.filter(
+      (schedule) => schedule.platformId === platform.id,
     ).length,
   })),
 );
+
+onMounted(() => {
+  void loadProjects();
+});
+
+watch(selectedProjectId, (projectId) => {
+  if (projectId) void loadProjectDetails(projectId);
+});
 
 function setMessage(message: string): void {
   localMessage.value = message;
 }
 
-function newId(prefix: string): string {
-  return `geo-${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "API 操作失敗";
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
+function shortId(value: string | null | undefined): string {
+  if (!value) return "-";
+  return value.length > 12 ? `${value.slice(0, 8)}...` : value;
 }
 
-function toIsoFromLocal(value: string): string | null {
-  return value ? new Date(value).toISOString() : null;
+function customerName(customerId: string): string {
+  return (
+    customers.value.find((customer) => customer.id === customerId)?.name ??
+    `Customer ${shortId(customerId)}`
+  );
+}
+
+function taskName(taskId: string | null): string | null {
+  if (!taskId) return null;
+  return tasks.value.find((task) => task.id === taskId)?.name ?? `Task ${shortId(taskId)}`;
+}
+
+function enrichProject(project: GeoProjectResource): GeoProject {
+  return {
+    ...project,
+    customerName: customerName(project.customerId),
+    seoTaskName: taskName(project.seoTaskId),
+  };
+}
+
+function resourceQueryToView(query: GeoQueryResource): GeoQuery {
+  return {
+    ...query,
+    intent: query.intent ?? "-",
+    buyerStage: query.buyerStage ?? "-",
+  };
+}
+
+async function loadLookups(): Promise<void> {
+  const [customerResult, taskResult] = await Promise.allSettled([
+    api.customers(),
+    api.tasks(),
+  ]);
+  if (customerResult.status === "fulfilled") {
+    customers.value = customerResult.value.items;
+  }
+  if (taskResult.status === "fulfilled") {
+    tasks.value = taskResult.value.items;
+  }
+}
+
+async function loadProjects(): Promise<void> {
+  loading.value = true;
+  errorMessage.value = "";
+  try {
+    await loadLookups();
+    const response = await api.geoAnalysis.projects();
+    usingMockData.value = false;
+    projects.value = response.items.map(enrichProject);
+    const nextProjectId = projects.value[0]?.id ?? "";
+    if (!projects.value.length) {
+      clearProjectDetails();
+      setMessage("目前 API 尚未建立 GEO project。");
+    } else if (selectedProjectId.value === nextProjectId) {
+      await loadProjectDetails(nextProjectId);
+    } else {
+      selectedProjectId.value = nextProjectId;
+    }
+  } catch (error) {
+    usingMockData.value = true;
+    errorMessage.value = getErrorMessage(error);
+    projects.value = fallback.projects.map((project) => ({ ...project }));
+    const nextProjectId = projects.value[0]?.id ?? "";
+    selectedProjectId.value = nextProjectId;
+    loadMockProjectDetails(nextProjectId);
+    setMessage("無法連接 GEO Analysis API，已切換為示意資料。");
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadProjectDetails(projectId: string): Promise<void> {
+  const requestId = ++projectDetailsRequestId;
+  if (usingMockData.value) {
+    loadMockProjectDetails(projectId);
+    return;
+  }
+  loading.value = true;
+  errorMessage.value = "";
+  try {
+    const [entityResult, topicResult, queryResult, jobResult, resultResult] =
+      await Promise.all([
+        api.geoAnalysis.entities(projectId),
+        api.geoAnalysis.topics(projectId),
+        api.geoAnalysis.queries(projectId),
+        api.geoAnalysis.jobs(projectId),
+        api.geoAnalysis.runResults(projectId),
+      ]);
+    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+      return;
+    }
+    entities.value = entityResult.items;
+    topics.value = topicResult.items;
+    queries.value = queryResult.items;
+    jobs.value = jobResult.items;
+    runResults.value = resultResult.items;
+    await loadNestedProjectDetails(projectId, requestId);
+    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+      return;
+    }
+    selectFirstQuery();
+  } catch (error) {
+    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+      return;
+    }
+    errorMessage.value = getErrorMessage(error);
+    clearProjectDetails();
+    setMessage("專案資料載入失敗，請確認 geo-analysis-api 是否啟動。");
+  } finally {
+    if (requestId === projectDetailsRequestId) {
+      loading.value = false;
+    }
+  }
+}
+
+async function loadNestedProjectDetails(
+  projectId: string,
+  requestId: number,
+): Promise<void> {
+  const aliasResults = await Promise.allSettled(
+    entities.value.map((entity) => api.geoAnalysis.aliases(entity.id)),
+  );
+  if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+    return;
+  }
+  aliases.value = aliasResults.flatMap((result) =>
+    result.status === "fulfilled" ? result.value.items : [],
+  );
+
+  const platformResults = await Promise.allSettled(
+    queries.value.map((query) => api.geoAnalysis.queryPlatforms(query.id)),
+  );
+  if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+    return;
+  }
+  queryPlatforms.value = platformResults.flatMap((result) =>
+    result.status === "fulfilled" ? result.value.items : [],
+  );
+
+  const scheduleResults = await Promise.allSettled(
+    queries.value.map((query) => api.geoAnalysis.schedules(query.id)),
+  );
+  if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) {
+    return;
+  }
+  schedules.value = scheduleResults.flatMap((result) =>
+    result.status === "fulfilled" ? result.value.items : [],
+  );
+}
+
+function clearProjectDetails(): void {
+  entities.value = [];
+  aliases.value = [];
+  topics.value = [];
+  queries.value = [];
+  queryPlatforms.value = [];
+  schedules.value = [];
+  jobs.value = [];
+  runResults.value = [];
+}
+
+function loadMockProjectDetails(projectId: string): void {
+  entities.value = fallback.entities.filter(
+    (entity) => entity.projectId === projectId,
+  );
+  aliases.value = fallback.aliases
+    .filter((alias) => entities.value.some((entity) => entity.id === alias.entityId))
+    .map((alias) => ({ ...alias, createdAt: "2026-06-01T00:00:00.000Z" }));
+  topics.value = fallback.topics.filter((topic) => topic.projectId === projectId) as GeoTopicResource[];
+  queries.value = fallback.queries.filter((query) => query.projectId === projectId).map((query) => ({
+    ...query,
+    metadata: {},
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+  }));
+  queryPlatforms.value = [];
+  schedules.value = fallback.schedules as GeoScheduleResource[];
+  jobs.value = fallback.jobs.map((job) => ({
+    ...job,
+    dispatchBackend: null,
+    dispatchMessageId: null,
+    lastErrorCode: null,
+  }));
+  runResults.value = fallback.runResults;
+  selectFirstQuery();
+}
+
+function selectFirstQuery(): void {
+  const firstQuery = queries.value[0];
+  if (!firstQuery) return;
+  scheduleForm.queryId = firstQuery.id;
+  jobForm.queryId = firstQuery.id;
 }
 
 function formatDate(value: string | null): string {
@@ -207,317 +477,392 @@ function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
-function getQuery(queryId: string): GeoQuery | undefined {
-  return state.queries.find((query) => query.id === queryId);
+function formatDateInput(value: string): string | null {
+  return value ? new Date(value).toISOString() : null;
 }
 
 function getTopic(topicId: string | null): GeoTopic | undefined {
-  return topicId ? state.topics.find((topic) => topic.id === topicId) : undefined;
+  return topicId ? topics.value.find((topic) => topic.id === topicId) : undefined;
+}
+
+function getQuery(queryId: string): GeoQuery | undefined {
+  const query = queries.value.find((item) => item.id === queryId);
+  return query ? resourceQueryToView(query) : undefined;
 }
 
 function getPlatform(platformId: string): string {
-  return state.platforms.find((platform) => platform.id === platformId)?.name ?? "-";
+  return (
+    geoPlatformCatalog.find((platform) => platform.id === platformId)?.name ??
+    `Platform ${shortId(platformId)}`
+  );
 }
 
-function resultReferences(result: GeoAnalysisRunResult): GeoAnalysisRunResult["references"] {
-  return result.references;
-}
-
-function marketTypeLabel(marketType: GeoMarketType): string {
-  return marketType === "b2b_procurement" ? "B2B 採購" : "B2C 消費";
+function getPlatformModel(platformId: string): string {
+  return (
+    geoPlatformCatalog.find((platform) => platform.id === platformId)?.model ??
+    shortId(platformId)
+  );
 }
 
 function getAliases(entityId: string): string {
-  const values = state.aliases
+  const values = aliases.value
     .filter((alias) => alias.entityId === entityId)
     .map((alias) => alias.alias);
   return values.length > 0 ? values.join("、") : "尚未設定";
 }
 
 function badgeClass(status: string): string {
-  if (["active", "succeeded"].includes(status)) return "badge badge-success";
-  if (["paused", "pending", "published", "running_external"].includes(status)) {
+  if (["active", "succeeded", "completed", "positive"].includes(status)) {
+    return "badge badge-success";
+  }
+  if (
+    ["paused", "pending", "published", "running_external", "running", "neutral"].includes(
+      status,
+    )
+  ) {
     return "badge badge-warning";
   }
-  if (["failed"].includes(status)) return "badge badge-error";
+  if (["failed", "cancelled", "negative", "archived"].includes(status)) {
+    return "badge badge-error";
+  }
+  if (["high"].includes(status)) return "badge badge-error";
+  if (["normal"].includes(status)) return "badge badge-info";
   return "badge badge-muted";
 }
 
-function resetMockData(): void {
-  Object.assign(state, createGeoMockState());
-  selectedProjectId.value = state.projects[0]?.id ?? "";
-  setMessage("示意資料已重置，頁面回到預設 mock 狀態。");
-}
-
-function createProject(): void {
-  if (!projectForm.name.trim() || !projectForm.customerName.trim()) return;
-  const now = nowIso();
-  const project: GeoProject = {
-    id: newId("project"),
-    customerId: newId("customer"),
-    customerName: projectForm.customerName.trim(),
-    seoTaskId: projectForm.seoTaskName ? newId("seo-task") : null,
-    seoTaskName: projectForm.seoTaskName.trim() || null,
-    name: projectForm.name.trim(),
-    defaultRegion: projectForm.defaultRegion.trim() || "TW",
-    defaultLanguage: projectForm.defaultLanguage.trim() || "zh-TW",
-    status: "active",
-    dailyRunBudget: Number(projectForm.dailyRunBudget) || 0,
-    createdAt: now,
-    updatedAt: now,
-  };
-  state.projects.unshift(project);
-  selectedProjectId.value = project.id;
+function resetForms(): void {
   projectForm.name = "";
-  projectForm.customerName = "";
-  projectForm.seoTaskName = "";
-  setMessage("已建立 mock GEO project。");
-}
-
-function updateProjectStatus(projectId: string, status: GeoProject["status"]): void {
-  const project = state.projects.find((item) => item.id === projectId);
-  if (!project) return;
-  project.status = status;
-  project.updatedAt = nowIso();
-  setMessage(`已將 ${project.name} 更新為 ${status}。`);
-}
-
-function deleteProject(projectId: string): void {
-  state.projects = state.projects.filter((project) => project.id !== projectId);
-  state.markets = state.markets.filter((market) => market.projectId !== projectId);
-  state.entities = state.entities.filter((entity) => entity.projectId !== projectId);
-  state.topics = state.topics.filter((topic) => topic.projectId !== projectId);
-  state.queries = state.queries.filter((query) => query.projectId !== projectId);
-  state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
-  selectedProjectId.value = state.projects[0]?.id ?? "";
-  setMessage("已刪除 mock project 與相關頁面資料。");
-}
-
-function createEntity(): void {
-  if (!selectedProject.value || !entityForm.name.trim()) return;
-  const entity: GeoEntity = {
-    id: newId("entity"),
-    projectId: selectedProject.value.id,
-    entityType: entityForm.entityType,
-    name: entityForm.name.trim(),
-    websiteUrl: entityForm.websiteUrl.trim() || null,
-    description: entityForm.description.trim(),
-    status: "active",
-  };
-  state.entities.unshift(entity);
-  if (entityForm.alias.trim()) {
-    state.aliases.unshift({
-      id: newId("alias"),
-      entityId: entity.id,
-      alias: entityForm.alias.trim(),
-      matchType: "contains",
-    });
-  }
+  projectForm.customerId = customers.value[0]?.id ?? "";
+  projectForm.seoTaskId = "";
+  projectForm.defaultRegion = "TW";
+  projectForm.defaultLanguage = "zh-TW";
+  projectForm.dailyRunBudget = 200;
   entityForm.name = "";
   entityForm.websiteUrl = "";
   entityForm.description = "";
   entityForm.alias = "";
-  setMessage("已建立 mock entity。");
-}
-
-function deleteEntity(entityId: string): void {
-  state.entities = state.entities.filter((entity) => entity.id !== entityId);
-  state.aliases = state.aliases.filter((alias) => alias.entityId !== entityId);
-  setMessage("已刪除 mock entity。");
-}
-
-function createTopic(): void {
-  if (!selectedProject.value || !topicForm.name.trim()) return;
-  const topic: GeoTopic = {
-    id: newId("topic"),
-    projectId: selectedProject.value.id,
-    name: topicForm.name.trim(),
-    description: topicForm.description.trim(),
-    status: "active",
-  };
-  state.topics.unshift(topic);
-  queryForm.topicId = topic.id;
   topicForm.name = "";
   topicForm.description = "";
-  setMessage("已建立 mock topic。");
-}
-
-function createQuery(): void {
-  if (!selectedProject.value || !queryForm.queryText.trim()) return;
-  const query: GeoQuery = {
-    id: newId("query"),
-    projectId: selectedProject.value.id,
-    topicId: queryForm.topicId || null,
-    queryText: queryForm.queryText.trim(),
-    region: selectedProject.value.defaultRegion,
-    language: selectedProject.value.defaultLanguage,
-    marketType: queryForm.marketType,
-    intent: queryForm.intent.trim() || "recommendation",
-    buyerStage: queryForm.buyerStage.trim() || "consideration",
-    isBranded: queryForm.isBranded,
-    priority: queryForm.priority,
-    status: "active",
-  };
-  state.queries.unshift(query);
+  queryForm.topicId = topics.value[0]?.id ?? "";
   queryForm.queryText = "";
-  queryForm.marketType = "b2b_procurement";
-  queryForm.isBranded = false;
-  setMessage("已建立 mock query。");
 }
 
-function deleteQuery(queryId: string): void {
-  state.queries = state.queries.filter((query) => query.id !== queryId);
-  state.queryPlatforms = state.queryPlatforms.filter(
-    (item) => item.queryId !== queryId,
-  );
-  state.schedules = state.schedules.filter((schedule) => schedule.queryId !== queryId);
-  state.jobs = state.jobs.filter((job) => job.queryId !== queryId);
-  setMessage("已刪除 mock query 與相關排程。");
-}
-
-function createSchedule(): void {
-  const query = getQuery(scheduleForm.queryId);
-  if (!query) return;
-  const platform = state.platforms.find(
-    (item) => item.id === scheduleForm.platformId,
-  );
-  const schedule: GeoSchedule = {
-    id: newId("schedule"),
-    queryId: query.id,
-    platformId: scheduleForm.platformId,
-    frequency: scheduleForm.frequency,
-    priority: scheduleForm.priority,
-    timezone: scheduleForm.timezone.trim() || "Asia/Taipei",
-    nextRunAt: toIsoFromLocal(scheduleForm.nextRunAt),
-    status: "active",
-  };
-  state.schedules.unshift(schedule);
-  if (
-    platform &&
-    !state.queryPlatforms.some(
-      (item) => item.queryId === query.id && item.platformId === platform.id,
-    )
-  ) {
-    state.queryPlatforms.unshift({
-      id: newId("query-platform"),
-      queryId: query.id,
-      platformId: platform.id,
-      model: platform.model,
-      status: "active",
-    });
-  }
-  setMessage("已建立 mock schedule。");
-}
-
-function toggleSchedule(schedule: GeoSchedule): void {
-  schedule.status = schedule.status === "active" ? "paused" : "active";
-  setMessage("已切換 mock schedule 狀態。");
-}
-
-function deleteSchedule(scheduleId: string): void {
-  state.schedules = state.schedules.filter((schedule) => schedule.id !== scheduleId);
-  setMessage("已刪除 mock schedule。");
-}
-
-function createManualJob(): void {
-  const query = getQuery(jobForm.queryId);
-  if (!query || !selectedProject.value) return;
-  const scheduledFor = nowIso();
-  const normalized = scheduledFor.replace(".000Z", "Z");
-  const job: GeoJob = {
-    id: newId("job"),
-    projectId: selectedProject.value.id,
-    queryId: query.id,
-    platformId: jobForm.platformId,
-    scheduleId: null,
-    jobType: "manual_run",
-    priority: jobForm.priority,
-    scheduledFor,
-    status: "pending",
-    attemptCount: 0,
-    maxAttempts: 3,
-    dedupeKey: `${selectedProject.value.id}:${query.id}:${jobForm.platformId}:${normalized}`,
-    externalRunId: null,
-    lastErrorMessage: null,
-    createdAt: scheduledFor,
-    updatedAt: scheduledFor,
-  };
-  state.jobs.unshift(job);
-  setMessage("已建立 manual run mock job；publisher 尚未實作，因此不會送出。");
-}
-
-function cancelJob(job: GeoJob): void {
-  if (["succeeded", "failed", "cancelled"].includes(job.status)) {
-    setMessage("terminal job 無法取消，這裡模擬 API 409 行為。");
+async function createProject(): Promise<void> {
+  if (!projectForm.name.trim() || !projectForm.customerId.trim()) {
+    setMessage("請輸入 project 名稱與 customerId。");
     return;
   }
-  job.status = "cancelled";
-  job.updatedAt = nowIso();
-  setMessage("已取消 mock job。");
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const project = await api.geoAnalysis.createProject({
+      customerId: projectForm.customerId.trim(),
+      seoTaskId: projectForm.seoTaskId.trim() || null,
+      name: projectForm.name.trim(),
+      defaultRegion: projectForm.defaultRegion.trim() || "TW",
+      defaultLanguage: projectForm.defaultLanguage.trim() || "zh-TW",
+      status: "active",
+      dailyRunBudget: Number(projectForm.dailyRunBudget) || 0,
+    });
+    projects.value.unshift(enrichProject(project));
+    selectedProjectId.value = project.id;
+    resetForms();
+    setMessage("已建立 GEO project。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
 }
 
-function openCreateProject(): void {
-  setMessage("請從左側 GEO 子選單切換到 Projects 後建立專案。");
+async function deleteProject(projectId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (!usingMockData.value) await api.geoAnalysis.deleteProject(projectId);
+    projects.value = projects.value.filter((project) => project.id !== projectId);
+    selectedProjectId.value = projects.value[0]?.id ?? "";
+    setMessage("已刪除 GEO project。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
 }
 
-function useFirstQuery(): void {
-  const firstQuery = projectQueries.value[0];
-  if (!firstQuery) return;
-  scheduleForm.queryId = firstQuery.id;
-  jobForm.queryId = firstQuery.id;
+async function createEntity(): Promise<void> {
+  if (!selectedProject.value || !entityForm.name.trim()) return;
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const entity = await api.geoAnalysis.createEntity(selectedProject.value.id, {
+      entityType: entityForm.entityType,
+      name: entityForm.name.trim(),
+      websiteUrl: entityForm.websiteUrl.trim() || null,
+      description: entityForm.description.trim(),
+      status: "active",
+    });
+    entities.value.unshift(entity);
+    if (entityForm.alias.trim()) {
+      aliases.value.unshift(
+        await api.geoAnalysis.createAlias(entity.id, {
+          alias: entityForm.alias.trim(),
+          matchType: "contains",
+        }),
+      );
+    }
+    entityForm.name = "";
+    entityForm.websiteUrl = "";
+    entityForm.description = "";
+    entityForm.alias = "";
+    setMessage("已建立 entity。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function deleteEntity(entityId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (!usingMockData.value) await api.geoAnalysis.deleteEntity(entityId);
+    entities.value = entities.value.filter((entity) => entity.id !== entityId);
+    aliases.value = aliases.value.filter((alias) => alias.entityId !== entityId);
+    setMessage("已刪除 entity。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function createTopic(): Promise<void> {
+  if (!selectedProject.value || !topicForm.name.trim()) return;
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const topic = await api.geoAnalysis.createTopic(selectedProject.value.id, {
+      name: topicForm.name.trim(),
+      description: topicForm.description.trim(),
+      status: "active",
+    });
+    topics.value.push(topic);
+    queryForm.topicId = topic.id;
+    topicForm.name = "";
+    topicForm.description = "";
+    setMessage("已建立 topic。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function createQuery(): Promise<void> {
+  if (!selectedProject.value || !queryForm.queryText.trim()) return;
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const query = await api.geoAnalysis.createQuery(selectedProject.value.id, {
+      topicId: queryForm.topicId || null,
+      queryText: queryForm.queryText.trim(),
+      region: selectedProject.value.defaultRegion,
+      language: selectedProject.value.defaultLanguage,
+      marketType: queryForm.marketType,
+      intent: queryForm.intent.trim() || null,
+      buyerStage: queryForm.buyerStage.trim() || null,
+      isBranded: queryForm.isBranded,
+      priority: queryForm.priority,
+      status: "active",
+      metadata: {},
+    });
+    queries.value.unshift(query);
+    queryForm.queryText = "";
+    queryForm.isBranded = false;
+    selectFirstQuery();
+    setMessage("已建立 query。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function deleteQuery(queryId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (!usingMockData.value) await api.geoAnalysis.deleteQuery(queryId);
+    queries.value = queries.value.filter((query) => query.id !== queryId);
+    queryPlatforms.value = queryPlatforms.value.filter((item) => item.queryId !== queryId);
+    schedules.value = schedules.value.filter((schedule) => schedule.queryId !== queryId);
+    jobs.value = jobs.value.filter((job) => job.queryId !== queryId);
+    setMessage("已刪除 query。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function createSchedule(): Promise<void> {
+  if (!scheduleForm.queryId) return;
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const schedule = await api.geoAnalysis.createSchedule(scheduleForm.queryId, {
+      platformId: scheduleForm.platformId,
+      frequency: scheduleForm.frequency,
+      priority: scheduleForm.priority,
+      timezone: scheduleForm.timezone.trim() || "Asia/Taipei",
+      nextRunAt: formatDateInput(scheduleForm.nextRunAt),
+      status: "active",
+    });
+    schedules.value.unshift(schedule);
+    setMessage("已建立 schedule。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function toggleSchedule(schedule: GeoScheduleResource): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const updated = await api.geoAnalysis.updateSchedule(schedule.id, {
+      platformId: schedule.platformId,
+      frequency: schedule.frequency,
+      priority: schedule.priority,
+      timezone: schedule.timezone,
+      nextRunAt: schedule.nextRunAt,
+      status: schedule.status === "active" ? "paused" : "active",
+    });
+    schedules.value = schedules.value.map((item) =>
+      item.id === updated.id ? updated : item,
+    );
+    setMessage("已更新 schedule 狀態。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function deleteSchedule(scheduleId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (!usingMockData.value) await api.geoAnalysis.deleteSchedule(scheduleId);
+    schedules.value = schedules.value.filter((schedule) => schedule.id !== scheduleId);
+    setMessage("已刪除 schedule。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function createManualJob(): Promise<void> {
+  if (!jobForm.queryId) return;
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const job = await api.geoAnalysis.createJob(jobForm.queryId, {
+      platformId: jobForm.platformId,
+      scheduledFor: null,
+      priority: jobForm.priority,
+      jobType: "manual_run",
+    });
+    jobs.value.unshift(job);
+    setMessage("已建立 manual run job。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function dispatchJob(jobId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const job = await api.geoAnalysis.dispatchJob(jobId);
+    jobs.value = jobs.value.map((item) => (item.id === job.id ? job : item));
+    setMessage("已派發 job。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function cancelJob(jobId: string): Promise<void> {
+  actionLoading.value = true;
+  try {
+    if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
+    const job = await api.geoAnalysis.cancelJob(jobId);
+    jobs.value = jobs.value.map((item) => (item.id === job.id ? job : item));
+    setMessage("已取消 job。");
+  } catch (error) {
+    setMessage(getErrorMessage(error));
+  } finally {
+    actionLoading.value = false;
+  }
 }
 </script>
 
 <template>
   <section class="page geo-page geo-analysis-page">
-    <header class="page-header">
+    <header class="page-header geo-analysis-header">
       <div>
-        <p class="page-kicker">Mock Preview</p>
-        <h1>GEO 分析</h1>
+        <p class="page-kicker">GEO Analysis</p>
+        <h1>{{ pageTitle }}</h1>
         <p>
-          以 mock data 盤點 GEO 分析後台需要的功能，後續 DB、API、正式分析資料完成後再替換。
+          管理 GEO project、entity、topic、query、排程與 run job；報表彙總區塊目前使用示意資料。
         </p>
       </div>
       <div class="page-actions">
-        <select v-model="selectedProjectId" class="geo-project-select" @change="useFirstQuery">
-          <option
-            v-for="project in state.projects"
-            :key="project.id"
-            :value="project.id"
-          >
+        <select
+          v-model="selectedProjectId"
+          class="geo-project-select"
+          :disabled="loading || projects.length === 0"
+        >
+          <option v-for="project in projects" :key="project.id" :value="project.id">
             {{ project.name }}
           </option>
         </select>
-        <button class="button button-primary" type="button" @click="openCreateProject">
-          <AppIcon name="plus" :size="16" />建立專案
-        </button>
-        <button class="button button-secondary" type="button" @click="resetMockData">
-          <AppIcon name="refresh" :size="16" />重置示意資料
+        <button class="button button-secondary" type="button" :disabled="loading" @click="loadProjects">
+          <AppIcon name="refresh" :size="16" />重新整理
         </button>
       </div>
     </header>
 
-    <div class="mock-notice">
+    <div v-if="usingMockData" class="mock-notice subtle">
       <AppIcon name="alert-circle" :size="17" />
-      目前為「示意資料 / Mock 操作」。本頁不會呼叫 /api/geo，操作只更新前端 local state。
+      API 無法使用，目前顯示示意資料；新增與派發操作會提示未呼叫 API。
+    </div>
+    <div v-else class="mock-notice">
+      <AppIcon name="alert-circle" :size="17" />
+      平台總表與 Reports KPI 尚缺 API，相關區塊以示意資料呈現。
+    </div>
+    <div v-if="errorMessage" class="geo-error-message">{{ errorMessage }}</div>
+
+    <div v-if="loading && !selectedProject" class="empty-state">
+      <AppIcon name="refresh" />
+      <strong>正在載入 GEO 資料</strong>
+      <span>請稍候。</span>
     </div>
 
-    <div class="geo-local-message">{{ localMessage }}</div>
-
-    <div v-if="!selectedProject" class="empty-state">
+    <div v-else-if="!selectedProject" class="empty-state">
       <AppIcon name="layers" />
-      <strong>尚未建立 GEO 專案</strong>
-      <span>請先建立 mock project，後續再接正式 project API。</span>
+      <strong>尚未建立 GEO project</strong>
+      <span>請在 Projects 建立第一個專案。</span>
     </div>
 
     <template v-else>
       <section v-if="activeTab === 'overview'" class="geo-section-stack">
         <div class="stat-grid">
-          <article
-            v-for="stat in overviewStats"
-            :key="stat.label"
-            class="stat-card"
-          >
+          <article v-for="stat in overviewStats" :key="stat.label" class="stat-card">
             <div class="stat-card-heading">
               <span class="stat-icon" :class="stat.tone">
                 <AppIcon name="activity" :size="18" />
@@ -533,21 +878,14 @@ function useFirstQuery(): void {
           <article class="card">
             <header class="card-header">
               <div>
-                <h2>Mock 趨勢</h2>
-                <p>示意資料，後續接正式分析資料</p>
+                <h2>Visibility Trend</h2>
+                <p>示意資料，等待報表趨勢 API。</p>
               </div>
               <span class="badge badge-warning">Mock</span>
             </header>
             <div class="geo-trend">
-              <div
-                v-for="point in state.trendPoints"
-                :key="point.label"
-                class="geo-trend-point"
-              >
-                <span
-                  class="geo-trend-bar"
-                  :style="{ height: `${point.visibility}%` }"
-                />
+              <div v-for="point in fallback.trendPoints" :key="point.label" class="geo-trend-point">
+                <span class="geo-trend-bar" :style="{ height: `${point.visibility}%` }" />
                 <small>{{ point.label }}</small>
               </div>
             </div>
@@ -556,8 +894,8 @@ function useFirstQuery(): void {
           <article class="card">
             <header class="card-header">
               <div>
-                <h2>近期 Jobs</h2>
-                <p>只顯示目前選取專案的 mock jobs</p>
+                <h2>Recent Jobs</h2>
+                <p>來自 `/api/geo/projects/{projectId}/jobs`。</p>
               </div>
             </header>
             <div class="table-scroll">
@@ -571,11 +909,14 @@ function useFirstQuery(): void {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="job in projectJobs.slice(0, 5)" :key="job.id">
+                  <tr v-for="job in selectedProjectJobs.slice(0, 5)" :key="job.id">
                     <td>{{ getQuery(job.queryId)?.queryText ?? "-" }}</td>
                     <td>{{ getPlatform(job.platformId) }}</td>
                     <td><span :class="badgeClass(job.status)">{{ job.status }}</span></td>
                     <td>{{ formatDate(job.scheduledFor) }}</td>
+                  </tr>
+                  <tr v-if="selectedProjectJobs.length === 0">
+                    <td colspan="4">尚無 job。</td>
                   </tr>
                 </tbody>
               </table>
@@ -589,21 +930,33 @@ function useFirstQuery(): void {
           <header class="card-header">
             <div>
               <h2>建立 Project</h2>
-              <p>Project / customer / task / region / language / budget mock CRUD</p>
+              <p>customer/task 顯示名稱由既有 customers/tasks API 補齊。</p>
             </div>
           </header>
           <form class="geo-form-grid" @submit.prevent="createProject">
             <label>
-              專案名稱
-              <input v-model="projectForm.name" type="text" placeholder="例如：品牌 GEO 追蹤" />
+              Project 名稱
+              <input v-model="projectForm.name" type="text" placeholder="金山旅宿 GEO 追蹤" />
             </label>
             <label>
-              客戶名稱
-              <input v-model="projectForm.customerName" type="text" placeholder="客戶名稱" />
+              Customer
+              <select v-if="customers.length" v-model="projectForm.customerId">
+                <option value="">請選擇 customer</option>
+                <option v-for="customer in customers" :key="customer.id" :value="customer.id">
+                  {{ customer.name }}
+                </option>
+              </select>
+              <input v-else v-model="projectForm.customerId" type="text" placeholder="customer UUID" />
             </label>
             <label>
-              SEO 任務
-              <input v-model="projectForm.seoTaskName" type="text" placeholder="可留空" />
+              SEO Task
+              <select v-if="tasks.length" v-model="projectForm.seoTaskId">
+                <option value="">不綁定 task</option>
+                <option v-for="task in tasks" :key="task.id" :value="task.id">
+                  {{ task.name }}
+                </option>
+              </select>
+              <input v-else v-model="projectForm.seoTaskId" type="text" placeholder="seo task UUID，可留空" />
             </label>
             <label>
               Region
@@ -614,47 +967,53 @@ function useFirstQuery(): void {
               <input v-model="projectForm.defaultLanguage" type="text" />
             </label>
             <label>
-              Daily run budget
+              Daily Budget
               <input v-model.number="projectForm.dailyRunBudget" type="number" min="0" />
             </label>
             <div class="geo-form-actions">
-              <button class="button button-primary" type="submit">新增 mock project</button>
+              <button class="button button-primary" type="submit" :disabled="actionLoading">
+                <AppIcon name="plus" :size="16" />建立 Project
+              </button>
             </div>
           </form>
         </article>
 
         <article class="card">
-          <header class="card-header">
-            <h2>Projects</h2>
+          <header class="card-header geo-card-toolbar">
+            <div>
+              <h2>Projects</h2>
+              <p>共 {{ projects.length }} 筆。</p>
+            </div>
+            <label class="geo-search-field">
+              <AppIcon name="search" :size="16" />
+              <input v-model="projectSearch" type="search" placeholder="搜尋 project、customer、task" />
+            </label>
           </header>
           <div class="table-scroll">
             <table class="data-table geo-table">
               <thead>
                 <tr>
                   <th>Project</th>
-                  <th>Customer / Task</th>
+                  <th>Customer</th>
+                  <th>Task</th>
                   <th>Locale</th>
-                  <th>Budget</th>
                   <th>Status</th>
+                  <th>Budget</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="project in state.projects" :key="project.id">
-                  <td>
-                    <strong>{{ project.name }}</strong>
-                    <small>{{ project.id }}</small>
-                  </td>
-                  <td>{{ project.customerName }} / {{ project.seoTaskName ?? "未綁定" }}</td>
-                  <td>{{ project.defaultRegion }} · {{ project.defaultLanguage }}</td>
-                  <td>{{ project.dailyRunBudget }}</td>
+                <tr v-for="project in filteredProjects" :key="project.id">
+                  <td><strong>{{ project.name }}</strong><small>{{ shortId(project.id) }}</small></td>
+                  <td>{{ project.customerName }}</td>
+                  <td>{{ project.seoTaskName ?? "-" }}</td>
+                  <td>{{ project.defaultRegion }} / {{ project.defaultLanguage }}</td>
                   <td><span :class="badgeClass(project.status)">{{ project.status }}</span></td>
+                  <td>{{ project.dailyRunBudget }}</td>
                   <td>
-                    <div class="row-actions">
-                      <button class="text-button" type="button" @click="selectedProjectId = project.id">選取</button>
-                      <button class="text-button" type="button" @click="updateProjectStatus(project.id, project.status === 'active' ? 'paused' : 'active')">切換</button>
-                      <button class="text-button text-error" type="button" @click="deleteProject(project.id)">刪除</button>
-                    </div>
+                    <button class="text-button text-error" type="button" @click="deleteProject(project.id)">
+                      刪除
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -666,14 +1025,11 @@ function useFirstQuery(): void {
       <section v-else-if="activeTab === 'entities'" class="geo-section-stack">
         <article class="card geo-form-card">
           <header class="card-header">
-            <div>
-              <h2>Entities & Aliases</h2>
-              <p>品牌、競品、網站與 alias mock CRUD</p>
-            </div>
+            <h2>建立 Entity</h2>
           </header>
           <form class="geo-form-grid" @submit.prevent="createEntity">
             <label>
-              類型
+              Type
               <select v-model="entityForm.entityType">
                 <option value="brand">brand</option>
                 <option value="competitor">competitor</option>
@@ -683,7 +1039,7 @@ function useFirstQuery(): void {
             </label>
             <label>
               名稱
-              <input v-model="entityForm.name" type="text" placeholder="品牌或競品名稱" />
+              <input v-model="entityForm.name" type="text" placeholder="金山旅宿" />
             </label>
             <label>
               Website URL
@@ -691,22 +1047,20 @@ function useFirstQuery(): void {
             </label>
             <label>
               Alias
-              <input v-model="entityForm.alias" type="text" placeholder="可留空" />
+              <input v-model="entityForm.alias" type="text" placeholder="品牌別名或網域" />
             </label>
             <label class="geo-form-full">
               描述
-              <textarea v-model="entityForm.description" rows="3" placeholder="追蹤目的或辨識規則"></textarea>
+              <textarea v-model="entityForm.description" rows="3" placeholder="用於 mention extraction 的品牌描述"></textarea>
             </label>
             <div class="geo-form-actions">
-              <button class="button button-primary" type="submit">新增 mock entity</button>
+              <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Entity</button>
             </div>
           </form>
         </article>
 
         <article class="card">
-          <header class="card-header">
-            <h2>Entity List</h2>
-          </header>
+          <header class="card-header"><h2>Entities</h2></header>
           <div class="table-scroll">
             <table class="data-table geo-table">
               <thead>
@@ -720,16 +1074,19 @@ function useFirstQuery(): void {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="entity in projectEntities" :key="entity.id">
-                  <td>{{ entity.name }}</td>
+                <tr v-for="entity in entities" :key="entity.id">
+                  <td><strong>{{ entity.name }}</strong><small>{{ entity.description || "-" }}</small></td>
                   <td>{{ entity.entityType }}</td>
                   <td>{{ getAliases(entity.id) }}</td>
                   <td>{{ entity.websiteUrl ?? "-" }}</td>
                   <td><span :class="badgeClass(entity.status)">{{ entity.status }}</span></td>
                   <td>
-                    <button class="text-button text-error" type="button" @click="deleteEntity(entity.id)">刪除</button>
+                    <button class="text-button text-error" type="button" @click="deleteEntity(entity.id)">
+                      刪除
+                    </button>
                   </td>
                 </tr>
+                <tr v-if="entities.length === 0"><td colspan="6">尚無 entity。</td></tr>
               </tbody>
             </table>
           </div>
@@ -739,35 +1096,35 @@ function useFirstQuery(): void {
       <section v-else-if="activeTab === 'queries'" class="geo-section-stack">
         <div class="geo-two-column">
           <article class="card geo-form-card">
-            <header class="card-header">
-              <h2>Topics</h2>
-            </header>
+            <header class="card-header"><h2>Topics</h2></header>
             <form class="geo-compact-form" @submit.prevent="createTopic">
               <label>
                 Topic
-                <input v-model="topicForm.name" type="text" placeholder="例如：品牌比較" />
+                <input v-model="topicForm.name" type="text" placeholder="溫泉住宿推薦" />
               </label>
               <label>
                 Description
                 <textarea v-model="topicForm.description" rows="3"></textarea>
               </label>
-              <button class="button button-primary" type="submit">新增 topic</button>
+              <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Topic</button>
             </form>
           </article>
 
           <article class="card geo-form-card">
-            <header class="card-header">
-              <h2>Queries</h2>
-            </header>
+            <header class="card-header"><h2>Queries</h2></header>
             <form class="geo-form-grid" @submit.prevent="createQuery">
               <label>
                 Topic
                 <select v-model="queryForm.topicId">
                   <option value="">不指定</option>
-                  <option v-for="topic in projectTopics" :key="topic.id" :value="topic.id">
+                  <option v-for="topic in topics" :key="topic.id" :value="topic.id">
                     {{ topic.name }}
                   </option>
                 </select>
+              </label>
+              <label>
+                Stage
+                <input v-model="queryForm.buyerStage" type="text" />
               </label>
               <label>
                 Priority
@@ -782,34 +1139,51 @@ function useFirstQuery(): void {
                 <input v-model="queryForm.intent" type="text" />
               </label>
               <label>
-                Buyer stage
-                <input v-model="queryForm.buyerStage" type="text" />
-              </label>
-              <label>
-                市場語境
+                Market
                 <select v-model="queryForm.marketType">
-                  <option value="b2b_procurement">B2B 採購</option>
-                  <option value="b2c">B2C 消費</option>
+                  <option value="b2c">B2C</option>
+                  <option value="b2b_procurement">B2B procurement</option>
                 </select>
-              </label>
-              <label class="geo-form-full">
-                Query
-                <textarea v-model="queryForm.queryText" rows="3" placeholder="使用者會在 Gemini / GPT 詢問的問題"></textarea>
               </label>
               <label class="geo-checkbox">
                 <input v-model="queryForm.isBranded" type="checkbox" />
                 Branded query
               </label>
+              <label class="geo-form-full">
+                Query
+                <textarea v-model="queryForm.queryText" rows="3" placeholder="北海岸適合週末放鬆的溫泉住宿推薦"></textarea>
+              </label>
               <div class="geo-form-actions">
-                <button class="button button-primary" type="submit">新增 query</button>
+                <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Query</button>
               </div>
             </form>
           </article>
         </div>
 
         <article class="card">
-          <header class="card-header">
-            <h2>Query List</h2>
+          <header class="card-header geo-card-toolbar">
+            <div>
+              <h2>Query List</h2>
+              <p>支援搜尋與 stage / priority 篩選。</p>
+            </div>
+            <div class="geo-toolbar-controls">
+              <label class="geo-search-field">
+                <AppIcon name="search" :size="16" />
+                <input v-model="querySearch" type="search" placeholder="搜尋 query、topic、intent" />
+              </label>
+              <select v-model="queryStageFilter">
+                <option value="">Stage</option>
+                <option value="awareness">awareness</option>
+                <option value="consideration">consideration</option>
+                <option value="decision">decision</option>
+              </select>
+              <select v-model="queryPriorityFilter">
+                <option value="">Priority</option>
+                <option value="low">low</option>
+                <option value="normal">normal</option>
+                <option value="high">high</option>
+              </select>
+            </div>
           </header>
           <div class="table-scroll">
             <table class="data-table geo-table">
@@ -819,25 +1193,26 @@ function useFirstQuery(): void {
                   <th>Topic</th>
                   <th>Intent</th>
                   <th>Stage</th>
-                  <th>Market</th>
                   <th>Branded</th>
                   <th>Priority</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="query in projectQueries" :key="query.id">
-                  <td>{{ query.queryText }}</td>
+                <tr v-for="query in filteredQueries" :key="query.id">
+                  <td><strong>{{ query.queryText }}</strong><small>{{ query.region }} / {{ query.language }}</small></td>
                   <td>{{ getTopic(query.topicId)?.name ?? "-" }}</td>
-                  <td>{{ query.intent }}</td>
-                  <td>{{ query.buyerStage }}</td>
-                  <td>{{ marketTypeLabel(query.marketType) }}</td>
+                  <td><code>{{ query.intent ?? "-" }}</code></td>
+                  <td>{{ query.buyerStage ?? "-" }}</td>
                   <td>{{ query.isBranded ? "是" : "否" }}</td>
-                  <td>{{ query.priority }}</td>
+                  <td><span :class="badgeClass(query.priority)">{{ query.priority }}</span></td>
                   <td>
-                    <button class="text-button text-error" type="button" @click="deleteQuery(query.id)">刪除</button>
+                    <button class="text-button text-error" type="button" @click="deleteQuery(query.id)">
+                      刪除
+                    </button>
                   </td>
                 </tr>
+                <tr v-if="filteredQueries.length === 0"><td colspan="7">找不到符合條件的 query。</td></tr>
               </tbody>
             </table>
           </div>
@@ -846,14 +1221,10 @@ function useFirstQuery(): void {
 
       <section v-else-if="activeTab === 'schedules'" class="geo-section-stack">
         <div class="geo-platform-grid">
-          <article
-            v-for="platform in projectPlatforms"
-            :key="platform.id"
-            class="card geo-platform-card"
-          >
+          <article v-for="platform in platformSummaries" :key="platform.id" class="card geo-platform-card">
             <strong>{{ platform.name }}</strong>
             <span>{{ platform.model }}</span>
-            <small>{{ platform.assignmentCount }} query assignments</small>
+            <small>{{ platform.assignmentCount }} assignments / {{ platform.scheduleCount }} schedules</small>
             <span :class="badgeClass(platform.status)">{{ platform.status }}</span>
           </article>
         </div>
@@ -862,7 +1233,7 @@ function useFirstQuery(): void {
           <header class="card-header">
             <div>
               <h2>建立 Schedule</h2>
-              <p>AI model assignment、frequency、timezone、next run mock 操作</p>
+              <p>平台 ID 依後端 README 建議 seed；缺平台總表 API 已列入缺口文件。</p>
             </div>
           </header>
           <form class="geo-form-grid" @submit.prevent="createSchedule">
@@ -870,7 +1241,7 @@ function useFirstQuery(): void {
               Query
               <select v-model="scheduleForm.queryId">
                 <option value="">請選擇 query</option>
-                <option v-for="query in projectQueries" :key="query.id" :value="query.id">
+                <option v-for="query in selectedProjectQueries" :key="query.id" :value="query.id">
                   {{ query.queryText }}
                 </option>
               </select>
@@ -878,8 +1249,8 @@ function useFirstQuery(): void {
             <label>
               Platform
               <select v-model="scheduleForm.platformId">
-                <option v-for="platform in state.platforms" :key="platform.id" :value="platform.id">
-                  {{ platform.name }} · {{ platform.model }}
+                <option v-for="platform in geoPlatformCatalog" :key="platform.id" :value="platform.id">
+                  {{ platform.name }} / {{ platform.model }}
                 </option>
               </select>
             </label>
@@ -908,15 +1279,13 @@ function useFirstQuery(): void {
               <input v-model="scheduleForm.nextRunAt" type="datetime-local" />
             </label>
             <div class="geo-form-actions">
-              <button class="button button-primary" type="submit">新增 mock schedule</button>
+              <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Schedule</button>
             </div>
           </form>
         </article>
 
         <article class="card">
-          <header class="card-header">
-            <h2>Schedules</h2>
-          </header>
+          <header class="card-header"><h2>Schedules</h2></header>
           <div class="table-scroll">
             <table class="data-table geo-table">
               <thead>
@@ -930,10 +1299,10 @@ function useFirstQuery(): void {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="schedule in projectSchedules" :key="schedule.id">
+                <tr v-for="schedule in schedules" :key="schedule.id">
                   <td>{{ getQuery(schedule.queryId)?.queryText ?? "-" }}</td>
                   <td>{{ getPlatform(schedule.platformId) }}</td>
-                  <td>{{ schedule.frequency }} · {{ schedule.timezone }}</td>
+                  <td>{{ schedule.frequency }} / {{ schedule.timezone }}</td>
                   <td>{{ formatDate(schedule.nextRunAt) }}</td>
                   <td><span :class="badgeClass(schedule.status)">{{ schedule.status }}</span></td>
                   <td>
@@ -943,6 +1312,7 @@ function useFirstQuery(): void {
                     </div>
                   </td>
                 </tr>
+                <tr v-if="schedules.length === 0"><td colspan="6">尚無 schedule。</td></tr>
               </tbody>
             </table>
           </div>
@@ -954,16 +1324,15 @@ function useFirstQuery(): void {
           <header class="card-header">
             <div>
               <h2>Manual Run</h2>
-              <p>建立 mock job；dispatch disabled，後續 publisher 決定後再實作</p>
+              <p>建立 job 後可透過 Dispatch 呼叫 publisher。</p>
             </div>
-            <span class="badge badge-warning">Publisher 待實作</span>
           </header>
           <form class="geo-form-grid" @submit.prevent="createManualJob">
             <label>
               Query
               <select v-model="jobForm.queryId">
                 <option value="">請選擇 query</option>
-                <option v-for="query in projectQueries" :key="query.id" :value="query.id">
+                <option v-for="query in selectedProjectQueries" :key="query.id" :value="query.id">
                   {{ query.queryText }}
                 </option>
               </select>
@@ -971,7 +1340,7 @@ function useFirstQuery(): void {
             <label>
               Platform
               <select v-model="jobForm.platformId">
-                <option v-for="platform in state.platforms" :key="platform.id" :value="platform.id">
+                <option v-for="platform in geoPlatformCatalog" :key="platform.id" :value="platform.id">
                   {{ platform.name }}
                 </option>
               </select>
@@ -985,21 +1354,38 @@ function useFirstQuery(): void {
               </select>
             </label>
             <div class="geo-form-actions">
-              <button class="button button-primary" type="submit">建立 mock job</button>
-              <button
-                class="button button-secondary"
-                type="button"
-                @click="emit('unavailable', 'GEO job publisher')"
-              >
-                Dispatch disabled
-              </button>
+              <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Manual Run</button>
             </div>
           </form>
         </article>
 
         <article class="card">
-          <header class="card-header">
-            <h2>Jobs</h2>
+          <header class="card-header geo-card-toolbar">
+            <div>
+              <h2>Jobs</h2>
+              <p>共 {{ selectedProjectJobs.length }} 筆。</p>
+            </div>
+            <div class="geo-toolbar-controls">
+              <label class="geo-search-field">
+                <AppIcon name="search" :size="16" />
+                <input v-model="jobSearch" type="search" placeholder="搜尋 query、platform、dedupe key" />
+              </label>
+              <select v-model="jobPlatformFilter">
+                <option value="">Platform</option>
+                <option v-for="platform in geoPlatformCatalog" :key="platform.id" :value="platform.id">
+                  {{ platform.name }}
+                </option>
+              </select>
+              <select v-model="jobStatusFilter">
+                <option value="">Status</option>
+                <option value="pending">pending</option>
+                <option value="published">published</option>
+                <option value="running_external">running_external</option>
+                <option value="succeeded">succeeded</option>
+                <option value="failed">failed</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
           </header>
           <div class="table-scroll">
             <table class="data-table geo-table geo-job-table">
@@ -1010,20 +1396,26 @@ function useFirstQuery(): void {
                   <th>Status</th>
                   <th>Dedupe key</th>
                   <th>Attempts</th>
+                  <th>Dispatch</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="job in projectJobs" :key="job.id">
+                <tr v-for="job in filteredJobs" :key="job.id">
                   <td>{{ getQuery(job.queryId)?.queryText ?? "-" }}</td>
                   <td>{{ getPlatform(job.platformId) }}</td>
                   <td><span :class="badgeClass(job.status)">{{ job.status }}</span></td>
                   <td><code>{{ job.dedupeKey }}</code></td>
                   <td>{{ job.attemptCount }} / {{ job.maxAttempts }}</td>
+                  <td>{{ job.dispatchBackend ?? "-" }} <small>{{ job.dispatchMessageId ?? "" }}</small></td>
                   <td>
-                    <button class="text-button" type="button" @click="cancelJob(job)">Cancel</button>
+                    <div class="row-actions">
+                      <button class="text-button" type="button" @click="dispatchJob(job.id)">Dispatch</button>
+                      <button class="text-button text-error" type="button" @click="cancelJob(job.id)">Cancel</button>
+                    </div>
                   </td>
                 </tr>
+                <tr v-if="filteredJobs.length === 0"><td colspan="7">找不到符合條件的 job。</td></tr>
               </tbody>
             </table>
           </div>
@@ -1033,15 +1425,11 @@ function useFirstQuery(): void {
       <section v-else class="geo-section-stack">
         <div class="mock-notice subtle">
           <AppIcon name="alert-circle" :size="17" />
-          Reports 目前皆為示意資料，後續接正式分析資料、指標演算法與 report API。
+          Reports KPI、topic performance、recommendations 與 AI answer analysis 尚缺 API，以下使用示意資料。
         </div>
 
         <div class="geo-report-grid">
-          <article
-            v-for="metric in state.reportMetrics"
-            :key="metric.id"
-            class="card geo-metric-card"
-          >
+          <article v-for="metric in fallback.reportMetrics" :key="metric.id" class="card geo-metric-card">
             <span :class="`text-${metric.tone}`">{{ metric.delta }}</span>
             <strong>{{ metric.value }}</strong>
             <h2>{{ metric.label }}</h2>
@@ -1051,12 +1439,7 @@ function useFirstQuery(): void {
 
         <div class="geo-two-column">
           <article class="card">
-            <header class="card-header">
-              <div>
-                <h2>Topic Performance</h2>
-                <p>示意資料，後續接正式分析資料</p>
-              </div>
-            </header>
+            <header class="card-header"><h2>Topic Performance</h2></header>
             <div class="table-scroll">
               <table class="data-table geo-table">
                 <thead>
@@ -1069,7 +1452,7 @@ function useFirstQuery(): void {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="topic in state.topicPerformance" :key="topic.topicId">
+                  <tr v-for="topic in fallback.topicPerformance" :key="topic.topicId">
                     <td>{{ topic.topicName }}</td>
                     <td>{{ topic.visibility }}%</td>
                     <td>{{ topic.sov }}%</td>
@@ -1082,18 +1465,9 @@ function useFirstQuery(): void {
           </article>
 
           <article class="card">
-            <header class="card-header">
-              <div>
-                <h2>Recommendations</h2>
-                <p>示意資料，後續接正式建議演算法</p>
-              </div>
-            </header>
+            <header class="card-header"><h2>Recommendations</h2></header>
             <div class="geo-list">
-              <div
-                v-for="item in state.recommendations"
-                :key="item.id"
-                class="geo-list-item"
-              >
+              <div v-for="item in fallback.recommendations" :key="item.id" class="geo-list-item">
                 <span :class="badgeClass(item.priority)">{{ item.priority }}</span>
                 <strong>{{ item.title }}</strong>
                 <p>{{ item.description }}</p>
@@ -1105,8 +1479,8 @@ function useFirstQuery(): void {
         <article class="card">
           <header class="card-header">
             <div>
-              <h2>Run History</h2>
-              <p>Worker 保存的 raw result 與 references</p>
+              <h2>Run Results</h2>
+              <p>raw response 與 references 來自 API；分析摘要仍為後續功能。</p>
             </div>
           </header>
           <div class="table-scroll">
@@ -1122,38 +1496,17 @@ function useFirstQuery(): void {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="result in projectRunResults" :key="result.id">
+                <tr v-for="result in selectedProjectRunResults" :key="result.id">
                   <td>{{ getQuery(result.queryId)?.queryText ?? "-" }}</td>
-                  <td>{{ result.provider }} / {{ result.model }}</td>
+                  <td>{{ result.surface }} / {{ result.model }}</td>
                   <td><span :class="badgeClass(result.status)">{{ result.status }}</span></td>
                   <td>{{ formatDate(result.runAt) }}</td>
                   <td>{{ result.references.length }}</td>
                   <td>{{ result.error ?? "-" }}</td>
                 </tr>
+                <tr v-if="selectedProjectRunResults.length === 0"><td colspan="6">尚無 run result。</td></tr>
               </tbody>
             </table>
-          </div>
-          <div class="geo-answer-grid">
-            <section
-              v-for="result in projectRunResults.slice(0, 2)"
-              :key="`${result.id}-detail`"
-              class="geo-answer-card"
-            >
-              <div class="geo-answer-head">
-                <span class="badge badge-info">{{ result.surface }}</span>
-                <span :class="badgeClass(result.status)">{{ result.status }}</span>
-              </div>
-              <h3>{{ getQuery(result.queryId)?.queryText ?? result.queryId }}</h3>
-              <pre>{{ result.rawResponse || result.error }}</pre>
-              <small>
-                References:
-                {{
-                  resultReferences(result)
-                    .map((reference) => reference.title ?? reference.domain ?? reference.url)
-                    .join("、") || "-"
-                }}
-              </small>
-            </section>
           </div>
         </article>
 
@@ -1161,15 +1514,11 @@ function useFirstQuery(): void {
           <header class="card-header">
             <div>
               <h2>AI Answer Samples</h2>
-              <p>示意資料，後續接 AI answer analysis 與 citations</p>
+              <p>示意資料，等待 answer analysis / citation analysis API。</p>
             </div>
           </header>
           <div class="geo-answer-grid">
-            <section
-              v-for="sample in state.aiAnswerSamples"
-              :key="sample.id"
-              class="geo-answer-card"
-            >
+            <section v-for="sample in fallback.aiAnswerSamples" :key="sample.id" class="geo-answer-card">
               <div class="geo-answer-head">
                 <span class="badge badge-info">{{ sample.platform }}</span>
                 <span :class="badgeClass(sample.sentiment)">{{ sample.sentiment }}</span>

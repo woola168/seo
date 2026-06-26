@@ -1,18 +1,36 @@
 ﻿import type {
   AuthorizationDecision,
   Capabilities,
+  CollectionResponse,
   CreateInvitationInput,
   CustomerSummary,
+  GeoAnalysisQueryRequest,
+  GeoAnalysisRunResult,
   Department,
   GeoDummyProject,
+  GeoEntityAliasRequest,
+  GeoEntityAliasResource,
+  GeoEntityRequest,
+  GeoEntityResource,
   GeoGeneratedQuery,
+  GeoJobRequest,
+  GeoJobResource,
   GeoQueryGenerationResult,
   GeoMarketType,
   GeoProvider,
+  GeoProjectRequest,
+  GeoProjectResource,
+  GeoQueryPlatformRequest,
+  GeoQueryPlatformResource,
+  GeoQueryResource,
   GeoQueryProvider,
   GeoQueryResearchResult,
   GeoRegion,
   GeoRunRequestResult,
+  GeoScheduleRequest,
+  GeoScheduleResource,
+  GeoTopicRequest,
+  GeoTopicResource,
   GeoTopicInput,
   PageResponse,
   Role,
@@ -203,6 +221,129 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId, permission, resource }),
     }),
+  geoAnalysis: {
+    projects: (customerId = "") =>
+      request<CollectionResponse<GeoProjectResource>>(
+        `/api/geo/projects${customerId ? `?customerId=${customerId}` : ""}`,
+      ),
+    createProject: (input: GeoProjectRequest) =>
+      request<GeoProjectResource>("/api/geo/projects", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateProject: (projectId: string, input: GeoProjectRequest) =>
+      request<GeoProjectResource>(`/api/geo/projects/${projectId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteProject: (projectId: string) =>
+      request<void>(`/api/geo/projects/${projectId}`, { method: "DELETE" }),
+    markets: (projectId: string) =>
+      request<CollectionResponse<unknown>>(
+        `/api/geo/projects/${projectId}/markets`,
+      ),
+    entities: (projectId: string) =>
+      request<CollectionResponse<GeoEntityResource>>(
+        `/api/geo/projects/${projectId}/entities`,
+      ),
+    createEntity: (projectId: string, input: GeoEntityRequest) =>
+      request<GeoEntityResource>(`/api/geo/projects/${projectId}/entities`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateEntity: (entityId: string, input: GeoEntityRequest) =>
+      request<GeoEntityResource>(`/api/geo/entities/${entityId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteEntity: (entityId: string) =>
+      request<void>(`/api/geo/entities/${entityId}`, { method: "DELETE" }),
+    aliases: (entityId: string) =>
+      request<CollectionResponse<GeoEntityAliasResource>>(
+        `/api/geo/entities/${entityId}/aliases`,
+      ),
+    createAlias: (entityId: string, input: GeoEntityAliasRequest) =>
+      request<GeoEntityAliasResource>(`/api/geo/entities/${entityId}/aliases`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    deleteAlias: (aliasId: string) =>
+      request<void>(`/api/geo/entity-aliases/${aliasId}`, { method: "DELETE" }),
+    topics: (projectId: string) =>
+      request<CollectionResponse<GeoTopicResource>>(
+        `/api/geo/projects/${projectId}/topics`,
+      ),
+    createTopic: (projectId: string, input: GeoTopicRequest) =>
+      request<GeoTopicResource>(`/api/geo/projects/${projectId}/topics`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    deleteTopic: (topicId: string) =>
+      request<void>(`/api/geo/topics/${topicId}`, { method: "DELETE" }),
+    queries: (projectId: string) =>
+      request<CollectionResponse<GeoQueryResource>>(
+        `/api/geo/projects/${projectId}/queries`,
+      ),
+    createQuery: (projectId: string, input: GeoAnalysisQueryRequest) =>
+      request<GeoQueryResource>(`/api/geo/projects/${projectId}/queries`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    deleteQuery: (queryId: string) =>
+      request<void>(`/api/geo/queries/${queryId}`, { method: "DELETE" }),
+    queryPlatforms: (queryId: string) =>
+      request<CollectionResponse<GeoQueryPlatformResource>>(
+        `/api/geo/queries/${queryId}/platforms`,
+      ),
+    replaceQueryPlatforms: (
+      queryId: string,
+      input: GeoQueryPlatformRequest[],
+    ) =>
+      request<CollectionResponse<GeoQueryPlatformResource>>(
+        `/api/geo/queries/${queryId}/platforms`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
+    schedules: (queryId: string) =>
+      request<CollectionResponse<GeoScheduleResource>>(
+        `/api/geo/queries/${queryId}/schedules`,
+      ),
+    createSchedule: (queryId: string, input: GeoScheduleRequest) =>
+      request<GeoScheduleResource>(`/api/geo/queries/${queryId}/schedules`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateSchedule: (scheduleId: string, input: GeoScheduleRequest) =>
+      request<GeoScheduleResource>(`/api/geo/schedules/${scheduleId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteSchedule: (scheduleId: string) =>
+      request<void>(`/api/geo/schedules/${scheduleId}`, { method: "DELETE" }),
+    createJob: (queryId: string, input: GeoJobRequest) =>
+      request<GeoJobResource>(`/api/geo/queries/${queryId}/jobs`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    jobs: (projectId: string) =>
+      request<CollectionResponse<GeoJobResource>>(
+        `/api/geo/projects/${projectId}/jobs`,
+      ),
+    runResults: (projectId: string) =>
+      request<CollectionResponse<GeoAnalysisRunResult>>(
+        `/api/geo/projects/${projectId}/run-results`,
+      ),
+    dispatchJob: (jobId: string) =>
+      request<GeoJobResource>(`/api/geo/jobs/${jobId}/dispatch`, {
+        method: "POST",
+      }),
+    cancelJob: (jobId: string) =>
+      request<GeoJobResource>(`/api/geo/jobs/${jobId}/cancel`, {
+        method: "POST",
+      }),
+  },
   geoDummyProject: () =>
     request<GeoDummyProject>("/api/v1/geo-tracking/dummy-project"),
   researchGeoQueries: (input: {

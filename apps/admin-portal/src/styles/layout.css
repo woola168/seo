@@ -92,6 +92,9 @@
   color: var(--text-secondary);
   text-align: left;
   background: transparent;
+  transition:
+    color 120ms ease,
+    background 120ms ease;
 }
 
 .navigation-item span {
@@ -124,9 +127,8 @@
 .navigation-submenu {
   display: grid;
   gap: 1px;
-  margin: 2px 8px 8px 34px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border-subtle);
+  margin: 0 8px 8px;
+  padding-left: 10px;
 }
 
 .navigation-subitem {
@@ -134,13 +136,22 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 8px 16px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: 13px;
   text-align: left;
   background: transparent;
+}
+
+.navigation-subitem::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--text-disabled);
 }
 
 .navigation-subitem span {
@@ -162,8 +173,12 @@
 
 .navigation-subitem.active {
   color: var(--primary);
-  font-weight: 500;
-  background: var(--primary-soft);
+  font-weight: 600;
+  background: transparent;
+}
+
+.navigation-subitem.active::before {
+  background: var(--primary);
 }
 
 .navigation-subitem.disabled:not(:hover) {
@@ -178,6 +193,15 @@
   color: var(--primary);
   font-weight: 500;
   background: var(--primary-soft);
+}
+
+.navigation-item.has-children.active {
+  font-weight: 600;
+  background: transparent;
+}
+
+.navigation-item.has-children.active .navigation-expand-icon {
+  color: var(--primary);
 }
 
 .navigation-item.disabled:not(:hover) {
