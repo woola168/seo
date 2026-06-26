@@ -64,7 +64,7 @@ jobs:
         run: |
           for url in \
             http://127.0.0.1:18080/health \
-            http://127.0.0.1:18000/health \
+            http://127.0.0.1:18004/health \
             http://127.0.0.1:18001/health \
             http://127.0.0.1:18002/health \
             http://127.0.0.1:18003/health
