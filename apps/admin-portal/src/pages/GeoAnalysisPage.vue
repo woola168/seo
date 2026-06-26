@@ -847,13 +847,13 @@ async function cancelJob(jobId: string): Promise<void> {
     </div>
     <div v-if="errorMessage" class="geo-error-message">{{ errorMessage }}</div>
 
-    <div v-if="loading && !selectedProject" class="empty-state">
+    <div v-if="loading && !selectedProject && activeTab !== 'projects'" class="empty-state">
       <AppIcon name="refresh" />
       <strong>正在載入 GEO 資料</strong>
       <span>請稍候。</span>
     </div>
 
-    <div v-else-if="!selectedProject" class="empty-state">
+    <div v-else-if="!selectedProject && activeTab !== 'projects'" class="empty-state">
       <AppIcon name="layers" />
       <strong>尚未建立 GEO project</strong>
       <span>請在 Projects 建立第一個專案。</span>
