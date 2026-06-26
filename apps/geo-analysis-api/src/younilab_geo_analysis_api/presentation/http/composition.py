@@ -12,8 +12,7 @@ from younilab_seo.geo_analysis.application import (
     MessagePublisher,
     ReceiveExternalRunCallback,
 )
-from younilab_seo.geo_analysis.infrastructure import (
-    RabbitMqMessagePublisher,
+from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
 
@@ -86,6 +85,10 @@ def _build_publisher() -> MessagePublisher | None:
     url = os.getenv("GEO_ANALYSIS_RABBITMQ_URL")
     if not url:
         return None
+    from younilab_seo.geo_analysis.infrastructure.messaging import (
+        RabbitMqMessagePublisher,
+    )
+
     return RabbitMqMessagePublisher(
         url=url,
         exchange_name=os.getenv(

@@ -1,6 +1,16 @@
 import asyncio
 from datetime import UTC, datetime
+import sys
+import types
 from uuid import uuid4
+
+fake_aio_pika = types.SimpleNamespace(
+    DeliveryMode=types.SimpleNamespace(PERSISTENT=2),
+    ExchangeType=types.SimpleNamespace(DIRECT="direct"),
+    Message=lambda body, **kwargs: types.SimpleNamespace(body=body, **kwargs),
+    connect_robust=None,
+)
+sys.modules["aio_pika"] = fake_aio_pika
 
 from younilab_seo.geo_analysis.application import QueryRunJobMessage
 from younilab_seo.geo_analysis.infrastructure.messaging import RabbitMqMessagePublisher
@@ -72,6 +82,7 @@ def test_rabbitmq_publisher_declares_provider_queue_and_publishes_json() -> None
         published_message, routing_key = channel.exchange.published[0]
         assert routing_key == "geo.query-runs.gemini_chat"
         assert b'"platform":"Gemini Chat"' in published_message.body
+        assert b'"marketType":"b2b_procurement"' in published_message.body
         assert published_message.content_type == "application/json"
 
     asyncio.run(run())
@@ -124,11 +135,15 @@ def _message(platform: str) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=uuid4(),
         project_id=uuid4(),
+        seo_task_id=uuid4(),
         query_id=uuid4(),
         query_text="Which supplier should I choose?",
+        topic_name="Supplier evaluation",
         platform=platform,
         region="TW",
         language="zh-TW",
+        market_type="b2b_procurement",
+        is_branded=False,
         scheduled_for=datetime(2026, 6, 25, tzinfo=UTC),
         callback_url="http://geo-analysis-api:8002/api/geo/jobs/callback",
     )

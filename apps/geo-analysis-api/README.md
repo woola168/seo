@@ -17,7 +17,7 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
-- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；worker、AI raw result、mention/citation/sentiment 與報表指標仍屬後續批次。
+- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 會消費 Gemini queue、呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
 - 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
 
 範例：
@@ -130,6 +130,7 @@ routes -> application use case -> GeoAnalysisRepository port -> infrastructure a
 - `packages/younilab-seo/.../geo_analysis/application/interfaces.py`：定義 `GeoAnalysisRepository` port。
 - `packages/younilab-seo/.../geo_analysis/infrastructure/persistence/postgres/repository.py`：實作 PostgreSQL adapter，負責 SQLModel row 與 application/domain model 互轉。
 - `packages/younilab-seo/.../geo_analysis/infrastructure/messaging/rabbitmq.py`：實作 RabbitMQ publisher adapter，依 provider 發布到不同 queue。
+- `apps/geo-analysis-worker`：消費 provider queue，呼叫 `geo-tracking-api` `/api/v1/geo-tracking/run-requests`，並只回寫 job status/evidence。
 - `apps/geo-analysis-api/.../store.py`：僅作為 API tests 與本機 stub 用的 in-memory fake repository。
 
 已移除舊的 `PostgresGeoApiStore` presentation adapter；正式 runtime 直接由 composition 建立 `PostgresGeoAnalysisRepository` 後注入 use cases。
@@ -168,7 +169,7 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
 
 - JSON 欄位使用 `camelCase`。
 - 未設定 `GEO_ANALYSIS_DATABASE_URL` 時會使用 in-memory store。
-- `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue。
+- `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue。Project 缺少 `seoTaskId` 時會回 `409`，避免 worker 無法呼叫 `geo-tracking-api`。
 - `cancel` 與 external callback 已可透過 store abstraction 套用到 in-memory 或 PostgreSQL-backed repository。
 - 錯誤回應使用 `application/problem+json`。
 
@@ -232,7 +233,10 @@ Problem Details 格式：
 | `DELETE` | `/api/geo/schedules/{scheduleId}` | 刪除排程設定。 |
 | `POST` | `/api/geo/queries/{queryId}/jobs` | 建立手動 query run job。 |
 | `GET` | `/api/geo/projects/{projectId}/jobs` | 列出 project 的 query run jobs。 |
+| `GET` | `/api/geo/projects/{projectId}/run-results` | 列出 project 的 run history raw results。 |
 | `GET` | `/api/geo/jobs/{jobId}` | 取得單一 job orchestration 狀態。 |
+| `GET` | `/api/geo/jobs/{jobId}/run-results` | 列出單一 job 的 raw results。 |
+| `GET` | `/api/geo/run-results/{resultId}` | 取得 run result detail，包含 raw response 與 references。 |
 | `POST` | `/api/geo/jobs/{jobId}/dispatch` | 派送 job 到 message broker。未設定 publisher 時回 `501`；RabbitMQ 啟用後依 provider 發布到 `geo.query-runs.{provider}`。 |
 | `POST` | `/api/geo/jobs/{jobId}/cancel` | 取消尚未進入 terminal state 的 job。 |
 | `POST` | `/api/geo/jobs/{jobId}/external-callbacks` | 接收外部 runner 狀態 callback，不接收 AI result content。 |
@@ -350,6 +354,7 @@ Problem Details 格式：
   "queryText": "台灣可靠的 O-ring 供應商有哪些？",
   "region": "TW",
   "language": "zh-TW",
+  "marketType": "b2b_procurement",
   "intent": "commercial",
   "buyerStage": "supplier_evaluation",
   "isBranded": false,
@@ -358,6 +363,8 @@ Problem Details 格式：
   "metadata": {}
 }
 ```
+
+`marketType` 目前支援 `b2c` 與 `b2b_procurement`。未提供時會使用 `b2b_procurement`，供舊 client 相容。
 
 ## Query Platforms 與 Schedules
 

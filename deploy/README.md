@@ -1,17 +1,17 @@
-# 部署說明
+# 部署設定
 
-## 部署環境
+## 環境檔
 
-GitHub Actions 依分支使用不同環境檔：
+GitHub Actions 依分支選擇部署環境檔：
 
 - `develop` 使用 `deploy/.env.develop`
 - `main` 使用 `deploy/.env.prod`
 
-部署流程會 build 並重啟 `deploy/docker-compose.yml` 中的服務，之後透過各服務的 `/health` 做基本檢查。
+遠端 PostgreSQL schema 與 seed 仍由人工執行；CI/CD 不會自動跑 migration。
 
 ## 對外 Port
 
-所有服務目前都只綁定在主機的 `127.0.0.1`，外部連線請透過反向代理或 SSH tunnel。
+Compose 內的服務預設只綁定 `127.0.0.1`，需要從外部查看時請透過 SSH tunnel 或反向代理開放。
 
 - Admin Portal: `http://127.0.0.1:18080`
 - Access Control API: `http://127.0.0.1:18000`
@@ -21,19 +21,25 @@ GitHub Actions 依分支使用不同環境檔：
 - RabbitMQ AMQP: `127.0.0.1:5672`
 - RabbitMQ Management UI: `http://127.0.0.1:15672`
 
-遠端查看 RabbitMQ dashboard 可使用：
+RabbitMQ dashboard 範例：
 
 ```powershell
 ssh -L 15672:127.0.0.1:15672 user@server
 ```
 
-登入帳號密碼由環境檔的 `RABBITMQ_DEFAULT_USER` 與 `RABBITMQ_DEFAULT_PASS` 決定。
+登入帳密使用 `RABBITMQ_DEFAULT_USER` 與 `RABBITMQ_DEFAULT_PASS`。
+
+## Compose env file path
+
+`DEPLOY_ENV_FILE` is consumed by `deploy/docker-compose.yml` `env_file` entries.
+Use `.env.develop` or `.env.prod` because Docker Compose resolves the path from
+the `deploy/` directory when running with `-f deploy/docker-compose.yml`.
 
 ## GEO Analysis
 
-`GEO_ANALYSIS_DATABASE_URL` 指向 GEO Analysis 使用的 PostgreSQL database。遠端 DB schema 與 seed 目前不由 CI/CD 自動執行，仍需手動建立 schema，並手動在 `geo_ai_platform` 寫入 Gemini、ChatGPT 等平台資料。
+`GEO_ANALYSIS_DATABASE_URL` 指向 GEO Analysis PostgreSQL database。`geo_ai_platform` 資料目前仍由人工 seed，例如 Gemini、ChatGPT 等 platform。
 
-RabbitMQ publisher 由以下設定啟用：
+RabbitMQ publisher 設定：
 
 ```env
 GEO_ANALYSIS_PUBLISHER_BACKEND=rabbitmq
@@ -44,26 +50,40 @@ GEO_ANALYSIS_RABBITMQ_ROUTING_KEY_PREFIX=geo.query-runs
 GEO_ANALYSIS_CALLBACK_BASE_URL=http://geo-analysis-api:8002
 ```
 
-Queue 依 provider 拆分，例如：
+Queue 依 provider 拆分，常見命名如下：
 
 - `geo.query-runs.gemini`
 - `geo.query-runs.openai`
 - `geo.query-runs.perplexity`
 
-第三批只包含 publisher 與 dispatch evidence，不包含 worker、AI result 儲存或 `resultLocation` 內容保存。
+## GEO Analysis Worker
+
+本批新增 `geo-analysis-worker-gemini`，只消費 Gemini queue：
+
+```env
+GEO_ANALYSIS_WORKER_PROVIDER=gemini
+GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.gemini
+GEO_ANALYSIS_WORKER_PREFETCH=1
+GEO_TRACKING_BASE_URL=http://geo-tracking-api:8003
+GEO_TRACKING_TIMEOUT_SECONDS=60
+```
+
+### GEO Analysis Worker result storage
+
+`geo-analysis-worker-gemini` 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
+
+目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。Mention、citation normalization、sentiment、visibility/SOV 與報表 metrics 尚未實作。
 
 ## GEO Tracking
 
-`geo-tracking-api` 會讀取 Google Vertex AI credential。Service account JSON 不可放進 source control。
-
-環境檔需設定 VM 上的 credential 檔案路徑，Docker Compose 會掛載到容器內的 `/app/config/gcp-key.json`：
+`geo-tracking-api` 需要 Google Vertex AI service account JSON，請放在 VM 上並透過 Compose volume 掛載，不要提交到 source control。
 
 ```env
 GCP_CREDENTIALS_FILE_HOST=/root/kmind/deploy/credentials/dev-gcp-key.json
 GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
 ```
 
-Google AIO 使用 SerpApi，正式環境需設定 `SERPAPI_API_KEY`。
+Google AIO 會使用 SerpApi，請在需要時設定 `SERPAPI_API_KEY`。
 
 ## 本機 PostgreSQL
 
@@ -75,5 +95,3 @@ docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 
 - Access Control PostgreSQL: `localhost:5432/access_control`
 - Resource Catalog PostgreSQL: `localhost:5433/resource_catalog`
-
-初始化 SQL 只會在 volume 第一次建立時執行；若已存在 volume，更新 SQL 後需要手動套用或重建對應 volume。

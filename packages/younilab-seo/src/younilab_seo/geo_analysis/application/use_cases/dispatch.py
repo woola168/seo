@@ -15,9 +15,13 @@ from younilab_seo.geo_analysis.application.interfaces import (
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 
 
+class DispatchQueryRunJobError(ValueError):
+    """已保存 job 無法產生有效 dispatch message 時拋出的錯誤。"""
+
+
 @dataclass(frozen=True)
 class DispatchQueryRunJob:
-    """派送 pending GEO job，並透過 repository 保存派送 evidence。"""
+    """將 pending GEO job 發布到 provider queue，並記錄 dispatch evidence。"""
 
     repository: GeoQueryRunJobRepository
     publisher: MessagePublisher
@@ -30,15 +34,21 @@ class DispatchQueryRunJob:
         context = await self.repository.get_job_dispatch_context(job_id)
         if context is None:
             raise KeyError(job_id)
+        if context.seo_task_id is None:
+            raise DispatchQueryRunJobError("project seoTaskId is required to dispatch job")
         message = QueryRunJobMessage(
             job_id=context.job_id,
             project_id=context.project_id,
+            seo_task_id=context.seo_task_id,
             query_id=context.query_id,
             query_text=context.query_text,
+            topic_name=context.topic_name,
             platform=context.platform,
             model=context.model,
             region=context.region,
             language=context.language,
+            market_type=context.market_type,
+            is_branded=context.is_branded,
             scheduled_for=context.scheduled_for,
             callback_url=_callback_url(callback_base_url, job_id),
         )
@@ -80,7 +90,7 @@ class DispatchQueryRunJob:
 
 @dataclass(frozen=True)
 class ReceiveExternalRunCallback:
-    """接收外部 runner callback，並將 job 狀態與 callback evidence 一起保存。"""
+    """處理外部 runner callback，透過 repository 同步更新 job 與 evidence。"""
 
     repository: GeoQueryRunJobRepository
     clock: Clock

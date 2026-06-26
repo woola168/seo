@@ -20,38 +20,51 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultRecord,
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
     QueryRunJobMessage,
+    SaveTrackingRunResultCommand,
+    TrackingRunResponse,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 
 
 class Clock(Protocol):
-    """讓 use case 取得可測試的目前時間。"""
+    """use case 使用的時間來源，讓測試可以固定時間。"""
 
     def now(self) -> datetime:
         raise NotImplementedError
 
 
 class IdGenerator(Protocol):
-    """跨 boundary 建立 orchestration record id 的抽象。"""
+    """application boundary 建立 orchestration record id 的來源。"""
 
     def new_id(self) -> UUID:
         raise NotImplementedError
 
 
 class MessagePublisher(Protocol):
-    """將 GEO query run job 發送到 message broker 的 port。"""
+    """將 GEO query run job 發布到 message broker 的 port。"""
 
     async def publish(self, message: QueryRunJobMessage) -> PublishResult:
         raise NotImplementedError
 
 
+class TrackingRunClient(Protocol):
+    """透過已設定的 runner service 執行已發布的 GEO query。"""
+
+    def build_request_payload(self, message: QueryRunJobMessage) -> dict:
+        raise NotImplementedError
+
+    async def run(self, message: QueryRunJobMessage) -> TrackingRunResponse:
+        raise NotImplementedError
+
+
 @runtime_checkable
 class GeoQueryRunJobRepository(Protocol):
-    """query run job lifecycle 與派送 evidence 的 persistence port。"""
+    """query run job lifecycle 與 evidence persistence port。"""
 
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
         raise NotImplementedError
@@ -89,6 +102,26 @@ class GeoQueryRunJobRepository(Protocol):
         callback: ExternalRunCallback,
         occurred_at: datetime,
     ) -> GeoQueryRunJob:
+        raise NotImplementedError
+
+    async def save_tracking_run_result(
+        self,
+        *,
+        command: SaveTrackingRunResultCommand,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob:
+        raise NotImplementedError
+
+    async def list_job_run_results(self, job_id: UUID) -> list[GeoRunResultRecord]:
+        raise NotImplementedError
+
+    async def list_project_run_results(
+        self,
+        project_id: UUID,
+    ) -> list[GeoRunResultRecord]:
+        raise NotImplementedError
+
+    async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
         raise NotImplementedError
 
 

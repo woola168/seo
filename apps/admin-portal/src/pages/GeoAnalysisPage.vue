@@ -4,7 +4,9 @@ import AppIcon from "../components/ui/AppIcon.vue";
 import { createGeoMockState } from "../mocks/geo-analysis";
 import type {
   GeoEntity,
+  GeoAnalysisRunResult,
   GeoJob,
+  GeoMarketType,
   GeoProject,
   GeoQuery,
   GeoSchedule,
@@ -60,6 +62,7 @@ const queryForm = reactive({
   queryText: "",
   intent: "recommendation",
   buyerStage: "consideration",
+  marketType: "b2b_procurement" as GeoMarketType,
   isBranded: false,
   priority: "normal" as GeoQuery["priority"],
 });
@@ -109,6 +112,14 @@ const projectJobs = computed(() =>
   state.jobs
     .filter((job) => job.projectId === selectedProjectId.value)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+);
+
+const projectRunResults = computed(() =>
+  state.runResults
+    .filter((result) =>
+      projectJobs.value.some((job) => job.id === result.jobId),
+    )
+    .sort((a, b) => b.runAt.localeCompare(a.runAt)),
 );
 
 const activeQueryCount = computed(
@@ -206,6 +217,14 @@ function getTopic(topicId: string | null): GeoTopic | undefined {
 
 function getPlatform(platformId: string): string {
   return state.platforms.find((platform) => platform.id === platformId)?.name ?? "-";
+}
+
+function resultReferences(result: GeoAnalysisRunResult): GeoAnalysisRunResult["references"] {
+  return result.references;
+}
+
+function marketTypeLabel(marketType: GeoMarketType): string {
+  return marketType === "b2b_procurement" ? "B2B 採購" : "B2C 消費";
 }
 
 function getAliases(entityId: string): string {
@@ -332,6 +351,7 @@ function createQuery(): void {
     queryText: queryForm.queryText.trim(),
     region: selectedProject.value.defaultRegion,
     language: selectedProject.value.defaultLanguage,
+    marketType: queryForm.marketType,
     intent: queryForm.intent.trim() || "recommendation",
     buyerStage: queryForm.buyerStage.trim() || "consideration",
     isBranded: queryForm.isBranded,
@@ -340,6 +360,7 @@ function createQuery(): void {
   };
   state.queries.unshift(query);
   queryForm.queryText = "";
+  queryForm.marketType = "b2b_procurement";
   queryForm.isBranded = false;
   setMessage("已建立 mock query。");
 }
@@ -764,6 +785,13 @@ function useFirstQuery(): void {
                 Buyer stage
                 <input v-model="queryForm.buyerStage" type="text" />
               </label>
+              <label>
+                市場語境
+                <select v-model="queryForm.marketType">
+                  <option value="b2b_procurement">B2B 採購</option>
+                  <option value="b2c">B2C 消費</option>
+                </select>
+              </label>
               <label class="geo-form-full">
                 Query
                 <textarea v-model="queryForm.queryText" rows="3" placeholder="使用者會在 Gemini / GPT 詢問的問題"></textarea>
@@ -791,6 +819,7 @@ function useFirstQuery(): void {
                   <th>Topic</th>
                   <th>Intent</th>
                   <th>Stage</th>
+                  <th>Market</th>
                   <th>Branded</th>
                   <th>Priority</th>
                   <th>Actions</th>
@@ -802,6 +831,7 @@ function useFirstQuery(): void {
                   <td>{{ getTopic(query.topicId)?.name ?? "-" }}</td>
                   <td>{{ query.intent }}</td>
                   <td>{{ query.buyerStage }}</td>
+                  <td>{{ marketTypeLabel(query.marketType) }}</td>
                   <td>{{ query.isBranded ? "是" : "否" }}</td>
                   <td>{{ query.priority }}</td>
                   <td>
@@ -1071,6 +1101,61 @@ function useFirstQuery(): void {
             </div>
           </article>
         </div>
+
+        <article class="card">
+          <header class="card-header">
+            <div>
+              <h2>Run History</h2>
+              <p>Worker 保存的 raw result 與 references</p>
+            </div>
+          </header>
+          <div class="table-scroll">
+            <table class="data-table geo-table">
+              <thead>
+                <tr>
+                  <th>Query</th>
+                  <th>Provider</th>
+                  <th>Status</th>
+                  <th>Run at</th>
+                  <th>References</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="result in projectRunResults" :key="result.id">
+                  <td>{{ getQuery(result.queryId)?.queryText ?? "-" }}</td>
+                  <td>{{ result.provider }} / {{ result.model }}</td>
+                  <td><span :class="badgeClass(result.status)">{{ result.status }}</span></td>
+                  <td>{{ formatDate(result.runAt) }}</td>
+                  <td>{{ result.references.length }}</td>
+                  <td>{{ result.error ?? "-" }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="geo-answer-grid">
+            <section
+              v-for="result in projectRunResults.slice(0, 2)"
+              :key="`${result.id}-detail`"
+              class="geo-answer-card"
+            >
+              <div class="geo-answer-head">
+                <span class="badge badge-info">{{ result.surface }}</span>
+                <span :class="badgeClass(result.status)">{{ result.status }}</span>
+              </div>
+              <h3>{{ getQuery(result.queryId)?.queryText ?? result.queryId }}</h3>
+              <pre>{{ result.rawResponse || result.error }}</pre>
+              <small>
+                References:
+                {{
+                  resultReferences(result)
+                    .map((reference) => reference.title ?? reference.domain ?? reference.url)
+                    .join("、") || "-"
+                }}
+              </small>
+            </section>
+          </div>
+        </article>
 
         <article class="card">
           <header class="card-header">

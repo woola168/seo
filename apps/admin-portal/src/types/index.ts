@@ -381,6 +381,7 @@ export interface GeoQuery {
   queryText: string;
   region: string;
   language: string;
+  marketType: GeoMarketType;
   intent: string;
   buyerStage: string;
   isBranded: boolean;
@@ -472,6 +473,27 @@ export interface GeoAiAnswerSample {
   mentionedEntities: string[];
   citations: string[];
   sentiment: "positive" | "neutral" | "negative";
+}
+
+export interface GeoAnalysisRunResult {
+  id: string;
+  jobId: string;
+  queryId: string;
+  provider: GeoProvider;
+  surface: string;
+  model: string;
+  region: string;
+  language: string;
+  status: "completed" | "failed";
+  rawResponse: string;
+  references: Array<{
+    url: string;
+    title: string | null;
+    domain: string | null;
+    position: number;
+  }>;
+  error: string | null;
+  runAt: string;
 }
 
 export interface GeoRecommendation {

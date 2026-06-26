@@ -69,6 +69,21 @@ services:
     networks:
       - web_network
 
+  geo-analysis-worker-gemini:
+    container_name: geo-analysis-worker-gemini
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-worker/Dockerfile
+    image: younilab-seo-geo-analysis-worker:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    depends_on:
+      - rabbitmq
+      - geo-tracking-api
+    networks:
+      - web_network
+
   geo-tracking-api:
     container_name: geo-tracking-api
     build:

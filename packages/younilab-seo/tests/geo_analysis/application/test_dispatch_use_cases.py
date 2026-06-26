@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
+    DispatchQueryRunJobError,
     DispatchQueryRunJob,
     ExternalRunCallback,
     GeoQueryRunJobDispatchContext,
@@ -121,11 +122,15 @@ def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=job.id,
         project_id=job.project_id,
+        seo_task_id=uuid4(),
         query_id=job.query_id,
         query_text="Which suppliers are recommended?",
+        topic_name="Supplier evaluation",
         platform="openai",
         region="US",
         language="en-US",
+        market_type="b2b_procurement",
+        is_branded=False,
         scheduled_for=job.scheduled_for,
         callback_url="https://example.test/callback",
     )
@@ -135,12 +140,16 @@ def make_context(job: GeoQueryRunJob) -> GeoQueryRunJobDispatchContext:
     return GeoQueryRunJobDispatchContext(
         job_id=job.id,
         project_id=job.project_id,
+        seo_task_id=uuid4(),
         query_id=job.query_id,
         query_text="Which suppliers are recommended?",
+        topic_name="Supplier evaluation",
         platform="openai",
         model="gpt-4.1-mini",
         region="US",
         language="en-US",
+        market_type="b2b_procurement",
+        is_branded=False,
         scheduled_for=job.scheduled_for,
     )
 
@@ -169,10 +178,44 @@ def test_dispatch_records_successful_publish() -> None:
         assert len(publisher.messages) == 1
         assert publisher.messages[0].platform == "openai"
         assert publisher.messages[0].model == "gpt-4.1-mini"
+        assert publisher.messages[0].topic_name == "Supplier evaluation"
+        assert publisher.messages[0].market_type == "b2b_procurement"
+        assert publisher.messages[0].is_branded is False
         assert (
             publisher.messages[0].callback_url
             == f"https://example.test/api/geo/jobs/{job.id}/external-callbacks"
         )
+
+    asyncio.run(run())
+
+
+def test_dispatch_rejects_missing_project_seo_task_id() -> None:
+    async def run() -> None:
+        job = make_job()
+        context = make_context(job).model_copy(update={"seo_task_id": None})
+        repository = FakeRepository(job, context)
+        publisher = FakePublisher(
+            PublishResult(
+                backend="fake",
+                destination="geo-jobs",
+                message_id="message-1",
+                status="published",
+            )
+        )
+
+        try:
+            await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
+                job.id,
+                "https://example.test",
+            )
+        except DispatchQueryRunJobError as exc:
+            assert str(exc) == "project seoTaskId is required to dispatch job"
+        else:
+            raise AssertionError("expected missing seoTaskId to reject dispatch")
+
+        assert publisher.messages == []
+        assert repository.dispatches == []
+        assert repository.job.status is JobStatus.PENDING
 
     asyncio.run(run())
 

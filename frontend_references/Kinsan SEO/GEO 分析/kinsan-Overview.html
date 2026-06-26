@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KINSAN SEO — GEO 分析</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Youni Lab Design Tokens v2.3 ── */
+:root{
+  --primary:#0A2B41; --primary-hover:#2E4A5E; --primary-light:#E7EAEC;
+  --info:#1677FF; --info-light:#E6F4FF; --info-text:#0958D9; --info-border:#91CAFF;
+  --success-light:#F6FFED; --success-text:#389E0D; --success-border:#B7EB8F;
+  --warning-light:#FFFCF0; --warning-text:#AD6800; --warning-border:#FFC861;
+  --error:#F5222D; --error-light:#FFF1F0; --error-text:#CF1322; --error-border:#FFA39E;
+  --fg:#1F1F1F; --fg-2:#595959; --fg-3:#8C8C8C; --fg-4:#BFBFBF;
+  --bg-page:#F5F5F5; --bg:#FFFFFF; --bg-2:#FAFAFA;
+  --border:#D9D9D9; --border-subtle:#F0F0F0;
+  --font:'Inter','Noto Sans TC',-apple-system,sans-serif;
+  --mono:'IBM Plex Mono','Menlo',monospace;
+  --kinsan-gold:#8B6500;
+  /* Chart colours — Youni Lab spec */
+  --viz-main:#1677FF;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:var(--font);background:var(--bg-page);color:var(--fg);-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+button,input{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+/* ══════════════════════════════════════════════════════════
+   ICON SYSTEM
+   Source: younilab-設計規範 官方 FI_PATHS
+   Additions (Feather Icons v4.29, same spec):
+     monitor, zap, box, trending-up
+══════════════════════════════════════════════════════════ */
+const FI_PATHS = {
+  /* ── official set ── */
+  "grid":          "<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
+  "user":          "<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
+  "users":         "<path d='M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 00-3-3.87'/><path d='M16 3.13a4 4 0 010 7.75'/>",
+  "shield":        "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/>",
+  "bell":          "<path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/>",
+  "settings":      "<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/>",
+  "sidebar":       "<rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/>",
+  "search":        "<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>",
+  "chevron-down":  "<polyline points='6 9 12 15 18 9'/>",
+  "chevron-right": "<polyline points='9 18 15 12 9 6'/>",
+  "chevron-up":    "<polyline points='18 15 12 9 6 15'/>",
+  "plus":          "<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>",
+  "x":             "<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>",
+  "list":          "<line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/>",
+  "bar-chart-2":   "<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>",
+  "calendar":      "<rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/>",
+  "refresh-cw":    "<polyline points='23 4 23 10 17 10'/><polyline points='1 20 1 14 7 14'/><path d='M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15'/>",
+  "info":          "<circle cx='12' cy='12' r='10'/><line x1='12' y1='16' x2='12' y2='12'/><line x1='12' y1='8' x2='12.01' y2='8'/>",
+  "log-out":       "<path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/>",
+  "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
+  "menu":          "<line x1='3' y1='12' x2='21' y2='12'/><line x1='3' y1='6' x2='21' y2='6'/><line x1='3' y1='18' x2='21' y2='18'/>",
+  "check-circle":  "<path d='M22 11.08V12a10 10 0 11-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/>",
+  "alert-circle":  "<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/>",
+  "slash":         "<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>",
+  "eye":           "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
+  "edit-2":        "<path d='M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z'/>",
+  "trash-2":       "<polyline points='3 6 5 6 21 6'/><path d='M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2'/><line x1='10' y1='11' x2='10' y2='17'/><line x1='14' y1='11' x2='14' y2='17'/>",
+  "filter":        "<polygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/>",
+  "briefcase":     "<rect x='2' y='7' width='20' height='14' rx='2' ry='2'/><path d='M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16'/>",
+  "star":          "<polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/>",
+  "check":         "<polyline points='20 6 9 17 4 12'/>",
+  /* ── Feather extensions (per spec 新增規範: feathericons.com source, same SVG rules) ── */
+  "monitor":       "<rect x='2' y='3' width='20' height='14' rx='2' ry='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>",
+  "zap":           "<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>",
+  "box":           "<path d='M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z'/><polyline points='3.27 6.96 12 12.01 20.73 6.96'/><line x1='12' y1='22.08' x2='12' y2='12'/>",
+  "trending-up":   "<polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/><polyline points='17 6 23 6 23 12'/>",
+};
+
+/* Icon component — per spec: strokeWidth 2, round caps, currentColor */
+const FI = ({name,size=16,color="currentColor",style={}}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    style={{display:"block",flexShrink:0,...style}}
+    dangerouslySetInnerHTML={{__html:FI_PATHS[name]||""}}/>
+);
+
+/* ── KINSAN SEO Logo ── */
+const KinsanLogo = () => (
+  <span style={{fontSize:16,fontWeight:700,letterSpacing:"-0.01em",whiteSpace:"nowrap"}}>
+    <span style={{color:"#1F1F1F"}}>KINSAN </span>
+    <span style={{color:"var(--kinsan-gold)"}}>SEO</span>
+  </span>
+);
+
+/* ══════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
+   NAV DATA
+   ⚠️ TODO: zap / trending-up 為 Feather v4.29 擴充
+      下次更新 younilab-設計規範.html 時，請補入 FI_PATHS
+══════════════════════════════════════════════════════════ */
+const NAV = [
+  {type:"item",    id:"dashboard",       icon:"grid",        label:"總覽"},
+  {type:"section", label:"專案管理"},
+  {type:"item",    id:"clients",         icon:"users",       label:"客戶"},
+  {type:"item",    id:"tasks",           icon:"list",        label:"任務",    badge:9, badgeColor:"#F5222D"},
+  {type:"section", label:"分析工具"},
+  {type:"item",    id:"battle-room",     icon:"bar-chart-2", label:"戰情室"},
+  {type:"group",   id:"geo",             icon:"zap",         label:"GEO 分析",  /* ⚠️ Feather 擴充 */
+    children:[
+      {id:"geo-overview",  label:"Overview"},
+      {id:"geo-projects",  label:"Projects"},
+      {id:"geo-entities",  label:"Entities"},
+      {id:"geo-topics",    label:"Topics & Queries"},
+      {id:"geo-platforms", label:"Platforms & Schedules"},
+      {id:"geo-jobs",      label:"Run Jobs"},
+      {id:"geo-reports",   label:"Reports"},
+    ]
+  },
+  {type:"item",    id:"strategy",        icon:"trending-up", label:"策略分析"}, /* ⚠️ Feather 擴充 */
+  {type:"section", label:"系統"},
+  {type:"item",    id:"notifications",   icon:"bell",        label:"通知",    badge:2,  badgeColor:"#F5222D"},
+  {type:"item",    id:"profile",         icon:"user",        label:"個人設定"},
+  {type:"item",    id:"permissions",     icon:"shield",      label:"權限管理"},
+  {type:"item",    id:"system-settings", icon:"settings",    label:"系統設定"},
+];
+
+/* Breadcrumb mapping */
+const CRUMBS = {
+  dashboard:["總覽"], clients:["專案管理","客戶"], tasks:["專案管理","任務"],
+  "battle-room":["分析工具","戰情室"],
+  "geo-overview":["分析工具","GEO 分析","Overview"],
+  "geo-projects":["分析工具","GEO 分析","Projects"],
+  "geo-entities":["分析工具","GEO 分析","Entities"],
+  "geo-topics":["分析工具","GEO 分析","Topics & Queries"],
+  "geo-platforms":["分析工具","GEO 分析","Platforms & Schedules"],
+  "geo-jobs":["分析工具","GEO 分析","Run Jobs"],
+  "geo-reports":["分析工具","GEO 分析","Reports"],
+  strategy:["分析工具","策略分析"],
+  notifications:["系統","通知"], profile:["系統","個人設定"],
+  permissions:["系統","權限管理"], "system-settings":["系統","系統設定"],
+};
+
+/* ══════════════════════════════════════════════════════════
+   NAV COMPONENTS — exactly per younilab-設計規範 Sidebar spec
+   Icons: 20px for nav items per Iconography spec
+   Active group: fontWeight 600, chevron #0A2B41
+   Sub-item: padding 8px 16px (wider horizontal)
+   Section header: padding-top 20px
+══════════════════════════════════════════════════════════ */
+function NavSection({label}){
+  return <div style={{fontSize:11,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase",color:"#BFBFBF",padding:"20px 16px 6px"}}>{label}</div>;
+}
+
+function NavItem({item,activeId,onSelect,collapsed,expanded,onToggle,sub=false}){
+  const [hov,setHov] = useState(false);
+
+  /* active: direct match OR any child matches */
+  const isActive = activeId===item.id
+    || (item.children&&item.children.some(c=>c.id===activeId));
+  const isExp = expanded[item.id];
+
+  if(item.type==="section") return collapsed ? null : <NavSection label={item.label}/>;
+
+  const handleClick = () => {
+    if(item.children) onToggle(item.id);
+    else onSelect(item.id);
+  };
+
+  /* Colour + weight rules (per spec + Figma)
+     Group 有子選單時：active 只改顏色/字重，背景保持透明 */
+  const hasChildren = !!item.children;
+  const fg       = isActive ? "#0A2B41" : "#595959";
+  const iconCol  = isActive ? "#0A2B41" : "#8C8C8C";
+  const bgCol    = isActive
+    ? (hasChildren ? "transparent" : "#E7EAEC")  /* group = 無底色 */
+    : hov ? "#FAFAFA" : "transparent";
+  const fw       = isActive ? (hasChildren ? 600 : 500) : 400;
+
+  return (
+    <>
+      <div onClick={handleClick}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        title={collapsed&&!sub ? item.label : undefined}
+        style={{
+          display:"flex", alignItems:"center",
+          gap: (collapsed&&!sub) ? 0 : 8,
+          /* Sub: 8px 16px / Parent: 10px 12px */
+          padding: sub ? "8px 16px" : (collapsed ? "10px 0" : "10px 12px"),
+          margin:"1px 8px", borderRadius:8, cursor:"pointer",
+          justifyContent:(collapsed&&!sub)?"center":"flex-start",
+          background: bgCol,
+          color: fg,
+          fontWeight: fw,
+          /* Sub 13px / Parent 14px */
+          fontSize: sub ? 13 : 14,
+          transition:"all .12s",
+          position:"relative",
+        }}>
+        {/* ── Icon: 20px for nav items per spec Iconography 尺寸階 ── */}
+        {!sub && !collapsed && <FI name={item.icon} size={20} color={iconCol}/>}
+        {!sub && collapsed  && <FI name={item.icon} size={20} color={iconCol}/>}
+        {/* Sub-item: 前綴圓點 5×5 active #0A2B41 / default #BFBFBF / marginLeft 6px */}
+        {sub && (
+          <div style={{width:5,height:5,borderRadius:"50%",background:isActive?"#0A2B41":"#BFBFBF",marginLeft:6,flexShrink:0}}/>
+        )}
+        {!collapsed && <span style={{flex:1,whiteSpace:"nowrap"}}>{item.label}</span>}
+        {/* Badge */}
+        {!collapsed && !sub && item.badge && (
+          <span style={{minWidth:18,height:18,borderRadius:9,background:item.badgeColor||"#F5222D",color:"#fff",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 5px",flexShrink:0}}>
+            {item.badge}
+          </span>
+        )}
+        {/* Badge dot (collapsed) */}
+        {collapsed && !sub && item.badge && (
+          <div style={{position:"absolute",top:7,right:7,width:7,height:7,borderRadius:"50%",background:item.badgeColor||"#F5222D",border:"1.5px solid #fff"}}/>
+        )}
+        {/* Chevron — active group: #0A2B41, else #BFBFBF (per Figma) */}
+        {!collapsed && item.children && (
+          <FI name={isExp?"chevron-up":"chevron-right"} size={14}
+            color={isActive?"#0A2B41":"#BFBFBF"}/>
+        )}
+      </div>
+      {/* Children — paddingLeft:10 per spec */}
+      {item.children && isExp && !collapsed && (
+        <div style={{paddingLeft:10}}>
+          {item.children.map(c=>(
+            <NavItem key={c.id} item={{...c,type:"item",icon:""}} activeId={activeId}
+              onSelect={onSelect} collapsed={false} expanded={{}} onToggle={()=>{}} sub/>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   BASE COMPONENTS
+══════════════════════════════════════════════════════════ */
+function Avatar({initials,size=28,bg="#8B6500"}){
+  return <div style={{width:size,height:size,borderRadius:"50%",background:bg,color:"#fff",fontSize:Math.round(size*.36),fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,userSelect:"none"}}>{initials}</div>;
+}
+
+/* Button — per spec sizes & variants */
+function Btn({children,variant="primary",size="md",onClick,style={}}){
+  const [hov,setHov]=useState(false);
+  const h=size==="sm"?32:size==="lg"?44:40;
+  const px=size==="sm"?12:size==="lg"?20:16;
+  const fs=size==="sm"?12:size==="lg"?15:14;
+  const base={height:h,padding:`0 ${px}px`,borderRadius:8,fontSize:fs,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,outline:"none",transition:"all .15s",whiteSpace:"nowrap",fontFamily:"var(--font)",border:"none"};
+  const v={
+    primary:  {border:"1px solid var(--primary)",background:hov?"var(--primary-hover)":"var(--primary)",color:"#fff"},
+    secondary:{border:"1px solid var(--border)",background:hov?"var(--bg-2)":"#fff",color:"var(--fg)"},
+    ghost:    {border:"1px solid transparent",background:hov?"var(--bg-2)":"transparent",color:"var(--fg-2)"},
+  }[variant]||{};
+  return <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{...base,...v,...style}}>{children}</button>;
+}
+
+/* Top Header Icon Button — 18px icon, 32×32, radius 6 per spec */
+function IconBtn({name,title,badge,onClick}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative"}}>
+      <div title={title} onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:hov?"#F0F0F0":"transparent",transition:"background .12s",flexShrink:0}}>
+        {/* Top Header icons: 18px per spec */}
+        <FI name={name} size={18} color="#595959"/>
+      </div>
+      {badge&&<div style={{position:"absolute",top:5,right:6,width:8,height:8,borderRadius:"50%",background:"#F5222D",border:"1.5px solid #fff",pointerEvents:"none"}}/>}
+    </div>
+  );
+}
+
+/* Stat Card — per spec: icon 36×36 r9, data-lg 28px/600, sub 12px */
+function StatCard({label,value,sub,icon,iconColor,iconBg}){
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:36,height:36,borderRadius:9,background:iconBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <FI name={icon} size={18} color={iconColor}/>
+        </div>
+        <span style={{fontSize:13,color:"var(--fg-3)"}}>{label}</span>
+      </div>
+      {/* data-lg: 28px/600 per spec */}
+      <div style={{fontSize:28,fontWeight:600,color:"var(--fg)",lineHeight:1.1,marginBottom:8}}>{value}</div>
+      <div style={{fontSize:12,color:"var(--fg-3)"}}>{sub}</div>
+    </div>
+  );
+}
+
+/* Job Status Badge — per spec badge sizes */
+const JOB_STATUS = {
+  external:  {bg:"#FFFCF0",color:"#AD6800",border:"#FFC861"},
+  succeeded: {bg:"#F6FFED",color:"#389E0D",border:"#B7EB8F"},
+  running:   {bg:"#E6F4FF",color:"#0958D9",border:"#91CAFF"},
+  failed:    {bg:"#FFF1F0",color:"#CF1322",border:"#FFA39E"},
+  pending:   {bg:"#F5F5F5",color:"#595959",border:"#D9D9D9"},
+};
+function JobBadge({status}){
+  const c=JOB_STATUS[status]||{bg:"#F5F5F5",color:"#595959",border:"#D9D9D9"};
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",fontSize:12,fontWeight:500,padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap",lineHeight:"18px",background:c.bg,color:c.color,border:`1px solid ${c.border}`}}>
+      <span style={{width:5,height:5,borderRadius:"50%",background:c.color,marginRight:5,flexShrink:0}}/>
+      {status}
+    </span>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   BAR CHART — pure SVG per younilab-設計規範 Ch-Bar spec
+   規格: VIZ_MAIN #1677FF, rx:4, barW ≤36 ~56% col
+         水平 gridline 1px #F0F0F0, X-axis 11px #8C8C8C
+         Y-axis ticks 11px #BFBFBF, tooltip #1F1F1F bg
+   自適應: 透過 ResizeObserver 偵測容器尺寸，撐滿父層
+══════════════════════════════════════════════════════════ */
+function BarChart({data}){
+  const [tip,setTip]=useState(null);
+  const wrapRef=useRef(null);
+  const [size,setSize]=useState({w:560,h:220});
+
+  useEffect(()=>{
+    if(!wrapRef.current) return;
+    const ro=new ResizeObserver(entries=>{
+      for(const e of entries){
+        const{width,height}=e.contentRect;
+        setSize({w:Math.max(280,width),h:Math.max(180,height)});
+      }
+    });
+    ro.observe(wrapRef.current);
+    return()=>ro.disconnect();
+  },[]);
+
+  const W=size.w,H=size.h;
+  const pad={t:12,r:12,b:28,l:32};
+  const iw=W-pad.l-pad.r, ih=H-pad.t-pad.b;
+  const max=Math.ceil(Math.max(...data.map(d=>d.v))/5)*5||10;
+  const ticks=Array.from({length:5},(_,i)=>Math.round(max*(i/4)));
+  const bw=iw/data.length;
+  const barW=Math.min(36,bw*0.56);
+  const ypos=v=>pad.t+ih-(ih*v)/max;
+
+  return(
+    <div ref={wrapRef} style={{width:"100%",height:"100%",position:"relative"}}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
+        style={{display:"block",fontFamily:"var(--font)"}}>
+        {/* Horizontal gridlines */}
+        {ticks.map(t=>(
+          <g key={t}>
+            <line x1={pad.l} y1={ypos(t)} x2={W-pad.r} y2={ypos(t)} stroke="#F0F0F0" strokeWidth="1"/>
+            <text x={pad.l-6} y={ypos(t)+4} textAnchor="end" fontSize="11" fill="#BFBFBF">{t}</text>
+          </g>
+        ))}
+        {/* Bars */}
+        {data.map((d,i)=>{
+          const cx=pad.l+bw*i+bw/2;
+          const bh=(ih*d.v)/max;
+          return(
+            <g key={i}
+              onMouseEnter={()=>setTip({x:cx,y:ypos(d.v),v:d.v})}
+              onMouseLeave={()=>setTip(null)}
+              style={{cursor:"pointer"}}>
+              <rect x={cx-barW/2} y={ypos(d.v)} width={barW} height={bh} rx="4" fill="var(--viz-main)"/>
+              <text x={cx} y={H-8} textAnchor="middle" fontSize="11" fill="#8C8C8C">{d.d}</text>
+            </g>
+          );
+        })}
+        {/* Tooltip */}
+        {tip&&(
+          <g style={{pointerEvents:"none"}}>
+            <rect x={tip.x-20} y={tip.y-30} width="40" height="22" rx="6" fill="#1F1F1F"/>
+            <text x={tip.x} y={tip.y-15} textAnchor="middle" fontSize="11" fill="#fff" fontWeight="600">{tip.v}</text>
+          </g>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   PROJECT SELECTOR DROPDOWN
+══════════════════════════════════════════════════════════ */
+const PROJECTS=[
+  {id:"kinsan",     name:"金山旅宿 GEO 追蹤",  active:true},
+  {id:"kinsan-seo", name:"KINSAN SEO 品牌追蹤", active:false},
+];
+function ProjectDropdown(){
+  const [open,setOpen]=useState(false);
+  const [sel,setSel]=useState(PROJECTS[0]);
+  const btnRef=useRef(null);
+  const [pos,setPos]=useState(null);
+  const toggle=()=>{
+    if(!open){const r=btnRef.current?.getBoundingClientRect();if(r)setPos({top:r.bottom+4,left:r.left});}
+    setOpen(o=>!o);
+  };
+  return(
+    <>
+      <button ref={btnRef} onClick={toggle}
+        style={{height:40,padding:"0 14px",border:"1px solid var(--border)",borderRadius:8,background:open?"var(--bg-2)":"#fff",fontSize:14,fontFamily:"var(--font)",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8,color:"var(--fg)",fontWeight:500,transition:"all .15s",whiteSpace:"nowrap"}}>
+        <span style={{maxWidth:180,overflow:"hidden",textOverflow:"ellipsis"}}>{sel.name}</span>
+        <FI name="chevron-down" size={14} color="#8C8C8C"/>
+      </button>
+      {open&&pos&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:99}}/>
+          <div style={{position:"fixed",top:pos.top,left:pos.left,minWidth:220,background:"#fff",border:"1px solid #E7EAEC",borderRadius:10,boxShadow:"0 4px 16px rgba(0,0,0,0.08)",padding:4,zIndex:100}}>
+            {PROJECTS.map(p=>(
+              <div key={p.id} onClick={()=>{setSel(p);setOpen(false);}}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:6,fontSize:13,cursor:"pointer",color:p.id===sel.id?"#0A2B41":"#595959",fontWeight:p.id===sel.id?500:400}}
+                onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                {p.id===sel.id&&<FI name="check" size={14} color="#0A2B41"/>}
+                {p.id!==sel.id&&<div style={{width:14}}/>}
+                {p.name}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   PAGE DATA
+══════════════════════════════════════════════════════════ */
+const TREND_DATA=[
+  {d:"6/17",v:8},{d:"6/18",v:11},{d:"6/19",v:9},
+  {d:"6/20",v:15},{d:"6/21",v:13},{d:"6/22",v:20},
+  {d:"6/23",v:26},{d:"6/24",v:31},
+];
+const JOBS=[
+  {query:"金山旅宿評價和交通方便嗎",         platform:"Gemini",     status:"external",  scheduled:"06/23 上午 10:00"},
+  {query:"北海岸適合週末放鬆的溫泉住宿推薦", platform:"ChatGPT",    status:"succeeded", scheduled:"06/23 上午 09:00"},
+  {query:"金山老街有哪些必吃小吃",           platform:"Perplexity", status:"succeeded", scheduled:"06/22 下午 03:00"},
+  {query:"北海岸親子旅遊景點推薦",           platform:"Gemini",     status:"failed",    scheduled:"06/22 上午 11:30"},
+  {query:"金山海邊露營地評價",               platform:"ChatGPT",    status:"running",   scheduled:"06/21 下午 02:00"},
+  {query:"萬里蟹季節和預訂方式",             platform:"Perplexity", status:"succeeded", scheduled:"06/21 上午 10:00"},
+];
+
+/* ══════════════════════════════════════════════════════════
+   GEO OVERVIEW PAGE
+══════════════════════════════════════════════════════════ */
+function GeoOverviewPage({windowWidth}){
+  const isWide=windowWidth>=1024;
+  const pad=isWide?"24px 32px":"16px 20px";
+  /* Bottom grid: 2:2 equal width — aligns with the 4-column stat grid above */
+  const btmCols=isWide?"repeat(2,minmax(0,1fr))":"1fr";
+  /* Stat cards: 4 cols ≥1024, 2 cols ≥640, 1 col <640 */
+  const statCols=windowWidth>=1024?"repeat(4,minmax(0,1fr))":windowWidth>=640?"repeat(2,minmax(0,1fr))":"1fr";
+
+  return(
+    <main style={{padding:pad,background:"var(--bg-page)",minHeight:"calc(100vh - 56px)"}}>
+      {/* Content wrapper — maxWidth 1200px centred */}
+      <div style={{maxWidth:1200,margin:"0 auto"}}>
+
+        {/* ── Page Header ── */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            {/* h3: 20px/600 per spec */}
+            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>Overview</h1>
+            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>
+              以 mock data 盤點 GEO 分析後台需要的功能，後續 DB、API、正式分析資料完成後再替換。
+            </p>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+            <Btn variant="secondary">
+              <FI name="refresh-cw" size={14} color="#595959"/>重置
+            </Btn>
+            <ProjectDropdown/>
+            <Btn variant="primary">
+              <FI name="plus" size={14} color="#fff"/>建立專案
+            </Btn>
+          </div>
+        </div>
+
+        {/* ── Info Banner — info variant per spec ── */}
+        <div style={{background:"#E6F4FF",border:"1px solid #91CAFF",borderRadius:8,padding:"11px 16px",display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <FI name="info" size={15} color="#1677FF" style={{flexShrink:0}}/>
+          <span style={{fontSize:13,color:"#0958D9",lineHeight:"20px"}}>
+            目前為「示意資料 / Mock 操作」。本頁不會呼叫 /api/geo，操作只更新前端 local state。
+          </span>
+        </div>
+
+        {/* ── Stat Cards — 4 columns, icon 36×36 r9, data-lg 28px/600 ── */}
+        <div style={{display:"grid",gridTemplateColumns:statCols,gap:16,marginBottom:16}}>
+          <StatCard label="Projects"      value="2" sub="1 active"
+            icon="box"      iconColor="#1677FF" iconBg="#E6F4FF"/>
+          <StatCard label="Active Queries" value="3" sub="2 topics"
+            icon="monitor"  iconColor="#389E0D" iconBg="#F6FFED"/>
+          <StatCard label="Schedules"     value="2" sub="Pub/Sub publisher 待實作"
+            icon="calendar" iconColor="#D68C24" iconBg="#FFFCF0"/>
+          <StatCard label="Running Jobs"  value="1" sub="1 failed mock jobs"
+            icon="settings" iconColor="#CF1322" iconBg="#FFF1F0"/>
+        </div>
+
+        {/* ── Bottom Grid: Trend Chart + Jobs Table — alignItems stretch ── */}
+        <div style={{display:"grid",gridTemplateColumns:btmCols,gap:16,alignItems:"stretch"}}>
+
+          {/* Mock 趨勢 Card — flex column */}
+          <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #F0F0F0",flexShrink:0}}>
+              <div style={{fontSize:15,fontWeight:600,color:"var(--fg)"}}>Mock 趨勢</div>
+              <div style={{fontSize:12,color:"var(--fg-3)",marginTop:2}}>示意資料，後續接正式分析資料</div>
+            </div>
+            {/* Chart fills remaining height — minHeight ensures visible on small viewports */}
+            <div style={{flex:1,minHeight:260,padding:"0 12px 8px"}}>
+              <BarChart data={TREND_DATA}/>
+            </div>
+          </div>
+
+          {/* 近期 Jobs Card — flex column */}
+          <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #F0F0F0",flexShrink:0}}>
+              <div style={{fontSize:15,fontWeight:600,color:"var(--fg)"}}>近期 Jobs</div>
+              <div style={{fontSize:12,color:"var(--fg-3)",marginTop:2}}>只顯示目前選取專案的 mock jobs</div>
+            </div>
+            <div style={{overflowX:"auto",flex:1}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:360}}>
+                <thead>
+                  <tr>
+                    {["Query","Platform","Status","Scheduled"].map((h,i)=>(
+                      <th key={i} style={{textAlign:"left",padding:"10px 16px",fontWeight:500,color:"var(--fg-3)",fontSize:12,borderBottom:"1px solid #F0F0F0",whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {JOBS.slice(0,5).map((job,ri,arr)=><JobRow key={ri} job={job} isLast={ri===arr.length-1}/>)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/* Jobs Table Row — row height 48px, hover #FAFAFA per spec */
+function JobRow({job,isLast}){
+  const [hov,setHov]=useState(false);
+  const bb=isLast?"none":"1px solid #F5F5F5";
+  return(
+    <tr onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:hov?"#FAFAFA":"#fff",transition:"background .1s",height:48}}>
+      <td style={{padding:"0 16px",borderBottom:bb,fontSize:13,color:"var(--fg)",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.query}</td>
+      <td style={{padding:"0 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap"}}>{job.platform}</td>
+      <td style={{padding:"0 16px",borderBottom:bb,whiteSpace:"nowrap"}}><JobBadge status={job.status}/></td>
+      <td style={{padding:"0 16px",borderBottom:bb,fontSize:13,color:"var(--fg-3)",fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>{job.scheduled}</td>
+    </tr>
+  );
+}
+
+/* Placeholder */
+function PlaceholderPage({label,windowWidth}){
+  return(
+    <main style={{padding:windowWidth>=1024?"24px 32px":"16px 20px",background:"var(--bg-page)",minHeight:"calc(100vh - 56px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{maxWidth:1200,margin:"0 auto",textAlign:"center"}}>
+        <div style={{width:64,height:64,borderRadius:16,background:"#E7EAEC",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+          <FI name="grid" size={28} color="#8C8C8C"/>
+        </div>
+        <h2 style={{fontSize:18,fontWeight:600,color:"var(--fg)",margin:"0 0 8px"}}>{label}</h2>
+        <p style={{fontSize:13,color:"var(--fg-3)",margin:0}}>此頁面正在開發中</p>
+      </div>
+    </main>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════════════════ */
+function App(){
+  const [activeId,setActiveId]=useState("geo-overview");
+  /* nav group expanded state */
+  const [expanded,setExpanded]=useState({geo:true});
+  const [collapsed,setCollapsed]=useState(false);
+  const [drawerOpen,setDrawer]=useState(false);
+  const [userMenu,setUserMenu]=useState(false);
+  const [ww,setWw]=useState(window.innerWidth);
+
+  useEffect(()=>{
+    const f=()=>{
+      const w=window.innerWidth;
+      setWw(w);
+      if(w>=1024){setCollapsed(false);setDrawer(false);}
+      else if(w>=768){setCollapsed(true);setDrawer(false);}
+      else{setDrawer(false);}
+    };
+    f();
+    window.addEventListener("resize",f);
+    return()=>window.removeEventListener("resize",f);
+  },[]);
+
+  const isMobile=ww<768;
+  const isDrawerMode=isMobile;
+  const sw=isDrawerMode?0:(collapsed?56:240);
+
+  const onSelect=id=>{setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
+  const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
+  const crumbs=CRUMBS[activeId]||[activeId];
+
+  const renderPage=()=>{
+    if(activeId==="geo-overview") return <GeoOverviewPage windowWidth={ww}/>;
+    const label=CRUMBS[activeId]?.slice(-1)[0]||activeId;
+    return <PlaceholderPage label={label} windowWidth={ww}/>;
+  };
+
+  /* Sidebar inner */
+  const SidebarContent=()=>(
+    <>
+      {/* Logo area — 56px per spec, logo hidden when collapsed */}
+      <div style={{height:56,padding:"0 14px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        {(!collapsed||isDrawerMode)&&<KinsanLogo/>}
+        {/* Toggle — 28×28, centered when collapsed per spec */}
+        {!isDrawerMode&&(
+          <div onClick={()=>setCollapsed(c=>!c)} title={collapsed?"展開":"收合"}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginLeft:collapsed?"auto":0,marginRight:collapsed?"auto":0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            {/* sidebar icon: 18px per spec */}
+            <FI name="sidebar" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+        {isDrawerMode&&(
+          <div onClick={()=>setDrawer(false)}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="x" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+      </div>
+      {/* Nav — 12px top padding */}
+      <nav style={{flex:1,padding:"12px 0",overflowY:"auto",overflowX:"hidden"}}>
+        {NAV.map((item,i)=>(
+          <NavItem key={item.id||item.label||i} item={item}
+            activeId={activeId} onSelect={onSelect}
+            collapsed={collapsed&&!isDrawerMode}
+            expanded={expanded} onToggle={onToggle}/>
+        ))}
+      </nav>
+    </>
+  );
+
+  return(
+    <div>
+      {/* Drawer overlay */}
+      {isDrawerMode&&drawerOpen&&(
+        <div onClick={()=>setDrawer(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:199}}/>
+      )}
+
+      {/* Sidebar */}
+      {isDrawerMode?(
+        <aside style={{width:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:200,transform:drawerOpen?"translateX(0)":"translateX(-100%)",transition:"transform 250ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      ):(
+        <aside style={{width:collapsed?56:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:100,transition:"width 200ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      )}
+
+      {/* Main */}
+      <div style={{marginLeft:sw,transition:"margin-left 200ms ease",minHeight:"100vh"}}>
+
+        {/* Top Header — 56px sticky per spec */}
+        <header style={{height:56,background:"#fff",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",padding:"0 16px",gap:8,position:"sticky",top:0,zIndex:50}}>
+          {/* Hamburger — mobile only */}
+          {isDrawerMode&&(
+            <div onClick={()=>setDrawer(o=>!o)}
+              style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+              onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <FI name="menu" size={18} color="#595959"/>
+            </div>
+          )}
+
+          {/* Breadcrumbs — 14px per spec, separator #8C8C8C */}
+          <nav style={{flex:1,display:"flex",alignItems:"center",gap:8,fontSize:14,overflow:"hidden",minWidth:0}}>
+            {crumbs.map((c,i)=>(
+              <React.Fragment key={i}>
+                {i>0&&<span style={{color:"#8C8C8C",flexShrink:0,fontSize:14}}>/</span>}
+                <span style={{
+                  color:i===crumbs.length-1?"var(--fg)":"var(--fg-3)",
+                  fontWeight:i===crumbs.length-1?500:400,
+                  whiteSpace:"nowrap",
+                  overflow:i===crumbs.length-1?"hidden":"visible",
+                  textOverflow:"ellipsis",fontSize:14,
+                }}>{c}</span>
+              </React.Fragment>
+            ))}
+          </nav>
+
+          {/* Right: search, bell, divider, avatar — per spec order */}
+          <IconBtn name="search" title="搜尋 ⌘K"/>
+          <IconBtn name="bell"   title="通知" badge/>
+          <div style={{width:1,height:20,background:"#F0F0F0",margin:"0 2px",flexShrink:0}}/>
+
+          {/* User menu */}
+          <div onClick={()=>setUserMenu(o=>!o)}
+            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",position:"relative",flexShrink:0}}>
+            <Avatar initials="S" size={28} bg="#0A2B41"/>
+            {ww>=640&&<FI name="chevron-down" size={13} color="#8C8C8C"/>}
+            {userMenu&&(
+              <>
+                <div onClick={e=>{e.stopPropagation();setUserMenu(false);}} style={{position:"fixed",inset:0,zIndex:99}}/>
+                <div style={{position:"absolute",top:40,right:0,width:200,background:"#fff",border:"1px solid #F0F0F0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.08)",padding:6,zIndex:100}}>
+                  <div style={{padding:"8px 10px",borderBottom:"1px solid #F0F0F0",marginBottom:4}}>
+                    <div style={{fontSize:13,fontWeight:600}}>金三 顧問</div>
+                    <div style={{fontSize:11,color:"#8C8C8C"}}>kinsan@example.com</div>
+                  </div>
+                  {[["user","個人設定"],["settings","帳號設定"],["log-out","登出"]].map(([ic,lbl])=>(
+                    <div key={lbl} onClick={()=>setUserMenu(false)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:lbl==="登出"?"#CF1322":"#595959"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <FI name={ic} size={14} color={lbl==="登出"?"#CF1322":"#8C8C8C"}/>{lbl}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </header>
+
+        {renderPage()}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

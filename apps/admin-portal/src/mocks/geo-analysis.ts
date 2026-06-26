@@ -1,5 +1,6 @@
 import type {
   GeoAiAnswerSample,
+  GeoAnalysisRunResult,
   GeoEntity,
   GeoEntityAlias,
   GeoJob,
@@ -31,6 +32,7 @@ export interface GeoMockState {
   trendPoints: GeoTrendPoint[];
   topicPerformance: GeoTopicPerformance[];
   aiAnswerSamples: GeoAiAnswerSample[];
+  runResults: GeoAnalysisRunResult[];
   recommendations: GeoRecommendation[];
 }
 
@@ -175,6 +177,7 @@ const queries: GeoQuery[] = [
     queryText: "北海岸適合週末放鬆的溫泉住宿推薦",
     region: "TW",
     language: "zh-TW",
+    marketType: "b2c",
     intent: "recommendation",
     buyerStage: "consideration",
     isBranded: false,
@@ -188,6 +191,7 @@ const queries: GeoQuery[] = [
     queryText: "金山旅宿評價和交通方便嗎",
     region: "TW",
     language: "zh-TW",
+    marketType: "b2c",
     intent: "comparison",
     buyerStage: "decision",
     isBranded: true,
@@ -201,6 +205,7 @@ const queries: GeoQuery[] = [
     queryText: "帶小孩去金山玩兩天一夜怎麼安排",
     region: "TW",
     language: "zh-TW",
+    marketType: "b2c",
     intent: "planning",
     buyerStage: "awareness",
     isBranded: false,
@@ -214,6 +219,7 @@ const queries: GeoQuery[] = [
     queryText: "best workflow automation tools for marketing teams",
     region: "US",
     language: "en-US",
+    marketType: "b2b_procurement",
     intent: "comparison",
     buyerStage: "consideration",
     isBranded: false,
@@ -462,6 +468,53 @@ const aiAnswerSamples: GeoAiAnswerSample[] = [
   },
 ];
 
+const runResults: GeoAnalysisRunResult[] = [
+  {
+    id: "geo-run-result-1",
+    jobId: "geo-job-1",
+    queryId: "geo-query-onsen-1",
+    provider: "gemini",
+    surface: "Gemini",
+    model: "gemini-3.1-flash-lite",
+    region: "TW",
+    language: "zh-TW",
+    status: "completed",
+    rawResponse:
+      "Gemini 建議比較交通便利性、房型、親子設施與近期評論，並優先確認官網與旅遊平台資訊。",
+    references: [
+      {
+        url: "https://example.com/onsen",
+        title: "溫泉飯店推薦整理",
+        domain: "example.com",
+        position: 1,
+      },
+      {
+        url: "https://example.com/location",
+        title: "交通與地點資訊",
+        domain: "example.com",
+        position: 2,
+      },
+    ],
+    error: null,
+    runAt: "2026-06-25T02:10:00.000Z",
+  },
+  {
+    id: "geo-run-result-2",
+    jobId: "geo-job-2",
+    queryId: "geo-query-b2b-1",
+    provider: "gemini",
+    surface: "Gemini",
+    model: "gemini-3.1-flash-lite",
+    region: "US",
+    language: "en-US",
+    status: "failed",
+    rawResponse: "",
+    references: [],
+    error: "provider_request_failed",
+    runAt: "2026-06-25T02:30:00.000Z",
+  },
+];
+
 const recommendations: GeoRecommendation[] = [
   {
     id: "geo-recommendation-1",
@@ -509,6 +562,10 @@ export function createGeoMockState(): GeoMockState {
       ...item,
       mentionedEntities: [...item.mentionedEntities],
       citations: [...item.citations],
+    })),
+    runResults: runResults.map((item) => ({
+      ...item,
+      references: item.references.map((reference) => ({ ...reference })),
     })),
     recommendations: cloneItems(recommendations),
   };

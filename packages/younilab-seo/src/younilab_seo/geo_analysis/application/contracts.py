@@ -10,42 +10,155 @@ def _camel_case(value: str) -> str:
 
 
 class ContractModel(BaseModel):
-    """GEO application boundary 使用的 camelCase contract base。"""
+    """GEO application 邊界使用的 camelCase contract 基底。"""
 
     model_config = ConfigDict(alias_generator=_camel_case, populate_by_name=True)
 
 
 class QueryRunJobMessage(ContractModel):
-    """準備送往 message broker 的 query run job message。"""
+    """發布到 provider queue 的 GEO query run job message。"""
 
     job_id: UUID
     project_id: UUID
+    seo_task_id: UUID
     query_id: UUID
     query_text: str
+    topic_name: str
     platform: str
     model: str | None = None
     region: str
     language: str
+    market_type: str
+    is_branded: bool
     scheduled_for: datetime
     callback_url: str
 
 
 class GeoQueryRunJobDispatchContext(ContractModel):
-    """Read model used to build a broker message for a persisted query run job."""
+    """從已保存 job 組出 broker message 所需的 dispatch read model。"""
 
     job_id: UUID
     project_id: UUID
+    seo_task_id: UUID | None
     query_id: UUID
     query_text: str
+    topic_name: str
     platform: str
     model: str | None = None
     region: str
     language: str
+    market_type: str
+    is_branded: bool
     scheduled_for: datetime
 
 
+class TrackingRunResult(ContractModel):
+    """runner service 回傳給 worker 的最終執行狀態。"""
+
+    external_run_id: str
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class TrackingRunReference(ContractModel):
+    """Provider 回傳的一筆來源引用。"""
+
+    url: str
+    title: str | None = None
+
+
+class TrackingRunResultItem(ContractModel):
+    """Provider 對單一 query 的跑題結果。"""
+
+    id: str
+    run_request_id: str
+    query_id: UUID
+    provider: str
+    surface: str
+    model: str
+    region: str
+    language: str
+    status: str
+    raw_response: str
+    reference_urls: list[str] = Field(default_factory=list)
+    references: list[TrackingRunReference] = Field(default_factory=list)
+    error: str | None = None
+    run_at: datetime
+
+
+class TrackingRunResponse(ContractModel):
+    """geo-tracking /run-requests 的完整 response。"""
+
+    id: str
+    seo_task_id: UUID
+    timing: str
+    results: list[TrackingRunResultItem] = Field(default_factory=list)
+
+
+class SaveTrackingRunResultCommand(ContractModel):
+    """保存 worker 呼叫 tracking 後的 raw result 與 orchestration 狀態。"""
+
+    message: QueryRunJobMessage
+    response: TrackingRunResponse | None = None
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    request_payload: dict = Field(default_factory=dict)
+
+
+class GeoRunResultReferenceRecord(ContractModel):
+    """已保存的 run result reference。"""
+
+    id: UUID
+    run_result_id: UUID
+    url: str
+    title: str | None = None
+    domain: str | None = None
+    position: int
+
+
+class GeoRunResultRecord(ContractModel):
+    """已保存的 GEO run result raw data。"""
+
+    id: UUID
+    run_request_id: UUID
+    job_id: UUID
+    tracking_result_id: str
+    query_id: UUID
+    provider: str
+    surface: str
+    model: str
+    region: str
+    language: str
+    status: str
+    raw_response: str
+    error: str | None = None
+    run_at: datetime
+    references: list[GeoRunResultReferenceRecord] = Field(default_factory=list)
+    created_at: datetime
+
+
+class GeoRunRequestRecord(ContractModel):
+    """已保存的 worker tracking request 與其 results。"""
+
+    id: UUID
+    job_id: UUID
+    tracking_run_request_id: str
+    seo_task_id: UUID
+    provider: str
+    timing: str
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    request_payload: dict = Field(default_factory=dict)
+    created_at: datetime
+    completed_at: datetime | None = None
+    results: list[GeoRunResultRecord] = Field(default_factory=list)
+
+
 class PublishResult(ContractModel):
-    """message publisher 回報的派送結果。"""
+    """message publisher 寫入 broker 後的結果與 evidence。"""
 
     backend: str
     destination: str
@@ -55,7 +168,7 @@ class PublishResult(ContractModel):
 
 
 class ExternalRunCallback(ContractModel):
-    """外部 runner 回傳的 job 狀態 callback，不承載 AI result content。"""
+    """外部 runner 回寫 job 狀態的 callback，不包含 AI result content。"""
 
     job_id: UUID
     external_run_id: str
@@ -165,6 +278,7 @@ class GeoQueryCommand(ContractModel):
     query_text: str
     region: str
     language: str
+    market_type: str = "b2b_procurement"
     intent: str | None = None
     buyer_stage: str | None = None
     is_branded: bool = False
@@ -183,7 +297,7 @@ class GeoQueryRecord(GeoQueryCommand):
 
 
 class GeoQueryPlatformCommand(ContractModel):
-    """建立或替換 tracked query platform assignment 的 application input。"""
+    """建立或更新 tracked query platform assignment 的 application input。"""
 
     platform_id: UUID
     model: str | None = None
@@ -221,7 +335,7 @@ class GeoQueryScheduleRecord(GeoQueryScheduleCommand):
 
 
 class CreateQueryRunJobCommand(ContractModel):
-    """替 tracked query 建立 query run job 的 application input。"""
+    """從 tracked query 建立 query run job 的 application input。"""
 
     platform_id: UUID
     scheduled_for: datetime | None = None

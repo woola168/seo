@@ -11,6 +11,7 @@ resolution-markers = [
 members = [
     "younilab-access-control-api",
     "younilab-geo-analysis-api",
+    "younilab-geo-analysis-worker",
     "younilab-geo-tracking-api",
     "younilab-geo-tracking-application",
     "younilab-geo-tracking-domain",
@@ -2137,6 +2138,25 @@ dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.0" },
 ]
+
+[[package]]
+name = "younilab-geo-analysis-worker"
+version = "0.1.0"
+source = { editable = "apps/geo-analysis-worker" }
+dependencies = [
+    { name = "younilab-seo" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "younilab-seo", editable = "packages/younilab-seo" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "younilab-geo-tracking-api"

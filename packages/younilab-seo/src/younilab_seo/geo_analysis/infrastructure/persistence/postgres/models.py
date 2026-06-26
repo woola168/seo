@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
@@ -123,6 +123,10 @@ class GeoQueryRow(SQLModel, table=True):
     query_text: str = Field(sa_column=Column(Text, nullable=False))
     region: str = Field(sa_column=Column(String(16), nullable=False))
     language: str = Field(sa_column=Column(String(16), nullable=False))
+    market_type: str = Field(
+        default="b2b_procurement",
+        sa_column=Column(String(32), nullable=False),
+    )
     intent: str | None = Field(default=None, sa_column=Column(String(32)))
     buyer_stage: str | None = Field(default=None, sa_column=Column(String(32)))
     is_branded: bool = Field(default=False, sa_column=Column(Boolean, nullable=False))
@@ -330,3 +334,63 @@ class GeoExternalRunReferenceRow(SQLModel, table=True):
     )
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoRunRequestRow(SQLModel, table=True):
+    """Worker call to geo-tracking for one analysis job."""
+
+    __tablename__ = "geo_run_request"
+
+    id: UUID = Field(primary_key=True)
+    job_id: UUID = Field(foreign_key="geo_query_run_job.id", nullable=False)
+    tracking_run_request_id: str = Field(sa_column=Column(String(200), nullable=False))
+    seo_task_id: UUID = Field(nullable=False)
+    provider: str = Field(sa_column=Column(String(64), nullable=False))
+    timing: str = Field(sa_column=Column(String(32), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    request_payload: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False),
+    )
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class GeoRunResultRow(SQLModel, table=True):
+    """Raw provider result returned by geo-tracking for one query."""
+
+    __tablename__ = "geo_run_result"
+
+    id: UUID = Field(primary_key=True)
+    run_request_id: UUID = Field(foreign_key="geo_run_request.id", nullable=False)
+    job_id: UUID = Field(foreign_key="geo_query_run_job.id", nullable=False)
+    tracking_result_id: str = Field(sa_column=Column(String(200), nullable=False))
+    query_id: UUID = Field(foreign_key="geo_query.id", nullable=False)
+    provider: str = Field(sa_column=Column(String(64), nullable=False))
+    surface: str = Field(sa_column=Column(String(100), nullable=False))
+    model: str = Field(sa_column=Column(String(100), nullable=False))
+    region: str = Field(sa_column=Column(String(16), nullable=False))
+    language: str = Field(sa_column=Column(String(16), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    raw_response: str = Field(default="", sa_column=Column(Text, nullable=False))
+    error: str | None = Field(default=None, sa_column=Column(Text))
+    run_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoRunResultReferenceRow(SQLModel, table=True):
+    """Reference URL returned with a raw provider result."""
+
+    __tablename__ = "geo_run_result_reference"
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    url: str = Field(sa_column=Column(Text, nullable=False))
+    title: str | None = Field(default=None, sa_column=Column(Text))
+    domain: str | None = Field(default=None, sa_column=Column(String(255)))
+    position: int = Field(sa_column=Column(Integer, nullable=False))

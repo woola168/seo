@@ -8,6 +8,9 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoMessageDispatchLogRow,
     GeoProjectRow,
     GeoQueryRunJobRow,
+    GeoRunRequestRow,
+    GeoRunResultReferenceRow,
+    GeoRunResultRow,
     PostgresGeoAnalysisRepository,
     build_postgres_session_factory,
 )
@@ -29,14 +32,19 @@ def test_postgres_rows_use_timezone_aware_timestamps_and_neutral_message_names()
     assert not any("pubsub" in table_name for table_name in table_names)
 
 
-def test_no_ai_response_or_metric_tables_are_defined() -> None:
+def test_run_result_tables_exist_without_metric_tables() -> None:
     defined_tables = {
         GeoProjectRow.__tablename__,
         GeoQueryRunJobRow.__tablename__,
         GeoMessageDispatchLogRow.__tablename__,
+        GeoRunRequestRow.__tablename__,
+        GeoRunResultRow.__tablename__,
+        GeoRunResultReferenceRow.__tablename__,
     }
 
-    assert "geo_ai_response" not in defined_tables
+    assert "geo_run_request" in defined_tables
+    assert "geo_run_result" in defined_tables
+    assert "geo_run_result_reference" in defined_tables
     assert "geo_response_mention" not in defined_tables
     assert "geo_daily_query_metric" not in defined_tables
 
@@ -66,3 +74,6 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_query_run_job" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
