@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
@@ -17,12 +18,16 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
+    GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultRecord,
+    GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
     QueryRunJobMessage,
+    SaveTrackingRunResultCommand,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 
@@ -40,6 +45,9 @@ class GeoApiStore:
     query_platforms: dict[UUID, GeoQueryPlatformRecord] = field(default_factory=dict)
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
+    run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
+    platform_codes: dict[UUID, str] = field(default_factory=dict)
+    platform_models: dict[UUID, str | None] = field(default_factory=dict)
     dispatches: list[tuple[UUID, PublishResult, QueryRunJobMessage, datetime]] = field(
         default_factory=list
     )
@@ -379,6 +387,51 @@ class GeoApiStore:
     async def get_job(self, job_id: UUID) -> GeoQueryRunJob | None:
         return self.jobs.get(job_id)
 
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
+        job = self.jobs.get(job_id)
+        if job is None:
+            return None
+        query = self.queries.get(job.query_id)
+        if query is None:
+            return None
+        project = self.projects.get(job.project_id)
+        if project is None:
+            return None
+        topic_name = ""
+        if query.topic_id is not None:
+            topic = self.topics.get(query.topic_id)
+            topic_name = topic.name if topic is not None else ""
+        query_platform = next(
+            (
+                item
+                for item in self.query_platforms.values()
+                if item.query_id == job.query_id and item.platform_id == job.platform_id
+            ),
+            None,
+        )
+        return GeoQueryRunJobDispatchContext(
+            job_id=job.id,
+            project_id=job.project_id,
+            seo_task_id=project.seo_task_id,
+            query_id=job.query_id,
+            query_text=query.query_text,
+            topic_name=topic_name,
+            platform=self.platform_codes.get(job.platform_id, str(job.platform_id)),
+            model=(
+                query_platform.model
+                if query_platform is not None and query_platform.model
+                else self.platform_models.get(job.platform_id)
+            ),
+            region=query.region,
+            language=query.language,
+            market_type=query.market_type,
+            is_branded=query.is_branded,
+            scheduled_for=job.scheduled_for,
+        )
+
     async def save(self, job: GeoQueryRunJob) -> None:
         self.jobs[job.id] = job
 
@@ -419,6 +472,85 @@ class GeoApiStore:
         await self.record_external_callback(callback=callback, occurred_at=occurred_at)
         return job
 
+    async def save_tracking_run_result(
+        self,
+        *,
+        command: SaveTrackingRunResultCommand,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob:
+        external_run_id = command.response.id if command.response is not None else "unknown"
+        callback = ExternalRunCallback(
+            job_id=command.message.job_id,
+            external_run_id=external_run_id,
+            status=command.status,
+            error_code=command.error_code,
+            error_message=command.error_message,
+        )
+        job = await self.apply_external_callback(
+            callback=callback,
+            occurred_at=occurred_at,
+        )
+        if command.response is not None:
+            run_request_id = uuid4()
+            for result in command.response.results:
+                result_id = uuid4()
+                references = [
+                    GeoRunResultReferenceRecord(
+                        id=uuid4(),
+                        run_result_id=result_id,
+                        url=url,
+                        title=title,
+                        domain=_url_domain(url),
+                        position=position,
+                    )
+                    for position, (url, title) in enumerate(
+                        _result_references(result),
+                        start=1,
+                    )
+                ]
+                self.run_results[result_id] = GeoRunResultRecord(
+                    id=result_id,
+                    run_request_id=run_request_id,
+                    job_id=command.message.job_id,
+                    tracking_result_id=result.id,
+                    query_id=result.query_id,
+                    provider=result.provider,
+                    surface=result.surface,
+                    model=result.model,
+                    region=result.region,
+                    language=result.language,
+                    status=result.status,
+                    raw_response=result.raw_response,
+                    error=result.error,
+                    run_at=result.run_at,
+                    references=references,
+                    created_at=occurred_at,
+                )
+        return job
+
+    async def list_job_run_results(self, job_id: UUID) -> list[GeoRunResultRecord]:
+        return sorted(
+            [item for item in self.run_results.values() if item.job_id == job_id],
+            key=lambda item: item.run_at,
+            reverse=True,
+        )
+
+    async def list_project_run_results(
+        self,
+        project_id: UUID,
+    ) -> list[GeoRunResultRecord]:
+        job_ids = {
+            job.id for job in self.jobs.values() if job.project_id == project_id
+        }
+        return sorted(
+            [item for item in self.run_results.values() if item.job_id in job_ids],
+            key=lambda item: item.run_at,
+            reverse=True,
+        )
+
+    async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
+        return self.run_results.get(result_id)
+
     def job_dict(self, job: GeoQueryRunJob) -> dict:
         data = asdict(job)
         data["status"] = job.status.value
@@ -458,3 +590,14 @@ def _normalize_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).replace(microsecond=0)
+
+
+def _result_references(result) -> list[tuple[str, str | None]]:
+    if result.references:
+        return [(reference.url, reference.title) for reference in result.references]
+    return [(url, None) for url in result.reference_urls]
+
+
+def _url_domain(url: str) -> str | None:
+    parsed = urlparse(url)
+    return parsed.netloc.lower() or None

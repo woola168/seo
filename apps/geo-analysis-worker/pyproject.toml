@@ -1,0 +1,18 @@
+[project]
+name = "younilab-geo-analysis-worker"
+version = "0.1.0"
+description = "GEO analysis queue worker."
+requires-python = ">=3.12"
+dependencies = [
+    "younilab-seo",
+]
+
+[tool.uv.sources]
+younilab-seo = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

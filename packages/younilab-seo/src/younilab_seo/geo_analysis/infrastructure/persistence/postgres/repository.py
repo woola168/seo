@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -21,15 +22,20 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
+    GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultRecord,
+    GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
     QueryRunJobMessage,
+    SaveTrackingRunResultCommand,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
+    GeoAiPlatformRow,
     GeoEntityAliasRow,
     GeoEntityRow,
     GeoExternalRunReferenceRow,
@@ -41,6 +47,9 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryRow,
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
+    GeoRunRequestRow,
+    GeoRunResultReferenceRow,
+    GeoRunResultRow,
     GeoTopicRow,
 )
 
@@ -329,6 +338,7 @@ class PostgresGeoAnalysisRepository:
             query_text=command.query_text,
             region=command.region,
             language=command.language,
+            market_type=command.market_type,
             intent=command.intent,
             buyer_stage=command.buyer_stage,
             is_branded=command.is_branded,
@@ -355,6 +365,7 @@ class PostgresGeoAnalysisRepository:
             row.query_text = command.query_text
             row.region = command.region
             row.language = command.language
+            row.market_type = command.market_type
             row.intent = command.intent
             row.buyer_stage = command.buyer_stage
             row.is_branded = command.is_branded
@@ -510,6 +521,49 @@ class PostgresGeoAnalysisRepository:
             row = await session.get(GeoQueryRunJobRow, job_id)
             return _job_from_row(row) if row is not None else None
 
+    async def get_job_dispatch_context(
+        self,
+        job_id: UUID,
+    ) -> GeoQueryRunJobDispatchContext | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryRunJobRow, job_id)
+            if row is None:
+                return None
+            query = await session.get(GeoQueryRow, row.query_id)
+            project = await session.get(GeoProjectRow, row.project_id)
+            platform = await session.get(GeoAiPlatformRow, row.platform_id)
+            if query is None or project is None or platform is None:
+                return None
+            topic_name = ""
+            if query.topic_id is not None:
+                topic = await session.get(GeoTopicRow, query.topic_id)
+                topic_name = topic.name if topic is not None else ""
+            query_platform = await session.scalar(
+                select(GeoQueryPlatformRow).where(
+                    GeoQueryPlatformRow.query_id == row.query_id,
+                    GeoQueryPlatformRow.platform_id == row.platform_id,
+                )
+            )
+            return GeoQueryRunJobDispatchContext(
+                job_id=row.id,
+                project_id=row.project_id,
+                seo_task_id=project.seo_task_id,
+                query_id=row.query_id,
+                query_text=query.query_text,
+                topic_name=topic_name,
+                platform=platform.code,
+                model=(
+                    query_platform.model
+                    if query_platform is not None and query_platform.model
+                    else platform.default_model
+                ),
+                region=query.region,
+                language=query.language,
+                market_type=query.market_type,
+                is_branded=query.is_branded,
+                scheduled_for=row.scheduled_for,
+            )
+
     async def save(self, job: GeoQueryRunJob) -> None:
         async with self._session_scope() as session:
             row = await session.get(GeoQueryRunJobRow, job.id)
@@ -583,6 +637,88 @@ class PostgresGeoAnalysisRepository:
             session.add(_external_reference_row(callback, occurred_at))
             session.add(_external_callback_event_row(callback, occurred_at))
             return job
+
+    async def save_tracking_run_result(
+        self,
+        *,
+        command: SaveTrackingRunResultCommand,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob:
+        callback = _tracking_command_callback(command)
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryRunJobRow, command.message.job_id)
+            if row is None:
+                raise KeyError(command.message.job_id)
+            job = _job_from_row(row)
+            job.mark_external_status(
+                external_run_id=callback.external_run_id,
+                external_status=callback.status,
+                error_code=callback.error_code,
+                error_message=callback.error_message,
+                now=occurred_at,
+            )
+            _apply_job(row, job)
+            run_request = _run_request_row(command, occurred_at)
+            session.add(run_request)
+            for result in command.response.results if command.response else []:
+                result_row = _run_result_row(
+                    run_request_id=run_request.id,
+                    job_id=command.message.job_id,
+                    result=result,
+                    occurred_at=occurred_at,
+                )
+                session.add(result_row)
+                for position, reference in enumerate(
+                    _result_references(result),
+                    start=1,
+                ):
+                    session.add(
+                        _run_result_reference_row(
+                            run_result_id=result_row.id,
+                            url=reference[0],
+                            title=reference[1],
+                            position=position,
+                        )
+                    )
+            session.add(_external_reference_row(callback, occurred_at))
+            session.add(_external_callback_event_row(callback, occurred_at))
+            return job
+
+    async def list_job_run_results(self, job_id: UUID) -> list[GeoRunResultRecord]:
+        async with self._session_scope() as session:
+            rows = (
+                await session.scalars(
+                    select(GeoRunResultRow)
+                    .where(GeoRunResultRow.job_id == job_id)
+                    .order_by(GeoRunResultRow.run_at.desc())
+                )
+            ).all()
+            return [await _run_result_record(session, row) for row in rows]
+
+    async def list_project_run_results(
+        self,
+        project_id: UUID,
+    ) -> list[GeoRunResultRecord]:
+        async with self._session_scope() as session:
+            rows = (
+                await session.scalars(
+                    select(GeoRunResultRow)
+                    .join(
+                        GeoQueryRunJobRow,
+                        GeoRunResultRow.job_id == GeoQueryRunJobRow.id,
+                    )
+                    .where(GeoQueryRunJobRow.project_id == project_id)
+                    .order_by(GeoRunResultRow.run_at.desc())
+                )
+            ).all()
+            return [await _run_result_record(session, row) for row in rows]
+
+    async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoRunResultRow, result_id)
+            if row is None:
+                return None
+            return await _run_result_record(session, row)
 
     async def _exists(self, model, item_id: UUID) -> bool:
         async with self._session_scope() as session:
@@ -695,6 +831,7 @@ def _query_record(row: GeoQueryRow) -> GeoQueryRecord:
         query_text=row.query_text,
         region=row.region,
         language=row.language,
+        market_type=row.market_type,
         intent=row.intent,
         buyer_stage=row.buyer_stage,
         is_branded=row.is_branded,
@@ -792,6 +929,135 @@ def _external_callback_event_row(
         actor="external_runner",
         metadata_json={"externalRunId": callback.external_run_id},
     )
+
+
+def _tracking_command_callback(
+    command: SaveTrackingRunResultCommand,
+) -> ExternalRunCallback:
+    external_run_id = command.response.id if command.response is not None else "unknown"
+    return ExternalRunCallback(
+        job_id=command.message.job_id,
+        external_run_id=external_run_id,
+        status=command.status,
+        error_code=command.error_code,
+        error_message=command.error_message,
+    )
+
+
+def _run_request_row(
+    command: SaveTrackingRunResultCommand,
+    occurred_at: datetime,
+) -> GeoRunRequestRow:
+    response = command.response
+    return GeoRunRequestRow(
+        id=uuid4(),
+        job_id=command.message.job_id,
+        tracking_run_request_id=response.id if response is not None else "unknown",
+        seo_task_id=command.message.seo_task_id,
+        provider=command.message.platform,
+        timing=response.timing if response is not None else "run_now",
+        status=command.status,
+        error_code=command.error_code,
+        error_message=command.error_message,
+        request_payload=command.request_payload,
+        created_at=occurred_at,
+        completed_at=occurred_at,
+    )
+
+
+def _run_result_row(
+    *,
+    run_request_id: UUID,
+    job_id: UUID,
+    result,
+    occurred_at: datetime,
+) -> GeoRunResultRow:
+    return GeoRunResultRow(
+        id=uuid4(),
+        run_request_id=run_request_id,
+        job_id=job_id,
+        tracking_result_id=result.id,
+        query_id=result.query_id,
+        provider=result.provider,
+        surface=result.surface,
+        model=result.model,
+        region=result.region,
+        language=result.language,
+        status=result.status,
+        raw_response=result.raw_response,
+        error=result.error,
+        run_at=result.run_at,
+        created_at=occurred_at,
+    )
+
+
+def _run_result_reference_row(
+    *,
+    run_result_id: UUID,
+    url: str,
+    title: str | None,
+    position: int,
+) -> GeoRunResultReferenceRow:
+    return GeoRunResultReferenceRow(
+        id=uuid4(),
+        run_result_id=run_result_id,
+        url=url,
+        title=title,
+        domain=_url_domain(url),
+        position=position,
+    )
+
+
+def _result_references(result) -> list[tuple[str, str | None]]:
+    if result.references:
+        return [(reference.url, reference.title) for reference in result.references]
+    return [(url, None) for url in result.reference_urls]
+
+
+async def _run_result_record(
+    session: AsyncSession,
+    row: GeoRunResultRow,
+) -> GeoRunResultRecord:
+    references = (
+        await session.scalars(
+            select(GeoRunResultReferenceRow)
+            .where(GeoRunResultReferenceRow.run_result_id == row.id)
+            .order_by(GeoRunResultReferenceRow.position)
+        )
+    ).all()
+    return GeoRunResultRecord(
+        id=row.id,
+        run_request_id=row.run_request_id,
+        job_id=row.job_id,
+        tracking_result_id=row.tracking_result_id,
+        query_id=row.query_id,
+        provider=row.provider,
+        surface=row.surface,
+        model=row.model,
+        region=row.region,
+        language=row.language,
+        status=row.status,
+        raw_response=row.raw_response,
+        error=row.error,
+        run_at=row.run_at,
+        references=[
+            GeoRunResultReferenceRecord(
+                id=reference.id,
+                run_result_id=reference.run_result_id,
+                url=reference.url,
+                title=reference.title,
+                domain=reference.domain,
+                position=reference.position,
+            )
+            for reference in references
+        ],
+        created_at=row.created_at,
+    )
+
+
+def _url_domain(url: str) -> str | None:
+    parsed = urlparse(url)
+    return parsed.netloc.lower() or None
 
 
 def _job_from_row(row: GeoQueryRunJobRow) -> GeoQueryRunJob:

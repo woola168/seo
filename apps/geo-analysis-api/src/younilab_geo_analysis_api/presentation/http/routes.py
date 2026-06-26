@@ -20,6 +20,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     QueryPlatformResponse,
     QueryRequest,
     QueryResponse,
+    RunResultResponse,
     ScheduleRequest,
     ScheduleResponse,
     TopicRequest,
@@ -27,6 +28,8 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
 )
 from younilab_seo.geo_analysis.application import (
     CreateQueryRunJobCommand,
+    DispatchQueryRunJob,
+    DispatchQueryRunJobError,
     ExternalRunCallback,
     GeoEntityAliasCommand,
     GeoEntityCommand,
@@ -38,6 +41,7 @@ from younilab_seo.geo_analysis.application import (
     GeoTopicCommand,
     ManageGeoSetup,
     ManageQueryRunJobs,
+    ReceiveExternalRunCallback,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 
@@ -52,6 +56,14 @@ def _jobs(request: Request) -> ManageQueryRunJobs:
     return request.app.state.manage_query_run_jobs
 
 
+def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
+    return request.app.state.dispatch_query_run_job
+
+
+def _callback_receiver(request: Request) -> ReceiveExternalRunCallback:
+    return request.app.state.receive_external_run_callback
+
+
 def _record_data(record) -> dict:
     return record.model_dump()
 
@@ -60,6 +72,10 @@ def _job_data(job: GeoQueryRunJob) -> dict:
     data = asdict(job)
     data["status"] = job.status.value
     return data
+
+
+def _run_result_data(record) -> dict:
+    return record.model_dump()
 
 
 @router.get("/projects", response_model=PageResponse)
@@ -445,6 +461,15 @@ async def list_jobs(request: Request, project_id: UUID) -> PageResponse:
     )
 
 
+@router.get("/projects/{project_id}/run-results", response_model=PageResponse)
+async def list_project_run_results(request: Request, project_id: UUID) -> PageResponse:
+    items = await _jobs(request).list_project_run_results(project_id)
+    return PageResponse(
+        items=[RunResultResponse(**_run_result_data(item)) for item in items],
+        total=len(items),
+    )
+
+
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(request: Request, job_id: UUID) -> JobResponse:
     job = await _jobs(request).get_job(job_id)
@@ -453,15 +478,44 @@ async def get_job(request: Request, job_id: UUID) -> JobResponse:
     return JobResponse(**_job_data(job))
 
 
-@router.post("/jobs/{job_id}/dispatch", response_model=JobResponse)
-async def dispatch_job(request: Request, job_id: UUID) -> JobResponse:
+@router.get("/jobs/{job_id}/run-results", response_model=PageResponse)
+async def list_job_run_results(request: Request, job_id: UUID) -> PageResponse:
     job = await _jobs(request).get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="message publisher adapter is not configured",
+    items = await _jobs(request).list_job_run_results(job_id)
+    return PageResponse(
+        items=[RunResultResponse(**_run_result_data(item)) for item in items],
+        total=len(items),
     )
+
+
+@router.get("/run-results/{result_id}", response_model=RunResultResponse)
+async def get_run_result(request: Request, result_id: UUID) -> RunResultResponse:
+    result = await _jobs(request).get_run_result(result_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="run result not found")
+    return RunResultResponse(**_run_result_data(result))
+
+
+@router.post("/jobs/{job_id}/dispatch", response_model=JobResponse)
+async def dispatch_job(request: Request, job_id: UUID) -> JobResponse:
+    dispatcher = _dispatcher(request)
+    if dispatcher is None:
+        job = await _jobs(request).get_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="message publisher adapter is not configured",
+        )
+    try:
+        job = await dispatcher.execute(job_id, request.app.state.geo_callback_base_url)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found") from None
+    except DispatchQueryRunJobError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return JobResponse(**_job_data(job))
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
@@ -480,7 +534,7 @@ async def receive_external_callback(
 ) -> JobResponse:
     callback = ExternalRunCallback(job_id=job_id, **payload.model_dump())
     try:
-        job = await _jobs(request).apply_external_callback(callback)
+        job = await _callback_receiver(request).execute(callback)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
     return JobResponse(**_job_data(job))

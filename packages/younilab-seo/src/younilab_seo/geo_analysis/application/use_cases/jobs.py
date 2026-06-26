@@ -4,6 +4,7 @@ from uuid import UUID
 from younilab_seo.geo_analysis.application.contracts import (
     CreateQueryRunJobCommand,
     ExternalRunCallback,
+    GeoRunResultRecord,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
@@ -31,6 +32,18 @@ class ManageQueryRunJobs:
 
     async def get_job(self, job_id: UUID) -> GeoQueryRunJob | None:
         return await self.repository.get_job(job_id)
+
+    async def list_job_run_results(self, job_id: UUID) -> list[GeoRunResultRecord]:
+        return await self.repository.list_job_run_results(job_id)
+
+    async def list_project_run_results(
+        self,
+        project_id: UUID,
+    ) -> list[GeoRunResultRecord]:
+        return await self.repository.list_project_run_results(project_id)
+
+    async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
+        return await self.repository.get_run_result(result_id)
 
     async def cancel_job(self, job_id: UUID) -> GeoQueryRunJob | None:
         job = await self.repository.get_job(job_id)

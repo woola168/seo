@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KINSAN SEO — Platforms & Schedules</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Youni Lab Design Tokens v2.3 ── */
+:root{
+  --primary:#0A2B41; --primary-hover:#2E4A5E; --primary-light:#E7EAEC;
+  --info:#1677FF; --info-light:#E6F4FF; --info-text:#0958D9; --info-border:#91CAFF;
+  --success-light:#F6FFED; --success-text:#389E0D; --success-border:#B7EB8F;
+  --warning-light:#FFFCF0; --warning-text:#AD6800; --warning-border:#FFC861;
+  --error:#F5222D; --error-light:#FFF1F0; --error-text:#CF1322; --error-border:#FFA39E;
+  --fg:#1F1F1F; --fg-2:#595959; --fg-3:#8C8C8C; --fg-4:#BFBFBF;
+  --bg-page:#F5F5F5; --bg:#FFFFFF; --bg-2:#FAFAFA;
+  --border:#D9D9D9; --border-subtle:#F0F0F0;
+  --font:'Inter','Noto Sans TC',-apple-system,sans-serif;
+  --mono:'IBM Plex Mono','Menlo',monospace;
+  --kinsan-gold:#8B6500;
+  /* Chart colours — Youni Lab spec */
+  --viz-main:#1677FF;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:var(--font);background:var(--bg-page);color:var(--fg);-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+button,input{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+/* ══════════════════════════════════════════════════════════
+   ICON SYSTEM
+   Source: younilab-設計規範 官方 FI_PATHS
+   Additions (Feather Icons v4.29, same spec):
+     monitor, zap, box, trending-up
+══════════════════════════════════════════════════════════ */
+const FI_PATHS = {
+  /* ── official set ── */
+  "grid":          "<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
+  "user":          "<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
+  "users":         "<path d='M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 00-3-3.87'/><path d='M16 3.13a4 4 0 010 7.75'/>",
+  "shield":        "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/>",
+  "bell":          "<path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/>",
+  "settings":      "<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/>",
+  "sidebar":       "<rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/>",
+  "search":        "<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>",
+  "chevron-down":  "<polyline points='6 9 12 15 18 9'/>",
+  "chevron-right": "<polyline points='9 18 15 12 9 6'/>",
+  "chevron-up":    "<polyline points='18 15 12 9 6 15'/>",
+  "plus":          "<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>",
+  "x":             "<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>",
+  "list":          "<line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/>",
+  "bar-chart-2":   "<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>",
+  "calendar":      "<rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/>",
+  "refresh-cw":    "<polyline points='23 4 23 10 17 10'/><polyline points='1 20 1 14 7 14'/><path d='M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15'/>",
+  "info":          "<circle cx='12' cy='12' r='10'/><line x1='12' y1='16' x2='12' y2='12'/><line x1='12' y1='8' x2='12.01' y2='8'/>",
+  "log-out":       "<path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/>",
+  "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
+  "menu":          "<line x1='3' y1='12' x2='21' y2='12'/><line x1='3' y1='6' x2='21' y2='6'/><line x1='3' y1='18' x2='21' y2='18'/>",
+  "check-circle":  "<path d='M22 11.08V12a10 10 0 11-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/>",
+  "alert-circle":  "<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/>",
+  "slash":         "<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>",
+  "eye":           "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
+  "edit-2":        "<path d='M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z'/>",
+  "trash-2":       "<polyline points='3 6 5 6 21 6'/><path d='M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2'/><line x1='10' y1='11' x2='10' y2='17'/><line x1='14' y1='11' x2='14' y2='17'/>",
+  "filter":        "<polygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/>",
+  "briefcase":     "<rect x='2' y='7' width='20' height='14' rx='2' ry='2'/><path d='M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16'/>",
+  "star":          "<polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/>",
+  "check":         "<polyline points='20 6 9 17 4 12'/>",
+  /* ── Feather extensions (per spec 新增規範: feathericons.com source, same SVG rules) ── */
+  "monitor":       "<rect x='2' y='3' width='20' height='14' rx='2' ry='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>",
+  "zap":           "<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>",
+  "box":           "<path d='M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z'/><polyline points='3.27 6.96 12 12.01 20.73 6.96'/><line x1='12' y1='22.08' x2='12' y2='12'/>",
+  "trending-up":   "<polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/><polyline points='17 6 23 6 23 12'/>",
+};
+
+/* Icon component — per spec: strokeWidth 2, round caps, currentColor */
+const FI = ({name,size=16,color="currentColor",style={}}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    style={{display:"block",flexShrink:0,...style}}
+    dangerouslySetInnerHTML={{__html:FI_PATHS[name]||""}}/>
+);
+
+/* ── KINSAN SEO Logo ── */
+const KinsanLogo = () => (
+  <span style={{fontSize:16,fontWeight:700,letterSpacing:"-0.01em",whiteSpace:"nowrap"}}>
+    <span style={{color:"#1F1F1F"}}>KINSAN </span>
+    <span style={{color:"var(--kinsan-gold)"}}>SEO</span>
+  </span>
+);
+
+/* ══════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
+   NAV DATA
+   ⚠️ TODO: zap / trending-up 為 Feather v4.29 擴充
+      下次更新 younilab-設計規範.html 時，請補入 FI_PATHS
+══════════════════════════════════════════════════════════ */
+const NAV = [
+  {type:"item",    id:"dashboard",       icon:"grid",        label:"總覽"},
+  {type:"section", label:"專案管理"},
+  {type:"item",    id:"clients",         icon:"users",       label:"客戶"},
+  {type:"item",    id:"tasks",           icon:"list",        label:"任務",    badge:9, badgeColor:"#F5222D"},
+  {type:"section", label:"分析工具"},
+  {type:"item",    id:"battle-room",     icon:"bar-chart-2", label:"戰情室"},
+  {type:"group",   id:"geo",             icon:"zap",         label:"GEO 分析",  /* ⚠️ Feather 擴充 */
+    children:[
+      {id:"geo-overview",  label:"Overview"},
+      {id:"geo-projects",  label:"Projects"},
+      {id:"geo-entities",  label:"Entities"},
+      {id:"geo-topics",    label:"Topics & Queries"},
+      {id:"geo-platforms", label:"Platforms & Schedules"},
+      {id:"geo-jobs",      label:"Run Jobs"},
+      {id:"geo-reports",   label:"Reports"},
+    ]
+  },
+  {type:"item",    id:"strategy",        icon:"trending-up", label:"策略分析"}, /* ⚠️ Feather 擴充 */
+  {type:"section", label:"系統"},
+  {type:"item",    id:"notifications",   icon:"bell",        label:"通知",    badge:2,  badgeColor:"#F5222D"},
+  {type:"item",    id:"profile",         icon:"user",        label:"個人設定"},
+  {type:"item",    id:"permissions",     icon:"shield",      label:"權限管理"},
+  {type:"item",    id:"system-settings", icon:"settings",    label:"系統設定"},
+];
+
+/* Breadcrumb mapping */
+const CRUMBS = {
+  dashboard:["總覽"], clients:["專案管理","客戶"], tasks:["專案管理","任務"],
+  "battle-room":["分析工具","戰情室"],
+  "geo-overview":["分析工具","GEO 分析","Overview"],
+  "geo-projects":["分析工具","GEO 分析","Projects"],
+  "geo-entities":["分析工具","GEO 分析","Entities"],
+  "geo-topics":["分析工具","GEO 分析","Topics & Queries"],
+  "geo-platforms":["分析工具","GEO 分析","Platforms & Schedules"],
+  "geo-jobs":["分析工具","GEO 分析","Run Jobs"],
+  "geo-reports":["分析工具","GEO 分析","Reports"],
+  strategy:["分析工具","策略分析"],
+  notifications:["系統","通知"], profile:["系統","個人設定"],
+  permissions:["系統","權限管理"], "system-settings":["系統","系統設定"],
+};
+
+/* ══════════════════════════════════════════════════════════
+   NAV COMPONENTS — exactly per younilab-設計規範 Sidebar spec
+   Icons: 20px for nav items per Iconography spec
+   Active group: fontWeight 600, chevron #0A2B41
+   Sub-item: padding 8px 16px (wider horizontal)
+   Section header: padding-top 20px
+══════════════════════════════════════════════════════════ */
+function NavSection({label}){
+  return <div style={{fontSize:11,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase",color:"#BFBFBF",padding:"20px 16px 6px"}}>{label}</div>;
+}
+
+function NavItem({item,activeId,onSelect,collapsed,expanded,onToggle,sub=false}){
+  const [hov,setHov] = useState(false);
+
+  /* active: direct match OR any child matches */
+  const isActive = activeId===item.id
+    || (item.children&&item.children.some(c=>c.id===activeId));
+  const isExp = expanded[item.id];
+
+  if(item.type==="section") return collapsed ? null : <NavSection label={item.label}/>;
+
+  const handleClick = () => {
+    if(item.children) onToggle(item.id);
+    else onSelect(item.id);
+  };
+
+  /* Colour + weight rules (per spec + Figma)
+     Group 有子選單時：active 只改顏色/字重，背景保持透明 */
+  const hasChildren = !!item.children;
+  const fg       = isActive ? "#0A2B41" : "#595959";
+  const iconCol  = isActive ? "#0A2B41" : "#8C8C8C";
+  const bgCol    = isActive
+    ? (hasChildren ? "transparent" : "#E7EAEC")  /* group = 無底色 */
+    : hov ? "#FAFAFA" : "transparent";
+  const fw       = isActive ? (hasChildren ? 600 : 500) : 400;
+
+  return (
+    <>
+      <div onClick={handleClick}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        title={collapsed&&!sub ? item.label : undefined}
+        style={{
+          display:"flex", alignItems:"center",
+          gap: (collapsed&&!sub) ? 0 : 8,
+          /* Sub: 8px 16px / Parent: 10px 12px */
+          padding: sub ? "8px 16px" : (collapsed ? "10px 0" : "10px 12px"),
+          margin:"1px 8px", borderRadius:8, cursor:"pointer",
+          justifyContent:(collapsed&&!sub)?"center":"flex-start",
+          background: bgCol,
+          color: fg,
+          fontWeight: fw,
+          /* Sub 13px / Parent 14px */
+          fontSize: sub ? 13 : 14,
+          transition:"all .12s",
+          position:"relative",
+        }}>
+        {/* ── Icon: 20px for nav items per spec Iconography 尺寸階 ── */}
+        {!sub && !collapsed && <FI name={item.icon} size={20} color={iconCol}/>}
+        {!sub && collapsed  && <FI name={item.icon} size={20} color={iconCol}/>}
+        {/* Sub-item: 前綴圓點 5×5 active #0A2B41 / default #BFBFBF / marginLeft 6px */}
+        {sub && (
+          <div style={{width:5,height:5,borderRadius:"50%",background:isActive?"#0A2B41":"#BFBFBF",marginLeft:6,flexShrink:0}}/>
+        )}
+        {!collapsed && <span style={{flex:1,whiteSpace:"nowrap"}}>{item.label}</span>}
+        {/* Badge */}
+        {!collapsed && !sub && item.badge && (
+          <span style={{minWidth:18,height:18,borderRadius:9,background:item.badgeColor||"#F5222D",color:"#fff",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 5px",flexShrink:0}}>
+            {item.badge}
+          </span>
+        )}
+        {/* Badge dot (collapsed) */}
+        {collapsed && !sub && item.badge && (
+          <div style={{position:"absolute",top:7,right:7,width:7,height:7,borderRadius:"50%",background:item.badgeColor||"#F5222D",border:"1.5px solid #fff"}}/>
+        )}
+        {/* Chevron — active group: #0A2B41, else #BFBFBF (per Figma) */}
+        {!collapsed && item.children && (
+          <FI name={isExp?"chevron-up":"chevron-right"} size={14}
+            color={isActive?"#0A2B41":"#BFBFBF"}/>
+        )}
+      </div>
+      {/* Children — paddingLeft:10 per spec */}
+      {item.children && isExp && !collapsed && (
+        <div style={{paddingLeft:10}}>
+          {item.children.map(c=>(
+            <NavItem key={c.id} item={{...c,type:"item",icon:""}} activeId={activeId}
+              onSelect={onSelect} collapsed={false} expanded={{}} onToggle={()=>{}} sub/>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   BASE COMPONENTS
+══════════════════════════════════════════════════════════ */
+function Avatar({initials,size=28,bg="#8B6500"}){
+  return <div style={{width:size,height:size,borderRadius:"50%",background:bg,color:"#fff",fontSize:Math.round(size*.36),fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,userSelect:"none"}}>{initials}</div>;
+}
+
+/* Button — per spec sizes & variants */
+function Btn({children,variant="primary",size="md",onClick,style={}}){
+  const [hov,setHov]=useState(false);
+  const h=size==="sm"?32:size==="lg"?44:40;
+  const px=size==="sm"?12:size==="lg"?20:16;
+  const fs=size==="sm"?12:size==="lg"?15:14;
+  const base={height:h,padding:`0 ${px}px`,borderRadius:8,fontSize:fs,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,outline:"none",transition:"all .15s",whiteSpace:"nowrap",fontFamily:"var(--font)",border:"none"};
+  const v={
+    primary:  {border:"1px solid var(--primary)",background:hov?"var(--primary-hover)":"var(--primary)",color:"#fff"},
+    secondary:{border:"1px solid var(--border)",background:hov?"var(--bg-2)":"#fff",color:"var(--fg)"},
+    ghost:    {border:"1px solid transparent",background:hov?"var(--bg-2)":"transparent",color:"var(--fg-2)"},
+  }[variant]||{};
+  return <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{...base,...v,...style}}>{children}</button>;
+}
+
+/* Top Header Icon Button — 18px icon, 32×32, radius 6 per spec */
+function IconBtn({name,title,badge,onClick}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative"}}>
+      <div title={title} onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:hov?"#F0F0F0":"transparent",transition:"background .12s",flexShrink:0}}>
+        {/* Top Header icons: 18px per spec */}
+        <FI name={name} size={18} color="#595959"/>
+      </div>
+      {badge&&<div style={{position:"absolute",top:5,right:6,width:8,height:8,borderRadius:"50%",background:"#F5222D",border:"1.5px solid #fff",pointerEvents:"none"}}/>}
+    </div>
+  );
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   PROJECTS DATA
+══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   PLATFORMS & SCHEDULES DATA
+══════════════════════════════════════════════════════════ */
+const PLATFORMS_DATA=[
+  {id:"p-chatgpt",    name:"ChatGPT",    model:"GPT-4.1",        status:"active"},
+  {id:"p-gemini",     name:"Gemini",     model:"Gemini 2.5 Pro", status:"active"},
+  {id:"p-claude",     name:"Claude",     model:"Claude Sonnet 4",status:"active"},
+  {id:"p-perplexity", name:"Perplexity", model:"Sonar",          status:"active"},
+  {id:"p-google-aio", name:"Google AIO", model:"AI Overview",    status:"paused"},
+];
+
+/* Query 來源（精簡版，給 Schedule Drawer 的 query select 用）
+   未來合併 SPA 時改從 shared state 拿 */
+const QUERIES_DATA=[
+  {id:"q1",  text:"北海岸適合週末放鬆的溫泉住宿推薦"},
+  {id:"q2",  text:"金山旅宿評價和交通方便嗎"},
+  {id:"q3",  text:"帶小孩去金山玩兩天一夜怎麼安排"},
+  {id:"q4",  text:"金山溫泉飯店泡湯費用比較"},
+  {id:"q5",  text:"從台北到金山開車要多久"},
+  {id:"q6",  text:"金山老街必吃十大美食"},
+  {id:"q7",  text:"金山旅宿和其他北海岸飯店哪個好"},
+  {id:"q8",  text:"親子友善的溫泉飯店有哪些"},
+  {id:"q9",  text:"金山到野柳的交通方式"},
+  {id:"q10", text:"萬里蟹季節在哪裡吃最划算"},
+];
+
+const SCHEDULES_DATA=[
+  {id:"s1",  queryId:"q1", platform:"ChatGPT",    frequency:"daily",  timezone:"Asia/Taipei", nextRun:"06/24 上午 09:00", status:"active"},
+  {id:"s2",  queryId:"q2", platform:"Gemini",     frequency:"weekly", timezone:"Asia/Taipei", nextRun:"06/29 上午 09:00", status:"active"},
+  {id:"s3",  queryId:"q3", platform:"Claude",     frequency:"manual", timezone:"Asia/Taipei", nextRun:"未排程",            status:"paused"},
+  {id:"s4",  queryId:"q4", platform:"Perplexity", frequency:"daily",  timezone:"Asia/Taipei", nextRun:"06/24 上午 10:00", status:"active"},
+  {id:"s5",  queryId:"q5", platform:"ChatGPT",    frequency:"weekly", timezone:"Asia/Taipei", nextRun:"06/30 上午 11:00", status:"active"},
+  {id:"s6",  queryId:"q6", platform:"Gemini",     frequency:"manual", timezone:"Asia/Taipei", nextRun:"未排程",            status:"paused"},
+  {id:"s7",  queryId:"q7", platform:"Claude",     frequency:"daily",  timezone:"Asia/Taipei", nextRun:"06/24 下午 02:00", status:"active"},
+  {id:"s8",  queryId:"q8", platform:"ChatGPT",    frequency:"weekly", timezone:"Asia/Taipei", nextRun:"07/01 上午 09:00", status:"active"},
+  {id:"s9",  queryId:"q9", platform:"Perplexity", frequency:"manual", timezone:"Asia/Taipei", nextRun:"未排程",            status:"paused"},
+  {id:"s10", queryId:"q10",platform:"Gemini",     frequency:"daily",  timezone:"Asia/Taipei", nextRun:"06/24 下午 03:00", status:"active"},
+];
+
+const FREQUENCY_OPTIONS=["daily","weekly","manual"];
+const TIMEZONE_OPTIONS=["Asia/Taipei","Asia/Tokyo","America/Los_Angeles","America/New_York","Europe/London"];
+
+/* ── Status Badge（沿用 active/paused 樣式）── */
+const PROJ_STATUS = {
+  active:   {bg:"#F6FFED",color:"#389E0D",border:"#B7EB8F"},
+  paused:   {bg:"#FFFCF0",color:"#AD6800",border:"#FFC861"},
+  archived: {bg:"#F5F5F5",color:"#595959",border:"#D9D9D9"},
+};
+function ProjStatusBadge({status}){
+  const c=PROJ_STATUS[status]||PROJ_STATUS.archived;
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",fontSize:12,fontWeight:500,padding:"2px 8px",borderRadius:6,whiteSpace:"nowrap",lineHeight:"18px",background:c.bg,color:c.color,border:`1px solid ${c.border}`}}>
+      <span style={{width:5,height:5,borderRadius:"50%",background:c.color,marginRight:5,flexShrink:0}}/>
+      {status}
+    </span>
+  );
+}
+
+/* ─ Platform Card — 5 張小卡顯示 ─ */
+function PlatformCard({platform,count}){
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"16px 20px",minWidth:0}}>
+      <div style={{fontSize:15,fontWeight:600,color:"var(--fg)",marginBottom:2}}>{platform.name}</div>
+      <div style={{fontSize:12,fontFamily:"var(--mono)",color:"var(--fg-3)",marginBottom:12}}>{platform.model}</div>
+      <div style={{fontSize:13,color:"var(--fg-2)",marginBottom:12}}>{count} query assignments</div>
+      <ProjStatusBadge status={platform.status}/>
+    </div>
+  );
+}
+
+/* ─── Filter Tag — pill 28px per spec ─── */
+function FilterTag({label,onRemove}){
+  return(
+    <div style={{display:"inline-flex",alignItems:"center",gap:6,height:28,padding:"0 6px 0 10px",borderRadius:14,background:"#FAFAFA",border:"1px solid #D9D9D9",fontSize:12,color:"#434343",flexShrink:0,whiteSpace:"nowrap"}}>
+      {label}
+      <span onClick={onRemove} style={{display:"flex",cursor:"pointer",padding:2,borderRadius:4,transition:"opacity .1s"}}
+        onMouseEnter={e=>e.currentTarget.style.opacity=0.6} onMouseLeave={e=>e.currentTarget.style.opacity=1}>
+        <FI name="x" size={12} color="#8C8C8C"/>
+      </span>
+    </div>
+  );
+}
+
+/* ─── Filter Panel Checkbox ─── */
+function FilterCb({checked,onChange,label}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div onClick={onChange} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",cursor:"pointer",background:hov?"#FAFAFA":"transparent",marginLeft:-4,paddingLeft:4,borderRadius:6,transition:"background .1s"}}>
+      <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${checked?"#0A2B41":"#D9D9D9"}`,background:checked?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .12s",flexShrink:0}}>
+        {checked&&<FI name="check" size={11} color="#fff"/>}
+      </div>
+      <span style={{fontSize:13,color:"#434343"}}>{label}</span>
+    </div>
+  );
+}
+
+/* ─── Multi-Select Dropdown ───
+   即點即用，無需 apply 動作
+   按鈕樣式：
+     default: 白底灰框
+     active (有選):  bg #E6F4FF / border #91CAFF / text #0958D9
+   面板：position:fixed, 含搜尋框（>=8 項才顯示）+ 全選/全不選 + checkbox list
+─────────────────────────────────────────── */
+function MultiDropdown({label,options,selected,onChange,searchable=false}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState(null);
+  const [q,setQ]=useState("");
+  const btnRef=useRef(null);
+  const isActive=selected.length>0;
+  const showSearch=searchable&&options.length>=8;
+
+  const toggle=()=>{
+    if(!open){
+      const r=btnRef.current?.getBoundingClientRect();
+      if(r) setPos({top:r.bottom+4,left:r.left});
+      setQ("");
+    }
+    setOpen(o=>!o);
+  };
+  const close=()=>setOpen(false);
+  const toggleOpt=(v)=>onChange(selected.includes(v)?selected.filter(x=>x!==v):[...selected,v]);
+  const filteredOpts=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
+  const allSelected=options.every(o=>selected.includes(o));
+  const toggleAll=()=>onChange(allSelected?[]:[...options]);
+
+  /* close on scroll */
+  useEffect(()=>{
+    const h=()=>{if(open)close();};
+    window.addEventListener("scroll",h,true);
+    return()=>window.removeEventListener("scroll",h,true);
+  },[open]);
+
+  /* button label: "Status" / "Status · 2" */
+  const buttonLabel=isActive?`${label} · ${selected.length}`:label;
+
+  return(
+    <>
+      <button ref={btnRef} onClick={toggle}
+        style={{
+          height:40,padding:"0 12px",borderRadius:8,
+          display:"inline-flex",alignItems:"center",gap:6,
+          fontSize:14,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0,
+          transition:"all .15s",whiteSpace:"nowrap",
+          background:open||isActive?"#E6F4FF":"#fff",
+          border:"1px solid "+(open||isActive?"#91CAFF":"#D9D9D9"),
+          color:open||isActive?"#0958D9":"#1F1F1F",
+          fontWeight:isActive?500:400,
+        }}>
+        {buttonLabel}
+        <FI name="chevron-down" size={12} color={open||isActive?"#0958D9":"#8C8C8C"}/>
+      </button>
+      {open&&pos&&(
+        <>
+          <div onClick={close} style={{position:"fixed",inset:0,zIndex:99}}/>
+          <div style={{
+            position:"fixed",top:pos.top,left:pos.left,
+            minWidth:220,maxWidth:300,
+            background:"#fff",border:"1px solid #E7EAEC",borderRadius:10,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.08)",
+            zIndex:100,padding:8,
+            maxHeight:"calc(100vh - 120px)",overflowY:"auto",
+          }} onClick={e=>e.stopPropagation()}>
+            {/* Search — only when ≥8 options */}
+            {showSearch&&(
+              <div style={{position:"relative",marginBottom:8}}>
+                <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                  <FI name="search" size={12} color="#BFBFBF"/>
+                </div>
+                <input value={q} onChange={e=>setQ(e.target.value)} autoFocus
+                  placeholder={`搜尋 ${label}…`}
+                  style={{width:"100%",height:32,padding:"0 10px 0 28px",fontSize:13,color:"#1F1F1F",border:"1px solid #D9D9D9",borderRadius:6,outline:"none",background:"#fff",fontFamily:"var(--font)"}}
+                  onFocus={e=>e.target.style.borderColor="#0A2B41"}
+                  onBlur={e=>e.target.style.borderColor="#D9D9D9"}/>
+              </div>
+            )}
+            {/* All toggle — only when ≥3 options & no search query */}
+            {options.length>=3&&!q&&(
+              <div onClick={toggleAll}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:6,fontSize:12,color:"#1677FF",cursor:"pointer",fontWeight:500,marginBottom:2}}
+                onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                {allSelected?"取消全選":"全選"}
+              </div>
+            )}
+            {/* Options */}
+            <div>
+              {filteredOpts.length>0
+                ? filteredOpts.map(opt=>(
+                    <div key={opt} onClick={()=>toggleOpt(opt)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#434343"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${selected.includes(opt)?"#0A2B41":"#D9D9D9"}`,background:selected.includes(opt)?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>
+                        {selected.includes(opt)&&<FI name="check" size={11} color="#fff"/>}
+                      </div>
+                      <span>{opt}</span>
+                    </div>
+                  ))
+                : <div style={{padding:"16px 8px",fontSize:12,color:"#BFBFBF",textAlign:"center"}}>找不到相符項目</div>
+              }
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/* Auto-select pattern:
+   篩選欄位數 ≤ 3 → 使用多 Dropdown（即點即用，每欄位獨立）
+   篩選欄位數 > 3 → 應改回 Filter Panel（一鍵展開整版）
+   本頁有 3 個欄位（Status / Locale / Customer），剛好用 Multi-Dropdown */
+
+/* ─── Project Drawer — per younilab Drawer spec
+   width 480px (規範 default 400 → 加寬容納 3-col grid)
+   header 20px 24px / body 20px 24px / footer 16px 24px
+   overlay rgba(0,0,0,0.4) + blur(2px)
+   slideIn 250ms ease from right
+─────────────────────────────────────────── */
+function ScheduleDrawer({open,onClose,onCreate,queries,platforms}){
+  const [vis,setVis]=useState(false);
+  const [queryId,setQueryId]=useState(queries[0]?.id||"");
+  const [platform,setPlatform]=useState(platforms[0]?.name||"ChatGPT");
+  const [frequency,setFrequency]=useState("daily");
+  const [timezone,setTimezone]=useState("Asia/Taipei");
+  /* Next run default: 明天 09:00 in local */
+  const defaultNext=()=>{
+    const d=new Date(); d.setDate(d.getDate()+1);
+    d.setHours(9,0,0,0);
+    const pad=n=>String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [nextRun,setNextRun]=useState(defaultNext());
+  const [errors,setErrors]=useState({});
+
+  useEffect(()=>{
+    if(open){const t=setTimeout(()=>setVis(true),10);return()=>clearTimeout(t);}
+    else setVis(false);
+  },[open]);
+
+  useEffect(()=>{
+    if(!open) return;
+    const h=e=>{if(e.key==="Escape") handleClose();};
+    window.addEventListener("keydown",h);
+    return()=>window.removeEventListener("keydown",h);
+    // eslint-disable-next-line
+  },[open]);
+
+  const handleClose=()=>{
+    setVis(false);
+    setTimeout(()=>{
+      onClose();
+      setQueryId(queries[0]?.id||"");
+      setPlatform(platforms[0]?.name||"ChatGPT");
+      setFrequency("daily");setTimezone("Asia/Taipei");
+      setNextRun(defaultNext());
+      setErrors({});
+    },250);
+  };
+
+  const validate=()=>{
+    const e={};
+    if(!queryId)         e.queryId="請選擇 Query";
+    if(!platform)        e.platform="請選擇 Platform";
+    if(frequency!=="manual"&&!nextRun) e.nextRun="請設定 Next run";
+    setErrors(e);
+    return Object.keys(e).length===0;
+  };
+
+  /* format datetime-local into "MM/DD 上午 HH:MM" */
+  const formatNextRun=(iso)=>{
+    if(!iso) return "未排程";
+    const d=new Date(iso);
+    if(isNaN(d.getTime())) return "未排程";
+    const mm=String(d.getMonth()+1).padStart(2,"0");
+    const dd=String(d.getDate()).padStart(2,"0");
+    let h=d.getHours();
+    const ampm=h<12?"上午":"下午";
+    if(h===0) h=12; else if(h>12) h-=12;
+    const hh=String(h).padStart(2,"0");
+    const mi=String(d.getMinutes()).padStart(2,"0");
+    return `${mm}/${dd} ${ampm} ${hh}:${mi}`;
+  };
+
+  const handleSubmit=()=>{
+    if(!validate()) return;
+    onCreate({
+      id:"s"+Date.now(),
+      queryId,
+      platform,
+      frequency,
+      timezone,
+      nextRun:frequency==="manual"?"未排程":formatNextRun(nextRun),
+      status:"active",
+    });
+    handleClose();
+  };
+
+  if(!open) return null;
+
+  return(
+    <>
+      <div onClick={handleClose}
+        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",zIndex:300,opacity:vis?1:0,transition:"opacity 250ms ease"}}/>
+      <div role="dialog" aria-modal="true"
+        style={{position:"fixed",top:0,right:0,bottom:0,width:480,maxWidth:"90vw",background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,0.1)",zIndex:301,display:"flex",flexDirection:"column",transform:vis?"translateX(0)":"translateX(100%)",transition:"transform 250ms ease"}}>
+
+        {/* Header */}
+        <div style={{padding:"20px 24px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexShrink:0}}>
+          <div style={{fontSize:16,fontWeight:600,color:"#1F1F1F"}}>建立 Schedule</div>
+          <div onClick={handleClose}
+            style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"background .12s"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="x" size={18} color="#595959"/>
+          </div>
+        </div>
+
+        {/* Body — 一行一欄 */}
+        <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
+
+          {/* 1. Query */}
+          <Field label="Query" required error={errors.queryId}>
+            <Select value={queryId} onChange={v=>{setQueryId(v);setErrors({...errors,queryId:undefined});}}
+              options={queries.map(q=>q.id)}
+              labels={queries.reduce((acc,q)=>({...acc,[q.id]:q.text}),{})}/>
+          </Field>
+
+          {/* 2. Platform */}
+          <Field label="Platform" required error={errors.platform}>
+            <Select value={platform} onChange={v=>{setPlatform(v);setErrors({...errors,platform:undefined});}}
+              options={platforms.map(p=>p.name)}
+              labels={platforms.reduce((acc,p)=>({...acc,[p.name]:`${p.name} · ${p.model}`}),{})}/>
+          </Field>
+
+          {/* 3. Frequency */}
+          <Field label="Frequency" required>
+            <Select value={frequency} onChange={setFrequency} options={FREQUENCY_OPTIONS}/>
+          </Field>
+
+          {/* 4. Timezone */}
+          <Field label="Timezone" required>
+            <Select value={timezone} onChange={setTimezone} options={TIMEZONE_OPTIONS}/>
+          </Field>
+
+          {/* 5. Next run — manual 模式時隱藏 */}
+          {frequency!=="manual"&&(
+            <Field label="Next run" required error={errors.nextRun}>
+              <input type="datetime-local" value={nextRun}
+                onChange={e=>{setNextRun(e.target.value);setErrors({...errors,nextRun:undefined});}}
+                style={inputStyle(errors.nextRun)}
+                onFocus={e=>!errors.nextRun&&(e.target.style.borderColor="#0A2B41",e.target.style.boxShadow="0 0 0 3px rgba(10,43,65,0.08)")}
+                onBlur={e=>(e.target.style.borderColor=errors.nextRun?"#F5222D":"#D9D9D9",e.target.style.boxShadow="none")}/>
+            </Field>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"16px 24px",borderTop:"1px solid #F0F0F0",display:"flex",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+          <Btn variant="secondary" onClick={handleClose}>取消</Btn>
+          <Btn variant="primary" onClick={handleSubmit}>確認</Btn>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Section Header — overline 11px / 600 / uppercase 規範
+   支援自訂 style，方便調整 marginTop（分組間距） ── */
+function SectionHeader({children,style={}}){
+  return(
+    <div style={{
+      fontSize:11,fontWeight:600,
+      color:"#8C8C8C",
+      letterSpacing:"0.06em",textTransform:"uppercase",
+      marginBottom:14,
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+/* ── Section Divider — 1px / #F0F0F0 / 20px vertical margin
+   ⚠️ 目前 ProjectDrawer 用距離取代，保留元件供未來頁面用 ── */
+function SectionDivider(){
+  return <div style={{height:1,background:"#F0F0F0",margin:"20px 0"}}/>;
+}
+
+/* ── Field wrapper ── 
+   marginBottom 20px 為統一垂直節奏
+   noGap=true：grid 容器內的子 Field，外層 grid 已用 gap 控制，內部不再加 mb */
+function Field({label,required,hint,error,children,noGap}){
+  return(
+    <div style={{marginBottom:noGap?0:20}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:6}}>
+        <label style={{fontSize:13,fontWeight:500,color:"#1F1F1F"}}>
+          {label}
+          {required&&<span style={{color:"#F5222D",marginLeft:3}}>*</span>}
+        </label>
+        {hint&&<span style={{fontSize:11,color:"#BFBFBF"}}>{hint}</span>}
+      </div>
+      {children}
+      {error&&(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginTop:6,fontSize:12,color:"#CF1322"}}>
+          <FI name="alert-circle" size={12} color="#CF1322"/>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Input style helper ── */
+const inputStyle=(error)=>({
+  width:"100%",height:40,padding:"0 12px",
+  fontSize:14,color:"#1F1F1F",
+  border:`1px solid ${error?"#F5222D":"#D9D9D9"}`,
+  borderRadius:8,outline:"none",background:"#fff",
+  fontFamily:"var(--font)",
+  transition:"border-color .12s, box-shadow .12s",
+  boxSizing:"border-box",
+});
+
+/* ── Native-styled Select ── */
+/* ── Native-styled Select 
+   labels (optional): id → friendly label mapping */
+function Select({value,onChange,options,labels}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative"}}>
+      <select value={value} onChange={e=>onChange(e.target.value)}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{
+          width:"100%",height:40,padding:"0 32px 0 12px",
+          fontSize:14,color:"#1F1F1F",
+          border:`1px solid ${hov?"#C4CDD3":"#D9D9D9"}`,
+          borderRadius:8,outline:"none",background:"#fff",
+          fontFamily:"var(--font)",cursor:"pointer",
+          appearance:"none",WebkitAppearance:"none",
+          transition:"border-color .12s",
+          boxSizing:"border-box",
+        }}>
+        {options.map(o=><option key={o} value={o}>{labels?(labels[o]||o):o}</option>)}
+      </select>
+      {/* Custom chevron */}
+      <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+        <FI name="chevron-down" size={14} color="#8C8C8C"/>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Row Action Button — younilab-設計規範 spec
+   24×24 圓形 / bg #F0F0F0 → hover #E5E5E5
+   icon 14px #595959 → hover #434343 / 統一灰階
+   Tooltip: bottom 32px, #1F1F1F bg, 12px, radius 6
+─────────────────────────────────────────────── */
+function RowAction({name,label,onClick}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative",flexShrink:0}}>
+      {hov&&(
+        <div style={{position:"absolute",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#1F1F1F",color:"#fff",fontSize:12,padding:"5px 10px",borderRadius:6,whiteSpace:"nowrap",zIndex:60,pointerEvents:"none"}}>
+          {label}
+        </div>
+      )}
+      <div onClick={e=>{e.stopPropagation();onClick&&onClick(e);}}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:24,height:24,borderRadius:"50%",background:hov?"#E5E5E5":"#F0F0F0",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"background .12s"}}>
+        <FI name={name} size={14} color={hov?"#434343":"#595959"}/>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Project Row — sticky right action column ─── */
+function ScheduleRow({schedule,queries,isLast}){
+  const [hov,setHov]=useState(false);
+  const bb=isLast?"none":"1px solid #F5F5F5";
+  const queryText=queries.find(q=>q.id===schedule.queryId)?.text||"—";
+  return(
+    <tr onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:hov?"#FAFAFA":"#fff",transition:"background .1s",height:56}}>
+      {/* Query */}
+      <td style={{padding:"8px 16px",borderBottom:bb,verticalAlign:"middle",maxWidth:320,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        <span style={{fontSize:14,fontWeight:600,color:"var(--fg)"}}>{queryText}</span>
+      </td>
+      {/* Platform */}
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap",verticalAlign:"middle"}}>{schedule.platform}</td>
+      {/* Frequency · Timezone */}
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap",verticalAlign:"middle"}}>
+        {schedule.frequency} <span style={{color:"var(--fg-4)"}}>·</span> {schedule.timezone}
+      </td>
+      {/* Next run */}
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,fontFamily:"var(--mono)",color:schedule.nextRun==="未排程"?"var(--fg-3)":"var(--fg-2)",whiteSpace:"nowrap",verticalAlign:"middle"}}>
+        {schedule.nextRun}
+      </td>
+      {/* Status */}
+      <td style={{padding:"8px 16px",borderBottom:bb,whiteSpace:"nowrap",verticalAlign:"middle"}}><ProjStatusBadge status={schedule.status}/></td>
+      {/* Actions — only trash */}
+      <td style={{padding:"8px 16px",borderBottom:bb,position:"sticky",right:0,background:hov?"#FAFAFA":"#fff",boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.06)",verticalAlign:"middle"}}>
+        <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
+          <RowAction name="trash-2" label="刪除"/>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   GEO PLATFORMS & SCHEDULES PAGE
+══════════════════════════════════════════════════════════ */
+function GeoPlatformsSchedulesPage({windowWidth}){
+  const isWide=windowWidth>=1024;
+  const pad=isWide?"24px 32px":"16px 20px";
+
+  const [schedules,setSchedules]=useState(SCHEDULES_DATA);
+  const [search,setSearch]=useState("");
+  const [page,setPage]=useState(1);
+  const PER=10;
+  const MIN_TABLE_H=PER*56;
+
+  /* drawer */
+  const [drawerOpen,setDrawerOpen]=useState(false);
+  const handleCreate=(newSchedule)=>{
+    setSchedules(prev=>[newSchedule,...prev]);
+    setPage(1);
+  };
+
+  /* filters: Platform / Frequency / Status — 3 個剛好觸頂 */
+  const [fPlatform,setFPlatform]=useState([]);
+  const [fFrequency,setFFrequency]=useState([]);
+  const [fStatus,setFStatus]=useState([]);
+  const updateFilter=(setter)=>(v)=>{setter(v);setPage(1);};
+
+  const ALL_PLATFORMS  = PLATFORMS_DATA.map(p=>p.name);
+  const ALL_FREQUENCIES= ["daily","weekly","manual"];
+  const ALL_STATUS     = ["active","paused"];
+
+  /* platform usage count (動態) */
+  const platformCount=(name)=>schedules.filter(s=>s.platform===name).length;
+
+  /* Grid columns for platforms */
+  const platCols=
+    windowWidth>=1024?"repeat(5,minmax(0,1fr))":
+    windowWidth>=768 ?"repeat(3,minmax(0,1fr))":
+    windowWidth>=640 ?"repeat(2,minmax(0,1fr))":
+    "1fr";
+
+  /* filter schedules: search 包含 query 文字 + platform */
+  const filtered=schedules.filter(s=>{
+    const sq=search.toLowerCase();
+    if(sq){
+      const queryText=(QUERIES_DATA.find(q=>q.id===s.queryId)?.text)||"";
+      const hay=[queryText,s.platform].join(" ").toLowerCase();
+      if(!hay.includes(sq)) return false;
+    }
+    if(fPlatform.length&&!fPlatform.includes(s.platform)) return false;
+    if(fFrequency.length&&!fFrequency.includes(s.frequency)) return false;
+    if(fStatus.length&&!fStatus.includes(s.status)) return false;
+    return true;
+  });
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PER));
+  const pageRows=filtered.slice((page-1)*PER,page*PER);
+
+  const totalActive=fPlatform.length+fFrequency.length+fStatus.length;
+  const hasFilters=totalActive>0||search;
+  const clearAll=()=>{
+    setFPlatform([]);setFFrequency([]);setFStatus([]);
+    setSearch("");setPage(1);
+  };
+
+  return(
+    <main style={{padding:pad,background:"var(--bg-page)",minHeight:"calc(100vh - 56px)"}}>
+      <div style={{maxWidth:1200,margin:"0 auto"}}>
+
+        {/* Page Header */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>Platforms &amp; Schedules</h1>
+            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>
+              AI 模型平台與 Schedule 管理
+            </p>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+            <Btn variant="primary" onClick={()=>setDrawerOpen(true)}>
+              <FI name="plus" size={14} color="#fff"/>新增 Schedule
+            </Btn>
+          </div>
+        </div>
+
+        {/* ── Platforms — 5 張小卡片直接陳列 ── */}
+        <div style={{display:"grid",gridTemplateColumns:platCols,gap:12,marginBottom:16}}>
+          {PLATFORMS_DATA.map(p=>(
+            <PlatformCard key={p.id} platform={p} count={platformCount(p.name)}/>
+          ))}
+        </div>
+
+        {/* ── Schedules Card ── */}
+        <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12}}>
+
+          <div style={{padding:"16px 20px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:15,fontWeight:600,color:"var(--fg)"}}>Schedules</span>
+            <span style={{fontSize:12,color:"var(--fg-3)"}}>共 {schedules.length} 筆</span>
+          </div>
+
+          {/* Toolbar: search + 3 Multi-Dropdowns */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",borderBottom:"1px solid #F0F0F0",flexWrap:"wrap",minHeight:64}}>
+            <div style={{position:"relative",width:220,flexShrink:0}}>
+              <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                <FI name="search" size={14} color="#BFBFBF"/>
+              </div>
+              <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
+                placeholder="搜尋 query、platform…"
+                style={{width:"100%",height:40,padding:"0 12px 0 34px",fontSize:14,color:"#1F1F1F",border:"1px solid #D9D9D9",borderRadius:8,outline:"none",background:"#fff",fontFamily:"var(--font)"}}
+                onFocus={e=>e.target.style.borderColor="#0A2B41"} onBlur={e=>e.target.style.borderColor="#D9D9D9"}/>
+            </div>
+            <MultiDropdown label="Platform"  options={ALL_PLATFORMS}   selected={fPlatform}  onChange={updateFilter(setFPlatform)}/>
+            <MultiDropdown label="Frequency" options={ALL_FREQUENCIES} selected={fFrequency} onChange={updateFilter(setFFrequency)}/>
+            <MultiDropdown label="Status"    options={ALL_STATUS}      selected={fStatus}    onChange={updateFilter(setFStatus)}/>
+            {hasFilters&&(
+              <span onClick={clearAll}
+                style={{fontSize:13,color:"#8C8C8C",cursor:"pointer",marginLeft:4,transition:"color .12s"}}
+                onMouseEnter={e=>e.currentTarget.style.color="#1F1F1F"}
+                onMouseLeave={e=>e.currentTarget.style.color="#8C8C8C"}>
+                清除全部
+              </span>
+            )}
+          </div>
+
+          {/* Table */}
+          <div style={{overflowX:"auto",minHeight:MIN_TABLE_H}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:920}}>
+              <thead>
+                <tr>
+                  {[
+                    {l:"Query",     a:"left"},
+                    {l:"Platform",  a:"left"},
+                    {l:"Frequency", a:"left"},
+                    {l:"Next run",  a:"left"},
+                    {l:"Status",    a:"left"},
+                    {l:"Actions",   a:"right", sticky:true},
+                  ].map((h,i)=>(
+                    <th key={i} style={{
+                      textAlign:h.a,padding:"10px 16px",
+                      fontWeight:500,color:"var(--fg-3)",fontSize:12,
+                      borderBottom:"1px solid #F0F0F0",whiteSpace:"nowrap",
+                      background:"#FAFAFA",
+                      ...(h.sticky?{position:"sticky",right:0,boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.06)"}:{})
+                    }}>{h.l}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.length>0
+                  ? pageRows.map((s,i)=>(
+                      <ScheduleRow key={s.id} schedule={s} queries={QUERIES_DATA} isLast={i===pageRows.length-1}/>
+                    ))
+                  : (
+                    <tr><td colSpan={6} style={{padding:"56px 24px",textAlign:"center"}}>
+                      <FI name="calendar" size={32} color="#D9D9D9" style={{margin:"0 auto 12px"}}/>
+                      <div style={{fontSize:14,fontWeight:600,color:"var(--fg)",marginBottom:8}}>找不到符合條件的 schedule</div>
+                      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>試試調整關鍵字或清除篩選條件</div>
+                      <button onClick={clearAll}
+                        style={{height:32,padding:"0 12px",borderRadius:8,border:"1px solid #D9D9D9",background:"#fff",color:"#595959",fontSize:13,fontFamily:"var(--font)",cursor:"pointer"}}>
+                        清除所有篩選
+                      </button>
+                    </td></tr>
+                  )
+                }
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:"1px solid #F0F0F0",flexWrap:"wrap",gap:8}}>
+            <span style={{fontSize:13,color:"var(--fg-3)"}}>
+              顯示 {filtered.length===0?0:(page-1)*PER+1}–{Math.min(page*PER,filtered.length)}，共 {filtered.length} 筆
+            </span>
+            <div style={{display:"flex",gap:4}}>
+              <div onClick={()=>page>1&&setPage(p=>p-1)}
+                style={{minWidth:32,height:32,padding:"0 8px",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,cursor:page>1?"pointer":"default",color:page>1?"#595959":"#D9D9D9",border:"1px solid "+(page>1?"#D9D9D9":"#F0F0F0")}}>‹</div>
+              {Array.from({length:totalPages},(_,i)=>i+1).map(p=>(
+                <div key={p} onClick={()=>setPage(p)}
+                  style={{minWidth:32,height:32,padding:"0 8px",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,cursor:"pointer",background:p===page?"var(--primary)":"transparent",color:p===page?"#fff":"#595959",border:p===page?"none":"1px solid #D9D9D9"}}>
+                  {p}
+                </div>
+              ))}
+              <div onClick={()=>page<totalPages&&setPage(p=>p+1)}
+                style={{minWidth:32,height:32,padding:"0 8px",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,cursor:page<totalPages?"pointer":"default",color:page<totalPages?"#595959":"#D9D9D9",border:"1px solid "+(page<totalPages?"#D9D9D9":"#F0F0F0")}}>›</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Drawer */}
+      <ScheduleDrawer
+        open={drawerOpen}
+        onClose={()=>setDrawerOpen(false)}
+        onCreate={handleCreate}
+        queries={QUERIES_DATA}
+        platforms={PLATFORMS_DATA}
+      />
+    </main>
+  );
+}
+
+function PlaceholderPage({label,windowWidth}){
+  return(
+    <main style={{padding:windowWidth>=1024?"24px 32px":"16px 20px",background:"var(--bg-page)",minHeight:"calc(100vh - 56px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{maxWidth:1200,margin:"0 auto",textAlign:"center"}}>
+        <div style={{width:64,height:64,borderRadius:16,background:"#E7EAEC",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+          <FI name="grid" size={28} color="#8C8C8C"/>
+        </div>
+        <h2 style={{fontSize:18,fontWeight:600,color:"var(--fg)",margin:"0 0 8px"}}>{label}</h2>
+        <p style={{fontSize:13,color:"var(--fg-3)",margin:0}}>此頁面正在開發中</p>
+      </div>
+    </main>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════════════════ */
+function App(){
+  const [activeId,setActiveId]=useState("geo-platforms");
+  /* nav group expanded state */
+  const [expanded,setExpanded]=useState({geo:true});
+  const [collapsed,setCollapsed]=useState(false);
+  const [drawerOpen,setDrawer]=useState(false);
+  const [userMenu,setUserMenu]=useState(false);
+  const [ww,setWw]=useState(window.innerWidth);
+
+  useEffect(()=>{
+    const f=()=>{
+      const w=window.innerWidth;
+      setWw(w);
+      if(w>=1024){setCollapsed(false);setDrawer(false);}
+      else if(w>=768){setCollapsed(true);setDrawer(false);}
+      else{setDrawer(false);}
+    };
+    f();
+    window.addEventListener("resize",f);
+    return()=>window.removeEventListener("resize",f);
+  },[]);
+
+  const isMobile=ww<768;
+  const isDrawerMode=isMobile;
+  const sw=isDrawerMode?0:(collapsed?56:240);
+
+  const onSelect=id=>{setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
+  const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
+  const crumbs=CRUMBS[activeId]||[activeId];
+
+  const renderPage=()=>{
+    if(activeId==="geo-platforms") return <GeoPlatformsSchedulesPage windowWidth={ww}/>;
+    const label=CRUMBS[activeId]?.slice(-1)[0]||activeId;
+    return <PlaceholderPage label={label} windowWidth={ww}/>;
+  };
+
+  /* Sidebar inner */
+  const SidebarContent=()=>(
+    <>
+      {/* Logo area — 56px per spec, logo hidden when collapsed */}
+      <div style={{height:56,padding:"0 14px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        {(!collapsed||isDrawerMode)&&<KinsanLogo/>}
+        {/* Toggle — 28×28, centered when collapsed per spec */}
+        {!isDrawerMode&&(
+          <div onClick={()=>setCollapsed(c=>!c)} title={collapsed?"展開":"收合"}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginLeft:collapsed?"auto":0,marginRight:collapsed?"auto":0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            {/* sidebar icon: 18px per spec */}
+            <FI name="sidebar" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+        {isDrawerMode&&(
+          <div onClick={()=>setDrawer(false)}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="x" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+      </div>
+      {/* Nav — 12px top padding */}
+      <nav style={{flex:1,padding:"12px 0",overflowY:"auto",overflowX:"hidden"}}>
+        {NAV.map((item,i)=>(
+          <NavItem key={item.id||item.label||i} item={item}
+            activeId={activeId} onSelect={onSelect}
+            collapsed={collapsed&&!isDrawerMode}
+            expanded={expanded} onToggle={onToggle}/>
+        ))}
+      </nav>
+    </>
+  );
+
+  return(
+    <div>
+      {/* Drawer overlay */}
+      {isDrawerMode&&drawerOpen&&(
+        <div onClick={()=>setDrawer(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:199}}/>
+      )}
+
+      {/* Sidebar */}
+      {isDrawerMode?(
+        <aside style={{width:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:200,transform:drawerOpen?"translateX(0)":"translateX(-100%)",transition:"transform 250ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      ):(
+        <aside style={{width:collapsed?56:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:100,transition:"width 200ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      )}
+
+      {/* Main */}
+      <div style={{marginLeft:sw,transition:"margin-left 200ms ease",minHeight:"100vh"}}>
+
+        {/* Top Header — 56px sticky per spec */}
+        <header style={{height:56,background:"#fff",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",padding:"0 16px",gap:8,position:"sticky",top:0,zIndex:50}}>
+          {/* Hamburger — mobile only */}
+          {isDrawerMode&&(
+            <div onClick={()=>setDrawer(o=>!o)}
+              style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+              onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <FI name="menu" size={18} color="#595959"/>
+            </div>
+          )}
+
+          {/* Breadcrumbs — 14px per spec, separator #8C8C8C */}
+          <nav style={{flex:1,display:"flex",alignItems:"center",gap:8,fontSize:14,overflow:"hidden",minWidth:0}}>
+            {crumbs.map((c,i)=>(
+              <React.Fragment key={i}>
+                {i>0&&<span style={{color:"#8C8C8C",flexShrink:0,fontSize:14}}>/</span>}
+                <span style={{
+                  color:i===crumbs.length-1?"var(--fg)":"var(--fg-3)",
+                  fontWeight:i===crumbs.length-1?500:400,
+                  whiteSpace:"nowrap",
+                  overflow:i===crumbs.length-1?"hidden":"visible",
+                  textOverflow:"ellipsis",fontSize:14,
+                }}>{c}</span>
+              </React.Fragment>
+            ))}
+          </nav>
+
+          {/* Right: search, bell, divider, avatar — per spec order */}
+          <IconBtn name="search" title="搜尋 ⌘K"/>
+          <IconBtn name="bell"   title="通知" badge/>
+          <div style={{width:1,height:20,background:"#F0F0F0",margin:"0 2px",flexShrink:0}}/>
+
+          {/* User menu */}
+          <div onClick={()=>setUserMenu(o=>!o)}
+            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",position:"relative",flexShrink:0}}>
+            <Avatar initials="S" size={28} bg="#0A2B41"/>
+            {ww>=640&&<FI name="chevron-down" size={13} color="#8C8C8C"/>}
+            {userMenu&&(
+              <>
+                <div onClick={e=>{e.stopPropagation();setUserMenu(false);}} style={{position:"fixed",inset:0,zIndex:99}}/>
+                <div style={{position:"absolute",top:40,right:0,width:200,background:"#fff",border:"1px solid #F0F0F0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.08)",padding:6,zIndex:100}}>
+                  <div style={{padding:"8px 10px",borderBottom:"1px solid #F0F0F0",marginBottom:4}}>
+                    <div style={{fontSize:13,fontWeight:600}}>金三 顧問</div>
+                    <div style={{fontSize:11,color:"#8C8C8C"}}>kinsan@example.com</div>
+                  </div>
+                  {[["user","個人設定"],["settings","帳號設定"],["log-out","登出"]].map(([ic,lbl])=>(
+                    <div key={lbl} onClick={()=>setUserMenu(false)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:lbl==="登出"?"#CF1322":"#595959"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <FI name={ic} size={14} color={lbl==="登出"?"#CF1322":"#8C8C8C"}/>{lbl}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </header>
+
+        {renderPage()}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

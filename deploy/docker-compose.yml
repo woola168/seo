@@ -1,4 +1,18 @@
 services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:4-management
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - web_network
+
   admin-portal:
     container_name: admin-portal
     build:
@@ -48,8 +62,44 @@ services:
     restart: always
     env_file:
       - ${DEPLOY_ENV_FILE}
+    depends_on:
+      - rabbitmq
     ports:
       - "127.0.0.1:18002:8002"
+    networks:
+      - web_network
+
+  geo-analysis-worker-gemini:
+    container_name: geo-analysis-worker-gemini
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-worker/Dockerfile
+    image: younilab-seo-geo-analysis-worker:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    depends_on:
+      - rabbitmq
+      - geo-tracking-api
+    networks:
+      - web_network
+
+  geo-analysis-worker-google-aio:
+    container_name: geo-analysis-worker-google-aio
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-worker/Dockerfile
+    image: younilab-seo-geo-analysis-worker:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    environment:
+      GEO_ANALYSIS_WORKER_PROVIDER: google_aio
+      GEO_ANALYSIS_WORKER_QUEUE: geo.query-runs.google_aio
+      GEO_ANALYSIS_WORKER_PREFETCH: 1
+    depends_on:
+      - rabbitmq
+      - geo-tracking-api
     networks:
       - web_network
 
@@ -64,12 +114,16 @@ services:
       - ${DEPLOY_ENV_FILE}
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/gcp-key.json
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
     volumes:
       - ${GCP_CREDENTIALS_FILE_HOST}:/app/config/gcp-key.json:ro
     ports:
       - "127.0.0.1:18003:8003"
     networks:
       - web_network
+
+volumes:
+  rabbitmq-data:
 
 networks:
   web_network:

@@ -131,6 +131,7 @@ class QueryRequest(ApiModel):
     query_text: str = Field(min_length=1)
     region: str = Field(min_length=1, max_length=16)
     language: str = Field(min_length=1, max_length=16)
+    market_type: str = Field(default="b2b_procurement", max_length=32)
     intent: str | None = None
     buyer_stage: str | None = None
     is_branded: bool = False
@@ -144,6 +145,14 @@ class QueryRequest(ApiModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("value must not be empty")
+        return normalized
+
+    @field_validator("market_type")
+    @classmethod
+    def validate_market_type(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized not in {"b2c", "b2b_procurement"}:
+            raise ValueError("marketType must be b2c or b2b_procurement")
         return normalized
 
 
@@ -235,6 +244,38 @@ class ExternalCallbackRequest(ApiModel):
     result_location: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+
+
+class RunResultReferenceResponse(ApiModel):
+    """Run result 中的一筆 provider reference。"""
+
+    id: UUID
+    run_result_id: UUID
+    url: str
+    title: str | None
+    domain: str | None
+    position: int
+
+
+class RunResultResponse(ApiModel):
+    """已保存的 GEO run raw result。"""
+
+    id: UUID
+    run_request_id: UUID
+    job_id: UUID
+    tracking_result_id: str
+    query_id: UUID
+    provider: str
+    surface: str
+    model: str
+    region: str
+    language: str
+    status: str
+    raw_response: str
+    error: str | None
+    run_at: datetime
+    references: list[RunResultReferenceResponse]
+    created_at: datetime
 
 
 class PageResponse(ApiModel):

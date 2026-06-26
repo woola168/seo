@@ -18,6 +18,7 @@ members = [
     "apps/access-control-api",
     "apps/resource-catalog-api",
     "apps/geo-analysis-api",
+    "apps/geo-analysis-worker",
     "apps/geo-tracking-api",
     "packages/younilab-seo",
     "packages/geo-tracking-domain",

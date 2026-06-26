@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS geo_query (
     query_text text NOT NULL,
     region varchar(16) NOT NULL,
     language varchar(16) NOT NULL,
+    market_type varchar(32) NOT NULL DEFAULT 'b2b_procurement',
     intent varchar(32),
     buyer_stage varchar(32),
     is_branded boolean NOT NULL DEFAULT false,
@@ -85,6 +86,22 @@ CREATE TABLE IF NOT EXISTS geo_query (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz
 );
+
+ALTER TABLE geo_query
+    ADD COLUMN IF NOT EXISTS market_type varchar(32) NOT NULL DEFAULT 'b2b_procurement';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_geo_query_market_type'
+    ) THEN
+        ALTER TABLE geo_query
+            ADD CONSTRAINT ck_geo_query_market_type
+            CHECK (market_type IN ('b2c', 'b2b_procurement'));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS ix_geo_query_project_status
     ON geo_query (project_id, status);
@@ -222,3 +239,57 @@ CREATE TABLE IF NOT EXISTS geo_external_run_reference (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS geo_run_request (
+    id uuid PRIMARY KEY,
+    job_id uuid NOT NULL REFERENCES geo_query_run_job(id) ON DELETE CASCADE,
+    tracking_run_request_id varchar(200) NOT NULL,
+    seo_task_id uuid NOT NULL,
+    provider varchar(64) NOT NULL,
+    timing varchar(32) NOT NULL,
+    status varchar(32) NOT NULL,
+    error_code varchar(100),
+    error_message text,
+    request_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL,
+    completed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS geo_run_result (
+    id uuid PRIMARY KEY,
+    run_request_id uuid NOT NULL REFERENCES geo_run_request(id) ON DELETE CASCADE,
+    job_id uuid NOT NULL REFERENCES geo_query_run_job(id) ON DELETE CASCADE,
+    tracking_result_id varchar(200) NOT NULL,
+    query_id uuid NOT NULL REFERENCES geo_query(id) ON DELETE CASCADE,
+    provider varchar(64) NOT NULL,
+    surface varchar(100) NOT NULL,
+    model varchar(100) NOT NULL,
+    region varchar(16) NOT NULL,
+    language varchar(16) NOT NULL,
+    status varchar(32) NOT NULL,
+    raw_response text NOT NULL DEFAULT '',
+    error text,
+    run_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS geo_run_result_reference (
+    id uuid PRIMARY KEY,
+    run_result_id uuid NOT NULL REFERENCES geo_run_result(id) ON DELETE CASCADE,
+    url text NOT NULL,
+    title text,
+    domain varchar(255),
+    position integer NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_geo_run_request_job_id
+ON geo_run_request (job_id);
+
+CREATE INDEX IF NOT EXISTS ix_geo_run_result_job_run_at
+ON geo_run_result (job_id, run_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_geo_run_result_query_run_at
+ON geo_run_result (query_id, run_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_geo_run_result_reference_result
+ON geo_run_result_reference (run_result_id, position);

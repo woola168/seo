@@ -1,13 +1,12 @@
 import type {
   GeoAiAnswerSample,
-  GeoEntity,
+  GeoAnalysisRunResult,
   GeoEntityAlias,
+  GeoEntityResource,
   GeoJob,
-  GeoMarket,
   GeoPlatform,
   GeoProject,
   GeoQuery,
-  GeoQueryPlatform,
   GeoRecommendation,
   GeoReportMetric,
   GeoSchedule,
@@ -18,21 +17,28 @@ import type {
 
 export interface GeoMockState {
   projects: GeoProject[];
-  markets: GeoMarket[];
-  entities: GeoEntity[];
+  entities: GeoEntityResource[];
   aliases: GeoEntityAlias[];
   topics: GeoTopic[];
   queries: GeoQuery[];
   platforms: GeoPlatform[];
-  queryPlatforms: GeoQueryPlatform[];
   schedules: GeoSchedule[];
   jobs: GeoJob[];
   reportMetrics: GeoReportMetric[];
   trendPoints: GeoTrendPoint[];
   topicPerformance: GeoTopicPerformance[];
   aiAnswerSamples: GeoAiAnswerSample[];
+  runResults: GeoAnalysisRunResult[];
   recommendations: GeoRecommendation[];
 }
+
+export const geoPlatformCatalog: GeoPlatform[] = [
+  { id: "11111111-1111-4111-8111-111111111101", name: "ChatGPT", model: "gpt-4.1", status: "active" },
+  { id: "11111111-1111-4111-8111-111111111102", name: "Gemini", model: "gemini-2.5-pro", status: "active" },
+  { id: "11111111-1111-4111-8111-111111111103", name: "Claude", model: "claude-sonnet-4", status: "active" },
+  { id: "11111111-1111-4111-8111-111111111104", name: "Perplexity", model: "sonar", status: "active" },
+  { id: "11111111-1111-4111-8111-111111111105", name: "Google AIO", model: "ai-overview", status: "active" },
+];
 
 const projects: GeoProject[] = [
   {
@@ -40,7 +46,7 @@ const projects: GeoProject[] = [
     customerId: "customer-kinsan",
     customerName: "金山旅宿",
     seoTaskId: "seo-task-kinsan-content",
-    seoTaskName: "旅宿內容 SEO",
+    seoTaskName: "北海岸內容 SEO",
     name: "金山旅宿 GEO 追蹤",
     defaultRegion: "TW",
     defaultLanguage: "zh-TW",
@@ -49,98 +55,6 @@ const projects: GeoProject[] = [
     createdAt: "2026-06-01T01:00:00.000Z",
     updatedAt: "2026-06-20T03:20:00.000Z",
   },
-  {
-    id: "geo-project-b2b",
-    customerId: "customer-b2b",
-    customerName: "B2B SaaS 客戶",
-    seoTaskId: "seo-task-b2b-awareness",
-    seoTaskName: "品牌聲量監測",
-    name: "AI 搜尋品牌能見度",
-    defaultRegion: "US",
-    defaultLanguage: "en-US",
-    status: "paused",
-    dailyRunBudget: 180,
-    createdAt: "2026-06-05T06:15:00.000Z",
-    updatedAt: "2026-06-18T07:30:00.000Z",
-  },
-];
-
-const markets: GeoMarket[] = [
-  {
-    id: "geo-market-tw",
-    projectId: "geo-project-kinsan",
-    region: "TW",
-    language: "zh-TW",
-    marketName: "台灣繁中市場",
-    promptLocaleHint: "以台灣使用者的繁體中文語境回答",
-    serpGl: "tw",
-    serpHl: "zh-TW",
-    serpLocation: "Taiwan",
-    status: "active",
-  },
-  {
-    id: "geo-market-us",
-    projectId: "geo-project-b2b",
-    region: "US",
-    language: "en-US",
-    marketName: "美國英文市場",
-    promptLocaleHint: "Answer as a US B2B buyer",
-    serpGl: "us",
-    serpHl: "en",
-    serpLocation: "United States",
-    status: "paused",
-  },
-];
-
-const entities: GeoEntity[] = [
-  {
-    id: "geo-entity-kinsan",
-    projectId: "geo-project-kinsan",
-    entityType: "brand",
-    name: "金山旅宿",
-    websiteUrl: "https://example.com",
-    description: "主要品牌與官網露出追蹤。",
-    status: "active",
-  },
-  {
-    id: "geo-entity-hot-spring",
-    projectId: "geo-project-kinsan",
-    entityType: "competitor",
-    name: "北海岸溫泉會館",
-    websiteUrl: "https://competitor.example.com",
-    description: "主要競品，觀察 AI 回答中的推薦順位。",
-    status: "active",
-  },
-  {
-    id: "geo-entity-b2b-brand",
-    projectId: "geo-project-b2b",
-    entityType: "brand",
-    name: "YouniFlow",
-    websiteUrl: "https://saas.example.com",
-    description: "B2B SaaS 品牌與產品名稱。",
-    status: "paused",
-  },
-];
-
-const aliases: GeoEntityAlias[] = [
-  {
-    id: "geo-alias-kinsan-1",
-    entityId: "geo-entity-kinsan",
-    alias: "金山溫泉旅宿",
-    matchType: "contains",
-  },
-  {
-    id: "geo-alias-kinsan-2",
-    entityId: "geo-entity-kinsan",
-    alias: "example.com",
-    matchType: "domain",
-  },
-  {
-    id: "geo-alias-competitor-1",
-    entityId: "geo-entity-hot-spring",
-    alias: "北海岸溫泉",
-    matchType: "contains",
-  },
 ];
 
 const topics: GeoTopic[] = [
@@ -148,22 +62,55 @@ const topics: GeoTopic[] = [
     id: "geo-topic-onsen",
     projectId: "geo-project-kinsan",
     name: "溫泉住宿推薦",
-    description: "追蹤旅遊規劃與住宿推薦型 query。",
+    description: "評估 AI 是否會在北海岸溫泉住宿推薦中提及品牌。",
     status: "active",
   },
   {
     id: "geo-topic-family",
     projectId: "geo-project-kinsan",
     name: "親子旅遊",
-    description: "觀察親子客群對地點、設施與交通的問答。",
+    description: "觀察親子行程與住宿需求中的品牌能見度。",
     status: "active",
   },
+];
+
+const entities: GeoEntityResource[] = [
   {
-    id: "geo-topic-b2b",
-    projectId: "geo-project-b2b",
-    name: "Workflow automation",
-    description: "B2B buyer 在 AI 平台上的工具比較。",
-    status: "paused",
+    id: "geo-entity-kinsan",
+    projectId: "geo-project-kinsan",
+    entityType: "brand",
+    name: "金山旅宿",
+    websiteUrl: "https://example.com",
+    description: "北海岸溫泉住宿品牌，主打週末放鬆、親子旅遊與交通便利。",
+    status: "active",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+  },
+  {
+    id: "geo-entity-competitor",
+    projectId: "geo-project-kinsan",
+    entityType: "competitor",
+    name: "北海岸溫泉會館",
+    websiteUrl: "https://competitor.example.com",
+    description: "主要競品，用於比較 SOV 與 mentions。",
+    status: "active",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+  },
+];
+
+const aliases: GeoEntityAlias[] = [
+  {
+    id: "geo-alias-kinsan",
+    entityId: "geo-entity-kinsan",
+    alias: "金山旅宿",
+    matchType: "contains",
+  },
+  {
+    id: "geo-alias-domain",
+    entityId: "geo-entity-kinsan",
+    alias: "example.com",
+    matchType: "domain",
   },
 ];
 
@@ -175,6 +122,7 @@ const queries: GeoQuery[] = [
     queryText: "北海岸適合週末放鬆的溫泉住宿推薦",
     region: "TW",
     language: "zh-TW",
+    marketType: "b2c",
     intent: "recommendation",
     buyerStage: "consideration",
     isBranded: false,
@@ -188,75 +136,11 @@ const queries: GeoQuery[] = [
     queryText: "金山旅宿評價和交通方便嗎",
     region: "TW",
     language: "zh-TW",
+    marketType: "b2c",
     intent: "comparison",
     buyerStage: "decision",
     isBranded: true,
     priority: "normal",
-    status: "active",
-  },
-  {
-    id: "geo-query-family-1",
-    projectId: "geo-project-kinsan",
-    topicId: "geo-topic-family",
-    queryText: "帶小孩去金山玩兩天一夜怎麼安排",
-    region: "TW",
-    language: "zh-TW",
-    intent: "planning",
-    buyerStage: "awareness",
-    isBranded: false,
-    priority: "normal",
-    status: "active",
-  },
-  {
-    id: "geo-query-b2b-1",
-    projectId: "geo-project-b2b",
-    topicId: "geo-topic-b2b",
-    queryText: "best workflow automation tools for marketing teams",
-    region: "US",
-    language: "en-US",
-    intent: "comparison",
-    buyerStage: "consideration",
-    isBranded: false,
-    priority: "normal",
-    status: "paused",
-  },
-];
-
-const platforms: GeoPlatform[] = [
-  { id: "geo-platform-chatgpt", name: "ChatGPT", model: "GPT-4.1", status: "active" },
-  { id: "geo-platform-gemini", name: "Gemini", model: "Gemini 2.5 Pro", status: "active" },
-  { id: "geo-platform-claude", name: "Claude", model: "Claude Sonnet 4", status: "active" },
-  { id: "geo-platform-perplexity", name: "Perplexity", model: "Sonar", status: "active" },
-  { id: "geo-platform-aio", name: "Google AIO", model: "AI Overview", status: "paused" },
-];
-
-const queryPlatforms: GeoQueryPlatform[] = [
-  {
-    id: "geo-query-platform-1",
-    queryId: "geo-query-onsen-1",
-    platformId: "geo-platform-chatgpt",
-    model: "GPT-4.1",
-    status: "active",
-  },
-  {
-    id: "geo-query-platform-2",
-    queryId: "geo-query-onsen-1",
-    platformId: "geo-platform-gemini",
-    model: "Gemini 2.5 Pro",
-    status: "active",
-  },
-  {
-    id: "geo-query-platform-3",
-    queryId: "geo-query-onsen-2",
-    platformId: "geo-platform-claude",
-    model: "Claude Sonnet 4",
-    status: "active",
-  },
-  {
-    id: "geo-query-platform-4",
-    queryId: "geo-query-family-1",
-    platformId: "geo-platform-perplexity",
-    model: "Sonar",
     status: "active",
   },
 ];
@@ -265,32 +149,12 @@ const schedules: GeoSchedule[] = [
   {
     id: "geo-schedule-daily-chatgpt",
     queryId: "geo-query-onsen-1",
-    platformId: "geo-platform-chatgpt",
+    platformId: "11111111-1111-4111-8111-111111111101",
     frequency: "daily",
     priority: "high",
     timezone: "Asia/Taipei",
     nextRunAt: "2026-06-24T01:00:00.000Z",
     status: "active",
-  },
-  {
-    id: "geo-schedule-weekly-gemini",
-    queryId: "geo-query-onsen-2",
-    platformId: "geo-platform-gemini",
-    frequency: "weekly",
-    priority: "normal",
-    timezone: "Asia/Taipei",
-    nextRunAt: "2026-06-29T01:00:00.000Z",
-    status: "active",
-  },
-  {
-    id: "geo-schedule-manual-claude",
-    queryId: "geo-query-family-1",
-    platformId: "geo-platform-claude",
-    frequency: "manual",
-    priority: "normal",
-    timezone: "Asia/Taipei",
-    nextRunAt: null,
-    status: "paused",
   },
 ];
 
@@ -299,7 +163,7 @@ const jobs: GeoJob[] = [
     id: "geo-job-20260623-chatgpt",
     projectId: "geo-project-kinsan",
     queryId: "geo-query-onsen-1",
-    platformId: "geo-platform-chatgpt",
+    platformId: "11111111-1111-4111-8111-111111111101",
     scheduleId: "geo-schedule-daily-chatgpt",
     jobType: "scheduled_run",
     priority: "high",
@@ -307,47 +171,11 @@ const jobs: GeoJob[] = [
     status: "succeeded",
     attemptCount: 1,
     maxAttempts: 3,
-    dedupeKey: "geo-project-kinsan:geo-query-onsen-1:geo-platform-chatgpt:2026-06-23T01:00:00Z",
+    dedupeKey: "geo-project-kinsan:geo-query-onsen-1:11111111-1111-4111-8111-111111111101:2026-06-23T01:00:00Z",
     externalRunId: "mock-run-001",
     lastErrorMessage: null,
     createdAt: "2026-06-23T00:58:00.000Z",
     updatedAt: "2026-06-23T01:05:00.000Z",
-  },
-  {
-    id: "geo-job-20260623-gemini",
-    projectId: "geo-project-kinsan",
-    queryId: "geo-query-onsen-2",
-    platformId: "geo-platform-gemini",
-    scheduleId: "geo-schedule-weekly-gemini",
-    jobType: "scheduled_run",
-    priority: "normal",
-    scheduledFor: "2026-06-23T02:00:00.000Z",
-    status: "running_external",
-    attemptCount: 1,
-    maxAttempts: 3,
-    dedupeKey: "geo-project-kinsan:geo-query-onsen-2:geo-platform-gemini:2026-06-23T02:00:00Z",
-    externalRunId: "mock-run-002",
-    lastErrorMessage: null,
-    createdAt: "2026-06-23T01:58:00.000Z",
-    updatedAt: "2026-06-23T02:01:00.000Z",
-  },
-  {
-    id: "geo-job-20260622-claude",
-    projectId: "geo-project-kinsan",
-    queryId: "geo-query-family-1",
-    platformId: "geo-platform-claude",
-    scheduleId: null,
-    jobType: "manual_run",
-    priority: "normal",
-    scheduledFor: "2026-06-22T06:30:00.000Z",
-    status: "failed",
-    attemptCount: 3,
-    maxAttempts: 3,
-    dedupeKey: "geo-project-kinsan:geo-query-family-1:geo-platform-claude:2026-06-22T06:30:00Z",
-    externalRunId: "mock-run-003",
-    lastErrorMessage: "Mock：外部執行逾時",
-    createdAt: "2026-06-22T06:30:00.000Z",
-    updatedAt: "2026-06-22T06:45:00.000Z",
   },
 ];
 
@@ -384,22 +212,6 @@ const reportMetrics: GeoReportMetric[] = [
     tone: "purple",
     description: "AI 回答引用或提到官網 URL 的次數。",
   },
-  {
-    id: "used-url",
-    label: "Used URL",
-    value: "17",
-    delta: "+3",
-    tone: "warning",
-    description: "被模型採用為資料來源的頁面數。",
-  },
-  {
-    id: "share",
-    label: "Share",
-    value: "22%",
-    delta: "+5%",
-    tone: "success",
-    description: "目標 topic 內的相對曝光份額。",
-  },
 ];
 
 const trendPoints: GeoTrendPoint[] = [
@@ -429,14 +241,6 @@ const topicPerformance: GeoTopicPerformance[] = [
     queryCount: 1,
     betterPerformer: "Perplexity",
   },
-  {
-    topicId: "geo-topic-b2b",
-    topicName: "Workflow automation",
-    visibility: 41,
-    sov: 18,
-    queryCount: 1,
-    betterPerformer: "Gemini",
-  },
 ];
 
 const aiAnswerSamples: GeoAiAnswerSample[] = [
@@ -445,7 +249,7 @@ const aiAnswerSamples: GeoAiAnswerSample[] = [
     platform: "ChatGPT",
     queryText: "北海岸適合週末放鬆的溫泉住宿推薦",
     answerSummary:
-      "Mock 摘要：回答提到金山旅宿適合週末放鬆，強調交通、湯屋與附近景點，但競品在餐飲內容較完整。",
+      "AI 回答提及品牌的地點、泡湯體驗與交通便利性，引用官網與地圖頁面。",
     mentionedEntities: ["金山旅宿", "北海岸溫泉會館"],
     citations: ["https://example.com/onsen", "https://example.com/location"],
     sentiment: "positive",
@@ -455,10 +259,36 @@ const aiAnswerSamples: GeoAiAnswerSample[] = [
     platform: "Gemini",
     queryText: "金山旅宿評價和交通方便嗎",
     answerSummary:
-      "Mock 摘要：回答採中性語氣，提及大眾運輸與自駕資訊，但未引用官方交通頁。",
+      "AI 回答以評價摘要與交通資訊回應，品牌被提及但缺少價格與房型資訊。",
     mentionedEntities: ["金山旅宿"],
     citations: ["https://example.com/reviews"],
     sentiment: "neutral",
+  },
+];
+
+const runResults: GeoAnalysisRunResult[] = [
+  {
+    id: "geo-run-result-1",
+    jobId: "geo-job-20260623-chatgpt",
+    queryId: "geo-query-onsen-1",
+    provider: "gemini",
+    surface: "Gemini",
+    model: "gemini-3.1-flash-lite",
+    region: "TW",
+    language: "zh-TW",
+    status: "completed",
+    rawResponse:
+      "北海岸週末放鬆可考慮金山旅宿，適合想安排溫泉、老街與海岸線行程的旅客。",
+    references: [
+      {
+        url: "https://example.com/onsen",
+        title: "金山旅宿溫泉住宿",
+        domain: "example.com",
+        position: 1,
+      },
+    ],
+    error: null,
+    runAt: "2026-06-25T02:10:00.000Z",
   },
 ];
 
@@ -466,23 +296,14 @@ const recommendations: GeoRecommendation[] = [
   {
     id: "geo-recommendation-1",
     title: "補強交通與停車 FAQ",
-    description:
-      "多數 AI 回答會提到交通方便性，但引用來源分散，建議新增可被引用的官方 FAQ。",
+    description: "多數 AI 回答提到交通方便，但缺少停車與大眾運輸細節，可新增 FAQ 提升引用機率。",
     priority: "high",
   },
   {
     id: "geo-recommendation-2",
-    title: "建立親子旅遊兩天一夜範本",
-    description:
-      "親子旅遊 query 的品牌提及率較低，可新增行程內容並加入周邊景點結構化資訊。",
+    title: "建立親子兩天一夜行程頁",
+    description: "親子旅遊 query 已出現需求，可用行程頁承接住宿、景點與餐飲推薦。",
     priority: "normal",
-  },
-  {
-    id: "geo-recommendation-3",
-    title: "競品比較頁先維持規劃",
-    description:
-      "目前競品內容多由第三方來源補足，正式指標穩定後再評估是否建立比較型 landing page。",
-    priority: "low",
   },
 ];
 
@@ -493,13 +314,11 @@ function cloneItems<T>(items: T[]): T[] {
 export function createGeoMockState(): GeoMockState {
   return {
     projects: cloneItems(projects),
-    markets: cloneItems(markets),
     entities: cloneItems(entities),
     aliases: cloneItems(aliases),
     topics: cloneItems(topics),
     queries: cloneItems(queries),
-    platforms: cloneItems(platforms),
-    queryPlatforms: cloneItems(queryPlatforms),
+    platforms: cloneItems(geoPlatformCatalog),
     schedules: cloneItems(schedules),
     jobs: cloneItems(jobs),
     reportMetrics: cloneItems(reportMetrics),
@@ -509,6 +328,10 @@ export function createGeoMockState(): GeoMockState {
       ...item,
       mentionedEntities: [...item.mentionedEntities],
       citations: [...item.citations],
+    })),
+    runResults: runResults.map((item) => ({
+      ...item,
+      references: item.references.map((reference) => ({ ...reference })),
     })),
     recommendations: cloneItems(recommendations),
   };

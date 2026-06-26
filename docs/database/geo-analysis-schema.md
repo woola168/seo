@@ -4,8 +4,8 @@
 
 Phase 1 邊界：
 
-- 本模組負責 GEO 基礎設定、前端 CRUD、Query 管理、週期排程、Queue / Worker orchestration、外部跑題模組回報狀態。
-- 本模組不負責實際打 AI API、不保存 AI raw response、不解析 mention / citation / sentiment、不計算 Visibility / SOV / Position 等 GEO 指標。
+- 本模組負責 GEO 基礎設定、前端 CRUD、Query 管理、週期排程、Queue / Worker orchestration、外部跑題模組回報狀態、run raw result 與 references 保存。
+- 本模組不負責實際打 AI API、不解析 mention / citation / sentiment、不計算 Visibility / SOV / Position 等 GEO 指標。
 - Queue 工具尚未決定，程式與資料表命名需保持中性，不綁死 GCP Pub/Sub、RabbitMQ、NATS 或其他 broker。
 
 規劃依據：
@@ -44,15 +44,16 @@ Queue 抽象：
 ```text
 Application use case
 → MessagePublisher port
-→ future infrastructure adapter
+→ RabbitMqMessagePublisher infrastructure adapter
 ```
 
-Phase 1 先保留 publisher port，不實作任何 broker adapter。待決定部署環境後，再補：
+第三批已加入 RabbitMQ publisher adapter，dispatch API 會依 provider 發布到不同 queue。第四批已加入 Gemini worker skeleton。第五批加入 run result storage；result parser 與 metrics pipeline 仍是後續批次。
 
-- `GcpPubSubMessagePublisher`
-- `RabbitMqMessagePublisher`
-- `NatsMessagePublisher`
-- `DatabaseMessagePublisher`
+目前 queue 命名：
+
+- `geo.query-runs.gemini`
+- `geo.query-runs.google_aio`
+- `geo.query-runs.{provider}`
 
 ## 主要資料流
 
@@ -65,6 +66,7 @@ Phase 1 先保留 publisher port，不實作任何 broker adapter。待決定部
 → 外部跑題模組接收 message 並執行
 → 外部 callback 回報 accepted / running / succeeded / failed
 → geo_external_run_reference 保存外部 run reference
+→ geo_run_result / geo_run_result_reference 保存 raw answer 與 references
 ```
 
 ## 主要關聯
@@ -89,6 +91,9 @@ erDiagram
     geo_query_run_job ||--o{ geo_worker_lease : leases
     geo_query_run_job ||--o{ geo_job_dispatch_event : audits
     geo_query_run_job ||--o{ geo_external_run_reference : references
+    geo_query_run_job ||--o{ geo_run_request : runs
+    geo_run_request ||--o{ geo_run_result : contains
+    geo_run_result ||--o{ geo_run_result_reference : cites
 ```
 
 ## 共用資料規則
@@ -226,6 +231,7 @@ UNIQUE (project_id, name)
 | `query_text` | `text` | 是 |  | 問句內容 |
 | `region` | `varchar(16)` | 是 |  | `TW`、`US` |
 | `language` | `varchar(16)` | 是 |  | `zh-TW`、`en-US` |
+| `market_type` | `varchar(32)` | 是 | default `'b2b_procurement'`；`b2c` / `b2b_procurement` | 使用者選擇的市場語境，會傳給 GEO Tracking runner |
 | `intent` | `varchar(32)` | 否 |  | `navigational`、`informational`、`commercial`、`transactional` |
 | `buyer_stage` | `varchar(32)` | 否 |  | B2B 場景，如 `supplier_evaluation`、`comparison`、`alternative` |
 | `is_branded` | `boolean` | 是 | default `false` | 是否品牌字 query |
@@ -421,9 +427,63 @@ ON geo_query_run_job (query_id, platform_id);
 | `created_at` | `timestamptz` | 是 |  | 建立時間 |
 | `updated_at` | `timestamptz` | 是 |  | 更新時間 |
 
+### `geo_run_request`
+
+保存 worker 對 `geo-tracking /run-requests` 的一次呼叫與整體狀態。
+
+| 欄位 | 型態 | 必填 | 關聯 / 約束 | 說明 |
+|---|---|---:|---|---|
+| `id` | `uuid` | 是 | PK | Analysis 端 run request ID |
+| `job_id` | `uuid` | 是 | FK → `geo_query_run_job.id` | 對應 job |
+| `tracking_run_request_id` | `varchar(200)` | 是 |  | geo-tracking 回傳的 request id |
+| `seo_task_id` | `uuid` | 是 |  | 呼叫 tracking 使用的 SEO task id |
+| `provider` | `varchar(64)` | 是 |  | `gemini`、`openai` 等 |
+| `timing` | `varchar(32)` | 是 |  | `run_now`、`next_cycle` |
+| `status` | `varchar(32)` | 是 |  | `succeeded`、`failed` |
+| `error_code` | `varchar(100)` | 否 |  | worker 或 tracking error code |
+| `error_message` | `text` | 否 |  | worker 或 tracking error message |
+| `request_payload` | `jsonb` | 是 | default `'{}'::jsonb` | 實際送往 `geo-tracking /run-requests` 的 JSON；worker 前置拒絕時保存拒絕 evidence |
+| `created_at` | `timestamptz` | 是 |  | 建立時間 |
+| `completed_at` | `timestamptz` | 否 |  | 完成時間 |
+
+### `geo_run_result`
+
+保存 geo-tracking 對單一 query 回傳的 raw answer。
+
+| 欄位 | 型態 | 必填 | 關聯 / 約束 | 說明 |
+|---|---|---:|---|---|
+| `id` | `uuid` | 是 | PK | Analysis 端 result ID |
+| `run_request_id` | `uuid` | 是 | FK → `geo_run_request.id` | 所屬 run request |
+| `job_id` | `uuid` | 是 | FK → `geo_query_run_job.id` | 對應 job |
+| `tracking_result_id` | `varchar(200)` | 是 |  | geo-tracking 回傳的 result id |
+| `query_id` | `uuid` | 是 | FK → `geo_query.id` | 對應 query |
+| `provider` | `varchar(64)` | 是 |  | provider |
+| `surface` | `varchar(100)` | 是 |  | provider surface |
+| `model` | `varchar(100)` | 是 |  | provider model |
+| `region` | `varchar(16)` | 是 |  | query region |
+| `language` | `varchar(16)` | 是 |  | query language |
+| `status` | `varchar(32)` | 是 |  | `completed`、`failed` |
+| `raw_response` | `text` | 是 | default `''` | AI 原始回答 |
+| `error` | `text` | 否 |  | 單筆 result error |
+| `run_at` | `timestamptz` | 是 |  | tracking 執行時間 |
+| `created_at` | `timestamptz` | 是 |  | 保存時間 |
+
+### `geo_run_result_reference`
+
+保存 provider 回傳的 references/citations raw data；這不是 metrics pipeline 的 citation 計算結果。
+
+| 欄位 | 型態 | 必填 | 關聯 / 約束 | 說明 |
+|---|---|---:|---|---|
+| `id` | `uuid` | 是 | PK | Reference ID |
+| `run_result_id` | `uuid` | 是 | FK → `geo_run_result.id` | 所屬 raw result |
+| `url` | `text` | 是 |  | Reference URL |
+| `title` | `text` | 否 |  | Provider 回傳 title |
+| `domain` | `varchar(255)` | 否 |  | 從 URL 解析出的 domain |
+| `position` | `integer` | 是 |  | Result 內 reference 順序 |
+
 ## Message Publisher Port
 
-Application 層只定義抽象介面，不實作實際 queue 工具。
+Application 層只定義抽象介面；RabbitMQ 實作放在 infrastructure adapter。
 
 ```python
 class MessagePublisher(Protocol):
@@ -433,14 +493,13 @@ class MessagePublisher(Protocol):
         ...
 ```
 
-未來 infrastructure adapter 可依部署決策補上：
+目前已實作：
 
 ```text
-GcpPubSubMessagePublisher
 RabbitMqMessagePublisher
-NatsMessagePublisher
-DatabaseMessagePublisher
 ```
+
+其他 broker adapter 如 GCP Pub/Sub、NATS 或 database queue 可在未來依部署決策新增。
 
 ## Message Payload
 
@@ -540,7 +599,7 @@ DELETE /api/geo/queries/{queryId}
 用途：
 
 - 管理前端 Query / Topic。
-- Query 可帶 region、language、intent、buyerStage、metadata。
+- Query 可帶 region、language、marketType、intent、buyerStage、metadata。
 
 ### Query Platforms and Schedules
 
