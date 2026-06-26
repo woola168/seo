@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS geo_project (
     id uuid PRIMARY KEY,
-    customer_id uuid NOT NULL REFERENCES customer(id) ON DELETE RESTRICT,
-    seo_task_id uuid REFERENCES seo_task(id) ON DELETE SET NULL,
+    customer_id uuid NOT NULL,
+    seo_task_id uuid,
     name varchar(200) NOT NULL,
     default_region varchar(16) NOT NULL DEFAULT 'TW',
     default_language varchar(16) NOT NULL DEFAULT 'zh-TW',

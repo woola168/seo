@@ -12,8 +12,8 @@ class GeoProjectRow(SQLModel, table=True):
     __tablename__ = "geo_project"
 
     id: UUID = Field(primary_key=True)
-    customer_id: UUID = Field(foreign_key="customer.id", nullable=False)
-    seo_task_id: UUID | None = Field(default=None, foreign_key="seo_task.id")
+    customer_id: UUID = Field(nullable=False)
+    seo_task_id: UUID | None = Field(default=None)
     name: str = Field(sa_column=Column(String(200), nullable=False))
     default_region: str = Field(default="TW", sa_column=Column(String(16), nullable=False))
     default_language: str = Field(

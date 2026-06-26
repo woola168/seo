@@ -1,4 +1,4 @@
-﻿# GEO Queue / Worker 與基礎設定資料表規劃
+# GEO Queue / Worker 與基礎設定資料表規劃
 
 本文件僅作為 Phase 1 規劃用途，尚未代表已實作的 migration 或正式資料庫契約。
 
@@ -73,8 +73,8 @@ Application use case
 
 ```mermaid
 erDiagram
-    customer ||--o{ geo_project : owns
-    seo_task ||--o{ geo_project : optional_source
+    customer ..o{ geo_project : owns
+    seo_task ..o{ geo_project : optional_source
 
     geo_project ||--o{ geo_market : configures
     geo_project ||--o{ geo_entity : tracks
@@ -115,8 +115,8 @@ GEO 分析專案。每個客戶可有多個 GEO project。
 | 欄位 | 型態 | 必填 | 關聯 / 約束 | 說明 |
 |---|---|---:|---|---|
 | `id` | `uuid` | 是 | PK | GEO project ID |
-| `customer_id` | `uuid` | 是 | FK → `customer.id` | 所屬客戶 |
-| `seo_task_id` | `uuid` | 否 | FK → `seo_task.id` | 若掛在既有 SEO 任務底下則填 |
+| `customer_id` | `uuid` | 是 |  | 所屬客戶 |
+| `seo_task_id` | `uuid` | 否 |  | 若掛在既有 SEO 任務底下則填 |
 | `name` | `varchar(200)` | 是 |  | 專案名稱 |
 | `default_region` | `varchar(16)` | 是 | default `'TW'` | 預設地區，例如 `TW`、`US` |
 | `default_language` | `varchar(16)` | 是 | default `'zh-TW'` | 預設語言 |
