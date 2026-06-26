@@ -84,6 +84,25 @@ services:
     networks:
       - web_network
 
+  geo-analysis-worker-google-aio:
+    container_name: geo-analysis-worker-google-aio
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-worker/Dockerfile
+    image: younilab-seo-geo-analysis-worker:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    environment:
+      GEO_ANALYSIS_WORKER_PROVIDER: google_aio
+      GEO_ANALYSIS_WORKER_QUEUE: geo.query-runs.google_aio
+      GEO_ANALYSIS_WORKER_PREFETCH: 1
+    depends_on:
+      - rabbitmq
+      - geo-tracking-api
+    networks:
+      - web_network
+
   geo-tracking-api:
     container_name: geo-tracking-api
     build:
@@ -95,6 +114,7 @@ services:
       - ${DEPLOY_ENV_FILE}
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/gcp-key.json
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
     volumes:
       - ${GCP_CREDENTIALS_FILE_HOST}:/app/config/gcp-key.json:ro
     ports:

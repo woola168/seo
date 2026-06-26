@@ -121,6 +121,38 @@ def test_worker_marks_completed_tracking_run_succeeded() -> None:
     asyncio.run(run())
 
 
+def test_worker_processes_google_aio_message_and_saves_references() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(
+            make_tracking_response(
+                job,
+                status="completed",
+                provider="google_aio",
+                surface="Google AI Overview",
+                model="serpapi-google-ai-overview",
+            )
+        )
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="google_aio",
+        ).execute(make_message(job, platform="google_aio"))
+
+        assert result.status is JobStatus.SUCCEEDED
+        assert repository.save_commands[0].request_payload["provider"] == "google_aio"
+        saved = repository.save_commands[0].response.results[0]
+        assert saved.provider == "google_aio"
+        assert saved.surface == "Google AI Overview"
+        assert saved.model == "serpapi-google-ai-overview"
+        assert saved.references[0].title == "Example reference"
+
+    asyncio.run(run())
+
+
 def test_worker_marks_tracking_failure_failed() -> None:
     async def run() -> None:
         job = make_job()
@@ -261,6 +293,9 @@ def make_tracking_response(
     *,
     status: str,
     error: str | None = None,
+    provider: str = "gemini",
+    surface: str = "Gemini",
+    model: str = "gemini-2.5-flash",
 ) -> TrackingRunResponse:
     return TrackingRunResponse(
         id="tracking-run-1",
@@ -271,9 +306,9 @@ def make_tracking_response(
                 id="tracking-result-1",
                 run_request_id="tracking-run-1",
                 query_id=job.query_id,
-                provider="gemini",
-                surface="Gemini",
-                model="gemini-2.5-flash",
+                provider=provider,
+                surface=surface,
+                model=model,
                 region="TW",
                 language="zh-TW",
                 status=status,

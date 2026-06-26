@@ -64,6 +64,21 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     assert dependencies.processor.supported_provider == "gemini"
 
 
+def test_composition_builds_google_aio_provider_queue(monkeypatch) -> None:
+    monkeypatch.setenv("GEO_ANALYSIS_RABBITMQ_URL", "amqp://example")
+    monkeypatch.setenv("GEO_ANALYSIS_DATABASE_URL", "postgresql+asyncpg://example")
+    monkeypatch.delenv("GEO_ANALYSIS_WORKER_QUEUE", raising=False)
+
+    dependencies = build_dependencies(
+        repository=object(),
+        tracking_client=object(),
+        provider="google_aio",
+    )
+
+    assert dependencies.consumer.queue_name == "geo.query-runs.google_aio"
+    assert dependencies.processor.supported_provider == "google_aio"
+
+
 def _message() -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=uuid4(),

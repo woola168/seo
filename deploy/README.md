@@ -68,9 +68,14 @@ GEO_TRACKING_BASE_URL=http://geo-tracking-api:8003
 GEO_TRACKING_TIMEOUT_SECONDS=60
 ```
 
+`geo-analysis-worker-google-aio` 會使用同一個 worker image，並覆寫
+`GEO_ANALYSIS_WORKER_PROVIDER=google_aio` 與
+`GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.google_aio`。正式跑 Google AIO 前，
+`geo-tracking-api` 的部署環境必須注入 `SERPAPI_API_KEY`；此 key 不應寫入 repo。
+
 ### GEO Analysis Worker result storage
 
-`geo-analysis-worker-gemini` 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
+GEO Analysis provider worker 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
 
 目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。Mention、citation normalization、sentiment、visibility/SOV 與報表 metrics 尚未實作。
 

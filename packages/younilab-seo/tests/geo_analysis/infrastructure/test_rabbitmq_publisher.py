@@ -106,6 +106,30 @@ def test_rabbitmq_publisher_returns_failed_result_when_publish_fails() -> None:
     asyncio.run(run())
 
 
+def test_rabbitmq_publisher_routes_google_aio_to_provider_queue() -> None:
+    async def run() -> None:
+        connection = FakeConnection()
+
+        async def connect(url: str):
+            return connection
+
+        publisher = RabbitMqMessagePublisher(
+            url="amqp://example",
+            connection_factory=connect,
+        )
+        result = await publisher.publish(_message(platform="google_aio"))
+
+        assert result.status == "published"
+        assert result.destination == "geo.query-runs.google_aio"
+        channel = connection.channel_instance
+        assert channel.declared_queue_name == "geo.query-runs.google_aio"
+        assert channel.queue.bindings[0][1] == "geo.query-runs.google_aio"
+        _, routing_key = channel.exchange.published[0]
+        assert routing_key == "geo.query-runs.google_aio"
+
+    asyncio.run(run())
+
+
 def test_rabbitmq_publisher_resets_cached_connection_after_publish_error() -> None:
     async def run() -> None:
         bad_connection = FakeConnection(FakeChannel(FailingExchange()))

@@ -179,6 +179,26 @@ def test_dispatch_publishes_job_message_through_application_use_case() -> None:
     )
 
 
+def test_dispatch_google_aio_job_records_provider_queue_destination() -> None:
+    publisher = FakePublisher()
+    client, store, query_id = _client_with_query(publisher=publisher)
+    platform_id = uuid4()
+    store.platform_codes[platform_id] = "google_aio"
+    store.platform_models[platform_id] = "serpapi-google-ai-overview"
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={"platformId": str(platform_id)},
+    )
+    assert job_response.status_code == 201
+    job_id = job_response.json()["id"]
+
+    response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
+
+    assert response.status_code == 200
+    assert publisher.messages[0].platform == "google_aio"
+    assert store.dispatches[0][1].destination == "geo.query-runs.google_aio"
+
+
 def test_dispatch_without_project_seo_task_id_returns_conflict() -> None:
     publisher = FakePublisher()
     client, store, query_id = _client_with_query(publisher=publisher)

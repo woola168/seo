@@ -1,6 +1,6 @@
 ﻿# GEO Analysis API
 
-GEO Analysis API 提供 Phase 1 的 GEO 專案設定、market、entity、topic、query、platform assignment、schedule 與 query run job orchestration endpoint。此服務目前不負責實際 AI 跑題、AI response 儲存或指標計算。
+GEO Analysis API 提供 Phase 1 的 GEO 專案設定、market、entity、topic、query、platform assignment、schedule 與 query run job orchestration endpoint。實際 AI 跑題由 `geo-tracking-api` 負責；本服務負責 dispatch、job orchestration，以及 worker 回寫的 raw result / references 保存。Mention/citation/sentiment 與報表指標仍屬後續批次。
 
 開發環境可用下列方式啟動：
 
@@ -17,7 +17,7 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
-- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 會消費 Gemini queue、呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
+- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
 - 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
 
 範例：
@@ -102,7 +102,7 @@ INSERT INTO geo_ai_platform (
     'ai-overview',
     true,
     true,
-    'paused',
+    'active',
     now(),
     now()
 )

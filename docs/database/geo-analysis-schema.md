@@ -52,7 +52,7 @@ Application use case
 目前 queue 命名：
 
 - `geo.query-runs.gemini`
-- `geo.query-runs.openai`
+- `geo.query-runs.google_aio`
 - `geo.query-runs.{provider}`
 
 ## 主要資料流
