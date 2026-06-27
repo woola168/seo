@@ -20,6 +20,9 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoTopicRecord,
 )
 from younilab_seo.geo_analysis.application.interfaces import GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.use_cases.planning import (
+    GeoProjectReferenceError,
+)
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class ManageGeoSetup:
         return await self.repository.get_project(project_id)
 
     async def create_project(self, command: GeoProjectCommand) -> GeoProjectRecord:
+        _validate_project_reference(command)
         return await self.repository.create_project(command)
 
     async def update_project(
@@ -42,6 +46,7 @@ class ManageGeoSetup:
         project_id: UUID,
         command: GeoProjectCommand,
     ) -> GeoProjectRecord | None:
+        _validate_project_reference(command)
         return await self.repository.update_project(project_id, command)
 
     async def delete_project(self, project_id: UUID) -> bool:
@@ -182,3 +187,8 @@ class ManageGeoSetup:
 
     async def delete_schedule(self, schedule_id: UUID) -> bool:
         return await self.repository.delete_schedule(schedule_id)
+
+
+def _validate_project_reference(command: GeoProjectCommand) -> None:
+    if command.customer_id is None and command.seo_task_id is not None:
+        raise GeoProjectReferenceError("seoTaskId requires customerId")

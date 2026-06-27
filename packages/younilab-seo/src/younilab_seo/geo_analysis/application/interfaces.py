@@ -3,6 +3,7 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
+    AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
     GeoEntityAliasCommand,
@@ -24,6 +25,12 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
+    QueryDraftRecord,
+    QueryDraftSelectionCommand,
+    QueryGenerationCommand,
+    QueryGenerationRunRecord,
+    QueryResearchCommand,
+    QueryResearchRunRecord,
     QueryRunJobMessage,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
@@ -59,6 +66,14 @@ class TrackingRunClient(Protocol):
         raise NotImplementedError
 
     async def run(self, message: QueryRunJobMessage) -> TrackingRunResponse:
+        raise NotImplementedError
+
+
+class QueryPlanningClient(Protocol):
+    async def research(self, command: QueryResearchCommand) -> dict:
+        raise NotImplementedError
+
+    async def generate(self, command: QueryGenerationCommand) -> dict:
         raise NotImplementedError
 
 
@@ -295,4 +310,66 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         raise NotImplementedError
 
     async def get_job(self, job_id: UUID) -> GeoQueryRunJob | None:
+        raise NotImplementedError
+
+    async def create_query_research_run(
+        self,
+        project_id: UUID,
+        command: QueryResearchCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryResearchRunRecord | None:
+        raise NotImplementedError
+
+    async def list_query_research_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryResearchRunRecord]:
+        raise NotImplementedError
+
+    async def get_query_research_run(
+        self,
+        run_id: UUID,
+    ) -> QueryResearchRunRecord | None:
+        raise NotImplementedError
+
+    async def create_query_generation_run(
+        self,
+        project_id: UUID,
+        command: QueryGenerationCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryGenerationRunRecord | None:
+        raise NotImplementedError
+
+    async def list_query_generation_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryGenerationRunRecord]:
+        raise NotImplementedError
+
+    async def get_query_generation_run(
+        self,
+        run_id: UUID,
+    ) -> QueryGenerationRunRecord | None:
+        raise NotImplementedError
+
+    async def update_query_draft_selection(
+        self,
+        draft_id: UUID,
+        command: QueryDraftSelectionCommand,
+    ) -> QueryDraftRecord | None:
+        raise NotImplementedError
+
+    async def accept_query_draft(
+        self,
+        draft_id: UUID,
+        command: AcceptQueryDraftCommand,
+    ) -> GeoQueryRecord | None:
         raise NotImplementedError

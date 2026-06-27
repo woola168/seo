@@ -15,6 +15,7 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - 預設未設定資料庫時，API 使用 in-memory `GeoApiStore` 作為測試用 fake repository，適合單元測試與前端 stub 串接，服務重啟會遺失資料。
 - 設定 `GEO_ANALYSIS_DATABASE_URL` 後，API 會使用 `PostgresGeoAnalysisRepository` 作為 PostgreSQL infrastructure adapter。
 - Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
+- 既有遠端 DB 若已跑過舊版 schema，需手動執行 `deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql`，補上 Query Planning tables 並解除 `geo_project.customer_id` 的 `NOT NULL` 限制。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
 - RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
@@ -169,7 +170,9 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
 
 - JSON 欄位使用 `camelCase`。
 - 未設定 `GEO_ANALYSIS_DATABASE_URL` 時會使用 in-memory store。
+- `customerId` 與 `seoTaskId` 都是 `resource-catalog` 的 reference id，不在 GEO DB 建 FK。兩者皆空、只有 `customerId`、或兩者都有都允許；只有 `seoTaskId` 沒有 `customerId` 會回 `422`。
 - `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue。Project 缺少 `seoTaskId` 時會回 `409`，避免 worker 無法呼叫 `geo-tracking-api`。
+- `PATCH /api/geo/query-drafts/{draftId}/selection` 只允許尚未 accepted 的 draft；已接受成正式 query 的 draft 再次修改 selection 會回 `409`。
 - `cancel` 與 external callback 已可透過 store abstraction 套用到 in-memory 或 PostgreSQL-backed repository。
 - 錯誤回應使用 `application/problem+json`。
 
@@ -225,6 +228,14 @@ Problem Details 格式：
 | `GET` | `/api/geo/queries/{queryId}` | 取得單一 tracked query。 |
 | `PATCH` | `/api/geo/queries/{queryId}` | 更新 tracked query。 |
 | `DELETE` | `/api/geo/queries/{queryId}` | 刪除 tracked query。 |
+| `POST` | `/api/geo/projects/{projectId}/query-research-runs` | 呼叫 `geo-tracking-api` Query Research 並保存 research context、searched keywords、source URLs。 |
+| `GET` | `/api/geo/projects/{projectId}/query-research-runs` | 列出 project 的 Query Research runs。 |
+| `GET` | `/api/geo/query-research-runs/{runId}` | 取得單一 Query Research run detail。 |
+| `POST` | `/api/geo/projects/{projectId}/query-generation-runs` | 呼叫 `geo-tracking-api` Query Generation 並保存 generated query drafts。 |
+| `GET` | `/api/geo/projects/{projectId}/query-generation-runs` | 列出 project 的 Query Generation runs。 |
+| `GET` | `/api/geo/query-generation-runs/{runId}` | 取得單一 Query Generation run 與 drafts。 |
+| `PATCH` | `/api/geo/query-drafts/{draftId}/selection` | 將 draft 標記為 `shortlisted` 或 `rejected`。 |
+| `POST` | `/api/geo/query-drafts/{draftId}/accept` | 將 draft 轉成正式 `geo_query`，回傳既有 `QueryResponse`。 |
 | `GET` | `/api/geo/queries/{queryId}/platforms` | 列出 query 要派送的平台設定。 |
 | `PUT` | `/api/geo/queries/{queryId}/platforms` | 整批替換 query platform assignment。 |
 | `GET` | `/api/geo/queries/{queryId}/schedules` | 列出 query 的週期排程設定。 |
@@ -255,8 +266,8 @@ Problem Details 格式：
 ```json
 // ProjectRequest
 {
-  "customerId": "uuid",
-  "seoTaskId": "uuid",
+  "customerId": "uuid 或 null",
+  "seoTaskId": "uuid 或 null",
   "name": "Acme GEO",
   "defaultRegion": "TW",
   "defaultLanguage": "zh-TW",
@@ -271,6 +282,8 @@ Problem Details 格式：
   "updatedAt": "2026-06-22T10:00:00Z"
 }
 ```
+
+`seoTaskId` 語意上屬於某個 customer，因此不能單獨存在。GEO 不跨服務驗證 reference 是否存在；前端若要顯示 customer/task 名稱，需另外呼叫 Resource Catalog。
 
 ## Markets
 
@@ -365,6 +378,137 @@ Problem Details 格式：
 ```
 
 `marketType` 目前支援 `b2c` 與 `b2b_procurement`。未提供時會使用 `b2b_procurement`，供舊 client 相容。
+
+## Query Research / Generation
+
+這組 API 用於前端 Query Research 頁面，採同步呼叫 `geo-tracking-api` 並保存結果。`google_aio` 只支援 run request，不可用於 research/generation provider。
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/geo/projects/{projectId}/query-research-runs` | `QueryResearchRunRequest` | `201 QueryResearchRunResponse` |
+| `GET` | `/api/geo/projects/{projectId}/query-research-runs` | 無 | `PageResponse<QueryResearchRunResponse>` |
+| `GET` | `/api/geo/query-research-runs/{runId}` | 無 | `QueryResearchRunResponse` |
+| `POST` | `/api/geo/projects/{projectId}/query-generation-runs` | `QueryGenerationRunRequest` | `201 QueryGenerationRunResponse` |
+| `GET` | `/api/geo/projects/{projectId}/query-generation-runs` | 無 | `PageResponse<QueryGenerationRunResponse>` |
+| `GET` | `/api/geo/query-generation-runs/{runId}` | 無 | `QueryGenerationRunResponse` |
+| `PATCH` | `/api/geo/query-drafts/{draftId}/selection` | `QueryDraftSelectionRequest` | `QueryDraftResponse` |
+| `POST` | `/api/geo/query-drafts/{draftId}/accept` | `AcceptQueryDraftRequest` | `QueryResponse` |
+
+```json
+// QueryResearchRunRequest
+{
+  "provider": "gemini",
+  "brandName": "Acme",
+  "competitorBrands": ["Competitor"],
+  "keywords": ["erp", "採購系統"],
+  "region": "TW",
+  "language": "zh-TW",
+  "marketType": "b2b_procurement",
+  "audience": {
+    "name": "B2B 採購",
+    "description": "正在評估供應商的採購人員"
+  }
+}
+
+// QueryResearchRunResponse
+{
+  "id": "uuid",
+  "projectId": "uuid",
+  "provider": "gemini",
+  "status": "completed",
+  "requestPayload": {},
+  "result": {
+    "researchContext": "市場研究摘要",
+    "searchedKeywords": ["erp"],
+    "sourceUrls": ["https://example.com/source"]
+  },
+  "errorCode": null,
+  "errorMessage": null,
+  "createdAt": "2026-06-27T10:00:00Z",
+  "completedAt": "2026-06-27T10:00:00Z"
+}
+```
+
+```json
+// QueryGenerationRunRequest
+{
+  "seoTaskId": "uuid",
+  "provider": "gemini",
+  "brandName": "Acme",
+  "competitorBrands": ["Competitor"],
+  "keywords": ["erp"],
+  "region": "TW",
+  "language": "zh-TW",
+  "marketType": "b2b_procurement",
+  "topicNames": ["ERP 導入"],
+  "intents": [
+    {
+      "category": "commercial",
+      "description": "比較供應商"
+    }
+  ],
+  "audience": {
+    "name": "B2B 採購",
+    "description": "正在評估供應商的採購人員"
+  },
+  "brandMentionRules": {
+    "shouldMentionOwnBrand": true,
+    "shouldMentionCompetitor": false
+  },
+  "researchContext": "可選，來自 Query Research result",
+  "maxQueries": 12
+}
+
+// QueryGenerationRunResponse
+{
+  "id": "uuid",
+  "projectId": "uuid",
+  "provider": "gemini",
+  "status": "completed",
+  "requestPayload": {},
+  "errorCode": null,
+  "errorMessage": null,
+  "createdAt": "2026-06-27T10:00:00Z",
+  "completedAt": "2026-06-27T10:00:00Z",
+  "drafts": [
+    {
+      "id": "uuid",
+      "generationRunId": "uuid",
+      "projectId": "uuid",
+      "topicId": null,
+      "topicName": "ERP 導入",
+      "queryText": "Acme ERP 適合哪些 B2B 採購情境?",
+      "keywords": ["erp"],
+      "region": "TW",
+      "language": "zh-TW",
+      "marketType": "b2b_procurement",
+      "intent": "commercial",
+      "isBranded": true,
+      "status": "draft",
+      "selectionStatus": null,
+      "acceptedQueryId": null,
+      "metadata": {},
+      "createdAt": "2026-06-27T10:00:00Z",
+      "updatedAt": "2026-06-27T10:00:00Z"
+    }
+  ]
+}
+```
+
+```json
+// QueryDraftSelectionRequest
+{
+  "selectionStatus": "shortlisted"
+}
+
+// AcceptQueryDraftRequest
+{
+  "createTopicIfMissing": true,
+  "status": "active"
+}
+```
+
+`accept` 會將 draft 轉成正式 `geo_query`。若 draft 只有 `topicName` 而沒有 `topicId`，且 `createTopicIfMissing=true`，API 會在同 project 找同名 topic；找不到時建立 topic 後再建立 query。Accept 不會自動建立 platform、schedule 或 job。
 
 ## Query Platforms 與 Schedules
 

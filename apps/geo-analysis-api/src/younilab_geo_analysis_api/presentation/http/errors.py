@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from younilab_seo.geo_analysis.application import GeoProjectReferenceError
 from younilab_seo.geo_analysis.domain import QueryRunJobStatusError
 
 
@@ -29,6 +30,13 @@ def register_error_handlers(app: FastAPI) -> None:
         exc: QueryRunJobStatusError,
     ) -> JSONResponse:
         return _problem(request, 409, str(exc) or "Invalid job status transition")
+
+    @app.exception_handler(GeoProjectReferenceError)
+    async def project_reference_error(
+        request: Request,
+        exc: GeoProjectReferenceError,
+    ) -> JSONResponse:
+        return _problem(request, 422, str(exc))
 
 
 def _problem(

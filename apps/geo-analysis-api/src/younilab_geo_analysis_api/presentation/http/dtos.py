@@ -18,7 +18,7 @@ class ApiModel(BaseModel):
 class ProjectRequest(ApiModel):
     """客戶擁有、可編輯的 GEO project 設定。"""
 
-    customer_id: UUID
+    customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str = Field(min_length=1, max_length=200)
     default_region: str = Field(default="TW", min_length=1, max_length=16)
@@ -163,6 +163,114 @@ class QueryResponse(QueryRequest):
     project_id: UUID
     created_at: datetime
     updated_at: datetime
+
+
+class QueryAudienceRequest(ApiModel):
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
+class QueryIntentRequest(ApiModel):
+    category: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
+class BrandMentionRulesRequest(ApiModel):
+    should_mention_own_brand: bool = True
+    should_mention_competitor: bool = False
+
+
+class QueryResearchRunRequest(ApiModel):
+    provider: str = Field(default="dummy", min_length=1)
+    brand_name: str = Field(min_length=1, max_length=200)
+    competitor_brands: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    region: str = Field(min_length=1, max_length=16)
+    language: str | None = None
+    market_type: str = Field(default="b2b_procurement", max_length=32)
+    audience: QueryAudienceRequest | None = None
+
+
+class QueryResearchResultResponse(ApiModel):
+    research_context: str
+    searched_keywords: list[str]
+    source_urls: list[str]
+
+
+class QueryResearchRunResponse(ApiModel):
+    id: UUID
+    project_id: UUID
+    provider: str
+    status: str
+    request_payload: dict
+    result: QueryResearchResultResponse | None
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class QueryGenerationRunRequest(ApiModel):
+    seo_task_id: UUID
+    provider: str = Field(default="dummy", min_length=1)
+    brand_name: str = Field(min_length=1, max_length=200)
+    competitor_brands: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    region: str = Field(min_length=1, max_length=16)
+    language: str | None = None
+    market_type: str = Field(default="b2b_procurement", max_length=32)
+    topics: list[dict] = Field(default_factory=list)
+    topic_names: list[str] = Field(default_factory=list)
+    intents: list[QueryIntentRequest] = Field(default_factory=list)
+    audience: QueryAudienceRequest
+    brand_mention_rules: BrandMentionRulesRequest = Field(
+        default_factory=BrandMentionRulesRequest
+    )
+    research_context: str | None = None
+    max_queries: int = Field(default=12, ge=1, le=40)
+
+
+class QueryDraftResponse(ApiModel):
+    id: UUID
+    generation_run_id: UUID
+    project_id: UUID
+    topic_id: UUID | None
+    topic_name: str
+    query_text: str
+    keywords: list[str]
+    region: str
+    language: str
+    market_type: str
+    intent: str | None
+    is_branded: bool
+    status: str
+    selection_status: str | None
+    accepted_query_id: UUID | None
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class QueryGenerationRunResponse(ApiModel):
+    id: UUID
+    project_id: UUID
+    provider: str
+    status: str
+    request_payload: dict
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+    drafts: list[QueryDraftResponse]
+
+
+class QueryDraftSelectionRequest(ApiModel):
+    selection_status: str = Field(min_length=1, max_length=32)
+
+
+class AcceptQueryDraftRequest(ApiModel):
+    create_topic_if_missing: bool = True
+    status: str = Field(default="active", max_length=32)
 
 
 class QueryPlatformRequest(ApiModel):

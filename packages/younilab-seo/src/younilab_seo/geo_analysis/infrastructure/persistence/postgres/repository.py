@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from younilab_seo.geo_analysis.application.contracts import (
+    AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
     GeoEntityAliasCommand,
@@ -30,6 +31,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
+    QueryDraftRecord,
+    QueryDraftSelectionCommand,
+    QueryGenerationCommand,
+    QueryGenerationRunRecord,
+    QueryResearchCommand,
+    QueryResearchResultRecord,
+    QueryResearchRunRecord,
     QueryRunJobMessage,
     SaveTrackingRunResultCommand,
 )
@@ -44,6 +52,10 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoMessageDispatchLogRow,
     GeoProjectRow,
     GeoQueryPlatformRow,
+    GeoQueryDraftRow,
+    GeoQueryDraftSelectionRow,
+    GeoQueryGenerationRunRow,
+    GeoQueryResearchRunRow,
     GeoQueryRow,
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
@@ -720,6 +732,190 @@ class PostgresGeoAnalysisRepository:
                 return None
             return await _run_result_record(session, row)
 
+    async def create_query_research_run(
+        self,
+        project_id: UUID,
+        command: QueryResearchCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryResearchRunRecord | None:
+        if not await self._exists(GeoProjectRow, project_id):
+            return None
+        row = GeoQueryResearchRunRow(
+            id=uuid4(),
+            project_id=project_id,
+            provider=command.provider,
+            status=status,
+            request_payload=request_payload,
+            research_context=(result or {}).get("researchContext"),
+            searched_keywords=(result or {}).get("searchedKeywords", []),
+            source_urls=(result or {}).get("sourceUrls", []),
+            error_code="query_research_failed" if error_message else None,
+            error_message=error_message,
+            created_at=occurred_at,
+            completed_at=occurred_at,
+        )
+        async with self._session_scope() as session:
+            session.add(row)
+            return _research_run_record(row)
+
+    async def list_query_research_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryResearchRunRecord]:
+        async with self._session_scope() as session:
+            rows = (
+                await session.scalars(
+                    select(GeoQueryResearchRunRow)
+                    .where(GeoQueryResearchRunRow.project_id == project_id)
+                    .order_by(GeoQueryResearchRunRow.created_at.desc())
+                )
+            ).all()
+            return [_research_run_record(row) for row in rows]
+
+    async def get_query_research_run(
+        self,
+        run_id: UUID,
+    ) -> QueryResearchRunRecord | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryResearchRunRow, run_id)
+            return _research_run_record(row) if row is not None else None
+
+    async def create_query_generation_run(
+        self,
+        project_id: UUID,
+        command: QueryGenerationCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryGenerationRunRecord | None:
+        if not await self._exists(GeoProjectRow, project_id):
+            return None
+        run = GeoQueryGenerationRunRow(
+            id=uuid4(),
+            project_id=project_id,
+            provider=command.provider,
+            status=status,
+            request_payload=request_payload,
+            error_code="query_generation_failed" if error_message else None,
+            error_message=error_message,
+            created_at=occurred_at,
+            completed_at=occurred_at,
+        )
+        draft_rows = [
+            _draft_row(project_id, run.id, query, occurred_at)
+            for query in (result or {}).get("queries", [])
+        ]
+        async with self._session_scope() as session:
+            session.add(run)
+            session.add_all(draft_rows)
+            return _generation_run_record(run, draft_rows)
+
+    async def list_query_generation_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryGenerationRunRecord]:
+        async with self._session_scope() as session:
+            rows = (
+                await session.scalars(
+                    select(GeoQueryGenerationRunRow)
+                    .where(GeoQueryGenerationRunRow.project_id == project_id)
+                    .order_by(GeoQueryGenerationRunRow.created_at.desc())
+                )
+            ).all()
+            return [_generation_run_record(row, []) for row in rows]
+
+    async def get_query_generation_run(
+        self,
+        run_id: UUID,
+    ) -> QueryGenerationRunRecord | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryGenerationRunRow, run_id)
+            if row is None:
+                return None
+            drafts = (
+                await session.scalars(
+                    select(GeoQueryDraftRow)
+                    .where(GeoQueryDraftRow.generation_run_id == run_id)
+                    .order_by(GeoQueryDraftRow.created_at)
+                )
+            ).all()
+            return _generation_run_record(row, drafts)
+
+    async def update_query_draft_selection(
+        self,
+        draft_id: UUID,
+        command: QueryDraftSelectionCommand,
+    ) -> QueryDraftRecord | None:
+        async with self._session_scope() as session:
+            row = await session.get(GeoQueryDraftRow, draft_id)
+            if row is None:
+                return None
+            if row.accepted_query_id is not None:
+                raise ValueError("query draft already accepted")
+            row.selection_status = command.selection_status
+            row.updated_at = _now()
+            session.add(
+                GeoQueryDraftSelectionRow(
+                    id=uuid4(),
+                    draft_id=draft_id,
+                    selection_status=command.selection_status,
+                    query_id=None,
+                    created_at=row.updated_at,
+                )
+            )
+            return _draft_record(row)
+
+    async def accept_query_draft(
+        self,
+        draft_id: UUID,
+        command: AcceptQueryDraftCommand,
+    ) -> GeoQueryRecord | None:
+        async with self._session_scope() as session:
+            draft = await session.get(GeoQueryDraftRow, draft_id)
+            if draft is None:
+                return None
+            if draft.accepted_query_id is not None:
+                raise ValueError("query draft already accepted")
+            topic_id = await _resolve_draft_topic(session, draft, command)
+            now = _now()
+            query = GeoQueryRow(
+                id=uuid4(),
+                project_id=draft.project_id,
+                topic_id=topic_id,
+                query_text=draft.query_text,
+                region=draft.region,
+                language=draft.language,
+                market_type=draft.market_type,
+                intent=draft.intent,
+                buyer_stage=None,
+                is_branded=draft.is_branded,
+                priority="normal",
+                status=command.status,
+                metadata_json=draft.metadata_json,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(query)
+            draft.selection_status = "accepted"
+            draft.accepted_query_id = query.id
+            draft.updated_at = now
+            session.add(
+                GeoQueryDraftSelectionRow(
+                    id=uuid4(),
+                    draft_id=draft.id,
+                    selection_status="accepted",
+                    query_id=query.id,
+                    created_at=now,
+                )
+            )
+            return _query_record(query)
+
     async def _exists(self, model, item_id: UUID) -> bool:
         async with self._session_scope() as session:
             return await session.get(model, item_id) is not None
@@ -841,6 +1037,131 @@ def _query_record(row: GeoQueryRow) -> GeoQueryRecord:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _research_run_record(row: GeoQueryResearchRunRow) -> QueryResearchRunRecord:
+    return QueryResearchRunRecord(
+        id=row.id,
+        project_id=row.project_id,
+        provider=row.provider,
+        status=row.status,
+        request_payload=row.request_payload,
+        result=(
+            QueryResearchResultRecord(
+                research_context=row.research_context or "",
+                searched_keywords=row.searched_keywords,
+                source_urls=row.source_urls,
+            )
+            if row.research_context is not None
+            else None
+        ),
+        error_code=row.error_code,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        completed_at=row.completed_at,
+    )
+
+
+def _generation_run_record(
+    row: GeoQueryGenerationRunRow,
+    drafts: list[GeoQueryDraftRow],
+) -> QueryGenerationRunRecord:
+    return QueryGenerationRunRecord(
+        id=row.id,
+        project_id=row.project_id,
+        provider=row.provider,
+        status=row.status,
+        request_payload=row.request_payload,
+        error_code=row.error_code,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        completed_at=row.completed_at,
+        drafts=[_draft_record(draft) for draft in drafts],
+    )
+
+
+def _draft_row(
+    project_id: UUID,
+    run_id: UUID,
+    query: dict,
+    occurred_at: datetime,
+) -> GeoQueryDraftRow:
+    attributes = query.get("attributes") or {}
+    intent = attributes.get("intent") or {}
+    return GeoQueryDraftRow(
+        id=uuid4(),
+        generation_run_id=run_id,
+        project_id=project_id,
+        topic_id=query.get("topicId"),
+        topic_name=query.get("topicName") or attributes.get("topicName") or "",
+        query_text=query.get("queryText") or query.get("text") or query.get("query") or "",
+        keywords=query.get("keywords", []),
+        region=query.get("region", "TW"),
+        language=query.get("language", "zh-TW"),
+        market_type=query.get("marketType", "b2b_procurement"),
+        intent=intent.get("category"),
+        is_branded=query.get("isBranded", False),
+        status="draft",
+        metadata_json=query.get("metadata", {}),
+        created_at=occurred_at,
+        updated_at=occurred_at,
+    )
+
+
+def _draft_record(row: GeoQueryDraftRow) -> QueryDraftRecord:
+    return QueryDraftRecord(
+        id=row.id,
+        generation_run_id=row.generation_run_id,
+        project_id=row.project_id,
+        topic_id=row.topic_id,
+        topic_name=row.topic_name,
+        query_text=row.query_text,
+        keywords=row.keywords,
+        region=row.region,
+        language=row.language,
+        market_type=row.market_type,
+        intent=row.intent,
+        is_branded=row.is_branded,
+        status=row.status,
+        selection_status=row.selection_status,
+        accepted_query_id=row.accepted_query_id,
+        metadata=row.metadata_json,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+async def _resolve_draft_topic(
+    session: AsyncSession,
+    draft: GeoQueryDraftRow,
+    command: AcceptQueryDraftCommand,
+) -> UUID | None:
+    if draft.topic_id is not None:
+        return draft.topic_id
+    if not draft.topic_name:
+        return None
+    topic = await session.scalar(
+        select(GeoTopicRow).where(
+            GeoTopicRow.project_id == draft.project_id,
+            GeoTopicRow.name == draft.topic_name,
+        )
+    )
+    if topic is not None:
+        return topic.id
+    if not command.create_topic_if_missing:
+        return None
+    now = _now()
+    topic = GeoTopicRow(
+        id=uuid4(),
+        project_id=draft.project_id,
+        name=draft.topic_name,
+        description="",
+        status="active",
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(topic)
+    return topic.id
 
 
 def _query_platform_record(row: GeoQueryPlatformRow) -> GeoQueryPlatformRecord:

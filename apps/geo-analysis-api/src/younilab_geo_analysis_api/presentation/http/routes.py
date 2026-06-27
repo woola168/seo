@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from younilab_geo_analysis_api.presentation.http.dtos import (
     AliasRequest,
     AliasResponse,
+    AcceptQueryDraftRequest,
     CreateJobRequest,
     EntityRequest,
     EntityResponse,
@@ -18,7 +19,13 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     ProjectResponse,
     QueryPlatformRequest,
     QueryPlatformResponse,
+    QueryDraftSelectionRequest,
+    QueryDraftResponse,
+    QueryGenerationRunRequest,
+    QueryGenerationRunResponse,
     QueryRequest,
+    QueryResearchRunRequest,
+    QueryResearchRunResponse,
     QueryResponse,
     RunResultResponse,
     ScheduleRequest,
@@ -27,6 +34,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     TopicResponse,
 )
 from younilab_seo.geo_analysis.application import (
+    AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
     DispatchQueryRunJob,
     DispatchQueryRunJobError,
@@ -39,6 +47,10 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
     GeoTopicCommand,
+    ManageQueryPlanning,
+    QueryDraftSelectionCommand,
+    QueryGenerationCommand,
+    QueryResearchCommand,
     ManageGeoSetup,
     ManageQueryRunJobs,
     ReceiveExternalRunCallback,
@@ -54,6 +66,10 @@ def _setup(request: Request) -> ManageGeoSetup:
 
 def _jobs(request: Request) -> ManageQueryRunJobs:
     return request.app.state.manage_query_run_jobs
+
+
+def _planning(request: Request) -> ManageQueryPlanning:
+    return request.app.state.manage_query_planning
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -75,6 +91,10 @@ def _job_data(job: GeoQueryRunJob) -> dict:
 
 
 def _run_result_data(record) -> dict:
+    return record.model_dump()
+
+
+def _planning_data(record) -> dict:
     return record.model_dump()
 
 
@@ -363,6 +383,127 @@ async def update_query(
 async def delete_query(request: Request, query_id: UUID) -> None:
     if not await _setup(request).delete_query(query_id):
         raise HTTPException(status_code=404, detail="query not found")
+
+
+@router.post(
+    "/projects/{project_id}/query-research-runs",
+    response_model=QueryResearchRunResponse,
+    status_code=201,
+)
+async def run_query_research(
+    request: Request,
+    project_id: UUID,
+    payload: QueryResearchRunRequest,
+) -> QueryResearchRunResponse:
+    run = await _planning(request).run_query_research(
+        project_id,
+        QueryResearchCommand(**payload.model_dump()),
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return QueryResearchRunResponse(**_planning_data(run))
+
+
+@router.get("/projects/{project_id}/query-research-runs", response_model=PageResponse)
+async def list_query_research_runs(request: Request, project_id: UUID) -> PageResponse:
+    items = await _planning(request).list_query_research_runs(project_id)
+    return PageResponse(
+        items=[QueryResearchRunResponse(**_planning_data(item)) for item in items],
+        total=len(items),
+    )
+
+
+@router.get(
+    "/query-research-runs/{run_id}",
+    response_model=QueryResearchRunResponse,
+)
+async def get_query_research_run(
+    request: Request,
+    run_id: UUID,
+) -> QueryResearchRunResponse:
+    run = await _planning(request).get_query_research_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="query research run not found")
+    return QueryResearchRunResponse(**_planning_data(run))
+
+
+@router.post(
+    "/projects/{project_id}/query-generation-runs",
+    response_model=QueryGenerationRunResponse,
+    status_code=201,
+)
+async def run_query_generation(
+    request: Request,
+    project_id: UUID,
+    payload: QueryGenerationRunRequest,
+) -> QueryGenerationRunResponse:
+    run = await _planning(request).run_query_generation(
+        project_id,
+        QueryGenerationCommand(**payload.model_dump()),
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return QueryGenerationRunResponse(**_planning_data(run))
+
+
+@router.get("/projects/{project_id}/query-generation-runs", response_model=PageResponse)
+async def list_query_generation_runs(request: Request, project_id: UUID) -> PageResponse:
+    items = await _planning(request).list_query_generation_runs(project_id)
+    return PageResponse(
+        items=[QueryGenerationRunResponse(**_planning_data(item)) for item in items],
+        total=len(items),
+    )
+
+
+@router.get(
+    "/query-generation-runs/{run_id}",
+    response_model=QueryGenerationRunResponse,
+)
+async def get_query_generation_run(
+    request: Request,
+    run_id: UUID,
+) -> QueryGenerationRunResponse:
+    run = await _planning(request).get_query_generation_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="query generation run not found")
+    return QueryGenerationRunResponse(**_planning_data(run))
+
+
+@router.patch("/query-drafts/{draft_id}/selection", response_model=QueryDraftResponse)
+async def update_query_draft_selection(
+    request: Request,
+    draft_id: UUID,
+    payload: QueryDraftSelectionRequest,
+) -> QueryDraftResponse:
+    try:
+        draft = await _planning(request).update_query_draft_selection(
+            draft_id,
+            QueryDraftSelectionCommand(**payload.model_dump()),
+        )
+    except ValueError as exc:
+        status_code = 409 if str(exc) == "query draft already accepted" else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from None
+    if draft is None:
+        raise HTTPException(status_code=404, detail="query draft not found")
+    return QueryDraftResponse(**_planning_data(draft))
+
+
+@router.post("/query-drafts/{draft_id}/accept", response_model=QueryResponse)
+async def accept_query_draft(
+    request: Request,
+    draft_id: UUID,
+    payload: AcceptQueryDraftRequest,
+) -> QueryResponse:
+    try:
+        query = await _planning(request).accept_query_draft(
+            draft_id,
+            AcceptQueryDraftCommand(**payload.model_dump()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if query is None:
+        raise HTTPException(status_code=404, detail="query draft not found")
+    return QueryResponse(**_planning_data(query))
 
 
 @router.get("/queries/{query_id}/platforms", response_model=PageResponse)

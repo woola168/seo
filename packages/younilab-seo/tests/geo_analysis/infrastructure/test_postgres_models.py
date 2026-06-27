@@ -1,12 +1,28 @@
+import os
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 from younilab_seo.geo_analysis.application import (
+    AcceptQueryDraftCommand,
     GeoAnalysisRepository,
+    GeoProjectCommand,
+    QueryAudience,
+    QueryDraftSelectionCommand,
+    QueryGenerationCommand,
+    QueryResearchCommand,
     GeoQueryRunJobRepository,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     GeoMessageDispatchLogRow,
     GeoProjectRow,
+    GeoQueryDraftRow,
+    GeoQueryDraftSelectionRow,
+    GeoQueryGenerationRunRow,
+    GeoQueryResearchRunRow,
     GeoQueryRunJobRow,
     GeoRunRequestRow,
     GeoRunResultReferenceRow,
@@ -37,12 +53,20 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
         GeoProjectRow.__tablename__,
         GeoQueryRunJobRow.__tablename__,
         GeoMessageDispatchLogRow.__tablename__,
+        GeoQueryResearchRunRow.__tablename__,
+        GeoQueryGenerationRunRow.__tablename__,
+        GeoQueryDraftRow.__tablename__,
+        GeoQueryDraftSelectionRow.__tablename__,
         GeoRunRequestRow.__tablename__,
         GeoRunResultRow.__tablename__,
         GeoRunResultReferenceRow.__tablename__,
     }
 
     assert "geo_run_request" in defined_tables
+    assert "geo_query_research_run" in defined_tables
+    assert "geo_query_generation_run" in defined_tables
+    assert "geo_query_draft" in defined_tables
+    assert "geo_query_draft_selection" in defined_tables
     assert "geo_run_result" in defined_tables
     assert "geo_run_result_reference" in defined_tables
     assert "geo_response_mention" not in defined_tables
@@ -61,19 +85,131 @@ def test_postgres_repository_implements_job_repository_port() -> None:
 
 
 def test_local_schema_file_contains_geo_orchestration_tables() -> None:
-    schema_path = (
-        Path(__file__).parents[5]
-        / "deploy"
-        / "local"
-        / "postgresql"
-        / "004_geo_analysis_schema.sql"
-    )
+    postgres_dir = Path(__file__).parents[5] / "deploy" / "local" / "postgresql"
+    schema_path = postgres_dir / "004_geo_analysis_schema.sql"
+    patch_path = postgres_dir / "005_geo_analysis_query_planning_patch.sql"
     schema = schema_path.read_text(encoding="utf-8")
+    patch = patch_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
+    assert "customer_id uuid," in schema
+    assert "customer_id uuid NOT NULL" not in schema
+    assert GeoProjectRow.__table__.columns["customer_id"].nullable is True
+    assert not GeoProjectRow.__table__.columns["customer_id"].foreign_keys
+    assert not GeoProjectRow.__table__.columns["seo_task_id"].foreign_keys
+    assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_query_draft" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_query_run_job" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
+    assert "ALTER COLUMN customer_id DROP NOT NULL" in patch
+    assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in patch
+    assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in patch
+    assert "CREATE TABLE IF NOT EXISTS geo_query_draft" in patch
+    assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in patch
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_postgres_repository_query_planning_crud_with_real_database() -> None:
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    try:
+        project = await repository.create_project(
+            GeoProjectCommand(name=f"Query Planning {uuid4()}")
+        )
+        research_run = await repository.create_query_research_run(
+            project.id,
+            QueryResearchCommand(
+                provider="gemini",
+                brand_name="Acme",
+                keywords=["erp"],
+                region="TW",
+                language="zh-TW",
+                market_type="b2b_procurement",
+            ),
+            {"provider": "gemini"},
+            {
+                "researchContext": "研究摘要",
+                "searchedKeywords": ["erp"],
+                "sourceUrls": ["https://example.com/source"],
+            },
+            "completed",
+            None,
+            now,
+        )
+        generation_run = await repository.create_query_generation_run(
+            project.id,
+            QueryGenerationCommand(
+                seo_task_id=uuid4(),
+                provider="gemini",
+                brand_name="Acme",
+                keywords=["erp"],
+                region="TW",
+                language="zh-TW",
+                market_type="b2b_procurement",
+                topic_names=["ERP 導入"],
+                audience=QueryAudience(name="採購", description="B2B 採購人員"),
+            ),
+            {"provider": "gemini"},
+            {
+                "queries": [
+                    {
+                        "queryText": "Acme ERP 適合哪些採購情境?",
+                        "keywords": ["erp"],
+                        "region": "TW",
+                        "language": "zh-TW",
+                        "marketType": "b2b_procurement",
+                        "isBranded": True,
+                        "attributes": {"topicName": "ERP 導入"},
+                    }
+                ]
+            },
+            "completed",
+            None,
+            now,
+        )
+
+        assert research_run is not None
+        assert research_run.result is not None
+        assert research_run.result.research_context == "研究摘要"
+        assert generation_run is not None
+        assert len(generation_run.drafts) == 1
+
+        draft_id = generation_run.drafts[0].id
+        accepted_query = await repository.accept_query_draft(
+            draft_id,
+            AcceptQueryDraftCommand(create_topic_if_missing=True),
+        )
+
+        assert accepted_query is not None
+        with pytest.raises(ValueError, match="query draft already accepted"):
+            await repository.update_query_draft_selection(
+                draft_id,
+                QueryDraftSelectionCommand(selection_status="rejected"),
+            )
+    finally:
+        await engine.dispose()
