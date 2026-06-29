@@ -273,7 +273,8 @@ function shortId(value: string | null | undefined): string {
   return value.length > 12 ? `${value.slice(0, 8)}...` : value;
 }
 
-function customerName(customerId: string): string {
+function customerName(customerId: string | null): string {
+  if (!customerId) return "未綁定 Customer";
   return (
     customers.value.find((customer) => customer.id === customerId)?.name ??
     `Customer ${shortId(customerId)}`

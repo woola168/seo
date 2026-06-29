@@ -680,6 +680,7 @@ class PostgresGeoAnalysisRepository:
                     occurred_at=occurred_at,
                 )
                 session.add(result_row)
+                await session.flush()
                 for position, reference in enumerate(
                     _result_references(result),
                     start=1,
@@ -807,12 +808,19 @@ class PostgresGeoAnalysisRepository:
             created_at=occurred_at,
             completed_at=occurred_at,
         )
-        draft_rows = [
-            _draft_row(project_id, run.id, query, occurred_at)
-            for query in (result or {}).get("queries", [])
-        ]
         async with self._session_scope() as session:
             session.add(run)
+            await session.flush()
+            draft_rows = [
+                _draft_row(
+                    project_id,
+                    run.id,
+                    query,
+                    occurred_at,
+                    await _existing_topic_id(session, query.get("topicId")),
+                )
+                for query in (result or {}).get("queries", [])
+            ]
             session.add_all(draft_rows)
             return _generation_run_record(run, draft_rows)
 
@@ -902,6 +910,7 @@ class PostgresGeoAnalysisRepository:
                 updated_at=now,
             )
             session.add(query)
+            await session.flush()
             draft.selection_status = "accepted"
             draft.accepted_query_id = query.id
             draft.updated_at = now
@@ -1085,6 +1094,7 @@ def _draft_row(
     run_id: UUID,
     query: dict,
     occurred_at: datetime,
+    topic_id: UUID | None,
 ) -> GeoQueryDraftRow:
     attributes = query.get("attributes") or {}
     intent = attributes.get("intent") or {}
@@ -1092,7 +1102,7 @@ def _draft_row(
         id=uuid4(),
         generation_run_id=run_id,
         project_id=project_id,
-        topic_id=query.get("topicId"),
+        topic_id=topic_id,
         topic_name=query.get("topicName") or attributes.get("topicName") or "",
         query_text=query.get("queryText") or query.get("text") or query.get("query") or "",
         keywords=query.get("keywords", []),
@@ -1106,6 +1116,19 @@ def _draft_row(
         created_at=occurred_at,
         updated_at=occurred_at,
     )
+
+
+async def _existing_topic_id(
+    session: AsyncSession,
+    value: object,
+) -> UUID | None:
+    if value is None:
+        return None
+    try:
+        topic_id = value if isinstance(value, UUID) else UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+    return topic_id if await session.get(GeoTopicRow, topic_id) is not None else None
 
 
 def _draft_record(row: GeoQueryDraftRow) -> QueryDraftRecord:
@@ -1161,6 +1184,7 @@ async def _resolve_draft_topic(
         updated_at=now,
     )
     session.add(topic)
+    await session.flush()
     return topic.id
 
 

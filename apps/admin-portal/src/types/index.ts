@@ -8,6 +8,7 @@ export type PageId =
   | "geo-analysis-schedules"
   | "geo-analysis-jobs"
   | "geo-analysis-reports"
+  | "geo-analysis-flow-check"
   | "geo-analysis-query-research"
   | "geo-tracking";
 
@@ -328,7 +329,7 @@ export interface GeoRunRequestResult {
 
 export interface GeoProject {
   id: string;
-  customerId: string;
+  customerId: string | null;
   customerName: string;
   seoTaskId: string | null;
   seoTaskName: string | null;
@@ -510,7 +511,7 @@ export interface GeoRecommendation {
 
 export interface GeoProjectResource {
   id: string;
-  customerId: string;
+  customerId: string | null;
   seoTaskId: string | null;
   name: string;
   defaultRegion: string;
@@ -522,7 +523,7 @@ export interface GeoProjectResource {
 }
 
 export interface GeoProjectRequest {
-  customerId: string;
+  customerId: string | null;
   seoTaskId: string | null;
   name: string;
   defaultRegion: string;
@@ -633,4 +634,110 @@ export interface GeoJobRequest {
   scheduledFor: string | null;
   priority: GeoJob["priority"];
   jobType: GeoJob["jobType"];
+}
+
+export interface GeoQueryAudienceRequest {
+  name: string;
+  description: string;
+}
+
+export interface GeoQueryIntentRequest {
+  category: string;
+  description: string;
+}
+
+export interface GeoBrandMentionRulesRequest {
+  shouldMentionOwnBrand: boolean;
+  shouldMentionCompetitor: boolean;
+}
+
+export interface GeoQueryResearchRunRequest {
+  provider: GeoQueryProvider;
+  brandName: string;
+  competitorBrands: string[];
+  keywords: string[];
+  region: GeoRegion;
+  language: string | null;
+  marketType: GeoMarketType;
+  audience: GeoQueryAudienceRequest | null;
+}
+
+export interface GeoQueryResearchResultResource {
+  researchContext: string;
+  searchedKeywords: string[];
+  sourceUrls: string[];
+}
+
+export interface GeoQueryResearchRunResource {
+  id: string;
+  projectId: string;
+  provider: GeoQueryProvider;
+  status: "completed" | "failed";
+  requestPayload: Record<string, unknown>;
+  result: GeoQueryResearchResultResource | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface GeoQueryGenerationRunRequest {
+  seoTaskId: string;
+  provider: GeoQueryProvider;
+  brandName: string;
+  competitorBrands: string[];
+  keywords: string[];
+  region: GeoRegion;
+  language: string | null;
+  marketType: GeoMarketType;
+  topics: GeoTopicInput[];
+  topicNames: string[];
+  intents: GeoQueryIntentRequest[];
+  audience: GeoQueryAudienceRequest;
+  brandMentionRules: GeoBrandMentionRulesRequest;
+  researchContext: string | null;
+  maxQueries: number;
+}
+
+export interface GeoQueryDraftResource {
+  id: string;
+  generationRunId: string;
+  projectId: string;
+  topicId: string | null;
+  topicName: string;
+  queryText: string;
+  keywords: string[];
+  region: GeoRegion;
+  language: string;
+  marketType: GeoMarketType;
+  intent: string | null;
+  isBranded: boolean;
+  status: "draft";
+  selectionStatus: "shortlisted" | "rejected" | "accepted" | null;
+  acceptedQueryId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoQueryGenerationRunResource {
+  id: string;
+  projectId: string;
+  provider: GeoQueryProvider;
+  status: "completed" | "failed";
+  requestPayload: Record<string, unknown>;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  drafts: GeoQueryDraftResource[];
+}
+
+export interface GeoQueryDraftSelectionRequest {
+  selectionStatus: "shortlisted" | "rejected";
+}
+
+export interface GeoAcceptQueryDraftRequest {
+  createTopicIfMissing: boolean;
+  status: GeoQuery["status"];
 }

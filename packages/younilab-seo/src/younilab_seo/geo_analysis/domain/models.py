@@ -96,7 +96,11 @@ class GeoQueryRunJob:
         now: datetime,
     ) -> None:
         next_status = _external_status_to_job_status(external_status)
-        if self.status not in {JobStatus.PUBLISHED, JobStatus.RUNNING_EXTERNAL}:
+        if self.status not in {
+            JobStatus.PUBLISHING,
+            JobStatus.PUBLISHED,
+            JobStatus.RUNNING_EXTERNAL,
+        }:
             raise QueryRunJobStatusError(
                 f"cannot apply external status from {self.status}"
             )

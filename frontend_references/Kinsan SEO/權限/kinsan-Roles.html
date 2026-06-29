@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KINSAN SEO — 權限管理 / 角色管理</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Youni Lab Design Tokens v2.3 ── */
+:root{
+  --primary:#0A2B41; --primary-hover:#2E4A5E; --primary-light:#E7EAEC;
+  --info:#1677FF; --info-light:#E6F4FF; --info-text:#0958D9; --info-border:#91CAFF;
+  --success-light:#F6FFED; --success-text:#389E0D; --success-border:#B7EB8F;
+  --warning-light:#FFFCF0; --warning-text:#AD6800; --warning-border:#FFC861;
+  --error:#F5222D; --error-light:#FFF1F0; --error-text:#CF1322; --error-border:#FFA39E;
+  --fg:#1F1F1F; --fg-2:#595959; --fg-3:#8C8C8C; --fg-4:#BFBFBF;
+  --bg-page:#F5F5F5; --bg:#FFFFFF; --bg-2:#FAFAFA;
+  --border:#D9D9D9; --border-subtle:#F0F0F0;
+  --font:'Inter','Noto Sans TC',-apple-system,sans-serif;
+  --mono:'IBM Plex Mono','Menlo',monospace;
+  --kinsan-gold:#8B6500;
+  /* Chart colours — Youni Lab spec */
+  --viz-main:#1677FF;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:var(--font);background:var(--bg-page);color:var(--fg);-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+button,input{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef} = React;
+
+/* ══════════════════════════════════════════════════════════
+   ICON SYSTEM
+   Source: younilab-設計規範 官方 FI_PATHS
+   Additions (Feather Icons v4.29, same spec):
+     monitor, zap, box, trending-up
+══════════════════════════════════════════════════════════ */
+const FI_PATHS = {
+  /* ── official set ── */
+  "grid":          "<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
+  "user":          "<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
+  "users":         "<path d='M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 00-3-3.87'/><path d='M16 3.13a4 4 0 010 7.75'/>",
+  "shield":        "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/>",
+  "bell":          "<path d='M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.73 21a2 2 0 01-3.46 0'/>",
+  "settings":      "<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'/>",
+  "sidebar":       "<rect x='3' y='3' width='18' height='18' rx='2' ry='2'/><line x1='9' y1='3' x2='9' y2='21'/>",
+  "search":        "<circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>",
+  "chevron-down":  "<polyline points='6 9 12 15 18 9'/>",
+  "chevron-right": "<polyline points='9 18 15 12 9 6'/>",
+  "chevron-up":    "<polyline points='18 15 12 9 6 15'/>",
+  "plus":          "<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>",
+  "x":             "<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>",
+  "list":          "<line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/>",
+  "bar-chart-2":   "<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>",
+  "calendar":      "<rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/>",
+  "refresh-cw":    "<polyline points='23 4 23 10 17 10'/><polyline points='1 20 1 14 7 14'/><path d='M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15'/>",
+  "info":          "<circle cx='12' cy='12' r='10'/><line x1='12' y1='16' x2='12' y2='12'/><line x1='12' y1='8' x2='12.01' y2='8'/>",
+  "log-out":       "<path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/>",
+  "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
+  "menu":          "<line x1='3' y1='12' x2='21' y2='12'/><line x1='3' y1='6' x2='21' y2='6'/><line x1='3' y1='18' x2='21' y2='18'/>",
+  "check-circle":  "<path d='M22 11.08V12a10 10 0 11-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/>",
+  "alert-circle":  "<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/>",
+  "slash":         "<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>",
+  "eye":           "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
+  "edit-2":        "<path d='M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z'/>",
+  "trash-2":       "<polyline points='3 6 5 6 21 6'/><path d='M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2'/><line x1='10' y1='11' x2='10' y2='17'/><line x1='14' y1='11' x2='14' y2='17'/>",
+  "filter":        "<polygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/>",
+  "briefcase":     "<rect x='2' y='7' width='20' height='14' rx='2' ry='2'/><path d='M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16'/>",
+  "star":          "<polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/>",
+  "check":         "<polyline points='20 6 9 17 4 12'/>",
+  /* ── Feather extensions (per spec 新增規範: feathericons.com source, same SVG rules) ── */
+  "monitor":       "<rect x='2' y='3' width='20' height='14' rx='2' ry='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>",
+  "zap":           "<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>",
+  "box":           "<path d='M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z'/><polyline points='3.27 6.96 12 12.01 20.73 6.96'/><line x1='12' y1='22.08' x2='12' y2='12'/>",
+  "trending-up":   "<polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/><polyline points='17 6 23 6 23 12'/>",
+};
+
+/* Icon component — per spec: strokeWidth 2, round caps, currentColor */
+const FI = ({name,size=16,color="currentColor",style={}}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    style={{display:"block",flexShrink:0,...style}}
+    dangerouslySetInnerHTML={{__html:FI_PATHS[name]||""}}/>
+);
+
+/* ── KINSAN SEO Logo ── */
+const KinsanLogo = () => (
+  <span style={{fontSize:16,fontWeight:700,letterSpacing:"-0.01em",whiteSpace:"nowrap"}}>
+    <span style={{color:"#1F1F1F"}}>KINSAN </span>
+    <span style={{color:"var(--kinsan-gold)"}}>SEO</span>
+  </span>
+);
+
+/* ══════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════
+   NAV DATA
+   ⚠️ TODO: zap / trending-up 為 Feather v4.29 擴充
+      下次更新 younilab-設計規範.html 時，請補入 FI_PATHS
+══════════════════════════════════════════════════════════ */
+const NAV = [
+  {type:"item",    id:"dashboard",       icon:"grid",        label:"總覽"},
+  {type:"section", label:"專案管理"},
+  {type:"item",    id:"clients",         icon:"users",       label:"客戶"},
+  {type:"item",    id:"tasks",           icon:"list",        label:"任務",    badge:9, badgeColor:"#F5222D"},
+  {type:"section", label:"分析工具"},
+  {type:"item",    id:"battle-room",     icon:"bar-chart-2", label:"戰情室"},
+  {type:"group",   id:"geo",             icon:"zap",         label:"GEO 分析",  /* ⚠️ Feather 擴充 */
+    children:[
+      {id:"geo-overview",  label:"Overview"},
+      {id:"geo-projects",  label:"Projects"},
+      {id:"geo-entities",  label:"Entities"},
+      {id:"geo-topics",    label:"Topics & Queries"},
+      {id:"geo-platforms", label:"Platforms & Schedules"},
+      {id:"geo-jobs",      label:"Run Jobs"},
+      {id:"geo-reports",   label:"Reports"},
+    ]
+  },
+  {type:"item",    id:"strategy",        icon:"trending-up", label:"策略分析"}, /* ⚠️ Feather 擴充 */
+  {type:"section", label:"系統"},
+  {type:"item",    id:"notifications",   icon:"bell",        label:"通知",    badge:2,  badgeColor:"#F5222D"},
+  {type:"item",    id:"profile",         icon:"user",        label:"個人設定"},
+  {type:"group",   id:"permissions",     icon:"shield",      label:"權限管理",
+    children:[
+      {id:"permissions-staff", label:"成員管理"},
+      {id:"permissions-role",  label:"角色管理"},
+      {id:"permissions-dept",  label:"部門管理"},
+      {id:"permissions-authz", label:"授權判斷"},
+    ]
+  },
+  {type:"item",    id:"system-settings", icon:"settings",    label:"系統設定"},
+];
+
+/* Breadcrumb mapping */
+const CRUMBS = {
+  dashboard:["總覽"], clients:["專案管理","客戶"], tasks:["專案管理","任務"],
+  "battle-room":["分析工具","戰情室"],
+  "geo-overview":["分析工具","GEO 分析","Overview"],
+  "geo-projects":["分析工具","GEO 分析","Projects"],
+  "geo-entities":["分析工具","GEO 分析","Entities"],
+  "geo-topics":["分析工具","GEO 分析","Topics & Queries"],
+  "geo-platforms":["分析工具","GEO 分析","Platforms & Schedules"],
+  "geo-jobs":["分析工具","GEO 分析","Run Jobs"],
+  "geo-reports":["分析工具","GEO 分析","Reports"],
+  strategy:["分析工具","策略分析"],
+  notifications:["系統","通知"], profile:["系統","個人設定"],
+  "permissions-staff":["系統","權限管理","成員管理"],
+  "permissions-role": ["系統","權限管理","角色管理"],
+  "permissions-dept": ["系統","權限管理","部門管理"],
+  "permissions-authz":["系統","權限管理","授權判斷"],
+  permissions:["系統","權限管理"], "system-settings":["系統","系統設定"],
+};
+
+/* ══════════════════════════════════════════════════════════
+   NAV COMPONENTS — exactly per younilab-設計規範 Sidebar spec
+   Icons: 20px for nav items per Iconography spec
+   Active group: fontWeight 600, chevron #0A2B41
+   Sub-item: padding 8px 16px (wider horizontal)
+   Section header: padding-top 20px
+══════════════════════════════════════════════════════════ */
+function NavSection({label}){
+  return <div style={{fontSize:11,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase",color:"#BFBFBF",padding:"20px 16px 6px"}}>{label}</div>;
+}
+
+function NavItem({item,activeId,onSelect,collapsed,expanded,onToggle,sub=false}){
+  const [hov,setHov] = useState(false);
+
+  /* active: direct match OR any child matches */
+  const isActive = activeId===item.id
+    || (item.children&&item.children.some(c=>c.id===activeId));
+  const isExp = expanded[item.id];
+
+  if(item.type==="section") return collapsed ? null : <NavSection label={item.label}/>;
+
+  const handleClick = () => {
+    if(item.children) onToggle(item.id);
+    else onSelect(item.id);
+  };
+
+  /* Colour + weight rules (per spec + Figma)
+     Group 有子選單時：active 只改顏色/字重，背景保持透明 */
+  const hasChildren = !!item.children;
+  const fg       = isActive ? "#0A2B41" : "#595959";
+  const iconCol  = isActive ? "#0A2B41" : "#8C8C8C";
+  const bgCol    = isActive
+    ? (hasChildren ? "transparent" : "#E7EAEC")  /* group = 無底色 */
+    : hov ? "#FAFAFA" : "transparent";
+  const fw       = isActive ? (hasChildren ? 600 : 500) : 400;
+
+  return (
+    <>
+      <div onClick={handleClick}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        title={collapsed&&!sub ? item.label : undefined}
+        style={{
+          display:"flex", alignItems:"center",
+          gap: (collapsed&&!sub) ? 0 : 8,
+          /* Sub: 8px 16px / Parent: 10px 12px */
+          padding: sub ? "8px 16px" : (collapsed ? "10px 0" : "10px 12px"),
+          margin:"1px 8px", borderRadius:8, cursor:"pointer",
+          justifyContent:(collapsed&&!sub)?"center":"flex-start",
+          background: bgCol,
+          color: fg,
+          fontWeight: fw,
+          /* Sub 13px / Parent 14px */
+          fontSize: sub ? 13 : 14,
+          transition:"all .12s",
+          position:"relative",
+        }}>
+        {/* ── Icon: 20px for nav items per spec Iconography 尺寸階 ── */}
+        {!sub && !collapsed && <FI name={item.icon} size={20} color={iconCol}/>}
+        {!sub && collapsed  && <FI name={item.icon} size={20} color={iconCol}/>}
+        {/* Sub-item: 前綴圓點 5×5 active #0A2B41 / default #BFBFBF / marginLeft 6px */}
+        {sub && (
+          <div style={{width:5,height:5,borderRadius:"50%",background:isActive?"#0A2B41":"#BFBFBF",marginLeft:6,flexShrink:0}}/>
+        )}
+        {!collapsed && <span style={{flex:1,whiteSpace:"nowrap"}}>{item.label}</span>}
+        {/* Badge */}
+        {!collapsed && !sub && item.badge && (
+          <span style={{minWidth:18,height:18,borderRadius:9,background:item.badgeColor||"#F5222D",color:"#fff",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 5px",flexShrink:0}}>
+            {item.badge}
+          </span>
+        )}
+        {/* Badge dot (collapsed) */}
+        {collapsed && !sub && item.badge && (
+          <div style={{position:"absolute",top:7,right:7,width:7,height:7,borderRadius:"50%",background:item.badgeColor||"#F5222D",border:"1.5px solid #fff"}}/>
+        )}
+        {/* Chevron — active group: #0A2B41, else #BFBFBF (per Figma) */}
+        {!collapsed && item.children && (
+          <FI name={isExp?"chevron-up":"chevron-right"} size={14}
+            color={isActive?"#0A2B41":"#BFBFBF"}/>
+        )}
+      </div>
+      {/* Children — paddingLeft:10 per spec */}
+      {item.children && isExp && !collapsed && (
+        <div style={{paddingLeft:10}}>
+          {item.children.map(c=>(
+            <NavItem key={c.id} item={{...c,type:"item",icon:""}} activeId={activeId}
+              onSelect={onSelect} collapsed={false} expanded={{}} onToggle={()=>{}} sub/>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   BASE COMPONENTS
+══════════════════════════════════════════════════════════ */
+function Avatar({initials,size=28,bg="#8B6500"}){
+  return <div style={{width:size,height:size,borderRadius:"50%",background:bg,color:"#fff",fontSize:Math.round(size*.36),fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,userSelect:"none"}}>{initials}</div>;
+}
+
+/* Button — per spec sizes & variants */
+function Btn({children,variant="primary",size="md",onClick,style={}}){
+  const [hov,setHov]=useState(false);
+  const h=size==="sm"?32:size==="lg"?44:40;
+  const px=size==="sm"?12:size==="lg"?20:16;
+  const fs=size==="sm"?12:size==="lg"?15:14;
+  const base={height:h,padding:`0 ${px}px`,borderRadius:8,fontSize:fs,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,outline:"none",transition:"all .15s",whiteSpace:"nowrap",fontFamily:"var(--font)",border:"none"};
+  const v={
+    primary:  {border:"1px solid var(--primary)",background:hov?"var(--primary-hover)":"var(--primary)",color:"#fff"},
+    secondary:{border:"1px solid var(--border)",background:hov?"var(--bg-2)":"#fff",color:"var(--fg)"},
+    ghost:    {border:"1px solid transparent",background:hov?"var(--bg-2)":"transparent",color:"var(--fg-2)"},
+  }[variant]||{};
+  return <button onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{...base,...v,...style}}>{children}</button>;
+}
+
+/* Top Header Icon Button — 18px icon, 32×32, radius 6 per spec */
+function IconBtn({name,title,badge,onClick}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative"}}>
+      <div title={title} onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:hov?"#F0F0F0":"transparent",transition:"background .12s",flexShrink:0}}>
+        {/* Top Header icons: 18px per spec */}
+        <FI name={name} size={18} color="#595959"/>
+      </div>
+      {badge&&<div style={{position:"absolute",top:5,right:6,width:8,height:8,borderRadius:"50%",background:"#F5222D",border:"1.5px solid #fff",pointerEvents:"none"}}/>}
+    </div>
+  );
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   PROJECTS DATA
+══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   ROLES DATA
+══════════════════════════════════════════════════════════ */
+const PERMISSION_OPTIONS=[
+  "專案管理",
+  "成員管理",
+  "角色管理",
+  "部門管理",
+  "系統設定",
+  "報表檢視",
+  "Run Jobs",
+  "API 存取",
+];
+
+const ROLES_DATA=[
+  {
+    id:"r1",
+    name:"管理員",
+    badgeColor:"red",
+    memberCount:1,
+    status:"啟用",
+    description:"系統最高權限，可管理所有設定、資料與帳號。負責系統維護與技術設定。",
+    permissions:["專案管理","成員管理","角色管理","部門管理","系統設定","報表檢視","Run Jobs","API 存取"],
+  },
+  {
+    id:"r2",
+    name:"開發者",
+    badgeColor:"yellow",
+    memberCount:3,
+    status:"啟用",
+    description:"技術人員角色，可接觸系統設定、API 與執行任務，但不參與成員與部門管理。",
+    permissions:["系統設定","API 存取","Run Jobs","報表檢視"],
+  },
+  {
+    id:"r3",
+    name:"部門主管",
+    badgeColor:"blue",
+    memberCount:4,
+    status:"啟用",
+    description:"管理本部門成員與專案，可檢視部門內報表與分析結果，無系統設定權限。",
+    permissions:["專案管理","成員管理","Run Jobs","報表檢視"],
+  },
+  {
+    id:"r4",
+    name:"分析師",
+    badgeColor:"purple",
+    memberCount:5,
+    status:"啟用",
+    description:"數據分析人員，可使用 GEO 分析所有功能、建立專案與執行查詢，但無系統管理權限。",
+    permissions:["專案管理","Run Jobs","報表檢視"],
+  },
+  {
+    id:"r5",
+    name:"編輯者",
+    badgeColor:"green",
+    memberCount:7,
+    status:"啟用",
+    description:"內容操作人員，可建立或編輯專案資料、執行任務，但不能進行系統管理。",
+    permissions:["專案管理","Run Jobs","報表檢視"],
+  },
+  {
+    id:"r6",
+    name:"檢視者",
+    badgeColor:"gray",
+    memberCount:12,
+    status:"停用",
+    description:"唯讀權限，僅可瀏覽報表與儀表板，無法修改或建立任何內容。",
+    permissions:["報表檢視"],
+  },
+];
+
+/* Badge 顏色定義 — 6 色 (規範 Status Color Set + Purple 擴充) */
+const BADGE_COLOR_CFG={
+  red:    {bg:"#FFF1F0",color:"#CF1322",border:"#FFA39E",label:"紅色"},
+  yellow: {bg:"#FFFCF0",color:"#AD6800",border:"#FFC861",label:"黃色"},
+  blue:   {bg:"#E6F4FF",color:"#0958D9",border:"#91CAFF",label:"藍色"},
+  purple: {bg:"#F9F0FF",color:"#722ED1",border:"#D3ADF7",label:"紫色"},  /* ⚠️ Purple 擴充 (antd 系) */
+  green:  {bg:"#F6FFED",color:"#389E0D",border:"#B7EB8F",label:"綠色"},
+  gray:   {bg:"#F5F5F5",color:"#595959",border:"#D9D9D9",label:"灰色"},
+};
+const BADGE_COLOR_OPTIONS=Object.keys(BADGE_COLOR_CFG);
+
+/* Role Badge — 角色名稱 + badgeColor 帶入顏色（pill 形狀 per spec） */
+function RoleBadge({role,badgeColor}){
+  const c=BADGE_COLOR_CFG[badgeColor]||BADGE_COLOR_CFG.gray;
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",fontSize:13,fontWeight:500,padding:"3px 12px",borderRadius:999,whiteSpace:"nowrap",lineHeight:"20px",background:c.bg,color:c.color,border:`1px solid ${c.border}`}}>
+      {role}
+    </span>
+  );
+}
+
+/* Permission Chip — 統一綠色 check + 文字 */
+function PermissionChip({label}){
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",gap:4,height:24,padding:"0 8px 0 6px",borderRadius:6,background:"#F6FFED",color:"#389E0D",border:"1px solid #B7EB8F",fontSize:12,fontWeight:500,whiteSpace:"nowrap"}}>
+      <FI name="check" size={12} color="#389E0D"/>
+      {label}
+    </span>
+  );
+}
+
+/* Status Pill — 啟用/停用 (pill radius 999 per spec) */
+const STATUS_PILL_CFG={
+  "啟用": {bg:"#F6FFED",color:"#389E0D",border:"#B7EB8F"},
+  "停用": {bg:"#FFF1F0",color:"#CF1322",border:"#FFA39E"},
+};
+function StatusPill({status}){
+  const c=STATUS_PILL_CFG[status]||STATUS_PILL_CFG["停用"];
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",fontSize:11,fontWeight:500,padding:"2px 10px",borderRadius:999,whiteSpace:"nowrap",lineHeight:"18px",background:c.bg,color:c.color,border:`1px solid ${c.border}`}}>
+      {status}
+    </span>
+  );
+}
+
+/* ── Role Card More Menu — 點 more-horizontal 開啟下拉 ──
+   啟用狀態: [停用, 刪除]
+   停用狀態: [啟用, 刪除] */
+function RoleMoreMenu({role,onToggleStatus,onDelete}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState({top:0,left:0});
+  const btnRef=useRef(null);
+  const menuRef=useRef(null);
+
+  const openMenu=(e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const r=btnRef.current.getBoundingClientRect();
+    /* 對齊按鈕右側，向下展開 */
+    setPos({top:r.bottom+4,left:r.right-140});
+    setOpen(true);
+  };
+
+  /* outside click + esc 關閉 */
+  useEffect(()=>{
+    if(!open) return;
+    const onDocClick=(e)=>{
+      if(menuRef.current&&!menuRef.current.contains(e.target)&&!btnRef.current.contains(e.target)){
+        setOpen(false);
+      }
+    };
+    const onKey=(e)=>{if(e.key==="Escape")setOpen(false);};
+    const onScroll=()=>setOpen(false);
+    document.addEventListener("mousedown",onDocClick);
+    window.addEventListener("keydown",onKey);
+    window.addEventListener("scroll",onScroll,true);
+    return()=>{
+      document.removeEventListener("mousedown",onDocClick);
+      window.removeEventListener("keydown",onKey);
+      window.removeEventListener("scroll",onScroll,true);
+    };
+  },[open]);
+
+  const isActive=role.status==="啟用";
+  const toggleLabel=isActive?"停用":"啟用";
+  const toggleIcon =isActive?"x":"check";
+
+  const handleToggle=(e)=>{
+    e.stopPropagation();
+    onToggleStatus(role.id);
+    setOpen(false);
+  };
+  const handleDelete=(e)=>{
+    e.stopPropagation();
+    onDelete(role.id);
+    setOpen(false);
+  };
+
+  return(
+    <>
+      <button ref={btnRef} type="button"
+        onClick={openMenu}
+        style={{width:24,height:24,borderRadius:"50%",background:open?"#E5E5E5":"#F0F0F0",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0,transition:"background .12s"}}
+        title="更多">
+        <FI name="more-horizontal" size={14} color="#595959"/>
+      </button>
+      {open&&ReactDOM.createPortal(
+        <div ref={menuRef}
+          style={{
+            position:"fixed",top:pos.top,left:pos.left,
+            width:140,background:"#fff",border:"1px solid #E7EAEC",borderRadius:8,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.08)",zIndex:1000,padding:4,
+          }}>
+          {/* 啟用/停用 */}
+          <div onClick={handleToggle}
+            style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#434343"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name={toggleIcon} size={13} color="#595959"/>
+            {toggleLabel}
+          </div>
+          {/* 刪除 */}
+          <div onClick={handleDelete}
+            style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#434343"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="trash-2" size={13} color="#595959"/>
+            刪除
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+/* Role Card — 對齊規範卡片列表頁 Template
+   ├ Avatar 40×40 圓 + 首字 (彩色 bg 取自 badgeColor)
+   ├ 名稱 14/600 + 描述 13/灰 (line-clamp:2)
+   └ 分隔線 + (N 位成員 | N 項權限) + Status pill */
+function RoleCard({role,onEdit,onToggleStatus,onDelete}){
+  const [hov,setHov]=useState(false);
+  const c=BADGE_COLOR_CFG[role.badgeColor]||BADGE_COLOR_CFG.gray;
+  const initial=(role.name||"?").charAt(0);  /* 角色首字 */
+  return(
+    <div
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{
+        background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px",
+        cursor:"pointer",display:"flex",flexDirection:"column",minWidth:0,
+        transition:"transform .15s, box-shadow .15s",
+        transform:hov?"translateY(-2px)":"translateY(0)",
+        boxShadow:hov?"0 4px 16px rgba(0,0,0,0.06)":"none",
+      }}>
+      {/* 卡片頂: Avatar 40×40 + Actions */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:"50%",background:c.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>
+          {initial}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <RowAction name="edit-2" label="編輯" onClick={()=>onEdit(role)}/>
+          <RoleMoreMenu role={role} onToggleStatus={onToggleStatus} onDelete={onDelete}/>
+        </div>
+      </div>
+
+      {/* 角色名稱 */}
+      <div style={{fontSize:14,fontWeight:600,color:"#1F1F1F",marginBottom:4,lineHeight:1.4}}>
+        {role.name}
+      </div>
+
+      {/* 描述 — 限制 2 行 */}
+      <div style={{fontSize:13,color:"#8C8C8C",marginBottom:14,lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",flex:1}}>
+        {role.description}
+      </div>
+
+      {/* 分隔線 + 單行底部: 成員|權限 + Status pill */}
+      <div style={{borderTop:"1px solid #F0F0F0",paddingTop:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+        {/* 左: N 位成員 | N 項權限 — 無 icon */}
+        <div style={{fontSize:13,color:"#8C8C8C",display:"inline-flex",alignItems:"center",gap:8}}>
+          <span>
+            <span style={{color:"#434343",fontWeight:500}}>{role.memberCount}</span>
+            <span style={{marginLeft:4}}>位成員</span>
+          </span>
+          <span style={{color:"#D9D9D9"}}>|</span>
+          <span>
+            <span style={{color:"#434343",fontWeight:500}}>{role.permissions.length}</span>
+            <span style={{marginLeft:4}}>項權限</span>
+          </span>
+        </div>
+        {/* 右: Status pill */}
+        <StatusPill status={role.status||"啟用"}/>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Filter Tag — pill 28px per spec ─── */
+function FilterTag({label,onRemove}){
+  return(
+    <div style={{display:"inline-flex",alignItems:"center",gap:6,height:28,padding:"0 6px 0 10px",borderRadius:14,background:"#FAFAFA",border:"1px solid #D9D9D9",fontSize:12,color:"#434343",flexShrink:0,whiteSpace:"nowrap"}}>
+      {label}
+      <span onClick={onRemove} style={{display:"flex",cursor:"pointer",padding:2,borderRadius:4,transition:"opacity .1s"}}
+        onMouseEnter={e=>e.currentTarget.style.opacity=0.6} onMouseLeave={e=>e.currentTarget.style.opacity=1}>
+        <FI name="x" size={12} color="#8C8C8C"/>
+      </span>
+    </div>
+  );
+}
+
+/* ─── Filter Panel Checkbox ─── */
+function FilterCb({checked,onChange,label}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div onClick={onChange} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",cursor:"pointer",background:hov?"#FAFAFA":"transparent",marginLeft:-4,paddingLeft:4,borderRadius:6,transition:"background .1s"}}>
+      <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${checked?"#0A2B41":"#D9D9D9"}`,background:checked?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .12s",flexShrink:0}}>
+        {checked&&<FI name="check" size={11} color="#fff"/>}
+      </div>
+      <span style={{fontSize:13,color:"#434343"}}>{label}</span>
+    </div>
+  );
+}
+
+/* ─── Multi-Select Dropdown ───
+   即點即用，無需 apply 動作
+   按鈕樣式：
+     default: 白底灰框
+     active (有選):  bg #E6F4FF / border #91CAFF / text #0958D9
+   面板：position:fixed, 含搜尋框（>=8 項才顯示）+ 全選/全不選 + checkbox list
+─────────────────────────────────────────── */
+function MultiDropdown({label,options,selected,onChange,searchable=false}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState(null);
+  const [q,setQ]=useState("");
+  const btnRef=useRef(null);
+  const isActive=selected.length>0;
+  const showSearch=searchable&&options.length>=8;
+
+  const toggle=()=>{
+    if(!open){
+      const r=btnRef.current?.getBoundingClientRect();
+      if(r) setPos({top:r.bottom+4,left:r.left});
+      setQ("");
+    }
+    setOpen(o=>!o);
+  };
+  const close=()=>setOpen(false);
+  const toggleOpt=(v)=>onChange(selected.includes(v)?selected.filter(x=>x!==v):[...selected,v]);
+  const filteredOpts=q?options.filter(o=>o.toLowerCase().includes(q.toLowerCase())):options;
+  const allSelected=options.every(o=>selected.includes(o));
+  const toggleAll=()=>onChange(allSelected?[]:[...options]);
+
+  /* close on scroll */
+  useEffect(()=>{
+    const h=()=>{if(open)close();};
+    window.addEventListener("scroll",h,true);
+    return()=>window.removeEventListener("scroll",h,true);
+  },[open]);
+
+  /* button label: "Status" / "Status · 2" */
+  const buttonLabel=isActive?`${label} · ${selected.length}`:label;
+
+  return(
+    <>
+      <button ref={btnRef} onClick={toggle}
+        style={{
+          height:40,padding:"0 12px",borderRadius:8,
+          display:"inline-flex",alignItems:"center",gap:6,
+          fontSize:14,cursor:"pointer",fontFamily:"var(--font)",flexShrink:0,
+          transition:"all .15s",whiteSpace:"nowrap",
+          background:open||isActive?"#E6F4FF":"#fff",
+          border:"1px solid "+(open||isActive?"#91CAFF":"#D9D9D9"),
+          color:open||isActive?"#0958D9":"#1F1F1F",
+          fontWeight:isActive?500:400,
+        }}>
+        {buttonLabel}
+        <FI name="chevron-down" size={12} color={open||isActive?"#0958D9":"#8C8C8C"}/>
+      </button>
+      {open&&pos&&(
+        <>
+          <div onClick={close} style={{position:"fixed",inset:0,zIndex:99}}/>
+          <div style={{
+            position:"fixed",top:pos.top,left:pos.left,
+            minWidth:220,maxWidth:300,
+            background:"#fff",border:"1px solid #E7EAEC",borderRadius:10,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.08)",
+            zIndex:100,padding:8,
+            maxHeight:"calc(100vh - 120px)",overflowY:"auto",
+          }} onClick={e=>e.stopPropagation()}>
+            {/* Search — only when ≥8 options */}
+            {showSearch&&(
+              <div style={{position:"relative",marginBottom:8}}>
+                <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                  <FI name="search" size={12} color="#BFBFBF"/>
+                </div>
+                <input value={q} onChange={e=>setQ(e.target.value)} autoFocus
+                  placeholder={`搜尋 ${label}…`}
+                  style={{width:"100%",height:32,padding:"0 10px 0 28px",fontSize:13,color:"#1F1F1F",border:"1px solid #D9D9D9",borderRadius:6,outline:"none",background:"#fff",fontFamily:"var(--font)"}}
+                  onFocus={e=>e.target.style.borderColor="#0A2B41"}
+                  onBlur={e=>e.target.style.borderColor="#D9D9D9"}/>
+              </div>
+            )}
+            {/* All toggle — only when ≥3 options & no search query */}
+            {options.length>=3&&!q&&(
+              <div onClick={toggleAll}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:6,fontSize:12,color:"#1677FF",cursor:"pointer",fontWeight:500,marginBottom:2}}
+                onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                {allSelected?"取消全選":"全選"}
+              </div>
+            )}
+            {/* Options */}
+            <div>
+              {filteredOpts.length>0
+                ? filteredOpts.map(opt=>(
+                    <div key={opt} onClick={()=>toggleOpt(opt)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#434343"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${selected.includes(opt)?"#0A2B41":"#D9D9D9"}`,background:selected.includes(opt)?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>
+                        {selected.includes(opt)&&<FI name="check" size={11} color="#fff"/>}
+                      </div>
+                      <span>{opt}</span>
+                    </div>
+                  ))
+                : <div style={{padding:"16px 8px",fontSize:12,color:"#BFBFBF",textAlign:"center"}}>找不到相符項目</div>
+              }
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/* Auto-select pattern:
+   篩選欄位數 ≤ 3 → 使用多 Dropdown（即點即用，每欄位獨立）
+   篩選欄位數 > 3 → 應改回 Filter Panel（一鍵展開整版）
+   本頁有 3 個欄位（Status / Locale / Customer），剛好用 Multi-Dropdown */
+
+/* ─── Project Drawer — per younilab Drawer spec
+   width 480px (規範 default 400 → 加寬容納 3-col grid)
+   header 20px 24px / body 20px 24px / footer 16px 24px
+   overlay rgba(0,0,0,0.4) + blur(2px)
+   slideIn 250ms ease from right
+─────────────────────────────────────────── */
+function RoleDrawer({open,onClose,onSubmit,editRole}){
+  const [vis,setVis]=useState(false);
+  const [name,setName]=useState("");
+  const [badgeColor,setBadgeColor]=useState("blue");
+  const [description,setDescription]=useState("");
+  const [permissions,setPermissions]=useState([]);
+  const [errors,setErrors]=useState({});
+
+  const isEdit=!!editRole;
+
+  /* 開啟時 — 若是 edit 模式，預填 editRole 資料 */
+  useEffect(()=>{
+    if(open){
+      if(editRole){
+        setName(editRole.name);
+        setBadgeColor(editRole.badgeColor);
+        setDescription(editRole.description);
+        setPermissions([...editRole.permissions]);
+      } else {
+        setName("");setBadgeColor("blue");setDescription("");setPermissions([]);
+      }
+      setErrors({});
+      const t=setTimeout(()=>setVis(true),10);
+      return()=>clearTimeout(t);
+    } else {
+      setVis(false);
+    }
+  },[open,editRole]);
+
+  useEffect(()=>{
+    if(!open) return;
+    const h=e=>{if(e.key==="Escape") handleClose();};
+    window.addEventListener("keydown",h);
+    return()=>window.removeEventListener("keydown",h);
+    // eslint-disable-next-line
+  },[open]);
+
+  const handleClose=()=>{
+    setVis(false);
+    setTimeout(()=>{
+      onClose();
+      setName("");setBadgeColor("blue");setDescription("");setPermissions([]);
+      setErrors({});
+    },250);
+  };
+
+  const validate=()=>{
+    const e={};
+    if(!name.trim())        e.name="請輸入角色名稱";
+    if(!description.trim()) e.description="請輸入角色描述";
+    if(permissions.length===0) e.permissions="至少選擇 1 個權限項目";
+    setErrors(e);
+    return Object.keys(e).length===0;
+  };
+
+  const handleSubmit=()=>{
+    if(!validate()) return;
+    if(isEdit){
+      /* 編輯: 維持原 id / memberCount / status，更新其他欄位 */
+      onSubmit({
+        ...editRole,
+        name:name.trim(),
+        badgeColor,
+        description:description.trim(),
+        permissions:[...permissions],
+      });
+    } else {
+      /* 新增 */
+      onSubmit({
+        id:"r"+Date.now(),
+        name:name.trim(),
+        badgeColor,
+        memberCount:0,
+        status:"啟用",
+        description:description.trim(),
+        permissions:[...permissions],
+      });
+    }
+    handleClose();
+  };
+
+  const togglePermission=(p)=>{
+    setPermissions(prev=>
+      prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]
+    );
+    setErrors({...errors,permissions:undefined});
+  };
+
+  if(!open) return null;
+
+  return(
+    <>
+      <div onClick={handleClose}
+        style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(2px)",zIndex:300,opacity:vis?1:0,transition:"opacity 250ms ease"}}/>
+      <div role="dialog" aria-modal="true"
+        style={{position:"fixed",top:0,right:0,bottom:0,width:480,maxWidth:"90vw",background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,0.1)",zIndex:301,display:"flex",flexDirection:"column",transform:vis?"translateX(0)":"translateX(100%)",transition:"transform 250ms ease"}}>
+
+        {/* Header */}
+        <div style={{padding:"20px 24px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexShrink:0}}>
+          <div style={{fontSize:16,fontWeight:600,color:"#1F1F1F"}}>{isEdit?"編輯角色":"建立角色"}</div>
+          <div onClick={handleClose}
+            style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"background .12s"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="x" size={18} color="#595959"/>
+          </div>
+        </div>
+
+        {/* Body — 一行一欄 */}
+        <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
+
+          {/* 1. 角色名稱 */}
+          <Field label="角色名稱" required error={errors.name}>
+            <input value={name}
+              onChange={e=>{setName(e.target.value);setErrors({...errors,name:undefined});}}
+              placeholder="例如：客服"
+              style={inputStyle(errors.name)}
+              onFocus={e=>!errors.name&&(e.target.style.borderColor="#0A2B41",e.target.style.boxShadow="0 0 0 3px rgba(10,43,65,0.08)")}
+              onBlur={e=>(e.target.style.borderColor=errors.name?"#F5222D":"#D9D9D9",e.target.style.boxShadow="none")}/>
+          </Field>
+
+          {/* 2. Badge 顏色 — 帶色點預覽的 Select */}
+          <Field label="Badge 顏色" required>
+            <ColorSelect value={badgeColor} onChange={setBadgeColor}/>
+          </Field>
+
+          {/* 3. 描述 */}
+          <Field label="描述" required error={errors.description}>
+            <textarea value={description}
+              onChange={e=>{setDescription(e.target.value);setErrors({...errors,description:undefined});}}
+              rows={3}
+              placeholder="說明此角色的職責與權限範圍"
+              style={{
+                width:"100%",minHeight:88,padding:"10px 12px",
+                fontSize:14,color:"#1F1F1F",
+                border:`1px solid ${errors.description?"#F5222D":"#D9D9D9"}`,
+                borderRadius:8,outline:"none",background:"#fff",
+                fontFamily:"var(--font)",lineHeight:1.5,resize:"vertical",
+                boxSizing:"border-box",
+                transition:"border-color .12s, box-shadow .12s",
+              }}
+              onFocus={e=>!errors.description&&(e.target.style.borderColor="#0A2B41",e.target.style.boxShadow="0 0 0 3px rgba(10,43,65,0.08)")}
+              onBlur={e=>(e.target.style.borderColor=errors.description?"#F5222D":"#D9D9D9",e.target.style.boxShadow="none")}/>
+          </Field>
+
+          {/* 4. 權限範圍 checkbox */}
+          <Field label="權限範圍" required error={errors.permissions} hint="至少選 1 項">
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:2}}>
+              {PERMISSION_OPTIONS.map(p=>{
+                const checked=permissions.includes(p);
+                return(
+                  <div key={p} onClick={()=>togglePermission(p)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"8px 8px",borderRadius:6,cursor:"pointer",transition:"background .1s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${checked?"#0A2B41":"#D9D9D9"}`,background:checked?"#0A2B41":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .12s"}}>
+                      {checked&&<FI name="check" size={11} color="#fff"/>}
+                    </div>
+                    <span style={{fontSize:14,color:"#1F1F1F"}}>{p}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Field>
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"16px 24px",borderTop:"1px solid #F0F0F0",display:"flex",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+          <Btn variant="secondary" onClick={handleClose}>取消</Btn>
+          <Btn variant="primary" onClick={handleSubmit}>確認</Btn>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Color Select — 含色點預覽 ── */
+function ColorSelect({value,onChange}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState(null);
+  const btnRef=useRef(null);
+  const current=BADGE_COLOR_CFG[value]||BADGE_COLOR_CFG.gray;
+
+  const toggle=()=>{
+    if(!open){
+      const r=btnRef.current?.getBoundingClientRect();
+      if(r) setPos({top:r.bottom+4,left:r.left,width:r.width});
+    }
+    setOpen(o=>!o);
+  };
+  const close=()=>setOpen(false);
+  const pick=(k)=>{onChange(k);close();};
+
+  useEffect(()=>{
+    const h=()=>{if(open)close();};
+    window.addEventListener("scroll",h,true);
+    return()=>window.removeEventListener("scroll",h,true);
+  },[open]);
+
+  /* color dot helper */
+  const Dot=({color})=>{
+    const c=BADGE_COLOR_CFG[color];
+    return <span style={{width:12,height:12,borderRadius:"50%",background:c.color,flexShrink:0}}/>;
+  };
+
+  return(
+    <>
+      <button ref={btnRef} type="button" onClick={toggle}
+        style={{
+          width:"100%",height:40,padding:"0 12px",
+          fontSize:14,color:"#1F1F1F",
+          border:"1px solid "+(open?"#0A2B41":"#D9D9D9"),
+          borderRadius:8,outline:"none",background:"#fff",
+          fontFamily:"var(--font)",cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"space-between",
+          transition:"border-color .12s",boxSizing:"border-box",
+        }}>
+        <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
+          <Dot color={value}/>
+          {current.label}
+        </span>
+        <FI name="chevron-down" size={14} color="#8C8C8C"/>
+      </button>
+      {open&&pos&&ReactDOM.createPortal(
+        <>
+          <div onClick={close} style={{position:"fixed",inset:0,zIndex:99}}/>
+          <div style={{
+            position:"fixed",top:pos.top,left:pos.left,width:pos.width,
+            background:"#fff",border:"1px solid #E7EAEC",borderRadius:8,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.08)",
+            zIndex:100,padding:4,
+          }} onClick={e=>e.stopPropagation()}>
+            {BADGE_COLOR_OPTIONS.map(k=>{
+              const c=BADGE_COLOR_CFG[k];
+              const active=k===value;
+              return(
+                <div key={k} onClick={()=>pick(k)}
+                  style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:active?"#0A2B41":"#434343",fontWeight:active?500:400,background:active?"#F0F0F0":"transparent"}}
+                  onMouseEnter={e=>!active&&(e.currentTarget.style.background="#FAFAFA")}
+                  onMouseLeave={e=>!active&&(e.currentTarget.style.background="transparent")}>
+                  <Dot color={k}/>
+                  {c.label}
+                </div>
+              );
+            })}
+          </div>
+        </>,
+        document.body
+      )}
+    </>
+  );
+}
+
+/* ── Section Header — overline 11px / 600 / uppercase 規範
+   支援自訂 style，方便調整 marginTop（分組間距） ── */
+function SectionHeader({children,style={}}){
+  return(
+    <div style={{
+      fontSize:11,fontWeight:600,
+      color:"#8C8C8C",
+      letterSpacing:"0.06em",textTransform:"uppercase",
+      marginBottom:14,
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+/* ── Section Divider — 1px / #F0F0F0 / 20px vertical margin
+   ⚠️ 目前 ProjectDrawer 用距離取代，保留元件供未來頁面用 ── */
+function SectionDivider(){
+  return <div style={{height:1,background:"#F0F0F0",margin:"20px 0"}}/>;
+}
+
+/* ── Field wrapper ── 
+   marginBottom 20px 為統一垂直節奏
+   noGap=true：grid 容器內的子 Field，外層 grid 已用 gap 控制，內部不再加 mb */
+function Field({label,required,hint,error,children,noGap}){
+  return(
+    <div style={{marginBottom:noGap?0:20}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:6}}>
+        <label style={{fontSize:13,fontWeight:500,color:"#1F1F1F"}}>
+          {label}
+          {required&&<span style={{color:"#F5222D",marginLeft:3}}>*</span>}
+        </label>
+        {hint&&<span style={{fontSize:11,color:"#BFBFBF"}}>{hint}</span>}
+      </div>
+      {children}
+      {error&&(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginTop:6,fontSize:12,color:"#CF1322"}}>
+          <FI name="alert-circle" size={12} color="#CF1322"/>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Input style helper ── */
+const inputStyle=(error)=>({
+  width:"100%",height:40,padding:"0 12px",
+  fontSize:14,color:"#1F1F1F",
+  border:`1px solid ${error?"#F5222D":"#D9D9D9"}`,
+  borderRadius:8,outline:"none",background:"#fff",
+  fontFamily:"var(--font)",
+  transition:"border-color .12s, box-shadow .12s",
+  boxSizing:"border-box",
+});
+
+/* ── Native-styled Select ── */
+function Select({value,onChange,options}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative"}}>
+      <select value={value} onChange={e=>onChange(e.target.value)}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{
+          width:"100%",height:40,padding:"0 32px 0 12px",
+          fontSize:14,color:"#1F1F1F",
+          border:`1px solid ${hov?"#C4CDD3":"#D9D9D9"}`,
+          borderRadius:8,outline:"none",background:"#fff",
+          fontFamily:"var(--font)",cursor:"pointer",
+          appearance:"none",WebkitAppearance:"none",
+          transition:"border-color .12s",
+          boxSizing:"border-box",
+        }}>
+        {options.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+      {/* Custom chevron */}
+      <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+        <FI name="chevron-down" size={14} color="#8C8C8C"/>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Row Action Button — younilab-設計規範 spec
+   24×24 圓形 / bg #F0F0F0 → hover #E5E5E5
+   icon 14px #595959 → hover #434343 / 統一灰階
+   Tooltip: bottom 32px, #1F1F1F bg, 12px, radius 6
+─────────────────────────────────────────────── */
+function RowAction({name,label,onClick}){
+  const [hov,setHov]=useState(false);
+  return(
+    <div style={{position:"relative",flexShrink:0}}>
+      {hov&&(
+        <div style={{position:"absolute",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#1F1F1F",color:"#fff",fontSize:12,padding:"5px 10px",borderRadius:6,whiteSpace:"nowrap",zIndex:60,pointerEvents:"none"}}>
+          {label}
+        </div>
+      )}
+      <div onClick={e=>{e.stopPropagation();onClick&&onClick(e);}}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:24,height:24,borderRadius:"50%",background:hov?"#E5E5E5":"#F0F0F0",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"background .12s"}}>
+        <FI name={name} size={14} color={hov?"#434343":"#595959"}/>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Project Row — sticky right action column ─── */
+/* ══════════════════════════════════════════════════════════
+   PERMISSIONS / ROLES PAGE
+══════════════════════════════════════════════════════════ */
+function PermissionsRolesPage({windowWidth}){
+  const isWide=windowWidth>=1024;
+  const pad=isWide?"24px 32px":"16px 20px";
+
+  const [roles,setRoles]=useState(ROLES_DATA);
+  const [search,setSearch]=useState("");
+
+  /* drawer: 兩種模式 — 新增 (editingRole=null) / 編輯 (editingRole=role) */
+  const [drawerOpen,setDrawerOpen]=useState(false);
+  const [editingRole,setEditingRole]=useState(null);
+
+  const openCreate=()=>{setEditingRole(null);setDrawerOpen(true);};
+  const openEdit=(role)=>{setEditingRole(role);setDrawerOpen(true);};
+  const closeDrawer=()=>{setDrawerOpen(false);setEditingRole(null);};
+
+  /* 統一處理新增 / 編輯 */
+  const handleSubmit=(role)=>{
+    setRoles(prev=>{
+      const exists=prev.some(r=>r.id===role.id);
+      if(exists){
+        /* 編輯: 替換 */
+        return prev.map(r=>r.id===role.id?role:r);
+      } else {
+        /* 新增: 加到最前 */
+        return [role,...prev];
+      }
+    });
+  };
+
+  /* MoreMenu handlers */
+  const handleToggleStatus=(id)=>{
+    setRoles(prev=>prev.map(r=>r.id===id?{...r,status:r.status==="啟用"?"停用":"啟用"}:r));
+  };
+  const handleDelete=(id)=>{
+    setRoles(prev=>prev.filter(r=>r.id!==id));
+  };
+
+  /* filter: 角色名稱 + 描述 */
+  const filtered=roles.filter(r=>{
+    const q=search.toLowerCase();
+    if(q&&!r.name.toLowerCase().includes(q)&&!r.description.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const hasFilters=!!search;
+  const clearAll=()=>setSearch("");
+
+  /* Grid cols：≥1024 3 cols / 640-1023 2 cols / <640 1 col */
+  const cardCols=
+    windowWidth>=1024?"repeat(3,minmax(0,1fr))":
+    windowWidth>=640 ?"repeat(2,minmax(0,1fr))":
+    "1fr";
+
+  return(
+    <main style={{padding:pad,background:"var(--bg-page)",minHeight:"calc(100vh - 56px)"}}>
+      <div style={{maxWidth:1200,margin:"0 auto"}}>
+
+        {/* Page Header — 副標含「共 N 個」 */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>角色管理</h1>
+            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>
+              管理系統角色與權限範圍 · 共 {roles.length} 個
+            </p>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+            <Btn variant="primary" onClick={openCreate}>
+              <FI name="plus" size={14} color="#fff"/>新增角色
+            </Btn>
+          </div>
+        </div>
+
+        {/* Toolbar — 直接放在 main，無外層 Card 包裝 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+          <div style={{position:"relative",width:220,flexShrink:0}}>
+            <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+              <FI name="search" size={14} color="#BFBFBF"/>
+            </div>
+            <input value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="搜尋角色名稱、描述…"
+              style={{width:"100%",height:40,padding:"0 12px 0 34px",fontSize:14,color:"#1F1F1F",border:"1px solid #D9D9D9",borderRadius:8,outline:"none",background:"#fff",fontFamily:"var(--font)",boxSizing:"border-box"}}
+              onFocus={e=>e.target.style.borderColor="#0A2B41"} onBlur={e=>e.target.style.borderColor="#D9D9D9"}/>
+          </div>
+          {hasFilters&&(
+            <span onClick={clearAll}
+              style={{fontSize:13,color:"#8C8C8C",cursor:"pointer",marginLeft:4,transition:"color .12s"}}
+              onMouseEnter={e=>e.currentTarget.style.color="#1F1F1F"}
+              onMouseLeave={e=>e.currentTarget.style.color="#8C8C8C"}>
+              清除全部
+            </span>
+          )}
+        </div>
+
+        {/* Cards Grid — 直接放在 main */}
+        {filtered.length>0
+          ? (
+            <div style={{display:"grid",gridTemplateColumns:cardCols,gap:16,alignItems:"stretch"}}>
+              {filtered.map(r=><RoleCard key={r.id} role={r} onEdit={openEdit} onToggleStatus={handleToggleStatus} onDelete={handleDelete}/>)}
+            </div>
+          )
+          : (
+            <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"56px 24px",textAlign:"center"}}>
+              <FI name="shield" size={32} color="#D9D9D9" style={{margin:"0 auto 12px"}}/>
+              <div style={{fontSize:14,fontWeight:600,color:"var(--fg)",marginBottom:8}}>找不到符合條件的角色</div>
+              <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>試試調整關鍵字或清除篩選條件</div>
+              <button onClick={clearAll}
+                style={{height:32,padding:"0 12px",borderRadius:8,border:"1px solid #D9D9D9",background:"#fff",color:"#595959",fontSize:13,fontFamily:"var(--font)",cursor:"pointer"}}>
+                清除所有篩選
+              </button>
+            </div>
+          )
+        }
+
+      </div>
+
+      {/* Drawer */}
+      <RoleDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        onSubmit={handleSubmit}
+        editRole={editingRole}
+      />
+    </main>
+  );
+}
+
+function PlaceholderPage({label,windowWidth}){
+  return(
+    <main style={{padding:windowWidth>=1024?"24px 32px":"16px 20px",background:"var(--bg-page)",minHeight:"calc(100vh - 56px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{maxWidth:1200,margin:"0 auto",textAlign:"center"}}>
+        <div style={{width:64,height:64,borderRadius:16,background:"#E7EAEC",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+          <FI name="grid" size={28} color="#8C8C8C"/>
+        </div>
+        <h2 style={{fontSize:18,fontWeight:600,color:"var(--fg)",margin:"0 0 8px"}}>{label}</h2>
+        <p style={{fontSize:13,color:"var(--fg-3)",margin:0}}>此頁面正在開發中</p>
+      </div>
+    </main>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════════════════ */
+function App(){
+  const [activeId,setActiveId]=useState("permissions-role");
+  /* nav group expanded state */
+  const [expanded,setExpanded]=useState({permissions:true});
+  const [collapsed,setCollapsed]=useState(false);
+  const [drawerOpen,setDrawer]=useState(false);
+  const [userMenu,setUserMenu]=useState(false);
+  const [ww,setWw]=useState(window.innerWidth);
+
+  useEffect(()=>{
+    const f=()=>{
+      const w=window.innerWidth;
+      setWw(w);
+      if(w>=1024){setCollapsed(false);setDrawer(false);}
+      else if(w>=768){setCollapsed(true);setDrawer(false);}
+      else{setDrawer(false);}
+    };
+    f();
+    window.addEventListener("resize",f);
+    return()=>window.removeEventListener("resize",f);
+  },[]);
+
+  const isMobile=ww<768;
+  const isDrawerMode=isMobile;
+  const sw=isDrawerMode?0:(collapsed?56:240);
+
+  const onSelect=id=>{setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
+  const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
+  const crumbs=CRUMBS[activeId]||[activeId];
+
+  const renderPage=()=>{
+    if(activeId==="permissions-role") return <PermissionsRolesPage windowWidth={ww}/>;
+    const label=CRUMBS[activeId]?.slice(-1)[0]||activeId;
+    return <PlaceholderPage label={label} windowWidth={ww}/>;
+  };
+
+  /* Sidebar inner */
+  const SidebarContent=()=>(
+    <>
+      {/* Logo area — 56px per spec, logo hidden when collapsed */}
+      <div style={{height:56,padding:"0 14px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        {(!collapsed||isDrawerMode)&&<KinsanLogo/>}
+        {/* Toggle — 28×28, centered when collapsed per spec */}
+        {!isDrawerMode&&(
+          <div onClick={()=>setCollapsed(c=>!c)} title={collapsed?"展開":"收合"}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginLeft:collapsed?"auto":0,marginRight:collapsed?"auto":0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            {/* sidebar icon: 18px per spec */}
+            <FI name="sidebar" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+        {isDrawerMode&&(
+          <div onClick={()=>setDrawer(false)}
+            style={{width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <FI name="x" size={18} color="#8C8C8C"/>
+          </div>
+        )}
+      </div>
+      {/* Nav — 12px top padding */}
+      <nav style={{flex:1,padding:"12px 0",overflowY:"auto",overflowX:"hidden"}}>
+        {NAV.map((item,i)=>(
+          <NavItem key={item.id||item.label||i} item={item}
+            activeId={activeId} onSelect={onSelect}
+            collapsed={collapsed&&!isDrawerMode}
+            expanded={expanded} onToggle={onToggle}/>
+        ))}
+      </nav>
+    </>
+  );
+
+  return(
+    <div>
+      {/* Drawer overlay */}
+      {isDrawerMode&&drawerOpen&&(
+        <div onClick={()=>setDrawer(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:199}}/>
+      )}
+
+      {/* Sidebar */}
+      {isDrawerMode?(
+        <aside style={{width:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:200,transform:drawerOpen?"translateX(0)":"translateX(-100%)",transition:"transform 250ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      ):(
+        <aside style={{width:collapsed?56:240,background:"#fff",borderRight:"1px solid #E7EAEC",position:"fixed",top:0,left:0,bottom:0,display:"flex",flexDirection:"column",zIndex:100,transition:"width 200ms ease",overflowY:"auto",overflowX:"hidden"}}>
+          <SidebarContent/>
+        </aside>
+      )}
+
+      {/* Main */}
+      <div style={{marginLeft:sw,transition:"margin-left 200ms ease",minHeight:"100vh"}}>
+
+        {/* Top Header — 56px sticky per spec */}
+        <header style={{height:56,background:"#fff",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",padding:"0 16px",gap:8,position:"sticky",top:0,zIndex:50}}>
+          {/* Hamburger — mobile only */}
+          {isDrawerMode&&(
+            <div onClick={()=>setDrawer(o=>!o)}
+              style={{width:32,height:32,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+              onMouseEnter={e=>e.currentTarget.style.background="#F0F0F0"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <FI name="menu" size={18} color="#595959"/>
+            </div>
+          )}
+
+          {/* Breadcrumbs — 14px per spec, separator #8C8C8C */}
+          <nav style={{flex:1,display:"flex",alignItems:"center",gap:8,fontSize:14,overflow:"hidden",minWidth:0}}>
+            {crumbs.map((c,i)=>(
+              <React.Fragment key={i}>
+                {i>0&&<span style={{color:"#8C8C8C",flexShrink:0,fontSize:14}}>/</span>}
+                <span style={{
+                  color:i===crumbs.length-1?"var(--fg)":"var(--fg-3)",
+                  fontWeight:i===crumbs.length-1?500:400,
+                  whiteSpace:"nowrap",
+                  overflow:i===crumbs.length-1?"hidden":"visible",
+                  textOverflow:"ellipsis",fontSize:14,
+                }}>{c}</span>
+              </React.Fragment>
+            ))}
+          </nav>
+
+          {/* Right: search, bell, divider, avatar — per spec order */}
+          <IconBtn name="search" title="搜尋 ⌘K"/>
+          <IconBtn name="bell"   title="通知" badge/>
+          <div style={{width:1,height:20,background:"#F0F0F0",margin:"0 2px",flexShrink:0}}/>
+
+          {/* User menu */}
+          <div onClick={()=>setUserMenu(o=>!o)}
+            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",position:"relative",flexShrink:0}}>
+            <Avatar initials="S" size={28} bg="#0A2B41"/>
+            {ww>=640&&<FI name="chevron-down" size={13} color="#8C8C8C"/>}
+            {userMenu&&(
+              <>
+                <div onClick={e=>{e.stopPropagation();setUserMenu(false);}} style={{position:"fixed",inset:0,zIndex:99}}/>
+                <div style={{position:"absolute",top:40,right:0,width:200,background:"#fff",border:"1px solid #F0F0F0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.08)",padding:6,zIndex:100}}>
+                  <div style={{padding:"8px 10px",borderBottom:"1px solid #F0F0F0",marginBottom:4}}>
+                    <div style={{fontSize:13,fontWeight:600}}>金三 顧問</div>
+                    <div style={{fontSize:11,color:"#8C8C8C"}}>kinsan@example.com</div>
+                  </div>
+                  {[["user","個人設定"],["settings","帳號設定"],["log-out","登出"]].map(([ic,lbl])=>(
+                    <div key={lbl} onClick={()=>setUserMenu(false)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#595959"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <FI name={ic} size={14} color="#8C8C8C"/>{lbl}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </header>
+
+        {renderPage()}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

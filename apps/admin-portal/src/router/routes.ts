@@ -104,6 +104,12 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       meta: { requiresAuth: true, page: "geo-analysis-reports" },
     },
     {
+      path: "/geo-analysis/flow-check",
+      name: "geo-analysis-flow-check",
+      component: () => import("../pages/GeoFlowCheckPage.vue"),
+      meta: { requiresAuth: true, page: "geo-analysis-flow-check" },
+    },
+    {
       path: "/geo-analysis/query-research",
       name: "geo-analysis-query-research",
       component: () => import("../pages/GeoTrackingPage.vue"),
@@ -164,6 +170,7 @@ export function getRoutePage(page: unknown): PageId {
   if (page === "geo-analysis-schedules") return "geo-analysis-schedules";
   if (page === "geo-analysis-jobs") return "geo-analysis-jobs";
   if (page === "geo-analysis-reports") return "geo-analysis-reports";
+  if (page === "geo-analysis-flow-check") return "geo-analysis-flow-check";
   if (page === "geo-analysis-query-research") {
     return "geo-analysis-query-research";
   }
