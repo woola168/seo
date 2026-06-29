@@ -12,3 +12,5 @@ apps/admin-portal/dist/
 __pycache__/
 *.py[cod]
 references/
+.tmp
+scripts

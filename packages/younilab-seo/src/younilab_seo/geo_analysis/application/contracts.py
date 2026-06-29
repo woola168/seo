@@ -181,7 +181,7 @@ class ExternalRunCallback(ContractModel):
 class GeoProjectCommand(ContractModel):
     """建立或更新 GEO project 的 application input。"""
 
-    customer_id: UUID
+    customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str
     default_region: str = "TW"
@@ -294,6 +294,114 @@ class GeoQueryRecord(GeoQueryCommand):
     project_id: UUID
     created_at: datetime
     updated_at: datetime
+
+
+class QueryAudience(ContractModel):
+    name: str
+    description: str
+
+
+class QueryIntent(ContractModel):
+    category: str
+    description: str
+
+
+class BrandMentionRules(ContractModel):
+    should_mention_own_brand: bool = True
+    should_mention_competitor: bool = False
+
+
+class QueryResearchCommand(ContractModel):
+    provider: str = "dummy"
+    brand_name: str
+    competitor_brands: list[str] = Field(default_factory=list, max_length=8)
+    keywords: list[str] = Field(min_length=1, max_length=10)
+    region: str
+    language: str | None = None
+    market_type: str = "b2b_procurement"
+    intents: list[QueryIntent] = Field(default_factory=list, max_length=8)
+    audience: QueryAudience | None = None
+    brand_mention_rules: BrandMentionRules = Field(default_factory=BrandMentionRules)
+
+
+class QueryResearchResultRecord(ContractModel):
+    research_context: str
+    searched_keywords: list[str] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
+
+
+class QueryResearchRunRecord(ContractModel):
+    id: UUID
+    project_id: UUID
+    provider: str
+    status: str
+    request_payload: dict = Field(default_factory=dict)
+    result: QueryResearchResultRecord | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class QueryGenerationCommand(ContractModel):
+    seo_task_id: UUID
+    provider: str = "dummy"
+    brand_name: str
+    competitor_brands: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    region: str
+    language: str | None = None
+    market_type: str = "b2b_procurement"
+    topics: list[dict] = Field(default_factory=list)
+    topic_names: list[str] = Field(default_factory=list)
+    intents: list[QueryIntent] = Field(default_factory=list)
+    audience: QueryAudience
+    brand_mention_rules: BrandMentionRules = Field(default_factory=BrandMentionRules)
+    research_context: str | None = None
+    max_queries: int = 12
+
+
+class QueryDraftRecord(ContractModel):
+    id: UUID
+    generation_run_id: UUID
+    project_id: UUID
+    topic_id: UUID | None = None
+    topic_name: str
+    query_text: str
+    keywords: list[str] = Field(default_factory=list)
+    region: str
+    language: str
+    market_type: str
+    intent: str | None = None
+    is_branded: bool
+    status: str = "draft"
+    selection_status: str | None = None
+    accepted_query_id: UUID | None = None
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class QueryGenerationRunRecord(ContractModel):
+    id: UUID
+    project_id: UUID
+    provider: str
+    status: str
+    request_payload: dict = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+    drafts: list[QueryDraftRecord] = Field(default_factory=list)
+
+
+class QueryDraftSelectionCommand(ContractModel):
+    selection_status: str
+
+
+class AcceptQueryDraftCommand(ContractModel):
+    create_topic_if_missing: bool = True
+    status: str = "active"
 
 
 class GeoQueryPlatformCommand(ContractModel):

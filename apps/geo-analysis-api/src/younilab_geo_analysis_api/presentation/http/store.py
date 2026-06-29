@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
+    AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
     GeoEntityAliasCommand,
@@ -26,6 +27,13 @@ from younilab_seo.geo_analysis.application import (
     GeoTopicCommand,
     GeoTopicRecord,
     PublishResult,
+    QueryDraftRecord,
+    QueryDraftSelectionCommand,
+    QueryGenerationCommand,
+    QueryGenerationRunRecord,
+    QueryResearchCommand,
+    QueryResearchResultRecord,
+    QueryResearchRunRecord,
     QueryRunJobMessage,
     SaveTrackingRunResultCommand,
 )
@@ -46,6 +54,13 @@ class GeoApiStore:
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
     run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
+    query_research_runs: dict[UUID, QueryResearchRunRecord] = field(
+        default_factory=dict
+    )
+    query_generation_runs: dict[UUID, QueryGenerationRunRecord] = field(
+        default_factory=dict
+    )
+    query_drafts: dict[UUID, QueryDraftRecord] = field(default_factory=dict)
     platform_codes: dict[UUID, str] = field(default_factory=dict)
     platform_models: dict[UUID, str | None] = field(default_factory=dict)
     dispatches: list[tuple[UUID, PublishResult, QueryRunJobMessage, datetime]] = field(
@@ -551,6 +566,182 @@ class GeoApiStore:
     async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
         return self.run_results.get(result_id)
 
+    async def create_query_research_run(
+        self,
+        project_id: UUID,
+        command: QueryResearchCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryResearchRunRecord | None:
+        if project_id not in self.projects:
+            return None
+        record = QueryResearchRunRecord(
+            id=uuid4(),
+            project_id=project_id,
+            provider=command.provider,
+            status=status,
+            request_payload=request_payload,
+            result=(
+                QueryResearchResultRecord(
+                    research_context=result.get("researchContext", ""),
+                    searched_keywords=result.get("searchedKeywords", []),
+                    source_urls=result.get("sourceUrls", []),
+                )
+                if result is not None
+                else None
+            ),
+            error_code="query_research_failed" if error_message else None,
+            error_message=error_message,
+            created_at=occurred_at,
+            completed_at=occurred_at,
+        )
+        self.query_research_runs[record.id] = record
+        return record
+
+    async def list_query_research_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryResearchRunRecord]:
+        return [
+            item
+            for item in self.query_research_runs.values()
+            if item.project_id == project_id
+        ]
+
+    async def get_query_research_run(
+        self,
+        run_id: UUID,
+    ) -> QueryResearchRunRecord | None:
+        return self.query_research_runs.get(run_id)
+
+    async def create_query_generation_run(
+        self,
+        project_id: UUID,
+        command: QueryGenerationCommand,
+        request_payload: dict,
+        result: dict | None,
+        status: str,
+        error_message: str | None,
+        occurred_at: datetime,
+    ) -> QueryGenerationRunRecord | None:
+        if project_id not in self.projects:
+            return None
+        run_id = uuid4()
+        drafts = [
+            self._draft_record(project_id, run_id, query, occurred_at)
+            for query in (result or {}).get("queries", [])
+        ]
+        record = QueryGenerationRunRecord(
+            id=run_id,
+            project_id=project_id,
+            provider=command.provider,
+            status=status,
+            request_payload=request_payload,
+            error_code="query_generation_failed" if error_message else None,
+            error_message=error_message,
+            created_at=occurred_at,
+            completed_at=occurred_at,
+            drafts=drafts,
+        )
+        self.query_generation_runs[record.id] = record
+        self.query_drafts.update({draft.id: draft for draft in drafts})
+        return record
+
+    async def list_query_generation_runs(
+        self,
+        project_id: UUID,
+    ) -> list[QueryGenerationRunRecord]:
+        return [
+            item
+            for item in self.query_generation_runs.values()
+            if item.project_id == project_id
+        ]
+
+    async def get_query_generation_run(
+        self,
+        run_id: UUID,
+    ) -> QueryGenerationRunRecord | None:
+        record = self.query_generation_runs.get(run_id)
+        if record is None:
+            return None
+        drafts = [
+            item for item in self.query_drafts.values() if item.generation_run_id == run_id
+        ]
+        return record.model_copy(update={"drafts": drafts})
+
+    async def update_query_draft_selection(
+        self,
+        draft_id: UUID,
+        command: QueryDraftSelectionCommand,
+    ) -> QueryDraftRecord | None:
+        draft = self.query_drafts.get(draft_id)
+        if draft is None:
+            return None
+        if draft.accepted_query_id is not None:
+            raise ValueError("query draft already accepted")
+        updated = draft.model_copy(
+            update={
+                "selection_status": command.selection_status,
+                "updated_at": _now(),
+            }
+        )
+        self.query_drafts[draft_id] = updated
+        return updated
+
+    async def accept_query_draft(
+        self,
+        draft_id: UUID,
+        command: AcceptQueryDraftCommand,
+    ) -> GeoQueryRecord | None:
+        draft = self.query_drafts.get(draft_id)
+        if draft is None:
+            return None
+        if draft.accepted_query_id is not None:
+            raise ValueError("query draft already accepted")
+        topic_id = draft.topic_id
+        if topic_id is None and draft.topic_name:
+            topic = next(
+                (
+                    item
+                    for item in self.topics.values()
+                    if item.project_id == draft.project_id and item.name == draft.topic_name
+                ),
+                None,
+            )
+            if topic is None and command.create_topic_if_missing:
+                topic = await self.create_topic(
+                    draft.project_id,
+                    GeoTopicCommand(name=draft.topic_name),
+                )
+            topic_id = topic.id if topic is not None else None
+        query = await self.create_query(
+            draft.project_id,
+            GeoQueryCommand(
+                topic_id=topic_id,
+                query_text=draft.query_text,
+                region=draft.region,
+                language=draft.language,
+                market_type=draft.market_type,
+                intent=draft.intent,
+                is_branded=draft.is_branded,
+                status=command.status,
+                metadata=draft.metadata,
+            ),
+        )
+        if query is None:
+            return None
+        self.query_drafts[draft_id] = draft.model_copy(
+            update={
+                "selection_status": "accepted",
+                "accepted_query_id": query.id,
+                "updated_at": _now(),
+            }
+        )
+        return query
+
     def job_dict(self, job: GeoQueryRunJob) -> dict:
         data = asdict(job)
         data["status"] = job.status.value
@@ -569,6 +760,33 @@ class GeoApiStore:
         )
         collection[item_id] = item
         return item
+
+    def _draft_record(
+        self,
+        project_id: UUID,
+        run_id: UUID,
+        query: dict,
+        occurred_at: datetime,
+    ) -> QueryDraftRecord:
+        attributes = query.get("attributes") or {}
+        intent = attributes.get("intent") or {}
+        return QueryDraftRecord(
+            id=uuid4(),
+            generation_run_id=run_id,
+            project_id=project_id,
+            topic_id=query.get("topicId"),
+            topic_name=query.get("topicName") or attributes.get("topicName") or "",
+            query_text=query.get("queryText") or query.get("text") or query.get("query") or "",
+            keywords=query.get("keywords", []),
+            region=query.get("region", "TW"),
+            language=query.get("language", "zh-TW"),
+            market_type=query.get("marketType", "b2b_procurement"),
+            intent=intent.get("category"),
+            is_branded=query.get("isBranded", False),
+            metadata=query.get("metadata", {}),
+            created_at=occurred_at,
+            updated_at=occurred_at,
+        )
 
 
 def _scope_fields(record) -> dict:

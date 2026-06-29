@@ -100,3 +100,13 @@ docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 
 - Access Control PostgreSQL: `localhost:5432/access_control`
 - Resource Catalog PostgreSQL: `localhost:5433/resource_catalog`
+
+## GEO Analysis 手動 DB Patch
+
+遠端 PostgreSQL schema 與 seed 仍由人工執行，CI/CD 不會自動跑 migration。若環境已套用舊版 `004_geo_analysis_schema.sql`，升級 Query Planning 前需手動執行：
+
+```powershell
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql
+```
+
+這份 patch 會解除 `geo_project.customer_id` 的 `NOT NULL` 限制，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境仍可直接使用 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化完整 schema。

@@ -12,7 +12,7 @@ class GeoProjectRow(SQLModel, table=True):
     __tablename__ = "geo_project"
 
     id: UUID = Field(primary_key=True)
-    customer_id: UUID = Field(nullable=False)
+    customer_id: UUID | None = Field(default=None)
     seo_task_id: UUID | None = Field(default=None)
     name: str = Field(sa_column=Column(String(200), nullable=False))
     default_region: str = Field(default="TW", sa_column=Column(String(16), nullable=False))
@@ -160,6 +160,70 @@ class GeoQueryKeywordRow(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column("metadata", JSONB, nullable=False),
     )
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoQueryResearchRunRow(SQLModel, table=True):
+    __tablename__ = "geo_query_research_run"
+
+    id: UUID = Field(primary_key=True)
+    project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
+    provider: str = Field(sa_column=Column(String(64), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    request_payload: dict = Field(sa_column=Column(JSONB, nullable=False))
+    research_context: str | None = Field(default=None, sa_column=Column(Text))
+    searched_keywords: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    source_urls: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class GeoQueryGenerationRunRow(SQLModel, table=True):
+    __tablename__ = "geo_query_generation_run"
+
+    id: UUID = Field(primary_key=True)
+    project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
+    provider: str = Field(sa_column=Column(String(64), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    request_payload: dict = Field(sa_column=Column(JSONB, nullable=False))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class GeoQueryDraftRow(SQLModel, table=True):
+    __tablename__ = "geo_query_draft"
+
+    id: UUID = Field(primary_key=True)
+    generation_run_id: UUID = Field(foreign_key="geo_query_generation_run.id", nullable=False)
+    project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
+    topic_id: UUID | None = Field(default=None, foreign_key="geo_topic.id")
+    topic_name: str = Field(default="", sa_column=Column(String(200), nullable=False))
+    query_text: str = Field(sa_column=Column(Text, nullable=False))
+    keywords: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    region: str = Field(sa_column=Column(String(16), nullable=False))
+    language: str = Field(sa_column=Column(String(16), nullable=False))
+    market_type: str = Field(sa_column=Column(String(32), nullable=False))
+    intent: str | None = Field(default=None, sa_column=Column(String(32)))
+    is_branded: bool = Field(default=False, sa_column=Column(Boolean, nullable=False))
+    status: str = Field(default="draft", sa_column=Column(String(32), nullable=False))
+    selection_status: str | None = Field(default=None, sa_column=Column(String(32)))
+    accepted_query_id: UUID | None = Field(default=None, foreign_key="geo_query.id")
+    metadata_json: dict = Field(default_factory=dict, sa_column=Column("metadata", JSONB, nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoQueryDraftSelectionRow(SQLModel, table=True):
+    __tablename__ = "geo_query_draft_selection"
+
+    id: UUID = Field(primary_key=True)
+    draft_id: UUID = Field(foreign_key="geo_query_draft.id", nullable=False)
+    selection_status: str = Field(sa_column=Column(String(32), nullable=False))
+    query_id: UUID | None = Field(default=None, foreign_key="geo_query.id")
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 

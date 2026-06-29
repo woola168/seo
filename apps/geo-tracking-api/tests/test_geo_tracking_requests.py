@@ -89,7 +89,11 @@ class GeminiQueryGenerationStubProvider:
 
 
 class GeminiQueryResearchStubProvider:
+    def __init__(self) -> None:
+        self.last_command: QueryResearchCommand | None = None
+
     async def research(self, command: QueryResearchCommand) -> QueryResearchResult:
+        self.last_command = command
         return QueryResearchResult(
             research_context=f"Research context for {command.brand_name}",
             searched_keywords=["山華塑膠 氣動管", "台灣 氣動管 供應商"],
@@ -237,12 +241,13 @@ def test_query_generation_request_rejects_google_aio_provider() -> None:
 
 
 def test_query_research_request_returns_search_context() -> None:
+    provider = GeminiQueryResearchStubProvider()
     client = TestClient(
         create_app(
             answer_provider=DummyAnswerProvider(),
             query_research_providers={
                 ProviderCode.DUMMY: GeminiQueryResearchStubProvider(),
-                ProviderCode.GEMINI: GeminiQueryResearchStubProvider(),
+                ProviderCode.GEMINI: provider,
             },
         )
     )
@@ -261,6 +266,16 @@ def test_query_research_request_returns_search_context() -> None:
                 "name": "B2B 採購",
                 "description": "正在評估供應商的採購人員",
             },
+            "intents": [
+                {
+                    "category": "commercial_investigation",
+                    "description": "比較供應商",
+                }
+            ],
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": True,
+            },
         },
     )
 
@@ -269,6 +284,10 @@ def test_query_research_request_returns_search_context() -> None:
     assert body["researchContext"] == "Research context for 山華塑膠"
     assert body["searchedKeywords"] == ["山華塑膠 氣動管", "台灣 氣動管 供應商"]
     assert body["sourceUrls"] == ["https://example.com/source"]
+    assert provider.last_command is not None
+    assert provider.last_command.intents[0].category == "commercial_investigation"
+    assert provider.last_command.brand_mention_rules.should_mention_own_brand is True
+    assert provider.last_command.brand_mention_rules.should_mention_competitor is True
 
 
 def test_query_research_request_rejects_google_aio_provider() -> None:

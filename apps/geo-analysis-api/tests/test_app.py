@@ -82,6 +82,155 @@ def test_validation_error_returns_problem_details() -> None:
     assert _invalid_param_names(body) == {"body.name"}
 
 
+def test_project_allows_empty_customer_reference_but_rejects_task_without_customer() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/api/geo/projects", json={"name": "Draft GEO"})
+
+    assert response.status_code == 201
+    assert response.json()["customerId"] is None
+    assert response.json()["seoTaskId"] is None
+
+    invalid = client.post(
+        "/api/geo/projects",
+        json={"name": "Broken GEO", "seoTaskId": str(uuid4())},
+    )
+
+    assert invalid.status_code == 422
+    assert invalid.headers["content-type"] == "application/problem+json"
+    assert invalid.json()["detail"] == "seoTaskId requires customerId"
+
+
+def test_query_research_generation_and_draft_accept_flow() -> None:
+    planning_client = FakePlanningClient()
+    client = TestClient(create_app(planning_client=planning_client))
+    project_response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
+    )
+    project_id = project_response.json()["id"]
+
+    research_response = client.post(
+        f"/api/geo/projects/{project_id}/query-research-runs",
+        json={
+            "provider": "gemini",
+            "brandName": "Acme",
+            "keywords": ["erp"],
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2b_procurement",
+            "intents": [{"category": "commercial", "description": "比較供應商"}],
+            "audience": {"name": "採購", "description": "B2B 採購人員"},
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": True,
+            },
+        },
+    )
+
+    assert research_response.status_code == 201
+    research_body = research_response.json()
+    assert research_body["status"] == "completed"
+    assert research_body["result"]["researchContext"] == "研究摘要"
+    assert research_body["result"]["sourceUrls"] == ["https://example.com/source"]
+    assert research_body["requestPayload"]["intents"][0]["category"] == "commercial"
+    assert research_body["requestPayload"]["brandMentionRules"] == {
+        "shouldMentionOwnBrand": True,
+        "shouldMentionCompetitor": True,
+    }
+
+    generation_response = client.post(
+        f"/api/geo/projects/{project_id}/query-generation-runs",
+        json={
+            "seoTaskId": project_response.json()["seoTaskId"],
+            "provider": "gemini",
+            "brandName": "Acme",
+            "keywords": ["erp"],
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2b_procurement",
+            "topicNames": ["ERP 導入"],
+            "intents": [{"category": "commercial", "description": "比較供應商"}],
+            "audience": {"name": "採購", "description": "B2B 採購人員"},
+            "researchContext": research_body["result"]["researchContext"],
+        },
+    )
+
+    assert generation_response.status_code == 201
+    generation_body = generation_response.json()
+    draft = generation_body["drafts"][0]
+    assert draft["queryText"] == "Acme ERP 適合哪些 B2B 採購情境?"
+    assert draft["topicName"] == "ERP 導入"
+
+    selection_response = client.patch(
+        f"/api/geo/query-drafts/{draft['id']}/selection",
+        json={"selectionStatus": "shortlisted"},
+    )
+
+    assert selection_response.status_code == 200
+    assert selection_response.json()["selectionStatus"] == "shortlisted"
+
+    accept_response = client.post(
+        f"/api/geo/query-drafts/{draft['id']}/accept",
+        json={"createTopicIfMissing": True},
+    )
+
+    assert accept_response.status_code == 200
+    assert accept_response.json()["queryText"] == draft["queryText"]
+    assert accept_response.json()["marketType"] == "b2b_procurement"
+
+    rejected_after_accept = client.patch(
+        f"/api/geo/query-drafts/{draft['id']}/selection",
+        json={"selectionStatus": "rejected"},
+    )
+
+    assert rejected_after_accept.status_code == 409
+    assert rejected_after_accept.headers["content-type"] == "application/problem+json"
+    assert rejected_after_accept.json()["detail"] == "query draft already accepted"
+
+
+def test_query_research_rejects_empty_keywords() -> None:
+    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    project_id = _create_project(client)
+    payload = _query_research_payload()
+    payload["keywords"] = []
+
+    response = client.post(
+        f"/api/geo/projects/{project_id}/query-research-runs",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+
+
+def test_query_research_rejects_oversized_arrays() -> None:
+    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    project_id = _create_project(client)
+    cases = [
+        ("keywords", [f"keyword-{index}" for index in range(11)]),
+        ("competitorBrands", [f"Competitor {index}" for index in range(9)]),
+        (
+            "intents",
+            [
+                {"category": f"intent-{index}", "description": "比較供應商"}
+                for index in range(9)
+            ],
+        ),
+    ]
+
+    for field, value in cases:
+        payload = _query_research_payload()
+        payload[field] = value
+        response = client.post(
+            f"/api/geo/projects/{project_id}/query-research-runs",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+        assert response.headers["content-type"] == "application/problem+json"
+
+
 def test_missing_resource_returns_problem_details() -> None:
     client = TestClient(create_app())
 
@@ -360,6 +509,33 @@ def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
 
 
+def _create_project(client: TestClient) -> str:
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def _query_research_payload() -> dict:
+    return {
+        "provider": "gemini",
+        "brandName": "Acme",
+        "competitorBrands": ["Beta"],
+        "keywords": ["erp"],
+        "region": "TW",
+        "language": "zh-TW",
+        "marketType": "b2b_procurement",
+        "intents": [{"category": "commercial", "description": "比較供應商"}],
+        "audience": {"name": "採購", "description": "B2B 採購人員"},
+        "brandMentionRules": {
+            "shouldMentionOwnBrand": True,
+            "shouldMentionCompetitor": True,
+        },
+    }
+
+
 def _add_run_result(store: GeoApiStore, job_id: UUID) -> UUID:
     job = store.jobs[job_id]
     now = datetime(2026, 6, 25, tzinfo=timezone.utc)
@@ -409,3 +585,38 @@ class FakePublisher:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class FakePlanningClient:
+    async def research(self, command) -> dict:
+        return {
+            "researchContext": "研究摘要",
+            "searchedKeywords": command.keywords,
+            "sourceUrls": ["https://example.com/source"],
+        }
+
+    async def generate(self, command) -> dict:
+        return {
+            "topics": [],
+            "queries": [
+                {
+                    "id": str(uuid4()),
+                    "seoTaskId": str(command.seo_task_id),
+                    "queryText": "Acme ERP 適合哪些 B2B 採購情境?",
+                    "keywords": command.keywords,
+                    "topicId": None,
+                    "topicName": "ERP 導入",
+                    "region": command.region,
+                    "language": command.language or "zh-TW",
+                    "marketType": command.market_type,
+                    "isBranded": True,
+                    "attributes": {
+                        "intent": {"category": "commercial", "description": "比較供應商"},
+                        "topicName": "ERP 導入",
+                    },
+                    "metadata": {"source": "fake"},
+                    "source": "generated",
+                    "status": "draft",
+                }
+            ],
+        }

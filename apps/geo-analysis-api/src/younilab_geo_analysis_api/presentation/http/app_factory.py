@@ -9,6 +9,7 @@ from younilab_seo.geo_analysis.application import (
     Clock,
     GeoAnalysisRepository,
     MessagePublisher,
+    QueryPlanningClient,
 )
 
 
@@ -17,12 +18,14 @@ def create_app(
     repository: GeoAnalysisRepository | None = None,
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
+    planning_client: QueryPlanningClient | None = None,
     callback_base_url: str | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
         repository=repository,
         clock=clock,
         publisher=publisher,
+        planning_client=planning_client,
         callback_base_url=callback_base_url,
     )
 
@@ -40,6 +43,7 @@ def create_app(
     )
     app.state.geo_repository = dependencies.repository
     app.state.manage_geo_setup = dependencies.manage_geo_setup
+    app.state.manage_query_planning = dependencies.manage_query_planning
     app.state.manage_query_run_jobs = dependencies.manage_query_run_jobs
     app.state.dispatch_query_run_job = dependencies.dispatch_query_run_job
     app.state.receive_external_run_callback = dependencies.receive_external_run_callback

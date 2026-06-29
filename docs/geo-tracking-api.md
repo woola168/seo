@@ -132,9 +132,19 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
   "region": "US",
   "language": "en-US",
   "marketType": "b2b_procurement",
+  "intents": [
+    {
+      "category": "commercial_investigation",
+      "description": "Compare industrial tubing suppliers for procurement decisions."
+    }
+  ],
   "audience": {
     "name": "B2B Procurement",
     "description": "Procurement managers evaluating industrial tubing suppliers."
+  },
+  "brandMentionRules": {
+    "shouldMentionOwnBrand": true,
+    "shouldMentionCompetitor": true
   }
 }
 ```
@@ -150,7 +160,9 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 | `region` | string | 是 | `TW` / `US` | 市場區域。 |
 | `language` | string \| null | 否 | 最多 20 字 | 回覆與 query generation 使用語言，例如 `zh-TW`、`en-US`。未傳時依 region 推導。 |
 | `marketType` | string | 是 | `b2c` / `b2b_procurement` | 市場情境。 |
+| `intents` | object[] | 否 | 最多 8 筆 | Query intent 類型與描述。 |
 | `audience` | object \| null | 否 |  | 目標受眾。 |
+| `brandMentionRules` | object | 否 |  | 控制研究語境是否偏向提及自有品牌或競品，未提供時使用預設值。 |
 
 ### audience 欄位
 

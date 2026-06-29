@@ -93,6 +93,22 @@ def test_external_callback_moves_published_job_to_terminal_state() -> None:
     assert job.external_run_id == "external-1"
 
 
+def test_external_callback_can_start_from_publishing_race_window() -> None:
+    job = make_job(JobStatus.PUBLISHING)
+    now = datetime(2026, 6, 22, 1, tzinfo=UTC)
+
+    job.mark_external_status(
+        external_run_id="external-1",
+        external_status="running",
+        error_code=None,
+        error_message=None,
+        now=now,
+    )
+
+    assert job.status is JobStatus.RUNNING_EXTERNAL
+    assert job.external_run_id == "external-1"
+
+
 @pytest.mark.parametrize(
     "status",
     [JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED],

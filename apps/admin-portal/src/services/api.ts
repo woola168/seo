@@ -6,6 +6,7 @@
   CustomerSummary,
   GeoAnalysisQueryRequest,
   GeoAnalysisRunResult,
+  GeoAcceptQueryDraftRequest,
   Department,
   GeoDummyProject,
   GeoEntityAliasRequest,
@@ -15,6 +16,10 @@
   GeoGeneratedQuery,
   GeoJobRequest,
   GeoJobResource,
+  GeoQueryDraftResource,
+  GeoQueryDraftSelectionRequest,
+  GeoQueryGenerationRunRequest,
+  GeoQueryGenerationRunResource,
   GeoQueryGenerationResult,
   GeoMarketType,
   GeoProvider,
@@ -24,6 +29,8 @@
   GeoQueryPlatformResource,
   GeoQueryResource,
   GeoQueryProvider,
+  GeoQueryResearchRunRequest,
+  GeoQueryResearchRunResource,
   GeoQueryResearchResult,
   GeoRegion,
   GeoRunRequestResult,
@@ -291,6 +298,38 @@ export const api = {
       }),
     deleteQuery: (queryId: string) =>
       request<void>(`/api/geo/queries/${queryId}`, { method: "DELETE" }),
+    runQueryResearch: (projectId: string, input: GeoQueryResearchRunRequest) =>
+      request<GeoQueryResearchRunResource>(
+        `/api/geo/projects/${projectId}/query-research-runs`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    runQueryGeneration: (
+      projectId: string,
+      input: GeoQueryGenerationRunRequest,
+    ) =>
+      request<GeoQueryGenerationRunResource>(
+        `/api/geo/projects/${projectId}/query-generation-runs`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    updateQueryDraftSelection: (
+      draftId: string,
+      input: GeoQueryDraftSelectionRequest,
+    ) =>
+      request<GeoQueryDraftResource>(`/api/geo/query-drafts/${draftId}/selection`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    acceptQueryDraft: (draftId: string, input: GeoAcceptQueryDraftRequest) =>
+      request<GeoQueryResource>(`/api/geo/query-drafts/${draftId}/accept`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     queryPlatforms: (queryId: string) =>
       request<CollectionResponse<GeoQueryPlatformResource>>(
         `/api/geo/queries/${queryId}/platforms`,
@@ -331,10 +370,17 @@ export const api = {
       request<CollectionResponse<GeoJobResource>>(
         `/api/geo/projects/${projectId}/jobs`,
       ),
+    job: (jobId: string) => request<GeoJobResource>(`/api/geo/jobs/${jobId}`),
     runResults: (projectId: string) =>
       request<CollectionResponse<GeoAnalysisRunResult>>(
         `/api/geo/projects/${projectId}/run-results`,
       ),
+    jobRunResults: (jobId: string) =>
+      request<CollectionResponse<GeoAnalysisRunResult>>(
+        `/api/geo/jobs/${jobId}/run-results`,
+      ),
+    runResult: (resultId: string) =>
+      request<GeoAnalysisRunResult>(`/api/geo/run-results/${resultId}`),
     dispatchJob: (jobId: string) =>
       request<GeoJobResource>(`/api/geo/jobs/${jobId}/dispatch`, {
         method: "POST",

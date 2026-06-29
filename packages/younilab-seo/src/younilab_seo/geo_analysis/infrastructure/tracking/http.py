@@ -3,7 +3,12 @@ from typing import Any
 
 import httpx
 
-from younilab_seo.geo_analysis.application import QueryRunJobMessage, TrackingRunResponse
+from younilab_seo.geo_analysis.application import (
+    QueryGenerationCommand,
+    QueryResearchCommand,
+    QueryRunJobMessage,
+    TrackingRunResponse,
+)
 
 
 @dataclass
@@ -25,6 +30,22 @@ class HttpTrackingRunClient:
         response.raise_for_status()
         payload = response.json()
         return TrackingRunResponse.model_validate(payload)
+
+    async def research(self, command: QueryResearchCommand) -> dict:
+        response = await self._get_client().post(
+            "/api/v1/geo-tracking/query-research",
+            json=command.model_dump(mode="json", by_alias=True),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def generate(self, command: QueryGenerationCommand) -> dict:
+        response = await self._get_client().post(
+            "/api/v1/geo-tracking/query-generation",
+            json=command.model_dump(mode="json", by_alias=True),
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def close(self) -> None:
         if self._client is not None:
