@@ -119,7 +119,12 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
             "region": "TW",
             "language": "zh-TW",
             "marketType": "b2b_procurement",
+            "intents": [{"category": "commercial", "description": "比較供應商"}],
             "audience": {"name": "採購", "description": "B2B 採購人員"},
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": True,
+            },
         },
     )
 
@@ -128,6 +133,11 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     assert research_body["status"] == "completed"
     assert research_body["result"]["researchContext"] == "研究摘要"
     assert research_body["result"]["sourceUrls"] == ["https://example.com/source"]
+    assert research_body["requestPayload"]["intents"][0]["category"] == "commercial"
+    assert research_body["requestPayload"]["brandMentionRules"] == {
+        "shouldMentionOwnBrand": True,
+        "shouldMentionCompetitor": True,
+    }
 
     generation_response = client.post(
         f"/api/geo/projects/{project_id}/query-generation-runs",
@@ -177,6 +187,48 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     assert rejected_after_accept.status_code == 409
     assert rejected_after_accept.headers["content-type"] == "application/problem+json"
     assert rejected_after_accept.json()["detail"] == "query draft already accepted"
+
+
+def test_query_research_rejects_empty_keywords() -> None:
+    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    project_id = _create_project(client)
+    payload = _query_research_payload()
+    payload["keywords"] = []
+
+    response = client.post(
+        f"/api/geo/projects/{project_id}/query-research-runs",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+
+
+def test_query_research_rejects_oversized_arrays() -> None:
+    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    project_id = _create_project(client)
+    cases = [
+        ("keywords", [f"keyword-{index}" for index in range(11)]),
+        ("competitorBrands", [f"Competitor {index}" for index in range(9)]),
+        (
+            "intents",
+            [
+                {"category": f"intent-{index}", "description": "比較供應商"}
+                for index in range(9)
+            ],
+        ),
+    ]
+
+    for field, value in cases:
+        payload = _query_research_payload()
+        payload[field] = value
+        response = client.post(
+            f"/api/geo/projects/{project_id}/query-research-runs",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+        assert response.headers["content-type"] == "application/problem+json"
 
 
 def test_missing_resource_returns_problem_details() -> None:
@@ -455,6 +507,33 @@ def _client_with_query(
 
 def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
+
+
+def _create_project(client: TestClient) -> str:
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def _query_research_payload() -> dict:
+    return {
+        "provider": "gemini",
+        "brandName": "Acme",
+        "competitorBrands": ["Beta"],
+        "keywords": ["erp"],
+        "region": "TW",
+        "language": "zh-TW",
+        "marketType": "b2b_procurement",
+        "intents": [{"category": "commercial", "description": "比較供應商"}],
+        "audience": {"name": "採購", "description": "B2B 採購人員"},
+        "brandMentionRules": {
+            "shouldMentionOwnBrand": True,
+            "shouldMentionCompetitor": True,
+        },
+    }
 
 
 def _add_run_result(store: GeoApiStore, job_id: UUID) -> UUID:

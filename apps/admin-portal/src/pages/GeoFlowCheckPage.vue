@@ -55,6 +55,29 @@ const platformOptions = [
   },
 ];
 
+const intentCategoryOptions = [
+  {
+    value: "navigational",
+    label: "導航型",
+    description: "使用者想找到特定品牌、產品、官網、門市或已知服務的查詢。",
+  },
+  {
+    value: "informational",
+    label: "資訊型",
+    description: "使用者想理解概念、規格、比較條件、操作方式或常見問題的查詢。",
+  },
+  {
+    value: "commercial_investigation",
+    label: "商業評估",
+    description: "使用者正在比較供應商、產品方案、導入條件或採購評估的查詢。",
+  },
+  {
+    value: "transactional",
+    label: "交易型",
+    description: "使用者已接近詢價、購買、預約、下載或聯繫業務的查詢。",
+  },
+];
+
 const activeStep = ref<StepKey>("project");
 const loading = ref(false);
 const polling = ref(false);
@@ -93,8 +116,7 @@ const queryForm = reactive({
   region: "TW" as GeoRegion,
   language: "zh-TW",
   marketType: "b2b_procurement" as GeoMarketType,
-  topicName: "",
-  topicDescription: "",
+  topics: [{ name: "", description: "" }] as GeoTopicInput[],
   intentCategory: "commercial_investigation",
   intentDescription: "比較供應商、產品方案或導入條件",
   audienceName: "B2B 採購",
@@ -115,14 +137,12 @@ const selectedPlatform = computed(
 const normalizedKeywords = computed(() => splitValues(queryForm.keywords));
 const normalizedCompetitors = computed(() => splitValues(queryForm.competitorBrands));
 const normalizedTopics = computed<GeoTopicInput[]>(() =>
-  queryForm.topicName.trim()
-    ? [
-        {
-          name: queryForm.topicName.trim(),
-          description: queryForm.topicDescription.trim(),
-        },
-      ]
-    : [],
+  queryForm.topics
+    .map((topic) => ({
+      name: topic.name.trim(),
+      description: topic.description.trim(),
+    }))
+    .filter((topic) => topic.name),
 );
 const fieldErrors = computed(() => toFieldErrorMap(validationErrors.value));
 const validationSummary = computed(() => validationErrors.value.map((error) => error.message));
@@ -227,6 +247,15 @@ function toggleDraft(draftId: string): void {
     : [...selectedDraftIds.value, draftId];
 }
 
+function addTopic(): void {
+  queryForm.topics.push({ name: "", description: "" });
+}
+
+function removeTopic(index: number): void {
+  if (queryForm.topics.length <= 1) return;
+  queryForm.topics.splice(index, 1);
+}
+
 async function runResearch(): Promise<void> {
   if (!setValidation(researchValidation())) return;
   await runAction(async () => {
@@ -238,9 +267,19 @@ async function runResearch(): Promise<void> {
       region: queryForm.region,
       language: valueOrNull(queryForm.language),
       marketType: queryForm.marketType,
+      intents: [
+        {
+          category: queryForm.intentCategory.trim(),
+          description: queryForm.intentDescription.trim(),
+        },
+      ],
       audience: {
         name: queryForm.audienceName.trim(),
         description: queryForm.audienceDescription.trim(),
+      },
+      brandMentionRules: {
+        shouldMentionOwnBrand: queryForm.shouldMentionOwnBrand,
+        shouldMentionCompetitor: queryForm.shouldMentionCompetitor,
       },
     });
     generationRun.value = null;
@@ -421,14 +460,16 @@ async function pollOnce(): Promise<void> {
 }
 
 function researchValidation(): GeoFlowValidationError[] {
-  return validateResearchStep({
+  const errors = validateResearchStep({
     projectId: selectedProjectId.value,
     brandName: queryForm.brandName,
     keywords: normalizedKeywords.value,
     topics: normalizedTopics.value,
+    intentDescription: queryForm.intentDescription,
     audienceName: queryForm.audienceName,
     audienceDescription: queryForm.audienceDescription,
   });
+  return errors;
 }
 
 function generationValidationInput() {
@@ -437,6 +478,7 @@ function generationValidationInput() {
     brandName: queryForm.brandName,
     keywords: normalizedKeywords.value,
     topics: normalizedTopics.value,
+    intentDescription: queryForm.intentDescription,
     audienceName: queryForm.audienceName,
     audienceDescription: queryForm.audienceDescription,
     seoTaskId: projectForm.seoTaskId,
@@ -552,6 +594,35 @@ function platformLabel(platformId: string): string {
 function queryLabel(queryId: string): string {
   const query = savedQueries.value.find((item) => item.id === queryId);
   return query ? query.queryText : shortId(queryId);
+}
+
+function resultQueryLabel(result: GeoAnalysisRunResult): string {
+  const job = savedJobs.value.find((item) => item.id === result.jobId);
+  return job ? queryLabel(job.queryId) : "-";
+}
+
+function queryKeywords(query: GeoQueryResource): string[] {
+  const keywords = query.metadata.keywords;
+  return Array.isArray(keywords) ? keywords.filter((item): item is string => typeof item === "string") : [];
+}
+
+function intentCategoryLabel(category: string): string {
+  return intentCategoryOptions.find((option) => option.value === category)?.label ?? category;
+}
+
+function intentCategoryCode(category: string | null): string {
+  const codeByCategory: Record<string, string> = {
+    navigational: "N",
+    informational: "I",
+    commercial_investigation: "C",
+    transactional: "T",
+  };
+  return category ? (codeByCategory[category] ?? category) : "-";
+}
+
+function applyIntentDefaultDescription(): void {
+  const selected = intentCategoryOptions.find((option) => option.value === queryForm.intentCategory);
+  queryForm.intentDescription = selected?.description ?? "";
 }
 
 function statusBadgeClass(status: string): string {
@@ -683,6 +754,8 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                 <tr>
                   <th scope="col">選取</th>
                   <th scope="col">Query</th>
+                  <th scope="col">Keywords</th>
+                  <th scope="col">Intent</th>
                   <th scope="col">Market</th>
                   <th scope="col">Status</th>
                   <th scope="col">ID</th>
@@ -705,6 +778,15 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                       <strong>{{ query.queryText }}</strong>
                     </div>
                   </td>
+                  <td class="flow-table-query">
+                    <span v-if="!queryKeywords(query).length">-</span>
+                    <span v-else class="inline-tags">
+                      <span v-for="keyword in queryKeywords(query)" :key="`${query.id}-${keyword}`" class="badge badge-muted">
+                        {{ keyword }}
+                      </span>
+                    </span>
+                  </td>
+                  <td>{{ intentCategoryCode(query.intent) }}</td>
                   <td>{{ query.marketType }}</td>
                   <td><span class="badge" :class="statusBadgeClass(query.status)">{{ query.status }}</span></td>
                   <td>{{ shortId(query.id) }}</td>
@@ -777,6 +859,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
               <thead>
                 <tr>
                   <th scope="col">Result</th>
+                  <th scope="col">Query</th>
                   <th scope="col">Job</th>
                   <th scope="col">Provider</th>
                   <th scope="col">Status</th>
@@ -788,6 +871,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
               <tbody>
                 <tr v-for="item in savedRunResults" :key="item.id">
                   <td>{{ shortId(item.id) }}</td>
+                  <td class="flow-table-query">{{ resultQueryLabel(item) }}</td>
                   <td>{{ shortId(item.jobId) }}</td>
                   <td>{{ item.provider }}</td>
                   <td><span class="badge" :class="statusBadgeClass(item.status)">{{ item.status }}</span></td>
@@ -844,11 +928,33 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
           <textarea v-model="queryForm.keywords" rows="4" placeholder="一行一個 keyword" />
           <small v-if="fieldErrors.keywords">{{ fieldErrors.keywords }}</small>
         </label>
-        <label>
-          Topic
-          <input v-model="queryForm.topicName" type="text" placeholder="例如 產品、採購評估、供應商比較" />
+        <div class="topic-editor">
+          <div class="topic-editor-header">
+            <span>Topics</span>
+            <button class="button button-secondary" type="button" @click="addTopic">
+              新增 Topic
+            </button>
+          </div>
           <small v-if="fieldErrors.topics">{{ fieldErrors.topics }}</small>
-        </label>
+          <div v-for="(topic, index) in queryForm.topics" :key="index" class="topic-row">
+            <label>
+              Topic 名稱
+              <input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商比較" />
+            </label>
+            <label>
+              Topic 描述
+              <textarea v-model="topic.description" rows="3" />
+            </label>
+            <button
+              class="button button-secondary"
+              type="button"
+              :disabled="queryForm.topics.length <= 1"
+              @click="removeTopic(index)"
+            >
+              移除
+            </button>
+          </div>
+        </div>
       </div>
       <div class="two-column">
         <label>
@@ -875,6 +981,31 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
           <small v-if="fieldErrors.audienceDescription">{{ fieldErrors.audienceDescription }}</small>
         </label>
       </div>
+      <div class="two-column">
+        <label>
+          Intent 分類
+          <select v-model="queryForm.intentCategory" @change="applyIntentDefaultDescription">
+            <option v-for="option in intentCategoryOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Intent 描述
+          <textarea v-model="queryForm.intentDescription" rows="3" />
+          <small v-if="fieldErrors.intentDescription">{{ fieldErrors.intentDescription }}</small>
+        </label>
+      </div>
+      <div class="toggle-grid">
+        <label class="check-row">
+          <input v-model="queryForm.shouldMentionOwnBrand" type="checkbox" />
+          <span>query 需提及自身品牌</span>
+        </label>
+        <label class="check-row">
+          <input v-model="queryForm.shouldMentionCompetitor" type="checkbox" />
+          <span>query 需提及競品</span>
+        </label>
+      </div>
       <div class="button-row">
         <button class="button button-secondary" type="button" @click="activeStep = 'library'">返回既有資料</button>
         <button class="button button-primary" type="button" :disabled="loading" @click="runResearch">
@@ -891,8 +1022,31 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
       <div v-if="researchRun" class="result-box">
         <strong>Status: {{ researchRun.status }}</strong>
         <p>{{ researchRun.result?.researchContext ?? researchRun.errorMessage }}</p>
-        <small>Keywords: {{ researchRun.result?.searchedKeywords.join(", ") }}</small>
-        <ul>
+        <dl class="detail-list compact-detail-list">
+          <dt>Keywords</dt>
+          <dd>
+            <span
+              v-for="keyword in researchRun.result?.searchedKeywords ?? normalizedKeywords"
+              :key="keyword"
+              class="badge badge-muted"
+            >
+              {{ keyword }}
+            </span>
+          </dd>
+          <dt>Intent 分類</dt>
+          <dd>
+            <span class="badge badge-info">{{ intentCategoryLabel(queryForm.intentCategory) }}</span>
+          </dd>
+          <dt>Intent 描述</dt>
+          <dd>{{ queryForm.intentDescription || "-" }}</dd>
+          <dt>品牌提及</dt>
+          <dd>
+            自身品牌：{{ queryForm.shouldMentionOwnBrand ? "需要" : "不限制" }} /
+            競品：{{ queryForm.shouldMentionCompetitor ? "需要" : "不限制" }}
+          </dd>
+        </dl>
+        <h3>Source URLs</h3>
+        <ul class="reference-list">
           <li v-for="url in researchRun.result?.sourceUrls ?? []" :key="url">
             <a :href="url" target="_blank" rel="noreferrer">{{ url }}</a>
           </li>
@@ -923,7 +1077,15 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
         />
         <span>
           <strong>{{ draft.queryText }}</strong>
-          <small>{{ draft.topicName || "未指定 topic" }} / {{ draft.marketType }} / {{ draft.selectionStatus ?? "draft" }}</small>
+          <small>
+            {{ draft.topicName || "未指定 topic" }} / {{ draft.marketType }} /
+            Intent: {{ intentCategoryCode(draft.intent) }} / {{ draft.selectionStatus ?? "draft" }}
+          </small>
+          <span class="inline-tags">
+            <span v-for="keyword in draft.keywords" :key="`${draft.id}-${keyword}`" class="badge badge-muted">
+              {{ keyword }}
+            </span>
+          </span>
         </span>
       </label>
       <div class="button-row">
@@ -978,7 +1140,8 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
       <p v-if="polling" class="success-text">正在等待 worker 回寫結果...</p>
       <section v-for="item in dispatchedJobs" :key="item.id" class="job-panel">
         <header>
-          <strong>{{ item.status }} / {{ platformLabel(item.platformId) }}</strong>
+          <strong>{{ queryLabel(item.queryId) }}</strong>
+          <small>{{ item.status }} / {{ platformLabel(item.platformId) }}</small>
           <small>Job ID: {{ item.id }}</small>
         </header>
         <p v-if="item.lastErrorMessage" class="error-text">{{ item.lastErrorMessage }}</p>
@@ -1007,6 +1170,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
             <thead>
               <tr>
                 <th scope="col">Result</th>
+                <th scope="col">Query</th>
                 <th scope="col">Job</th>
                 <th scope="col">Provider</th>
                 <th scope="col">Status</th>
@@ -1018,6 +1182,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
             <tbody>
               <tr v-for="item in savedRunResults" :key="item.id">
                 <td>{{ shortId(item.id) }}</td>
+                <td class="flow-table-query">{{ resultQueryLabel(item) }}</td>
                 <td>{{ shortId(item.jobId) }}</td>
                 <td>{{ item.provider }}</td>
                 <td><span class="badge" :class="statusBadgeClass(item.status)">{{ item.status }}</span></td>
@@ -1046,7 +1211,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
             <h2 v-else>Run Result</h2>
             <p v-if="modal.kind === 'query'">{{ shortId(modal.item.id) }}</p>
             <p v-else-if="modal.kind === 'job'">{{ shortId(modal.item.id) }}</p>
-            <p v-else>{{ modal.item.provider }} / {{ shortId(modal.item.id) }}</p>
+            <p v-else>{{ resultQueryLabel(modal.item) }}</p>
           </div>
           <button class="button button-secondary" type="button" @click="modal = null">關閉</button>
         </header>
@@ -1077,7 +1242,10 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
             </dl>
           </template>
           <template v-else>
+            <p class="modal-title-copy">{{ resultQueryLabel(modal.item) }}</p>
             <dl class="detail-list">
+              <dt>Query</dt>
+              <dd>{{ resultQueryLabel(modal.item) }}</dd>
               <dt>Provider</dt>
               <dd>{{ modal.item.provider }}</dd>
               <dt>Status</dt>
@@ -1191,6 +1359,69 @@ textarea {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.toggle-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.topic-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.topic-editor-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topic-editor-header span {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.topic-row {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1fr) auto;
+  padding: 10px;
+}
+
+.topic-row .button {
+  align-self: end;
+  margin-bottom: 0;
+}
+
+.check-row {
+  align-items: center;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-direction: row;
+  padding: 10px 12px;
+}
+
+.check-row input {
+  min-height: auto;
+  width: auto;
+}
+
+.inline-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .library-grid {
@@ -1334,6 +1565,10 @@ textarea {
   margin: 0 0 18px;
 }
 
+.compact-detail-list {
+  margin-top: 14px;
+}
+
 dt {
   color: var(--text-muted);
 }
@@ -1366,6 +1601,8 @@ dt {
 @media (max-width: 900px) {
   .flow-header,
   .two-column,
+  .toggle-grid,
+  .topic-row,
   .library-grid {
     grid-template-columns: 1fr;
   }

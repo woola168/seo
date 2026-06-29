@@ -20,6 +20,7 @@ describe("geo flow validation", () => {
       { field: "brandName", message: "請輸入品牌名稱" },
       { field: "keywords", message: "請至少輸入一個 keyword" },
       { field: "topics", message: "請至少輸入一個 topic" },
+      { field: "intentDescription", message: "請輸入 Intent 描述" },
       { field: "audienceName", message: "請輸入受眾名稱" },
       { field: "audienceDescription", message: "請輸入受眾描述" },
     ]);
@@ -31,6 +32,7 @@ describe("geo flow validation", () => {
       brandName: "Acme",
       keywords: ["erp"],
       topics: [{ name: "ERP 導入" }],
+      intentDescription: "比較供應商",
       audienceName: "採購",
       audienceDescription: "B2B 採購決策者",
     });

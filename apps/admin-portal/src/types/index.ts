@@ -659,7 +659,9 @@ export interface GeoQueryResearchRunRequest {
   region: GeoRegion;
   language: string | null;
   marketType: GeoMarketType;
+  intents: GeoQueryIntentRequest[];
   audience: GeoQueryAudienceRequest | null;
+  brandMentionRules: GeoBrandMentionRulesRequest;
 }
 
 export interface GeoQueryResearchResultResource {

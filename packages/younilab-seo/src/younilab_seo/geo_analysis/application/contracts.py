@@ -314,12 +314,14 @@ class BrandMentionRules(ContractModel):
 class QueryResearchCommand(ContractModel):
     provider: str = "dummy"
     brand_name: str
-    competitor_brands: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
+    competitor_brands: list[str] = Field(default_factory=list, max_length=8)
+    keywords: list[str] = Field(min_length=1, max_length=10)
     region: str
     language: str | None = None
     market_type: str = "b2b_procurement"
+    intents: list[QueryIntent] = Field(default_factory=list, max_length=8)
     audience: QueryAudience | None = None
+    brand_mention_rules: BrandMentionRules = Field(default_factory=BrandMentionRules)
 
 
 class QueryResearchResultRecord(ContractModel):

@@ -4,6 +4,7 @@ export type GeoFlowValidationInput = {
   brandName?: string;
   keywords?: Array<string>;
   topics?: Array<{ name: string; description?: string }>;
+  intentDescription?: string;
   audienceName?: string;
   audienceDescription?: string;
   seoTaskId?: string | null;
@@ -43,6 +44,9 @@ export function validateResearchStep(
   }
   if (!input.topics?.some((topic) => hasValue(topic.name))) {
     errors.push({ field: "topics", message: "請至少輸入一個 topic" });
+  }
+  if (!hasValue(input.intentDescription)) {
+    errors.push({ field: "intentDescription", message: "請輸入 Intent 描述" });
   }
   if (!hasValue(input.audienceName)) {
     errors.push({ field: "audienceName", message: "請輸入受眾名稱" });

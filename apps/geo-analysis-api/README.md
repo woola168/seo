@@ -404,9 +404,19 @@ Problem Details 格式：
   "region": "TW",
   "language": "zh-TW",
   "marketType": "b2b_procurement",
+  "intents": [
+    {
+      "category": "commercial_investigation",
+      "description": "比較供應商、產品方案或導入條件"
+    }
+  ],
   "audience": {
     "name": "B2B 採購",
     "description": "正在評估供應商的採購人員"
+  },
+  "brandMentionRules": {
+    "shouldMentionOwnBrand": true,
+    "shouldMentionCompetitor": true
   }
 }
 

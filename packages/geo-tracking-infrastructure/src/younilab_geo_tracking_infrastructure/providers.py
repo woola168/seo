@@ -648,6 +648,8 @@ def _query_research_prompt(
 ) -> str:
     competitors = ", ".join(command.competitor_brands) or "none"
     audience = command.audience.description if command.audience else "not specified"
+    intents = _query_research_intents(command)
+    brand_rules = command.brand_mention_rules
     return (
         "Research current market language and search phrasing.\n"
         f"Brand: {command.brand_name}\n"
@@ -657,8 +659,20 @@ def _query_research_prompt(
         f"Language: {language}\n"
         f"Market type: {command.market_type}\n"
         f"Audience: {audience}\n"
+        f"Intents: {intents}\n"
+        "Brand mention rules: "
+        f"ownBrand={brand_rules.should_mention_own_brand}, "
+        f"competitor={brand_rules.should_mention_competitor}\n"
         "Return concise researchContext, searchedKeywords actually used or useful for "
         "this research, and sourceUrls from references when available."
+    )
+
+
+def _query_research_intents(command: QueryResearchCommand) -> str:
+    if not command.intents:
+        return "not specified"
+    return "; ".join(
+        f"{intent.category}: {intent.description}" for intent in command.intents
     )
 
 

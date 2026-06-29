@@ -183,12 +183,16 @@ class BrandMentionRulesRequest(ApiModel):
 class QueryResearchRunRequest(ApiModel):
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
-    competitor_brands: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
+    competitor_brands: list[str] = Field(default_factory=list, max_length=8)
+    keywords: list[str] = Field(min_length=1, max_length=10)
     region: str = Field(min_length=1, max_length=16)
     language: str | None = None
     market_type: str = Field(default="b2b_procurement", max_length=32)
+    intents: list[QueryIntentRequest] = Field(default_factory=list, max_length=8)
     audience: QueryAudienceRequest | None = None
+    brand_mention_rules: BrandMentionRulesRequest = Field(
+        default_factory=BrandMentionRulesRequest
+    )
 
 
 class QueryResearchResultResponse(ApiModel):
