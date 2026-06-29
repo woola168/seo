@@ -32,37 +32,76 @@ from younilab_geo_tracking_infrastructure.config import (
 
 
 class _GeminiIntent(BaseModel):
-    category: str
-    description: str
+    category: str = Field(
+        description="Copy one user-provided intent category exactly."
+    )
+    description: str = Field(
+        description="Copy the selected intent description exactly."
+    )
 
 
 class _GeminiAudience(BaseModel):
-    name: str
-    description: str
+    name: str = Field(description="Copy the user-provided audience name exactly.")
+    description: str = Field(
+        description="Copy the user-provided audience description exactly."
+    )
 
 
 class _GeminiBrandMentionRules(BaseModel):
-    shouldMentionOwnBrand: bool
-    shouldMentionCompetitor: bool
+    shouldMentionOwnBrand: bool = Field(
+        description="Copy whether the query should mention the user's own brand."
+    )
+    shouldMentionCompetitor: bool = Field(
+        description="Copy whether the query should mention a competitor brand."
+    )
 
 
 class _GeminiQueryAttributes(BaseModel):
-    intent: _GeminiIntent
-    keyword: str
-    topicName: str
-    topicDescription: str = ""
-    audience: _GeminiAudience
-    brandMentionRules: _GeminiBrandMentionRules
+    intent: _GeminiIntent = Field(
+        description=(
+            "The selected intent used as the generation angle; "
+            "do not classify or change it."
+        )
+    )
+    keyword: str = Field(
+        description="One seed keyword from the input keywords that guides this query."
+    )
+    topicName: str = Field(description="Copy one input topic name exactly.")
+    topicDescription: str = Field(
+        default="",
+        description=(
+            "Copy the selected topic description and use it as a generation "
+            "constraint."
+        ),
+    )
+    audience: _GeminiAudience = Field(
+        description="The selected target audience; copy the input values exactly."
+    )
+    brandMentionRules: _GeminiBrandMentionRules = Field(
+        description="Copy the input brand mention rules exactly."
+    )
 
 
 class _GeminiQueryDraft(BaseModel):
-    attributes: _GeminiQueryAttributes
-    query: str
-    keywords: list[str] = Field(default_factory=list)
+    attributes: _GeminiQueryAttributes = Field(
+        description="Generation constraints copied from the provided input."
+    )
+    query: str = Field(
+        description="The generated AI-search question for GEO tracking."
+    )
+    keywords: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Seed keywords from the input keywords used by this query; "
+            "do not invent keywords."
+        ),
+    )
 
 
 class _GeminiQueryDraftList(BaseModel):
-    items: list[_GeminiQueryDraft]
+    items: list[_GeminiQueryDraft] = Field(
+        description="Generated query candidates."
+    )
 
 
 class _GeminiQueryResearchOutput(BaseModel):
@@ -474,30 +513,14 @@ def build_query_generation_providers(
 def _query_generation_system_prompt(language: str | None) -> str:
     if language == "en-US":
         return (
-            "You generate AI-search query candidates for GEO tracking. "
-            "Do not use Google Search or any external search tool. "
-            "Use only the provided JSON parameters and optional researchContext. "
-            "The attributes object must copy the provided intent, audience, "
-            "brandMentionRules, keyword, topicName, and topicDescription values. "
-            "Use topicDescription as a generation constraint, but do not invent, "
-            "infer, or classify intent. Do not include searchedKeywords, sourceUrls, "
-            "SERP, or evidence fields. "
-            "Return only structured JSON that matches the schema. For each item, "
-            "attributes must appear first, query must appear next, and keywords must "
-            "appear after query. keywords must be a list of the provided seed "
-            "keywords used by that query. Do not invent keywords."
+            "You generate AI-search query candidates for GEO "
+            "(Generative Engine Optimization) tracking. "
+            "Use the provided JSON parameters and optional researchContext."
         )
     return (
-        "你負責產生 GEO 追蹤用的 AI 搜尋 query 候選。"
-        "不要使用 Google Search 或任何外部搜尋工具。"
-        "只根據提供的 JSON 參數與可選 researchContext 生成。"
-        "attributes 必須複製輸入提供的 intent、audience、brandMentionRules、"
-        "keyword、topicName、topicDescription。topicDescription 必須作為生成約束，"
-        "但不得自行推論、分類或改寫 intent。"
-        "不得輸出 searchedKeywords、sourceUrls、SERP 或 evidence 欄位。"
-        "只回傳符合 schema 的結構化 JSON。每筆資料必須先輸出 attributes，"
-        "接著輸出 query，最後輸出 keywords。keywords 必須是該 query 用到的"
-        "輸入 seed keywords 陣列，不得自行發明 keyword。"
+        "你負責產生 GEO（Generative Engine Optimization）追蹤用的"
+        " AI 搜尋 query 候選。"
+        "請依據提供的 JSON 參數與可選 researchContext 生成。"
     )
 
 
