@@ -387,6 +387,20 @@
   margin-left: auto;
 }
 
+.permission-table-toolbar {
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.permission-record-count {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .table-card {
   flex: 1;
   min-height: 0;
@@ -460,6 +474,10 @@
 
 .row-action-button:hover:not(:disabled) {
   background: #e5e5e5;
+}
+
+.row-action-button.danger {
+  color: var(--danger);
 }
 
 .pagination {
@@ -608,6 +626,86 @@
 
 .modal .button {
   margin-top: 10px;
+}
+
+.role-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.role-card {
+  min-height: 190px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 16px;
+}
+
+.role-card-head,
+.role-card-actions,
+.role-card footer {
+  display: flex;
+  align-items: center;
+}
+
+.role-card-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.role-card-actions {
+  gap: 8px;
+}
+
+.role-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--primary);
+  font-weight: 700;
+}
+
+.role-card h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.role-card p {
+  min-height: 42px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.role-card footer {
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.role-card footer span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.role-card footer .button {
+  min-height: 32px;
+}
+
+.role-permission-modal {
+  width: min(720px, 100%);
+}
+
+.role-permission-modal .permission-group-list {
+  max-height: 48vh;
+  margin: 0;
 }
 
 .role-layout {
@@ -772,6 +870,42 @@
   gap: 16px;
 }
 
+.department-table {
+  min-width: 760px;
+}
+
+.department-table-card {
+  flex: 1;
+}
+
+.department-name {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}
+
+.department-description {
+  min-width: 280px;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.department-member-count {
+  text-align: center !important;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+}
+
+.department-table th:nth-child(3),
+.department-table td:nth-child(3) {
+  width: 100px;
+  text-align: center;
+}
+
+.department-table th:last-child,
+.department-table td:last-child {
+  width: 120px;
+  text-align: right;
+}
+
 .department-toolbar p {
   margin: 0;
 }
@@ -824,7 +958,42 @@
   gap: 18px;
 }
 
-.evaluator-grid > .card:first-child {
+.authorization-workspace {
+  gap: 14px;
+}
+
+.authorization-note {
+  margin: 0;
+}
+
+.authorization-scenarios {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary);
+}
+
+.authorization-scenarios > span,
+.authorization-use-case-card > span,
+.decision-summary > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.authorization-scenarios .button {
+  width: auto;
+  min-height: 32px;
+  margin: 0;
+}
+
+.evaluator-grid > .authorization-card {
   padding: 0 20px 20px;
 }
 
@@ -886,6 +1055,65 @@
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-secondary);
+}
+
+.authorization-use-case-card,
+.decision-summary {
+  width: min(380px, 100%);
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary);
+  text-align: left;
+}
+
+.authorization-use-cases {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  list-style: none;
+}
+
+.authorization-use-cases li::before {
+  content: "•";
+  margin-right: 6px;
+  color: var(--primary);
+}
+
+.decision-summary ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-summary li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.decision-summary strong {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.decision-summary code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toast {

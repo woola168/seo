@@ -661,6 +661,49 @@ function ConfirmDialog({open,title,message,confirmLabel="確認",confirmVariant=
   );
 }
 
+/* ── Section Header — overline 11px / 600 / uppercase 規範
+   支援自訂 style，方便調整 marginTop（分組間距） ── */
+function SectionHeader({children,style={}}){
+  return(
+    <div style={{
+      fontSize:11,fontWeight:600,
+      color:"#8C8C8C",
+      letterSpacing:"0.06em",textTransform:"uppercase",
+      marginBottom:14,
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+/* ── Section Divider — 1px / #F0F0F0 / 20px vertical margin ── */
+function SectionDivider(){
+  return <div style={{height:1,background:"#F0F0F0",margin:"20px 0"}}/>;
+}
+
+/* ── Field wrapper ── 
+   marginBottom 20px 為統一垂直節奏
+   noGap=true：grid 容器內的子 Field，外層 grid 已用 gap 控制，內部不再加 mb */
+function Field({label,required,hint,error,children,noGap}){
+  return(
+    <div style={{marginBottom:noGap?0:20}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:6}}>
+        <label style={{fontSize:13,fontWeight:500,color:"#1F1F1F"}}>
+          {label}
+          {required&&<span style={{color:"#F5222D",marginLeft:3}}>*</span>}
+        </label>
+        {hint&&<span style={{fontSize:11,color:"#BFBFBF"}}>{hint}</span>}
+      </div>
+      {children}
+      {error&&(
+        <div style={{display:"flex",alignItems:"center",gap:4,marginTop:6,fontSize:12,color:"#CF1322"}}>
+          <FI name="alert-circle" size={12} color="#CF1322"/>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Input style helper ── */
 const inputStyle=(error)=>({
   width:"100%",height:40,padding:"0 12px",
@@ -846,20 +889,20 @@ function PermissionsAuthzPage({windowWidth}){
 
           {/* Form 2 cols */}
           <div style={{padding:"20px 24px",display:"grid",gridTemplateColumns:formCols,gap:"16px 20px"}}>
-            <Field label="使用者">
+            <Field label="使用者" noGap>
               <Select value={userId} onChange={setUserId}
                 options={AUTHZ_USERS.map(u=>u.id)}
                 renderOption={(id)=>AUTHZ_USERS.find(u=>u.id===id)?.label||id}/>
             </Field>
-            <Field label="操作權限">
+            <Field label="操作權限" noGap>
               <Select value={action} onChange={setAction}
                 options={AUTHZ_ACTIONS.map(a=>a.id)}
                 renderOption={(id)=>AUTHZ_ACTIONS.find(a=>a.id===id)?.label||id}/>
             </Field>
-            <Field label="資源類型">
+            <Field label="資源類型" noGap>
               <Select value={resourceType} onChange={setResourceType} options={AUTHZ_RESOURCE_TYPES}/>
             </Field>
-            <Field label="資源 ID">
+            <Field label="資源 ID" noGap>
               <input value={resourceId}
                 onChange={e=>setResourceId(e.target.value)}
                 placeholder="例如：456"

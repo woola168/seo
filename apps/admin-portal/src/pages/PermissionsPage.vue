@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref } from "vue";
 import AuthorizationEvaluator from "../components/permissions/AuthorizationEvaluator.vue";
 import DepartmentManagement from "../components/permissions/DepartmentManagement.vue";
 import MemberManagement from "../components/permissions/MemberManagement.vue";
@@ -11,6 +11,7 @@ import type {
   Capabilities,
   CustomerSummary,
   Department,
+  PageId,
   Role,
   SessionUser,
   TaskSummary,
@@ -30,7 +31,7 @@ const props = defineProps<{
   departments: Department[];
   decision: AuthorizationDecision | null;
   loading: boolean;
-  initialTab?: PermissionTab;
+  activePage: PageId;
 }>();
 
 const emit = defineEmits<{
@@ -52,7 +53,6 @@ const emit = defineEmits<{
   "delete-department": [departmentId: string];
   "create-customer": [name: string, onSuccess: () => void];
   "create-task": [customerId: string, name: string, onSuccess: () => void];
-  "tab-change": [tab: PermissionTab];
   evaluate: [
     userId: string,
     permission: string,
@@ -63,7 +63,6 @@ const emit = defineEmits<{
 }>();
 
 type PermissionTab = "members" | "roles" | "departments" | "evaluate";
-const activeTab = ref<PermissionTab>(props.initialTab ?? "members");
 const resourceModal = ref<"customer" | "task" | null>(null);
 const resourceForm = reactive({ name: "", customerId: "" });
 
@@ -108,27 +107,37 @@ const canEvaluateOthers = computed(() =>
   hasPermission(props.capabilities.permissions, "authorization.evaluate"),
 );
 
-const tabs: Array<{ id: PermissionTab; label: string }> = [
-  { id: "members", label: "員工管理" },
-  { id: "roles", label: "角色管理" },
-  { id: "departments", label: "部門管理" },
-  { id: "evaluate", label: "授權判斷" },
-];
+const activeTab = computed<PermissionTab>(() => {
+  if (props.activePage === "permissions-roles") return "roles";
+  if (props.activePage === "permissions-departments") return "departments";
+  if (props.activePage === "permissions-authorization") return "evaluate";
+  return "members";
+});
 
-watch(
-  () => props.initialTab,
-  (tab) => {
-    if (tab) activeTab.value = tab;
-  },
-);
-
-watch(
-  activeTab,
-  (tab) => {
-    emit("tab-change", tab);
-  },
-  { immediate: true },
-);
+const pageHeader = computed(() => {
+  if (activeTab.value === "roles") {
+    return {
+      title: "角色管理",
+      description: `管理系統角色與權限範圍，共 ${props.roles.length} 個角色。`,
+    };
+  }
+  if (activeTab.value === "departments") {
+    return {
+      title: "部門管理",
+      description: "管理組織部門結構與員工歸屬。",
+    };
+  }
+  if (activeTab.value === "evaluate") {
+    return {
+      title: "授權判斷",
+      description: "測試指定使用者對特定資源的操作是否被允許。",
+    };
+  }
+  return {
+    title: "成員管理",
+    description: "管理成員帳號、角色與部門。",
+  };
+});
 
 function updateUserRoles(userId: string, roleIds: string[]): void {
   emit("update-user-roles", userId, roleIds);
@@ -202,10 +211,11 @@ function updateDepartment(
   <section class="page permission-page">
     <header class="page-header">
       <div>
-        <h1>權限管理</h1>
-        <p>管理員工帳號、部門架構、角色權限與授權判斷。</p>
+        <h1>{{ pageHeader.title }}</h1>
+        <p>{{ pageHeader.description }}</p>
       </div>
-      <div class="page-actions">
+      <!-- 測試用資源建立入口；正式客戶/任務管理仍由後續資源管理流程承接。 -->
+      <div v-if="activeTab === 'members'" class="page-actions">
         <button
           v-if="canCreateCustomers"
           class="button button-secondary"
@@ -225,20 +235,6 @@ function updateDepartment(
         </button>
       </div>
     </header>
-
-    <div class="tabs" role="tablist">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        type="button"
-        :class="{ active: activeTab === tab.id }"
-        role="tab"
-        :aria-selected="activeTab === tab.id"
-        @click="activeTab = tab.id"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
 
     <MemberManagement
       v-if="activeTab === 'members' && canReadUsers"
@@ -293,7 +289,12 @@ function updateDepartment(
       <span>請聯絡系統管理員調整 access-control 權限。</span>
     </div>
 
-    <div v-if="resourceModal" class="modal-backdrop" @click.self="resourceModal = null">
+    <div
+      v-if="resourceModal"
+      class="modal-backdrop"
+      @click.self="resourceModal = null"
+      @keydown.esc.prevent="resourceModal = null"
+    >
       <form class="modal modal-compact" @submit.prevent="submitResource">
         <header class="modal-header">
           <div>

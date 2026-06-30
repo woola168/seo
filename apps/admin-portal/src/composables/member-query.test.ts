@@ -15,6 +15,7 @@ const members: MemberView[] = [
     taskIds: [],
     department: "行銷部",
     lastLogin: "2026/06/10 上午10:00",
+    lastLoginAt: "2026-06-10T02:00:00Z",
     source: "workspace",
     color: "#0a2b41",
   },
@@ -29,6 +30,7 @@ const members: MemberView[] = [
     taskIds: [],
     department: "工程部",
     lastLogin: null,
+    lastLoginAt: null,
     source: "external",
     color: "#1677ff",
   },
@@ -43,6 +45,7 @@ const members: MemberView[] = [
     taskIds: [],
     department: "工程部",
     lastLogin: "2026/06/08 上午10:00",
+    lastLoginAt: "2026-06-08T02:00:00Z",
     source: "external",
     color: "#52c41a",
   },
@@ -97,5 +100,34 @@ describe("queryMembers", () => {
     const result = queryMembers(members, { ...baseQuery, page: 99 });
 
     expect(result.page).toBe(2);
+  });
+
+  it("sorts last login by the source timestamp instead of the display label", () => {
+    const result = queryMembers(
+      [
+        {
+          ...members[0],
+          displayName: "Morning",
+          lastLogin: "下午 01:00",
+          lastLoginAt: "2026-06-10T05:00:00Z",
+        },
+        {
+          ...members[2],
+          displayName: "Afternoon",
+          lastLogin: "上午 11:00",
+          lastLoginAt: "2026-06-10T03:00:00Z",
+        },
+      ],
+      {
+        ...baseQuery,
+        sortField: "lastLogin",
+        pageSize: 10,
+      },
+    );
+
+    expect(result.items.map((member) => member.displayName)).toEqual([
+      "Afternoon",
+      "Morning",
+    ]);
   });
 });

@@ -1,6 +1,9 @@
 export type PageId =
   | "dashboard"
-  | "permissions"
+  | "permissions-members"
+  | "permissions-roles"
+  | "permissions-departments"
+  | "permissions-authorization"
   | "geo-analysis-overview"
   | "geo-analysis-projects"
   | "geo-analysis-entities"

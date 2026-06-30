@@ -167,7 +167,7 @@ function parseIds(value: string): string[] {
             <th><button type="button" @click="sort('role')">角色</button></th>
             <th><button type="button" @click="sort('department')">部門</button></th>
             <th><button type="button" @click="sort('status')">狀態</button></th>
-            <!-- <th><button type="button" @click="sort('lastLogin')">最後登入</button></th> -->
+            <th><button type="button" @click="sort('lastLogin')">最後登入</button></th>
             <th>操作</th>
           </tr>
         </thead>
@@ -195,7 +195,7 @@ function parseIds(value: string): string[] {
                 {{ getMemberStatusDisplay(member.status).label }}
               </span>
             </td>
-            <!-- <td class="muted-time">{{ member.lastLogin ?? "尚未登入" }}</td> -->
+            <td class="muted-time">{{ member.lastLogin ?? "尚未登入" }}</td>
             <td>
               <div class="row-actions">
                 <button
@@ -236,7 +236,12 @@ function parseIds(value: string): string[] {
       />
     </div>
 
-    <div v-if="selectedMember" class="modal-backdrop" @click.self="selectedMemberId = ''">
+    <div
+      v-if="selectedMember"
+      class="modal-backdrop"
+      @click.self="selectedMemberId = ''"
+      @keydown.esc.prevent="selectedMemberId = ''"
+    >
       <section class="modal" role="dialog" aria-modal="true" aria-label="編輯員工權限">
         <header class="modal-header">
           <div>
