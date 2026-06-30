@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import AppIcon from "../ui/AppIcon.vue";
 import PermissionGroupSelector from "./PermissionGroupSelector.vue";
 import type { Role } from "../../types";
@@ -22,10 +22,24 @@ const emit = defineEmits<{
 
 const editingRoleId = ref("");
 const editingPermissions = ref<string[]>([]);
+const search = ref("");
 const deleteTarget = ref<Role | null>(null);
 const deleteCloseButton = ref<HTMLButtonElement | null>(null);
 const deleteCancelButton = ref<HTMLButtonElement | null>(null);
 const deleteConfirmButton = ref<HTMLButtonElement | null>(null);
+const selectedRole = computed(
+  () => props.roles.find((role) => role.id === editingRoleId.value) ?? null,
+);
+const filteredRoles = computed(() => {
+  const keyword = search.value.trim().toLowerCase();
+  if (!keyword) return props.roles;
+  return props.roles.filter((role) =>
+    role.name.toLowerCase().includes(keyword) ||
+    role.permissions.some((permission) =>
+      permission.toLowerCase().includes(keyword),
+    ),
+  );
+});
 
 watch(
   () => props.roles,
@@ -33,8 +47,6 @@ watch(
     const current = roles.find((role) => role.id === editingRoleId.value);
     if (current) {
       editingPermissions.value = [...current.permissions];
-    } else if (roles[0]) {
-      selectRole(roles[0]);
     } else {
       editingRoleId.value = "";
       editingPermissions.value = [];
@@ -52,6 +64,17 @@ watch(
 function selectRole(role: Role): void {
   editingRoleId.value = role.id;
   editingPermissions.value = [...role.permissions];
+}
+
+function closeEditor(): void {
+  editingRoleId.value = "";
+  editingPermissions.value = [];
+}
+
+function saveRole(): void {
+  if (!editingRoleId.value) return;
+  emit("update", editingRoleId.value, editingPermissions.value);
+  closeEditor();
 }
 
 function requestDelete(role: Role): void {
@@ -91,74 +114,124 @@ function trapDeleteDialogFocus(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div class="role-layout">
-    <section class="card role-list">
-      <header class="card-header">
-        <div>
-          <h2>角色列表</h2>
-          <p>{{ roles.length }} 個角色</p>
-        </div>
-        <button
-          v-if="canManage"
-          class="button button-primary"
-          type="button"
-          @click="emit('open-create')"
-        >
-          <AppIcon name="plus" :size="16" />
-          建立角色
-        </button>
-      </header>
-      <div
-        v-for="role in roles"
-        :key="role.id"
-        class="role-item"
-        :class="{ active: role.id === editingRoleId }"
+  <div class="permission-content">
+    <div class="toolbar permission-table-toolbar">
+      <label class="filter-search">
+        <AppIcon name="search" :size="16" />
+        <input v-model="search" type="search" placeholder="搜尋角色名稱、權限..." />
+      </label>
+      <span class="permission-record-count">共 {{ roles.length }} 個</span>
+      <button
+        v-if="search"
+        class="button button-ghost"
+        type="button"
+        @click="search = ''"
       >
-        <button class="role-select" type="button" @click="selectRole(role)">
-          <span>
-            <strong>{{ role.name }}</strong>
-            <small>{{ role.permissions.length }} 個權限</small>
-          </span>
-          <span v-if="role.isSystem" class="badge badge-purple">系統角色</span>
-          <AppIcon v-else name="chevron-right" :size="16" />
-        </button>
+        清除搜尋
+      </button>
+      <button
+        v-if="canManage"
+        class="button button-primary toolbar-primary"
+        type="button"
+        @click="emit('open-create')"
+      >
+        <AppIcon name="plus" :size="16" />
+        新增角色
+      </button>
+    </div>
+
+    <section class="role-card-grid">
+      <article
+        v-for="role in filteredRoles"
+        :key="role.id"
+        class="card role-card"
+      >
+        <header class="role-card-head">
+          <span class="role-avatar">{{ role.name.slice(0, 1) }}</span>
+          <div class="role-card-actions">
+            <span v-if="role.isSystem" class="badge badge-purple">系統角色</span>
+            <button
+              v-if="canManage && !role.isSystem"
+              class="icon-button row-action-button"
+              type="button"
+              :disabled="loading"
+              :aria-label="`刪除 ${role.name}`"
+              @click="requestDelete(role)"
+            >
+              <AppIcon name="trash" :size="15" />
+            </button>
+          </div>
+        </header>
+        <h2>{{ role.name }}</h2>
+        <p>
+          {{ role.isSystem ? "系統內建角色，保留核心管理權限。" : "自訂角色，可依職責調整權限範圍。" }}
+        </p>
+        <footer>
+          <span>{{ role.permissions.length }} 項權限</span>
+          <button
+            class="button button-secondary"
+            type="button"
+            :disabled="!canManage"
+            @click="selectRole(role)"
+          >
+            編輯權限
+          </button>
+        </footer>
+      </article>
+      <div v-if="!filteredRoles.length" class="card empty-state">
+        <AppIcon name="search" :size="28" />
+        <strong>找不到符合條件的角色</strong>
+        <span>試試調整關鍵字或清除搜尋條件。</span>
         <button
-          v-if="canManage && !role.isSystem"
-          class="icon-button role-delete-button"
+          v-if="search"
+          class="button button-secondary"
           type="button"
-          :disabled="loading"
-          :aria-label="`刪除 ${role.name}`"
-          @click="requestDelete(role)"
+          @click="search = ''"
         >
-          <AppIcon name="trash" :size="15" />
+          清除搜尋
         </button>
       </div>
     </section>
 
-    <section class="card role-editor">
-      <header class="card-header">
-        <div>
-          <h2>角色權限</h2>
-          <p>選擇角色後調整可使用的功能群組。</p>
+    <div
+      v-if="selectedRole"
+      class="modal-backdrop"
+      @click.self="closeEditor"
+      @keydown.esc.prevent="closeEditor"
+    >
+      <section class="modal role-permission-modal" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <div>
+            <h2>編輯角色權限</h2>
+            <p>{{ selectedRole.name }} · {{ selectedRole.permissions.length }} 項目前權限</p>
+          </div>
+          <button class="icon-button" type="button" @click="closeEditor">
+            <AppIcon name="x" :size="18" />
+          </button>
+        </header>
+        <div class="modal-body">
+          <PermissionGroupSelector
+            :permissions="permissions"
+            :selected-permissions="editingPermissions"
+            :disabled="!canManage"
+            @update:selected-permissions="editingPermissions = $event"
+          />
+          <div class="modal-actions">
+            <button class="button button-secondary" type="button" @click="closeEditor">
+              取消
+            </button>
+            <button
+              class="button button-primary"
+              type="button"
+              :disabled="!canManage || loading"
+              @click="saveRole"
+            >
+              儲存角色權限
+            </button>
+          </div>
         </div>
-      </header>
-      <PermissionGroupSelector
-        v-if="editingRoleId"
-        :permissions="permissions"
-        :selected-permissions="editingPermissions"
-        :disabled="!canManage"
-        @update:selected-permissions="editingPermissions = $event"
-      />
-      <div v-else class="empty-state">目前沒有可編輯的角色。</div>
-      <button
-        class="button button-primary"
-        type="button"
-        :disabled="!editingRoleId || !canManage || loading"
-        @click="emit('update', editingRoleId, editingPermissions)"
-      >
-        儲存角色權限
-      </button>
-    </section>
+      </section>
+    </div>
 
     <div
       v-if="deleteTarget"

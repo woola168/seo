@@ -53,9 +53,31 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
     },
     {
       path: "/permissions",
-      name: "permissions",
+      redirect: "/permissions/members",
+    },
+    {
+      path: "/permissions/members",
+      name: "permissions-members",
       component: () => import("../pages/PermissionsPage.vue"),
-      meta: { requiresAuth: true, page: "permissions" },
+      meta: { requiresAuth: true, page: "permissions-members" },
+    },
+    {
+      path: "/permissions/roles",
+      name: "permissions-roles",
+      component: () => import("../pages/PermissionsPage.vue"),
+      meta: { requiresAuth: true, page: "permissions-roles" },
+    },
+    {
+      path: "/permissions/departments",
+      name: "permissions-departments",
+      component: () => import("../pages/PermissionsPage.vue"),
+      meta: { requiresAuth: true, page: "permissions-departments" },
+    },
+    {
+      path: "/permissions/authorization",
+      name: "permissions-authorization",
+      component: () => import("../pages/PermissionsPage.vue"),
+      meta: { requiresAuth: true, page: "permissions-authorization" },
     },
     {
       path: "/geo-analysis",
@@ -119,13 +141,13 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       path: "/permissions/users/new",
       name: "permission-user-new",
       component: () => import("../pages/EmployeeInvitationPage.vue"),
-      meta: { requiresAuth: true, page: "permissions" },
+      meta: { requiresAuth: true, page: "permissions-members" },
     },
     {
       path: "/permissions/roles/new",
       name: "permission-role-new",
       component: () => import("../pages/RoleCreationPage.vue"),
-      meta: { requiresAuth: true, page: "permissions" },
+      meta: { requiresAuth: true, page: "permissions-roles" },
     },
     {
       path: "/:pathMatch(.*)*",
@@ -162,7 +184,12 @@ export function createPortalRouter(
 }
 
 export function getRoutePage(page: unknown): PageId {
-  if (page === "permissions") return "permissions";
+  if (page === "permissions-members") return "permissions-members";
+  if (page === "permissions-roles") return "permissions-roles";
+  if (page === "permissions-departments") return "permissions-departments";
+  if (page === "permissions-authorization") {
+    return "permissions-authorization";
+  }
   if (page === "geo-analysis-overview") return "geo-analysis-overview";
   if (page === "geo-analysis-projects") return "geo-analysis-projects";
   if (page === "geo-analysis-entities") return "geo-analysis-entities";

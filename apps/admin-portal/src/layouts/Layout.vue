@@ -35,7 +35,9 @@ const commandInput = ref<HTMLInputElement | null>(null);
 const commandEscapeButton = ref<HTMLButtonElement | null>(null);
 const commandQuickActions = ref<HTMLButtonElement[]>([]);
 const commandNavigationButtons = ref<HTMLButtonElement[]>([]);
-const expandedNavigationIds = ref<Set<string>>(new Set(["geo-analysis"]));
+const expandedNavigationIds = ref<Set<string>>(
+  new Set(["geo-analysis", "permissions"]),
+);
 
 const primaryNavigation = computed(() =>
   props.navigation.filter((item) => !item.group),
@@ -54,6 +56,15 @@ const commandNavigationItems = computed(() =>
     ...(item.children?.filter((child) => child.page) ?? []),
   ]),
 );
+const breadcrumbSegments = computed(() => {
+  if (props.activePage.startsWith("permissions-")) {
+    return ["系統", "權限管理", props.currentTitle];
+  }
+  if (props.activePage.startsWith("geo-analysis-")) {
+    return ["分析工具", "GEO 分析", props.currentTitle];
+  }
+  return [props.currentTitle];
+});
 
 function selectNavigation(item: NavigationItem): void {
   closeSearch(false);
@@ -245,13 +256,20 @@ function logout(): void {
 
     <header class="layout-topbar">
       <div class="topbar-breadcrumbs">
-        <span v-if="activePage === 'permissions'">儀表板</span>
-        <AppIcon
-          v-if="activePage === 'permissions'"
-          name="chevron-right"
-          :size="13"
-        />
-        <strong>{{ currentTitle }}</strong>
+        <template
+          v-for="(segment, index) in breadcrumbSegments"
+          :key="`${segment}-${index}`"
+        >
+          <strong v-if="index === breadcrumbSegments.length - 1">
+            {{ segment }}
+          </strong>
+          <span v-else>{{ segment }}</span>
+          <AppIcon
+            v-if="index < breadcrumbSegments.length - 1"
+            name="chevron-right"
+            :size="13"
+          />
+        </template>
       </div>
       <div class="topbar-actions">
         <button

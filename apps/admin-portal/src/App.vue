@@ -55,9 +55,6 @@ const loginError = ref("");
 const toast = ref<ToastMessage | null>(null);
 const activePage = computed<PageId>(() => getRoutePage(route.meta.page));
 const currentTitle = computed(() => pageTitle());
-const permissionInitialTab = computed(() =>
-  route.query.tab === "roles" ? "roles" as const : undefined,
-);
 const recoveryMode = computed<RecoveryMode>(() =>
   route.meta.recoveryMode === "request" ||
   route.meta.recoveryMode === "reset" ||
@@ -92,9 +89,12 @@ type GeoAnalysisTab =
 
 const loadedData = ref<Set<PortalDataKey>>(new Set());
 const pendingData = new Map<PortalDataKey, Promise<void>>();
-const activePermissionTab = ref<PermissionTab>(
-  permissionInitialTab.value ?? "members",
-);
+const activePermissionTab = computed<PermissionTab>(() => {
+  if (activePage.value === "permissions-roles") return "roles";
+  if (activePage.value === "permissions-departments") return "departments";
+  if (activePage.value === "permissions-authorization") return "evaluate";
+  return "members";
+});
 const geoAnalysisTabsByPage: Partial<Record<PageId, GeoAnalysisTab>> = {
   "geo-analysis-overview": "overview",
   "geo-analysis-projects": "projects",
@@ -131,7 +131,10 @@ function pageTitle(): string {
   if (route.name === "permission-role-new") return "建立角色";
   const geoTitle = geoPageTitles[activePage.value];
   if (geoTitle) return geoTitle;
-  if (activePage.value === "permissions") return "權限管理";
+  if (activePage.value === "permissions-members") return "成員管理";
+  if (activePage.value === "permissions-roles") return "角色管理";
+  if (activePage.value === "permissions-departments") return "部門管理";
+  if (activePage.value === "permissions-authorization") return "授權判斷";
   return "總覽";
 }
 
@@ -241,7 +244,32 @@ const navigation = computed<NavigationItem[]>(() => [
     label: "權限管理",
     icon: "shield",
     group: "系統",
-    page: "permissions",
+    children: [
+      {
+        id: "permissions-members",
+        label: "成員管理",
+        icon: "users",
+        page: "permissions-members",
+      },
+      {
+        id: "permissions-roles",
+        label: "角色管理",
+        icon: "shield",
+        page: "permissions-roles",
+      },
+      {
+        id: "permissions-departments",
+        label: "部門管理",
+        icon: "briefcase",
+        page: "permissions-departments",
+      },
+      {
+        id: "permissions-authorization",
+        label: "授權判斷",
+        icon: "check-circle",
+        page: "permissions-authorization",
+      },
+    ],
   },
   {
     id: "settings",
@@ -262,13 +290,6 @@ watch(
     if (requiresAuth && !user.value && api.hasSession()) {
       void restoreSession();
     }
-  },
-);
-
-watch(
-  permissionInitialTab,
-  (tab) => {
-    activePermissionTab.value = tab ?? "members";
   },
 );
 
@@ -381,9 +402,18 @@ async function ensureCurrentViewData(force = false): Promise<void> {
     await loadPortalData(["permissions"], force);
     return;
   }
-  if (activePage.value === "permissions") {
+  if (isPermissionPage(activePage.value)) {
     await ensurePermissionTabData(activePermissionTab.value, force);
   }
+}
+
+function isPermissionPage(page: PageId): boolean {
+  return (
+    page === "permissions-members" ||
+    page === "permissions-roles" ||
+    page === "permissions-departments" ||
+    page === "permissions-authorization"
+  );
 }
 
 async function ensurePermissionTabData(
@@ -728,7 +758,7 @@ function openEmployeeInvitation(): void {
 }
 
 function closeEmployeeInvitation(): void {
-  void router.replace({ name: "permissions" });
+  void router.replace({ name: "permissions-members" });
 }
 
 function openRoleCreation(): void {
@@ -736,12 +766,7 @@ function openRoleCreation(): void {
 }
 
 function closeRoleCreation(): void {
-  void router.replace({ name: "permissions", query: { tab: "roles" } });
-}
-
-function changePermissionTab(tab: PermissionTab): void {
-  activePermissionTab.value = tab;
-  void loadCurrentViewData();
+  void router.replace({ name: "permissions-roles" });
 }
 
 function notify(message: string, tone: ToastTone = "info"): void {
@@ -841,7 +866,7 @@ function unavailable(label: string): void {
       :departments="departments"
       :decision="decision"
       :loading="loading"
-      :initial-tab="permissionInitialTab"
+      :active-page="activePage"
       @unavailable="unavailable"
       @open-role-creation="openRoleCreation"
       @update-role="updateRole"
@@ -855,7 +880,6 @@ function unavailable(label: string): void {
       @delete-department="deleteDepartment"
       @create-customer="createCustomer"
       @create-task="createTask"
-      @tab-change="changePermissionTab"
       @evaluate="evaluate"
     />
   </Layout>

@@ -54,7 +54,7 @@ function memberSortValue(
     case "department":
       return member.department ?? "";
     case "lastLogin":
-      return member.lastLogin ?? "";
+      return member.lastLoginAt ?? "";
     default:
       return member[field];
   }
