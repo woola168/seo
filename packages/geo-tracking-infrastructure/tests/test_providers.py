@@ -199,7 +199,9 @@ async def test_google_aio_provider_reports_no_aio_result() -> None:
 
 @pytest.mark.anyio
 async def test_google_aio_provider_requires_api_key() -> None:
-    provider = SerpApiGoogleAioAnswerProvider(GeoTrackingSettings())
+    provider = SerpApiGoogleAioAnswerProvider(
+        GeoTrackingSettings(serpapi_api_key="")
+    )
 
     with pytest.raises(ProviderRequestError) as exc_info:
         await provider.generate_answer(_answer_request())
