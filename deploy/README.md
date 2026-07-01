@@ -2,16 +2,16 @@
 
 ## 環境檔
 
-GitHub Actions 依分支選擇部署環境檔：
+GitHub Actions 會依分支選用部署環境檔：
 
 - `develop` 使用 `deploy/.env.develop`
 - `main` 使用 `deploy/.env.prod`
 
-遠端 PostgreSQL schema 與 seed 仍由人工執行；CI/CD 不會自動跑 migration。
+遠端 PostgreSQL schema 與 seed 仍由人工執行；CI/CD 不會自動跑 DB migration。
 
 ## 對外 Port
 
-Compose 內的服務預設只綁定 `127.0.0.1`，需要從外部查看時請透過 SSH tunnel 或反向代理開放。
+Compose 將服務綁定在 `127.0.0.1`，可搭配 SSH tunnel 對外測試：
 
 - Admin Portal: `http://127.0.0.1:18080`
 - Access Control API: `http://127.0.0.1:18004`
@@ -21,7 +21,7 @@ Compose 內的服務預設只綁定 `127.0.0.1`，需要從外部查看時請透
 - RabbitMQ AMQP: `127.0.0.1:5672`
 - RabbitMQ Management UI: `http://127.0.0.1:15672`
 
-RabbitMQ dashboard 範例：
+RabbitMQ dashboard 可用 SSH tunnel 查看：
 
 ```powershell
 ssh -L 15672:127.0.0.1:15672 user@server
@@ -29,7 +29,7 @@ ssh -L 15672:127.0.0.1:15672 user@server
 
 登入帳密使用 `RABBITMQ_DEFAULT_USER` 與 `RABBITMQ_DEFAULT_PASS`。
 
-## Compose env file path
+## Compose Env File Path
 
 `DEPLOY_ENV_FILE` is consumed by `deploy/docker-compose.yml` `env_file` entries.
 Use `.env.develop` or `.env.prod` because Docker Compose resolves the path from
@@ -50,7 +50,7 @@ GEO_ANALYSIS_RABBITMQ_ROUTING_KEY_PREFIX=geo.query-runs
 GEO_ANALYSIS_CALLBACK_BASE_URL=http://geo-analysis-api:8002
 ```
 
-Queue 依 provider 拆分，常見命名如下：
+Queue 依 provider 拆分：
 
 - `geo.query-runs.gemini`
 - `geo.query-runs.openai`
@@ -58,7 +58,7 @@ Queue 依 provider 拆分，常見命名如下：
 
 ## GEO Analysis Worker
 
-本批新增 `geo-analysis-worker-gemini`，只消費 Gemini queue：
+`geo-analysis-worker-gemini` 只消費 Gemini queue：
 
 ```env
 GEO_ANALYSIS_WORKER_PROVIDER=gemini
@@ -68,12 +68,16 @@ GEO_TRACKING_BASE_URL=http://geo-tracking-api:8003
 GEO_TRACKING_TIMEOUT_SECONDS=60
 ```
 
-`geo-analysis-worker-google-aio` 會使用同一個 worker image，並覆寫
-`GEO_ANALYSIS_WORKER_PROVIDER=google_aio` 與
-`GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.google_aio`。正式跑 Google AIO 前，
+`geo-analysis-worker-google-aio` 使用同一個 worker image，設定為：
+
+```env
+GEO_ANALYSIS_WORKER_PROVIDER=google_aio
+GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.google_aio
+```
+
 `geo-tracking-api` 的部署環境必須注入 `SERPAPI_API_KEY`；此 key 不應寫入 repo。
 
-### GEO Analysis Worker result storage
+### GEO Analysis Worker Result Storage
 
 GEO Analysis provider worker 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
 
@@ -81,14 +85,14 @@ GEO Analysis provider worker 會把 RabbitMQ message 轉成 `geo-tracking-api` �
 
 ## GEO Tracking
 
-`geo-tracking-api` 需要 Google Vertex AI service account JSON，請放在 VM 上並透過 Compose volume 掛載，不要提交到 source control。
+`geo-tracking-api` 使用 Google Vertex AI service account JSON 時，請放在 VM 上並透過 Compose volume 掛載，不要提交到 source control。
 
 ```env
 GCP_CREDENTIALS_FILE_HOST=/root/kmind/deploy/credentials/dev-gcp-key.json
 GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
 ```
 
-Google AIO 會使用 SerpApi，請在需要時設定 `SERPAPI_API_KEY`。
+Google AIO 使用 SerpApi，正式環境需設定 `SERPAPI_API_KEY`。
 
 ## 本機 PostgreSQL
 
@@ -103,13 +107,28 @@ docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 
 ## Access Control Tenant DB Patch
 
-既有 Access Control PostgreSQL 若已經建立過舊版 schema，請手動執行 tenant patch：
+既有 Access Control PostgreSQL 若已套用舊 schema，需手動執行 tenant patch：
 
 ```powershell
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/006_access_control_tenant_patch.sql
 ```
 
 這份 patch 會建立 `tenant` 表、seed `code='default'` 的 default tenant，並將既有 `user_account`、`role`、`department` 回填到 default tenant。第一批 tenant foundation 仍維持 `user_account.email` 全系統唯一；若資料庫已存在重複 email，patch 會在建立 global unique constraint 時失敗，需先人工清理。新環境可直接使用更新後的 `deploy/local/postgresql/001_access_control_schema.sql` 初始化。
+
+## Resource Catalog Tenant DB Patch
+
+第二批 tenant scope 需同時更新 Resource Catalog DB 與 Access Control DB 的 resource grants。既有遠端 DB 請依序手動執行：
+
+```powershell
+psql "postgresql://USER:PASSWORD@HOST:PORT/RESOURCE_CATALOG_DB" -f deploy/local/postgresql/007_resource_catalog_tenant_patch.sql
+psql "postgresql://USER:PASSWORD@HOST:PORT/ACCESS_CONTROL_DB" -f deploy/local/postgresql/008_access_control_resource_grant_tenant_patch.sql
+```
+
+`007_resource_catalog_tenant_patch.sql` 會替 `customer` 與 `seo_task` 新增 `tenant_id`，既有資料回填 default tenant，並將 customer name unique 改為 `(tenant_id, name)`。
+
+`008_access_control_resource_grant_tenant_patch.sql` 會替 `customer_access_grant` 與 `task_access_grant` 新增 `tenant_id`，依 user tenant 回填既有 grants，並將 unique constraint 改為 tenant-scoped。
+
+新環境初始化已同步更新 `001_resource_catalog_schema.sql` 與 `001_access_control_schema.sql`；CI/CD 仍不會自動執行 DB migration。
 
 ## GEO Analysis 手動 DB Patch
 
@@ -119,4 +138,4 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql
 ```
 
-這份 patch 會解除 `geo_project.customer_id` 的 `NOT NULL` 限制，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境仍可直接使用 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化完整 schema。
+這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。

@@ -228,6 +228,7 @@ async def create_user_invitation(
         customer_ids=payload.customer_ids,
         task_ids=payload.task_ids,
         send_invitation=payload.send_invitation,
+        access_token=principal.access_token,
     )
     return UserInvitationResponse.from_application(invitation)
 
@@ -375,6 +376,7 @@ async def replace_customer_grants(
         user_id=user_id,
         customer_ids=payload.customer_ids,
         tenant_id=principal.user.tenant_id,
+        access_token=principal.access_token,
     )
     return UserAccessResponse.from_domain(user)
 
@@ -394,5 +396,6 @@ async def replace_task_grants(
         user_id=user_id,
         task_ids=payload.task_ids,
         tenant_id=principal.user.tenant_id,
+        access_token=principal.access_token,
     )
     return UserAccessResponse.from_domain(user)

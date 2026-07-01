@@ -141,6 +141,7 @@ class MemoryAccessControlRepository:
     async def replace_customer_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         customer_ids: set[UUID],
     ) -> None:
         self.users[user_id].customer_ids = set(customer_ids)
@@ -148,6 +149,7 @@ class MemoryAccessControlRepository:
     async def replace_task_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         task_ids: set[UUID],
     ) -> None:
         self.users[user_id].task_ids = set(task_ids)

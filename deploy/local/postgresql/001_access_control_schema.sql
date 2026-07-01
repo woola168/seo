@@ -63,17 +63,25 @@ CREATE TABLE IF NOT EXISTS user_role (
 
 CREATE TABLE IF NOT EXISTS customer_access_grant (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
     user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
     customer_id uuid NOT NULL,
-    CONSTRAINT ux_user_customer_grant UNIQUE (user_id, customer_id)
+    CONSTRAINT ux_tenant_user_customer_grant UNIQUE (tenant_id, user_id, customer_id)
 );
 
 CREATE TABLE IF NOT EXISTS task_access_grant (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
     user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
     task_id uuid NOT NULL,
-    CONSTRAINT ux_user_task_grant UNIQUE (user_id, task_id)
+    CONSTRAINT ux_tenant_user_task_grant UNIQUE (tenant_id, user_id, task_id)
 );
+
+CREATE INDEX IF NOT EXISTS ix_customer_access_grant_tenant_id
+    ON customer_access_grant (tenant_id);
+
+CREATE INDEX IF NOT EXISTS ix_task_access_grant_tenant_id
+    ON task_access_grant (tenant_id);
 
 CREATE TABLE IF NOT EXISTS refresh_session (
     id uuid PRIMARY KEY,

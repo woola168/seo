@@ -65,12 +65,16 @@ class PostgresAccessControlRepository:
                 {row.tenant_id for row in rows},
             )
             user_ids = {row.id for row in rows}
+            tenant_ids_by_user = {row.id: row.tenant_id for row in rows}
             role_ids_by_user = await self._list_user_role_ids(session, user_ids)
             customer_ids_by_user = await self._list_user_customer_ids(
                 session,
-                user_ids,
+                tenant_ids_by_user,
             )
-            task_ids_by_user = await self._list_user_task_ids(session, user_ids)
+            task_ids_by_user = await self._list_user_task_ids(
+                session,
+                tenant_ids_by_user,
+            )
             return [
                 self._user_from_row(
                     row,
@@ -252,13 +256,16 @@ class PostgresAccessControlRepository:
     async def replace_customer_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         customer_ids: set[UUID],
     ) -> None:
         async with self._session_factory() as session:
+            resolved_tenant_id = tenant_id or (await session.get(UserRow, user_id)).tenant_id
             existing = (
                 await session.scalars(
                     select(CustomerAccessGrantRow).where(
-                        CustomerAccessGrantRow.user_id == user_id
+                        CustomerAccessGrantRow.tenant_id == resolved_tenant_id,
+                        CustomerAccessGrantRow.user_id == user_id,
                     )
                 )
             ).all()
@@ -269,7 +276,11 @@ class PostgresAccessControlRepository:
                 await session.delete(row)
             session.add_all(
                 [
-                    CustomerAccessGrantRow(user_id=user_id, customer_id=customer_id)
+                    CustomerAccessGrantRow(
+                        tenant_id=resolved_tenant_id,
+                        user_id=user_id,
+                        customer_id=customer_id,
+                    )
                     for customer_id in customer_ids - existing_by_customer_id.keys()
                 ]
             )
@@ -278,13 +289,16 @@ class PostgresAccessControlRepository:
     async def replace_task_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         task_ids: set[UUID],
     ) -> None:
         async with self._session_factory() as session:
+            resolved_tenant_id = tenant_id or (await session.get(UserRow, user_id)).tenant_id
             existing = (
                 await session.scalars(
                     select(TaskAccessGrantRow).where(
-                        TaskAccessGrantRow.user_id == user_id
+                        TaskAccessGrantRow.tenant_id == resolved_tenant_id,
+                        TaskAccessGrantRow.user_id == user_id,
                     )
                 )
             ).all()
@@ -295,7 +309,11 @@ class PostgresAccessControlRepository:
                 await session.delete(row)
             session.add_all(
                 [
-                    TaskAccessGrantRow(user_id=user_id, task_id=task_id)
+                    TaskAccessGrantRow(
+                        tenant_id=resolved_tenant_id,
+                        user_id=user_id,
+                        task_id=task_id,
+                    )
                     for task_id in task_ids - existing_by_task_id.keys()
                 ]
             )
@@ -494,6 +512,7 @@ class PostgresAccessControlRepository:
                 session.add_all(
                     [
                         CustomerAccessGrantRow(
+                            tenant_id=user.tenant_id,
                             user_id=user.id,
                             customer_id=customer_id,
                         )
@@ -502,7 +521,11 @@ class PostgresAccessControlRepository:
                 )
                 session.add_all(
                     [
-                        TaskAccessGrantRow(user_id=user.id, task_id=task_id)
+                        TaskAccessGrantRow(
+                            tenant_id=user.tenant_id,
+                            user_id=user.id,
+                            task_id=task_id,
+                        )
                         for task_id in task_ids
                     ]
                 )
@@ -638,14 +661,16 @@ class PostgresAccessControlRepository:
         customer_ids = set(
             await session.scalars(
                 select(CustomerAccessGrantRow.customer_id).where(
-                    CustomerAccessGrantRow.user_id == row.id
+                    CustomerAccessGrantRow.tenant_id == row.tenant_id,
+                    CustomerAccessGrantRow.user_id == row.id,
                 )
             )
         )
         task_ids = set(
             await session.scalars(
                 select(TaskAccessGrantRow.task_id).where(
-                    TaskAccessGrantRow.user_id == row.id
+                    TaskAccessGrantRow.tenant_id == row.tenant_id,
+                    TaskAccessGrantRow.user_id == row.id,
                 )
             )
         )
@@ -692,36 +717,43 @@ class PostgresAccessControlRepository:
     async def _list_user_customer_ids(
         self,
         session: AsyncSession,
-        user_ids: set[UUID],
+        tenant_ids_by_user: dict[UUID, UUID],
     ) -> defaultdict[UUID, set[UUID]]:
         customer_ids_by_user: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        user_ids = set(tenant_ids_by_user)
         if not user_ids:
             return customer_ids_by_user
         rows = await session.execute(
             select(
+                CustomerAccessGrantRow.tenant_id,
                 CustomerAccessGrantRow.user_id,
                 CustomerAccessGrantRow.customer_id,
             ).where(CustomerAccessGrantRow.user_id.in_(user_ids))
         )
-        for user_id, customer_id in rows:
-            customer_ids_by_user[user_id].add(customer_id)
+        for tenant_id, user_id, customer_id in rows:
+            if tenant_ids_by_user[user_id] == tenant_id:
+                customer_ids_by_user[user_id].add(customer_id)
         return customer_ids_by_user
 
     async def _list_user_task_ids(
         self,
         session: AsyncSession,
-        user_ids: set[UUID],
+        tenant_ids_by_user: dict[UUID, UUID],
     ) -> defaultdict[UUID, set[UUID]]:
         task_ids_by_user: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        user_ids = set(tenant_ids_by_user)
         if not user_ids:
             return task_ids_by_user
         rows = await session.execute(
-            select(TaskAccessGrantRow.user_id, TaskAccessGrantRow.task_id).where(
-                TaskAccessGrantRow.user_id.in_(user_ids)
-            )
+            select(
+                TaskAccessGrantRow.tenant_id,
+                TaskAccessGrantRow.user_id,
+                TaskAccessGrantRow.task_id,
+            ).where(TaskAccessGrantRow.user_id.in_(user_ids))
         )
-        for user_id, task_id in rows:
-            task_ids_by_user[user_id].add(task_id)
+        for tenant_id, user_id, task_id in rows:
+            if tenant_ids_by_user[user_id] == tenant_id:
+                task_ids_by_user[user_id].add(task_id)
         return task_ids_by_user
 
     def _user_from_row(

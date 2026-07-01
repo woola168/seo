@@ -7,7 +7,12 @@ from younilab_seo.access_control.application import (
     Conflict,
     ResourceNotFound,
 )
-from younilab_seo.access_control.domain import AccountStatus, Role, UserAccount
+from younilab_seo.access_control.domain import (
+    DEFAULT_TENANT_ID,
+    AccountStatus,
+    Role,
+    UserAccount,
+)
 from younilab_seo.access_control.infrastructure import MemoryAccessControlRepository
 
 
@@ -98,3 +103,66 @@ def test_replace_user_roles_rejects_cross_tenant_role() -> None:
             )
 
     asyncio.run(scenario())
+
+
+def test_replace_customer_grants_validates_resource_tenant() -> None:
+    async def scenario() -> None:
+        user_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        customer_id = UUID("11111111-1111-4111-8111-111111111111")
+        verifier = FakeResourceGrantVerifier(allowed=False)
+        repository = MemoryAccessControlRepository(
+            users=[
+                UserAccount(
+                    id=user_id,
+                    email="user@example.com",
+                    display_name="User",
+                    status=AccountStatus.ACTIVE,
+                )
+            ],
+        )
+        service = AccessManagementService(
+            repository,
+            resource_grant_verifier=verifier,
+        )
+
+        with pytest.raises(ResourceNotFound):
+            await service.replace_customer_grants(
+                user_id=user_id,
+                customer_ids={customer_id},
+                tenant_id=DEFAULT_TENANT_ID,
+                access_token="token",
+            )
+
+        assert repository.users[user_id].customer_ids == set()
+        assert verifier.customer_checks == [
+            (DEFAULT_TENANT_ID, {customer_id}, "token")
+        ]
+
+    asyncio.run(scenario())
+
+
+class FakeResourceGrantVerifier:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.customer_checks = []
+        self.task_checks = []
+
+    async def require_customers_in_tenant(
+        self,
+        tenant_id,
+        customer_ids,
+        access_token=None,
+    ) -> None:
+        self.customer_checks.append((tenant_id, customer_ids, access_token))
+        if not self.allowed:
+            raise ResourceNotFound
+
+    async def require_tasks_in_tenant(
+        self,
+        tenant_id,
+        task_ids,
+        access_token=None,
+    ) -> None:
+        self.task_checks.append((tenant_id, task_ids, access_token))
+        if not self.allowed:
+            raise ResourceNotFound

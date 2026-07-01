@@ -242,6 +242,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
                 [
                     UserRow(
                         id=first_user_id,
+                        tenant_id=DEFAULT_TENANT_ID,
                         email="first@example.com",
                         display_name="First",
                         status="active",
@@ -250,6 +251,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
                     ),
                     UserRow(
                         id=second_user_id,
+                        tenant_id=DEFAULT_TENANT_ID,
                         email="second@example.com",
                         display_name="Second",
                         status="active",
@@ -258,6 +260,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
                     ),
                     UserRow(
                         id=deleted_user_id,
+                        tenant_id=DEFAULT_TENANT_ID,
                         email="deleted@example.com",
                         display_name="Deleted",
                         status="disabled",
@@ -272,11 +275,18 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
             session.add(UserRoleRow(user_id=first_user_id, role_id=role_id))
             session.add(
                 CustomerAccessGrantRow(
+                    tenant_id=DEFAULT_TENANT_ID,
                     user_id=first_user_id,
                     customer_id=customer_id,
                 )
             )
-            session.add(TaskAccessGrantRow(user_id=second_user_id, task_id=task_id))
+            session.add(
+                TaskAccessGrantRow(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    user_id=second_user_id,
+                    task_id=task_id,
+                )
+            )
             await session.commit()
 
         repository = PostgresAccessControlRepository(session_factory)

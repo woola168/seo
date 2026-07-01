@@ -19,6 +19,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 class CurrentPrincipal:
     user: UserAccount
     session_id: UUID
+    access_token: str
 
 
 async def current_principal(
@@ -40,7 +41,11 @@ async def current_principal(
     tenant = await request.app.state.repository.get_tenant(user.tenant_id)
     if tenant is None or not tenant.is_active:
         raise InvalidSession
-    return CurrentPrincipal(user=user, session_id=claims.session_id)
+    return CurrentPrincipal(
+        user=user,
+        session_id=claims.session_id,
+        access_token=access_token,
+    )
 
 
 async def require_permission(

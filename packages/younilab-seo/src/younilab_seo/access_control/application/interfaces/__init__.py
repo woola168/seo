@@ -8,6 +8,7 @@ from younilab_seo.access_control.application.interfaces.repositories import (
     InvitationRepository,
     PasswordResetRepository,
     RefreshSessionRepository,
+    ResourceGrantVerifier,
     RoleRepository,
     UserRepository,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "PasswordResetRepository",
     "RecoveryTokenProvider",
     "RefreshSessionRepository",
+    "ResourceGrantVerifier",
     "RoleRepository",
     "TokenProvider",
     "UserRepository",

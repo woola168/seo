@@ -113,10 +113,16 @@ class UserRoleRow(SQLModel, table=True):
 class CustomerAccessGrantRow(SQLModel, table=True):
     __tablename__ = "customer_access_grant"
     __table_args__ = (
-        UniqueConstraint("user_id", "customer_id", name="ux_user_customer_grant"),
+        UniqueConstraint(
+            "tenant_id",
+            "user_id",
+            "customer_id",
+            name="ux_tenant_user_customer_grant",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    tenant_id: UUID = Field(foreign_key="tenant.id", nullable=False, index=True)
     user_id: UUID = Field(foreign_key="user_account.id", nullable=False)
     customer_id: UUID = Field(nullable=False)
 
@@ -124,10 +130,16 @@ class CustomerAccessGrantRow(SQLModel, table=True):
 class TaskAccessGrantRow(SQLModel, table=True):
     __tablename__ = "task_access_grant"
     __table_args__ = (
-        UniqueConstraint("user_id", "task_id", name="ux_user_task_grant"),
+        UniqueConstraint(
+            "tenant_id",
+            "user_id",
+            "task_id",
+            name="ux_tenant_user_task_grant",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    tenant_id: UUID = Field(foreign_key="tenant.id", nullable=False, index=True)
     user_id: UUID = Field(foreign_key="user_account.id", nullable=False)
     task_id: UUID = Field(nullable=False)
 

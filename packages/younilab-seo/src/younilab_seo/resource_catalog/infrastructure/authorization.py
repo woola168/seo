@@ -1,10 +1,15 @@
+from uuid import UUID
+
 import httpx
 
-from younilab_seo.resource_catalog.application import AccessDenied
+from younilab_seo.resource_catalog.application import (
+    AccessDenied,
+    AuthorizedPrincipal,
+)
 
 
 class AccessControlAuthorizer:
-    """將 decisions 委派給 Access Control 的 PermissionAuthorizer adapter。"""
+    """Delegates permission and tenant context lookup to Access Control."""
 
     def __init__(
         self,
@@ -14,7 +19,11 @@ class AccessControlAuthorizer:
         self._access_control_url = access_control_url.rstrip("/")
         self._transport = transport
 
-    async def require(self, access_token: str, permission: str) -> None:
+    async def require(
+        self,
+        access_token: str,
+        permission: str,
+    ) -> AuthorizedPrincipal:
         try:
             async with httpx.AsyncClient(
                 timeout=5,
@@ -29,12 +38,41 @@ class AccessControlAuthorizer:
             raise AccessDenied("authorization service unavailable") from exc
         if response.status_code != 200:
             raise AccessDenied
-        if permission not in response.json().get("permissions", []):
+        body = response.json()
+        if permission not in body.get("permissions", []):
             raise AccessDenied
+        tenant_id = body.get("tenantId")
+        if tenant_id is None:
+            raise AccessDenied("authorization response missing tenantId")
+        return AuthorizedPrincipal(
+            tenant_id=UUID(tenant_id),
+            permissions=frozenset(body.get("permissions", [])),
+            has_global_resource_access=bool(
+                body.get("hasGlobalResourceAccess", False)
+            ),
+            customer_ids=frozenset(UUID(value) for value in body.get("customerIds", [])),
+            task_ids=frozenset(UUID(value) for value in body.get("taskIds", [])),
+        )
 
 
 class AllowAllAuthorizer:
-    """local development 使用且不執行 enforcement 的 PermissionAuthorizer adapter。"""
+    """Development authorizer that returns a fixed tenant context."""
 
-    async def require(self, access_token: str, permission: str) -> None:
-        return None
+    def __init__(
+        self,
+        tenant_id: UUID = UUID("00000000-0000-4000-8000-000000000001"),
+    ) -> None:
+        self._tenant_id = tenant_id
+
+    async def require(
+        self,
+        access_token: str,
+        permission: str,
+    ) -> AuthorizedPrincipal:
+        return AuthorizedPrincipal(
+            tenant_id=self._tenant_id,
+            permissions=frozenset({permission}),
+            has_global_resource_access=True,
+            customer_ids=frozenset(),
+            task_ids=frozenset(),
+        )

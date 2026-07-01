@@ -80,13 +80,33 @@ class AccessGrantRepository(Protocol):
     async def replace_customer_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         customer_ids: set[UUID],
     ) -> None: ...
 
     async def replace_task_grants(
         self,
         user_id: UUID,
+        tenant_id: UUID | None,
         task_ids: set[UUID],
+    ) -> None: ...
+
+
+class ResourceGrantVerifier(Protocol):
+    """Validates resource catalog ids before access grants are persisted."""
+
+    async def require_customers_in_tenant(
+        self,
+        tenant_id: UUID,
+        customer_ids: set[UUID],
+        access_token: str | None = None,
+    ) -> None: ...
+
+    async def require_tasks_in_tenant(
+        self,
+        tenant_id: UUID,
+        task_ids: set[UUID],
+        access_token: str | None = None,
     ) -> None: ...
 
 

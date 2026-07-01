@@ -98,6 +98,7 @@ Request / response shape：
 
 // CapabilitiesResponse
 {
+  "tenantId": "uuid",
   "permissions": ["users.read"],
   "hasGlobalResourceAccess": false,
   "customerIds": ["uuid"],
@@ -134,6 +135,8 @@ Request / response shape：
 `resource.type` 目前支援 `customer` 與 `task`。Batch request 最多 100 筆。
 
 ## Access Management
+
+Customer/task access grants 會以目前登入者的 tenant 為邊界寫入；後端會先向 Resource Catalog 驗證傳入的 customer/task 屬於同一個 tenant。若 Resource Catalog 無法確認，API 會 fail closed，不會寫入 grants。
 
 ### Permissions / Roles
 

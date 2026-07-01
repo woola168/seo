@@ -5,7 +5,10 @@ from younilab_seo.access_control.application.errors import (
     OperationNotAllowed,
     ResourceNotFound,
 )
-from younilab_seo.access_control.application.interfaces import AccessManagementRepository
+from younilab_seo.access_control.application.interfaces import (
+    AccessManagementRepository,
+    ResourceGrantVerifier,
+)
 from younilab_seo.access_control.domain import (
     DEFAULT_TENANT_ID,
     PERMISSIONS,
@@ -19,9 +22,16 @@ from younilab_seo.access_control.domain import (
 class AccessManagementService:
     """協調 account、role、grant 與 department 的管理規則。"""
 
-    def __init__(self, repository: AccessManagementRepository, *, clock=None) -> None:
+    def __init__(
+        self,
+        repository: AccessManagementRepository,
+        *,
+        clock=None,
+        resource_grant_verifier: ResourceGrantVerifier | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
+        self._resource_grant_verifier = resource_grant_verifier
 
     async def list_users(self, tenant_id: UUID | None = None) -> list[UserAccount]:
         return await self._repository.list_users(tenant_id)
@@ -270,9 +280,20 @@ class AccessManagementService:
         user_id: UUID,
         customer_ids: set[UUID],
         tenant_id: UUID | None = None,
+        access_token: str | None = None,
     ) -> UserAccount:
         await self.get_user(user_id, tenant_id)
-        await self._repository.replace_customer_grants(user_id, customer_ids)
+        if tenant_id is not None and self._resource_grant_verifier is not None:
+            await self._resource_grant_verifier.require_customers_in_tenant(
+                tenant_id,
+                customer_ids,
+                access_token,
+            )
+        await self._repository.replace_customer_grants(
+            user_id,
+            tenant_id,
+            customer_ids,
+        )
         return await self.get_user(user_id, tenant_id)
 
     async def replace_task_grants(
@@ -281,9 +302,20 @@ class AccessManagementService:
         user_id: UUID,
         task_ids: set[UUID],
         tenant_id: UUID | None = None,
+        access_token: str | None = None,
     ) -> UserAccount:
         await self.get_user(user_id, tenant_id)
-        await self._repository.replace_task_grants(user_id, task_ids)
+        if tenant_id is not None and self._resource_grant_verifier is not None:
+            await self._resource_grant_verifier.require_tasks_in_tenant(
+                tenant_id,
+                task_ids,
+                access_token,
+            )
+        await self._repository.replace_task_grants(
+            user_id,
+            tenant_id,
+            task_ids,
+        )
         return await self.get_user(user_id, tenant_id)
 
     @staticmethod

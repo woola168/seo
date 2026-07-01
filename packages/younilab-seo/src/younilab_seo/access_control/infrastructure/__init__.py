@@ -6,6 +6,9 @@ from younilab_seo.access_control.infrastructure.persistence import (
     build_postgres_session_factory,
 )
 from younilab_seo.access_control.infrastructure.runtime import SystemClock, UuidGenerator
+from younilab_seo.access_control.infrastructure.resource_catalog import (
+    ResourceCatalogHttpGrantVerifier,
+)
 from younilab_seo.access_control.infrastructure.notifications import (
     MemoryNotificationPublisher,
     PostgresOutboxPublisher,
@@ -24,6 +27,7 @@ __all__ = [
     "MemoryAccessControlRepository",
     "PostgresAccessControlRepository",
     "PostgresOutboxPublisher",
+    "ResourceCatalogHttpGrantVerifier",
     "SecureRecoveryTokenProvider",
     "build_postgres_repository",
     "build_postgres_session_factory",
