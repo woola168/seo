@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from younilab_seo.access_control.application import (
@@ -7,7 +7,16 @@ from younilab_seo.access_control.application import (
     RefreshSession,
     UserInvitation,
 )
-from younilab_seo.access_control.domain import Department, Role, UserAccount
+from younilab_seo.access_control.domain import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    Department,
+    Role,
+    Tenant,
+    TenantStatus,
+    UserAccount,
+)
 
 
 class MemoryAccessControlRepository:
@@ -20,7 +29,19 @@ class MemoryAccessControlRepository:
         roles: list[Role] | None = None,
         password_hashes: dict[UUID, str] | None = None,
         departments: list[Department] | None = None,
+        tenants: list[Tenant] | None = None,
     ) -> None:
+        now = datetime.now(UTC)
+        default_tenant = Tenant(
+            id=DEFAULT_TENANT_ID,
+            code=DEFAULT_TENANT_CODE,
+            name=DEFAULT_TENANT_NAME,
+            status=TenantStatus.ACTIVE,
+            created_at=now,
+            updated_at=now,
+        )
+        self.tenants = {default_tenant.id: default_tenant}
+        self.tenants.update({tenant.id: tenant for tenant in tenants or []})
         self.users = {user.id: user for user in users or []}
         self.roles = {role.id: role for role in roles or []}
         self.password_hashes = password_hashes or {}
@@ -31,8 +52,23 @@ class MemoryAccessControlRepository:
             department.id: department for department in departments or []
         }
 
-    async def list_users(self) -> list[UserAccount]:
-        return [user for user in self.users.values() if not user.is_deleted]
+    async def get_tenant(self, tenant_id: UUID) -> Tenant | None:
+        return self.tenants.get(tenant_id)
+
+    async def get_tenant_by_code(self, code: str) -> Tenant | None:
+        normalized = code.strip().lower()
+        return next(
+            (tenant for tenant in self.tenants.values() if tenant.code == normalized),
+            None,
+        )
+
+    async def list_users(self, tenant_id: UUID | None = None) -> list[UserAccount]:
+        return [
+            self._with_tenant_name(user)
+            for user in self.users.values()
+            if not user.is_deleted
+            and (tenant_id is None or user.tenant_id == tenant_id)
+        ]
 
     async def save_user(self, user: UserAccount) -> None:
         self.users[user.id] = user
@@ -41,23 +77,41 @@ class MemoryAccessControlRepository:
         self.password_hashes[user_id] = password_hash
 
     async def get_user(self, user_id: UUID) -> UserAccount | None:
-        return self.users.get(user_id)
+        user = self.users.get(user_id)
+        return self._with_tenant_name(user) if user is not None else None
 
     async def get_user_by_email(self, email: str) -> UserAccount | None:
         normalized = email.strip().lower()
         return next(
-            (user for user in self.users.values() if user.email == normalized),
+            (
+                self._with_tenant_name(user)
+                for user in self.users.values()
+                if user.email == normalized
+            ),
             None,
         )
 
     async def get_password_hash(self, user_id: UUID) -> str | None:
         return self.password_hashes.get(user_id)
 
-    async def get_roles(self, role_ids: set[UUID]) -> list[Role]:
-        return [self.roles[role_id] for role_id in role_ids if role_id in self.roles]
+    async def get_roles(
+        self,
+        role_ids: set[UUID],
+        tenant_id: UUID | None = None,
+    ) -> list[Role]:
+        return [
+            role
+            for role_id in role_ids
+            if (role := self.roles.get(role_id)) is not None
+            and (tenant_id is None or role.tenant_id == tenant_id)
+        ]
 
-    async def list_roles(self) -> list[Role]:
-        return list(self.roles.values())
+    async def list_roles(self, tenant_id: UUID | None = None) -> list[Role]:
+        return [
+            role
+            for role in self.roles.values()
+            if tenant_id is None or role.tenant_id == tenant_id
+        ]
 
     async def save_role(self, role: Role) -> None:
         self.roles[role.id] = role
@@ -65,9 +119,15 @@ class MemoryAccessControlRepository:
     async def delete_role(self, role_id: UUID) -> None:
         self.roles.pop(role_id, None)
 
-    async def role_member_count(self, role_id: UUID) -> int:
+    async def role_member_count(
+        self,
+        role_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int:
         return sum(
-            role_id in user.role_ids and not user.is_deleted
+            role_id in user.role_ids
+            and not user.is_deleted
+            and (tenant_id is None or user.tenant_id == tenant_id)
             for user in self.users.values()
         )
 
@@ -252,11 +312,15 @@ class MemoryAccessControlRepository:
             revoked_at=revoked_at,
         )
 
-    async def list_departments(self) -> list[Department]:
+    async def list_departments(
+        self,
+        tenant_id: UUID | None = None,
+    ) -> list[Department]:
         return [
             department
             for department in self.departments.values()
             if department.is_active
+            and (tenant_id is None or department.tenant_id == tenant_id)
         ]
 
     async def get_department(self, department_id: UUID) -> Department | None:
@@ -265,8 +329,19 @@ class MemoryAccessControlRepository:
     async def save_department(self, department: Department) -> None:
         self.departments[department.id] = department
 
-    async def department_member_count(self, department_id: UUID) -> int:
+    async def department_member_count(
+        self,
+        department_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int:
         return sum(
-            user.department_id == department_id and not user.is_deleted
+            user.department_id == department_id
+            and not user.is_deleted
+            and (tenant_id is None or user.tenant_id == tenant_id)
             for user in self.users.values()
         )
+
+    def _with_tenant_name(self, user: UserAccount) -> UserAccount:
+        tenant = self.tenants.get(user.tenant_id)
+        user.tenant_name = tenant.name if tenant is not None else None
+        return user

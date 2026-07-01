@@ -101,6 +101,16 @@ docker compose -f deploy/local/docker-compose.postgresql.yml up -d
 - Access Control PostgreSQL: `localhost:5432/access_control`
 - Resource Catalog PostgreSQL: `localhost:5433/resource_catalog`
 
+## Access Control Tenant DB Patch
+
+既有 Access Control PostgreSQL 若已經建立過舊版 schema，請手動執行 tenant patch：
+
+```powershell
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/006_access_control_tenant_patch.sql
+```
+
+這份 patch 會建立 `tenant` 表、seed `code='default'` 的 default tenant，並將既有 `user_account`、`role`、`department` 回填到 default tenant。第一批 tenant foundation 仍維持 `user_account.email` 全系統唯一；若資料庫已存在重複 email，patch 會在建立 global unique constraint 時失敗，需先人工清理。新環境可直接使用更新後的 `deploy/local/postgresql/001_access_control_schema.sql` 初始化。
+
 ## GEO Analysis 手動 DB Patch
 
 遠端 PostgreSQL schema 與 seed 仍由人工執行，CI/CD 不會自動跑 migration。若環境已套用舊版 `004_geo_analysis_schema.sql`，升級 Query Planning 前需手動執行：

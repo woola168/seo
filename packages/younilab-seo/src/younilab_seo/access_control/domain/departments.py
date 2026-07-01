@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from younilab_seo.access_control.domain.tenants import DEFAULT_TENANT_ID
+
 
 @dataclass
 class Department:
@@ -12,6 +14,7 @@ class Department:
     description: str
     created_at: datetime
     updated_at: datetime
+    tenant_id: UUID = DEFAULT_TENANT_ID
     archived_at: datetime | None = None
 
     def __post_init__(self) -> None:

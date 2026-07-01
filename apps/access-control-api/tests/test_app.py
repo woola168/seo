@@ -1,4 +1,5 @@
 ﻿from uuid import UUID
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
@@ -8,6 +9,8 @@ from younilab_seo.access_control.domain import (
     PERMISSIONS,
     AccountStatus,
     Role,
+    Tenant,
+    TenantStatus,
     UserAccount,
 )
 from younilab_seo.access_control.infrastructure import (
@@ -83,7 +86,10 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     assert login_response.status_code == 200
     access_token = login_response.json()["accessToken"]
     headers = {"Authorization": f"Bearer {access_token}"}
-    assert client.get("/api/me", headers=headers).status_code == 200
+    me_response = client.get("/api/me", headers=headers)
+    assert me_response.status_code == 200
+    assert me_response.json()["tenantId"] == "00000000-0000-4000-8000-000000000001"
+    assert me_response.json()["tenantName"] == "Default Tenant"
 
     create_role_response = client.post(
         "/api/roles",
@@ -99,6 +105,184 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     refresh_response = client.post("/api/auth/refresh")
     assert refresh_response.status_code == 200
     assert refresh_response.json()["accessToken"] != access_token
+
+
+def test_login_rejects_user_when_tenant_is_disabled() -> None:
+    tenant_id = UUID("99999999-9999-4999-8999-999999999999")
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    hasher = Argon2PasswordHasher()
+    now = datetime.now(UTC)
+    repository = MemoryAccessControlRepository(
+        tenants=[
+            Tenant(
+                id=tenant_id,
+                code="disabled-company",
+                name="Disabled Company",
+                status=TenantStatus.DISABLED,
+                created_at=now,
+                updated_at=now,
+                disabled_at=now,
+            )
+        ],
+        users=[
+            UserAccount(
+                id=user_id,
+                tenant_id=tenant_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+            )
+        ],
+        password_hashes={user_id: hasher.hash("LongPassword123!")},
+    )
+    client = TestClient(create_app(repository=repository, password_hasher=hasher))
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_user_management_is_scoped_to_current_tenant() -> None:
+    tenant_id = UUID("99999999-9999-4999-8999-999999999999")
+    admin_user_id = UUID("11111111-1111-4111-8111-111111111111")
+    other_user_id = UUID("22222222-2222-4222-8222-222222222222")
+    admin_role_id = UUID("33333333-3333-4333-8333-333333333333")
+    other_role_id = UUID("44444444-4444-4444-8444-444444444444")
+    hasher = Argon2PasswordHasher()
+    now = datetime.now(UTC)
+    repository = MemoryAccessControlRepository(
+        tenants=[
+            Tenant(
+                id=tenant_id,
+                code="other-company",
+                name="Other Company",
+                status=TenantStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        users=[
+            UserAccount(
+                id=admin_user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+                role_ids={admin_role_id},
+            ),
+            UserAccount(
+                id=other_user_id,
+                tenant_id=tenant_id,
+                email="other@example.com",
+                display_name="Other User",
+                status=AccountStatus.ACTIVE,
+                role_ids={other_role_id},
+            ),
+        ],
+        roles=[
+            Role(
+                id=admin_role_id,
+                name="admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            ),
+            Role(
+                id=other_role_id,
+                tenant_id=tenant_id,
+                name="other-admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            ),
+        ],
+        password_hashes={admin_user_id: hasher.hash("LongPassword123!")},
+    )
+    client = TestClient(create_app(repository=repository, password_hasher=hasher))
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+    headers = {"Authorization": f"Bearer {login_response.json()['accessToken']}"}
+
+    users_response = client.get("/api/users", headers=headers)
+    other_user_response = client.get(f"/api/users/{other_user_id}", headers=headers)
+
+    assert users_response.status_code == 200
+    assert [user["id"] for user in users_response.json()] == [str(admin_user_id)]
+    assert other_user_response.status_code == 404
+
+
+def test_invitation_rejects_duplicate_email_across_tenants_for_now() -> None:
+    tenant_id = UUID("99999999-9999-4999-8999-999999999999")
+    admin_user_id = UUID("11111111-1111-4111-8111-111111111111")
+    other_user_id = UUID("22222222-2222-4222-8222-222222222222")
+    admin_role_id = UUID("33333333-3333-4333-8333-333333333333")
+    hasher = Argon2PasswordHasher()
+    now = datetime.now(UTC)
+    repository = MemoryAccessControlRepository(
+        tenants=[
+            Tenant(
+                id=tenant_id,
+                code="other-company",
+                name="Other Company",
+                status=TenantStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        users=[
+            UserAccount(
+                id=admin_user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+                role_ids={admin_role_id},
+            ),
+            UserAccount(
+                id=other_user_id,
+                tenant_id=tenant_id,
+                email="shared@example.com",
+                display_name="Other User",
+                status=AccountStatus.ACTIVE,
+            ),
+        ],
+        roles=[
+            Role(
+                id=admin_role_id,
+                name="admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            )
+        ],
+        password_hashes={admin_user_id: hasher.hash("LongPassword123!")},
+    )
+    client = TestClient(create_app(repository=repository, password_hasher=hasher))
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+    headers = {"Authorization": f"Bearer {login_response.json()['accessToken']}"}
+
+    response = client.post(
+        "/api/user-invitations",
+        headers=headers,
+        json={
+            "email": "shared@example.com",
+            "displayName": "Shared User",
+            "departmentId": None,
+            "roleIds": [str(admin_role_id)],
+            "customerIds": [],
+            "taskIds": [],
+            "sendInvitation": False,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "email already exists"
 
 
 def test_delete_role_removes_unused_non_system_role() -> None:

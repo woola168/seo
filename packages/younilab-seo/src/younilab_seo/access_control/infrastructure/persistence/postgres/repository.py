@@ -14,6 +14,8 @@ from younilab_seo.access_control.domain import (
     AccountStatus,
     Department,
     Role,
+    Tenant,
+    TenantStatus,
     UserAccount,
 )
 from younilab_seo.access_control.infrastructure.persistence.postgres.models import (
@@ -24,6 +26,7 @@ from younilab_seo.access_control.infrastructure.persistence.postgres.models impo
     RefreshSessionRow,
     RoleRow,
     TaskAccessGrantRow,
+    TenantRow,
     UserRoleRow,
     UserRow,
 )
@@ -35,15 +38,32 @@ class PostgresAccessControlRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def list_users(self) -> list[UserAccount]:
+    async def get_tenant(self, tenant_id: UUID) -> Tenant | None:
         async with self._session_factory() as session:
+            row = await session.get(TenantRow, tenant_id)
+            return _tenant_from_row(row) if row is not None else None
+
+    async def get_tenant_by_code(self, code: str) -> Tenant | None:
+        async with self._session_factory() as session:
+            row = await session.scalar(
+                select(TenantRow).where(TenantRow.code == code.strip().lower())
+            )
+            return _tenant_from_row(row) if row is not None else None
+
+    async def list_users(self, tenant_id: UUID | None = None) -> list[UserAccount]:
+        async with self._session_factory() as session:
+            statement = select(UserRow).where(UserRow.deleted_at.is_(None))
+            if tenant_id is not None:
+                statement = statement.where(UserRow.tenant_id == tenant_id)
             rows = (
                 await session.scalars(
-                    select(UserRow)
-                    .where(UserRow.deleted_at.is_(None))
-                    .order_by(UserRow.email)
+                    statement.order_by(UserRow.email)
                 )
             ).all()
+            tenant_names = await self._list_tenant_names(
+                session,
+                {row.tenant_id for row in rows},
+            )
             user_ids = {row.id for row in rows}
             role_ids_by_user = await self._list_user_role_ids(session, user_ids)
             customer_ids_by_user = await self._list_user_customer_ids(
@@ -57,6 +77,7 @@ class PostgresAccessControlRepository:
                     role_ids=role_ids_by_user[row.id],
                     customer_ids=customer_ids_by_user[row.id],
                     task_ids=task_ids_by_user[row.id],
+                    tenant_name=tenant_names.get(row.tenant_id),
                 )
                 for row in rows
             ]
@@ -70,6 +91,7 @@ class PostgresAccessControlRepository:
                     raise ValueError("new user requires created_at")
                 row = UserRow(
                     id=user.id,
+                    tenant_id=user.tenant_id,
                     email=user.email,
                     display_name=user.display_name,
                     status=user.status.value,
@@ -78,6 +100,7 @@ class PostgresAccessControlRepository:
                 )
                 session.add(row)
             row.email = user.email
+            row.tenant_id = user.tenant_id
             row.display_name = user.display_name
             row.status = user.status.value
             row.department_id = user.department_id
@@ -115,17 +138,25 @@ class PostgresAccessControlRepository:
                 select(UserRow.password_hash).where(UserRow.id == user_id)
             )
 
-    async def get_roles(self, role_ids: set[UUID]) -> list[Role]:
+    async def get_roles(
+        self,
+        role_ids: set[UUID],
+        tenant_id: UUID | None = None,
+    ) -> list[Role]:
         if not role_ids:
             return []
         async with self._session_factory() as session:
+            statement = select(RoleRow).where(RoleRow.id.in_(role_ids))
+            if tenant_id is not None:
+                statement = statement.where(RoleRow.tenant_id == tenant_id)
             rows = (
-                await session.scalars(select(RoleRow).where(RoleRow.id.in_(role_ids)))
+                await session.scalars(statement)
             ).all()
             return [
                 Role(
                     id=row.id,
                     name=row.name,
+                    tenant_id=row.tenant_id,
                     permissions=frozenset(row.permissions),
                     is_system=row.is_system,
                     has_global_resource_access=row.has_global_resource_access,
@@ -133,13 +164,17 @@ class PostgresAccessControlRepository:
                 for row in rows
             ]
 
-    async def list_roles(self) -> list[Role]:
+    async def list_roles(self, tenant_id: UUID | None = None) -> list[Role]:
         async with self._session_factory() as session:
-            rows = (await session.scalars(select(RoleRow).order_by(RoleRow.name))).all()
+            statement = select(RoleRow)
+            if tenant_id is not None:
+                statement = statement.where(RoleRow.tenant_id == tenant_id)
+            rows = (await session.scalars(statement.order_by(RoleRow.name))).all()
             return [
                 Role(
                     id=row.id,
                     name=row.name,
+                    tenant_id=row.tenant_id,
                     permissions=frozenset(row.permissions),
                     is_system=row.is_system,
                     has_global_resource_access=row.has_global_resource_access,
@@ -151,8 +186,9 @@ class PostgresAccessControlRepository:
         async with self._session_factory() as session:
             row = await session.get(RoleRow, role.id)
             if row is None:
-                row = RoleRow(id=role.id, name=role.name)
+                row = RoleRow(id=role.id, tenant_id=role.tenant_id, name=role.name)
                 session.add(row)
+            row.tenant_id = role.tenant_id
             row.name = role.name
             row.permissions = sorted(role.permissions)
             row.is_system = role.is_system
@@ -167,18 +203,25 @@ class PostgresAccessControlRepository:
             await session.execute(delete(RoleRow).where(RoleRow.id == role_id))
             await session.commit()
 
-    async def role_member_count(self, role_id: UUID) -> int:
+    async def role_member_count(
+        self,
+        role_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int:
         async with self._session_factory() as session:
-            return int(
-                await session.scalar(
-                    select(func.count())
-                    .select_from(UserRoleRow)
-                    .join(UserRow, UserRow.id == UserRoleRow.user_id)
-                    .where(
-                        UserRoleRow.role_id == role_id,
-                        UserRow.deleted_at.is_(None),
-                    )
+            statement = (
+                select(func.count())
+                .select_from(UserRoleRow)
+                .join(UserRow, UserRow.id == UserRoleRow.user_id)
+                .where(
+                    UserRoleRow.role_id == role_id,
+                    UserRow.deleted_at.is_(None),
                 )
+            )
+            if tenant_id is not None:
+                statement = statement.where(UserRow.tenant_id == tenant_id)
+            return int(
+                await session.scalar(statement)
                 or 0
             )
 
@@ -429,6 +472,7 @@ class PostgresAccessControlRepository:
                 session.add(
                     UserRow(
                         id=user.id,
+                        tenant_id=user.tenant_id,
                         email=user.email,
                         display_name=user.display_name,
                         status=user.status.value,
@@ -520,13 +564,17 @@ class PostgresAccessControlRepository:
             )
             await session.commit()
 
-    async def list_departments(self) -> list[Department]:
+    async def list_departments(
+        self,
+        tenant_id: UUID | None = None,
+    ) -> list[Department]:
         async with self._session_factory() as session:
+            statement = select(DepartmentRow).where(DepartmentRow.archived_at.is_(None))
+            if tenant_id is not None:
+                statement = statement.where(DepartmentRow.tenant_id == tenant_id)
             rows = (
                 await session.scalars(
-                    select(DepartmentRow)
-                    .where(DepartmentRow.archived_at.is_(None))
-                    .order_by(DepartmentRow.name)
+                    statement.order_by(DepartmentRow.name)
                 )
             ).all()
             return [_department_from_row(row) for row in rows]
@@ -542,29 +590,38 @@ class PostgresAccessControlRepository:
             if row is None:
                 row = DepartmentRow(
                     id=department.id,
+                    tenant_id=department.tenant_id,
                     name=department.name,
                     description=department.description,
                     created_at=department.created_at,
                     updated_at=department.updated_at,
                 )
                 session.add(row)
+            row.tenant_id = department.tenant_id
             row.name = department.name
             row.description = department.description
             row.updated_at = department.updated_at
             row.archived_at = department.archived_at
             await session.commit()
 
-    async def department_member_count(self, department_id: UUID) -> int:
+    async def department_member_count(
+        self,
+        department_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int:
         async with self._session_factory() as session:
-            return int(
-                await session.scalar(
-                    select(func.count())
-                    .select_from(UserRow)
-                    .where(
-                        UserRow.department_id == department_id,
-                        UserRow.deleted_at.is_(None),
-                    )
+            statement = (
+                select(func.count())
+                .select_from(UserRow)
+                .where(
+                    UserRow.department_id == department_id,
+                    UserRow.deleted_at.is_(None),
                 )
+            )
+            if tenant_id is not None:
+                statement = statement.where(UserRow.tenant_id == tenant_id)
+            return int(
+                await session.scalar(statement)
                 or 0
             )
 
@@ -597,7 +654,23 @@ class PostgresAccessControlRepository:
             role_ids=role_ids,
             customer_ids=customer_ids,
             task_ids=task_ids,
+            tenant_name=await self._tenant_name(session, row.tenant_id),
         )
+
+    async def _tenant_name(self, session: AsyncSession, tenant_id: UUID) -> str | None:
+        return await session.scalar(select(TenantRow.name).where(TenantRow.id == tenant_id))
+
+    async def _list_tenant_names(
+        self,
+        session: AsyncSession,
+        tenant_ids: set[UUID],
+    ) -> dict[UUID, str]:
+        if not tenant_ids:
+            return {}
+        rows = await session.execute(
+            select(TenantRow.id, TenantRow.name).where(TenantRow.id.in_(tenant_ids))
+        )
+        return {tenant_id: name for tenant_id, name in rows}
 
     async def _list_user_role_ids(
         self,
@@ -658,9 +731,12 @@ class PostgresAccessControlRepository:
         role_ids: set[UUID],
         customer_ids: set[UUID],
         task_ids: set[UUID],
+        tenant_name: str | None = None,
     ) -> UserAccount:
         return UserAccount(
             id=row.id,
+            tenant_id=row.tenant_id,
+            tenant_name=tenant_name,
             email=row.email,
             display_name=row.display_name,
             status=AccountStatus(row.status),
@@ -730,9 +806,22 @@ def _invitation_from_row(row: InvitationRow) -> UserInvitation:
 def _department_from_row(row: DepartmentRow) -> Department:
     return Department(
         id=row.id,
+        tenant_id=row.tenant_id,
         name=row.name,
         description=row.description,
         created_at=row.created_at,
         updated_at=row.updated_at,
         archived_at=row.archived_at,
+    )
+
+
+def _tenant_from_row(row: TenantRow) -> Tenant:
+    return Tenant(
+        id=row.id,
+        code=row.code,
+        name=row.name,
+        status=TenantStatus(row.status),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        disabled_at=row.disabled_at,
     )

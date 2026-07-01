@@ -31,6 +31,8 @@ Problem Details 格式：
 
 ## Authentication
 
+目前第一批 tenant foundation 仍維持 `email` 全系統唯一；登入、密碼重設與邀請流程不需要 `tenantCode`。未來若要允許不同 tenant 使用相同 email，需另批新增 tenant-aware login/reset/invitation contract。
+
 | Method | Path | Auth | Request | Response |
 | --- | --- | --- | --- | --- |
 | `POST` | `/api/auth/login` | 不需 Bearer | `LoginRequest` | `TokenResponse` |
@@ -80,6 +82,8 @@ Request / response shape：
 // UserResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
+  "tenantName": "Default Tenant",
   "email": "user@example.com",
   "displayName": "User Name",
   "status": "active",
@@ -199,6 +203,8 @@ Request / response shape：
 // UserAccessResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
+  "tenantName": "Default Tenant",
   "email": "user@example.com",
   "displayName": "User Name",
   "status": "active",

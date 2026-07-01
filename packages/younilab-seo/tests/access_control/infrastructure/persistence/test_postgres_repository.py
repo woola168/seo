@@ -7,13 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel
 
 from younilab_seo.access_control.application import UserInvitation
-from younilab_seo.access_control.domain import AccountStatus, UserAccount
+from younilab_seo.access_control.domain import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    AccountStatus,
+    UserAccount,
+)
 from younilab_seo.access_control.infrastructure.persistence.postgres.models import (
     ACCESS_CONTROL_TABLES,
     CustomerAccessGrantRow,
     InvitationRow,
     RoleRow,
     TaskAccessGrantRow,
+    TenantRow,
     UserRoleRow,
     UserRow,
 )
@@ -27,9 +34,33 @@ def create_access_control_tables(connection) -> None:
         table.create(connection)
 
 
+def create_sqlite_engine():
+    engine = create_async_engine("sqlite+aiosqlite://")
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def enable_foreign_keys(connection, record) -> None:
+        connection.execute("PRAGMA foreign_keys=ON")
+
+    return engine
+
+
+async def seed_default_tenant(session: AsyncSession, now: datetime) -> None:
+    session.add(
+        TenantRow(
+            id=DEFAULT_TENANT_ID,
+            code=DEFAULT_TENANT_CODE,
+            name=DEFAULT_TENANT_NAME,
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await session.flush()
+
+
 def test_replace_user_roles_preserves_existing_role_and_adds_new_role() -> None:
     async def scenario() -> None:
-        engine = create_async_engine("sqlite+aiosqlite://")
+        engine = create_sqlite_engine()
         session_factory = async_sessionmaker(
             engine,
             class_=AsyncSession,
@@ -45,6 +76,7 @@ def test_replace_user_roles_preserves_existing_role_and_adds_new_role() -> None:
 
         async with session_factory() as session:
             now = datetime.now(UTC)
+            await seed_default_tenant(session, now)
             session.add(
                 UserRow(
                     id=user_id,
@@ -61,6 +93,7 @@ def test_replace_user_roles_preserves_existing_role_and_adds_new_role() -> None:
                     RoleRow(id=added_role_id, name="Added"),
                 ]
             )
+            await session.flush()
             session.add(
                 UserRoleRow(
                     id=existing_assignment_id,
@@ -94,12 +127,7 @@ def test_replace_user_roles_preserves_existing_role_and_adds_new_role() -> None:
 
 def test_create_invited_user_persists_user_before_grants() -> None:
     async def scenario() -> None:
-        engine = create_async_engine("sqlite+aiosqlite://")
-
-        @event.listens_for(engine.sync_engine, "connect")
-        def enable_foreign_keys(connection, record) -> None:
-            connection.execute("PRAGMA foreign_keys=ON")
-
+        engine = create_sqlite_engine()
         session_factory = async_sessionmaker(
             engine,
             class_=AsyncSession,
@@ -117,6 +145,7 @@ def test_create_invited_user_persists_user_before_grants() -> None:
 
         now = datetime.now(UTC)
         async with session_factory() as session:
+            await seed_default_tenant(session, now)
             session.add(
                 UserRow(
                     id=actor_id,
@@ -190,7 +219,7 @@ def test_create_invited_user_persists_user_before_grants() -> None:
 
 def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
     async def scenario() -> None:
-        engine = create_async_engine("sqlite+aiosqlite://")
+        engine = create_sqlite_engine()
         session_factory = async_sessionmaker(
             engine,
             class_=AsyncSession,
@@ -208,6 +237,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
 
         async with session_factory() as session:
             now = datetime.now(UTC)
+            await seed_default_tenant(session, now)
             session.add_all(
                 [
                     UserRow(
@@ -238,6 +268,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
                 ]
             )
             session.add(RoleRow(id=role_id, name="Role"))
+            await session.flush()
             session.add(UserRoleRow(user_id=first_user_id, role_id=role_id))
             session.add(
                 CustomerAccessGrantRow(
@@ -271,7 +302,7 @@ def test_list_users_returns_roles_and_grants_for_multiple_users() -> None:
 
 def test_role_member_count_and_delete_role() -> None:
     async def scenario() -> None:
-        engine = create_async_engine("sqlite+aiosqlite://")
+        engine = create_sqlite_engine()
         session_factory = async_sessionmaker(
             engine,
             class_=AsyncSession,
@@ -286,6 +317,7 @@ def test_role_member_count_and_delete_role() -> None:
 
         async with session_factory() as session:
             now = datetime.now(UTC)
+            await seed_default_tenant(session, now)
             session.add(
                 UserRow(
                     id=user_id,
@@ -302,6 +334,7 @@ def test_role_member_count_and_delete_role() -> None:
                     RoleRow(id=unused_role_id, name="Unused"),
                 ]
             )
+            await session.flush()
             session.add(UserRoleRow(user_id=user_id, role_id=used_role_id))
             await session.commit()
 
@@ -325,7 +358,7 @@ def test_role_member_count_and_delete_role() -> None:
 
 def test_delete_role_removes_assignments_for_deleted_users() -> None:
     async def scenario() -> None:
-        engine = create_async_engine("sqlite+aiosqlite://")
+        engine = create_sqlite_engine()
         session_factory = async_sessionmaker(
             engine,
             class_=AsyncSession,
@@ -339,6 +372,7 @@ def test_delete_role_removes_assignments_for_deleted_users() -> None:
 
         async with session_factory() as session:
             now = datetime.now(UTC)
+            await seed_default_tenant(session, now)
             session.add(
                 UserRow(
                     id=user_id,
@@ -351,6 +385,7 @@ def test_delete_role_removes_assignments_for_deleted_users() -> None:
                 )
             )
             session.add(RoleRow(id=role_id, name="Unused By Active Users"))
+            await session.flush()
             session.add(UserRoleRow(user_id=user_id, role_id=role_id))
             await session.commit()
 

@@ -61,3 +61,40 @@ def test_delete_role_rejects_missing_system_and_used_roles() -> None:
             await service.delete_role(used_role_id)
 
     asyncio.run(scenario())
+
+
+def test_replace_user_roles_rejects_cross_tenant_role() -> None:
+    async def scenario() -> None:
+        tenant_id = UUID("99999999-9999-4999-8999-999999999999")
+        user_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        own_role_id = UUID("11111111-1111-4111-8111-111111111111")
+        other_role_id = UUID("22222222-2222-4222-8222-222222222222")
+        repository = MemoryAccessControlRepository(
+            users=[
+                UserAccount(
+                    id=user_id,
+                    email="user@example.com",
+                    display_name="User",
+                    status=AccountStatus.ACTIVE,
+                    role_ids={own_role_id},
+                )
+            ],
+            roles=[
+                Role(id=own_role_id, name="Own", permissions=frozenset()),
+                Role(
+                    id=other_role_id,
+                    tenant_id=tenant_id,
+                    name="Other",
+                    permissions=frozenset(),
+                ),
+            ],
+        )
+        service = AccessManagementService(repository)
+
+        with pytest.raises(ResourceNotFound):
+            await service.replace_user_roles(
+                user_id=user_id,
+                role_ids={other_role_id},
+            )
+
+    asyncio.run(scenario())

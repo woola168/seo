@@ -4,11 +4,43 @@ from uuid import UUID, uuid4
 from sqlalchemy import Column, DateTime, JSON, String, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from younilab_seo.access_control.domain import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+)
+
+
+class TenantRow(SQLModel, table=True):
+    __tablename__ = "tenant"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    code: str = Field(
+        default=DEFAULT_TENANT_CODE,
+        sa_column=Column(String(80), nullable=False, unique=True),
+    )
+    name: str = Field(
+        default=DEFAULT_TENANT_NAME,
+        sa_column=Column(String(200), nullable=False),
+    )
+    status: str = Field(default="active", sa_column=Column(String(32), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    disabled_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
 
 class UserRow(SQLModel, table=True):
     __tablename__ = "user_account"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    tenant_id: UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+    )
     email: str = Field(sa_column=Column(String(320), nullable=False, unique=True))
     display_name: str = Field(sa_column=Column(String(200), nullable=False))
     status: str = Field(sa_column=Column(String(32), nullable=False))
@@ -33,9 +65,17 @@ class UserRow(SQLModel, table=True):
 
 class DepartmentRow(SQLModel, table=True):
     __tablename__ = "department"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="ux_department_tenant_name"),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
+    tenant_id: UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+    )
+    name: str = Field(sa_column=Column(String(100), nullable=False))
     description: str = Field(default="", sa_column=Column(Text, nullable=False))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
@@ -47,9 +87,15 @@ class DepartmentRow(SQLModel, table=True):
 
 class RoleRow(SQLModel, table=True):
     __tablename__ = "role"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="ux_role_tenant_name"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
+    tenant_id: UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+    )
+    name: str = Field(sa_column=Column(String(100), nullable=False))
     permissions: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     is_system: bool = Field(default=False, nullable=False)
     has_global_resource_access: bool = Field(default=False, nullable=False)
@@ -157,6 +203,7 @@ class NotificationOutboxRow(SQLModel, table=True):
 
 
 ACCESS_CONTROL_TABLES = (
+    TenantRow.__table__,
     DepartmentRow.__table__,
     UserRow.__table__,
     RoleRow.__table__,

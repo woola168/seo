@@ -7,7 +7,7 @@ from younilab_seo.access_control.application.models import (
     RefreshSession,
     UserInvitation,
 )
-from younilab_seo.access_control.domain import Department, Role, UserAccount
+from younilab_seo.access_control.domain import Department, Role, Tenant, UserAccount
 
 
 class _UserReader(Protocol):
@@ -23,14 +23,27 @@ class _CredentialRepository(Protocol):
 
 
 class _RoleReader(Protocol):
-    async def get_roles(self, role_ids: set[UUID]) -> list[Role]: ...
+    async def get_roles(
+        self,
+        role_ids: set[UUID],
+        tenant_id: UUID | None = None,
+    ) -> list[Role]: ...
+
+
+@runtime_checkable
+class TenantRepository(Protocol):
+    """Tenant lookup used to enforce account availability and API context."""
+
+    async def get_tenant(self, tenant_id: UUID) -> Tenant | None: ...
+
+    async def get_tenant_by_code(self, code: str) -> Tenant | None: ...
 
 
 @runtime_checkable
 class UserRepository(_UserReader, Protocol):
     """持久化帳號基本資料、狀態與 credential 相關使用者資料。"""
 
-    async def list_users(self) -> list[UserAccount]: ...
+    async def list_users(self, tenant_id: UUID | None = None) -> list[UserAccount]: ...
 
     async def save_user(self, user: UserAccount) -> None: ...
 
@@ -41,13 +54,17 @@ class UserRepository(_UserReader, Protocol):
 class RoleRepository(_RoleReader, Protocol):
     """持久化 roles 與 role membership 限制。"""
 
-    async def list_roles(self) -> list[Role]: ...
+    async def list_roles(self, tenant_id: UUID | None = None) -> list[Role]: ...
 
     async def save_role(self, role: Role) -> None: ...
 
     async def delete_role(self, role_id: UUID) -> None: ...
 
-    async def role_member_count(self, role_id: UUID) -> int: ...
+    async def role_member_count(
+        self,
+        role_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int: ...
 
 
 @runtime_checkable
@@ -187,17 +204,25 @@ class InvitationRepository(Protocol):
 class DepartmentRepository(Protocol):
     """持久化組織 departments 與成員數。"""
 
-    async def list_departments(self) -> list[Department]: ...
+    async def list_departments(
+        self,
+        tenant_id: UUID | None = None,
+    ) -> list[Department]: ...
 
     async def get_department(self, department_id: UUID) -> Department | None: ...
 
     async def save_department(self, department: Department) -> None: ...
 
-    async def department_member_count(self, department_id: UUID) -> int: ...
+    async def department_member_count(
+        self,
+        department_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> int: ...
 
 
 @runtime_checkable
 class AuthenticationRepository(
+    TenantRepository,
     _UserReader,
     _CredentialRepository,
     RefreshSessionRepository,

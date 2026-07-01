@@ -37,6 +37,9 @@ async def current_principal(
     user = await request.app.state.repository.get_user(claims.user_id)
     if user is None or not user.is_active:
         raise InvalidSession
+    tenant = await request.app.state.repository.get_tenant(user.tenant_id)
+    if tenant is None or not tenant.is_active:
+        raise InvalidSession
     return CurrentPrincipal(user=user, session_id=claims.session_id)
 
 
