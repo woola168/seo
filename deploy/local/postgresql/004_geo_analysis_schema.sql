@@ -23,6 +23,24 @@ CREATE INDEX IF NOT EXISTS ix_geo_project_customer_id
 CREATE INDEX IF NOT EXISTS ix_geo_project_status
     ON geo_project (status);
 
+CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    display_name varchar(200) NOT NULL,
+    provisioning_mode varchar(32) NOT NULL,
+    status varchar(32) NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT ux_tenant_kmindhub_workspace_mapping_tenant UNIQUE (tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_tenant_kmindhub_workspace_mapping_tenant_id
+    ON tenant_kmindhub_workspace_mapping (tenant_id);
+
+CREATE INDEX IF NOT EXISTS ix_tenant_kmindhub_workspace_mapping_status
+    ON tenant_kmindhub_workspace_mapping (status);
+
 CREATE TABLE IF NOT EXISTS geo_market (
     id uuid PRIMARY KEY,
     project_id uuid NOT NULL REFERENCES geo_project(id) ON DELETE CASCADE,

@@ -4,6 +4,9 @@ from fastapi.responses import JSONResponse
 
 from younilab_seo.geo_analysis.application import (
     GeoProjectReferenceError,
+    KMindHubWorkspaceMappingAlreadyExists,
+    KMindHubWorkspaceMappingNotFound,
+    KMindHubWorkspaceProvisionUnavailable,
     ResourceCatalogVerificationDenied,
     ResourceCatalogVerificationUnavailable,
 )
@@ -54,6 +57,27 @@ def register_error_handlers(app: FastAPI) -> None:
     async def resource_catalog_unavailable(
         request: Request,
         exc: ResourceCatalogVerificationUnavailable,
+    ) -> JSONResponse:
+        return _problem(request, 503, str(exc))
+
+    @app.exception_handler(KMindHubWorkspaceMappingNotFound)
+    async def kmindhub_workspace_mapping_not_found(
+        request: Request,
+        exc: KMindHubWorkspaceMappingNotFound,
+    ) -> JSONResponse:
+        return _problem(request, 404, str(exc))
+
+    @app.exception_handler(KMindHubWorkspaceMappingAlreadyExists)
+    async def kmindhub_workspace_mapping_already_exists(
+        request: Request,
+        exc: KMindHubWorkspaceMappingAlreadyExists,
+    ) -> JSONResponse:
+        return _problem(request, 409, str(exc))
+
+    @app.exception_handler(KMindHubWorkspaceProvisionUnavailable)
+    async def kmindhub_workspace_provision_unavailable(
+        request: Request,
+        exc: KMindHubWorkspaceProvisionUnavailable,
     ) -> JSONResponse:
         return _problem(request, 503, str(exc))
 

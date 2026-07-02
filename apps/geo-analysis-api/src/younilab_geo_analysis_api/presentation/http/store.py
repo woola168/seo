@@ -26,6 +26,8 @@ from younilab_seo.geo_analysis.application import (
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceMappingRecord,
     PublishResult,
     QueryDraftRecord,
     QueryDraftSelectionCommand,
@@ -61,6 +63,9 @@ class GeoApiStore:
         default_factory=dict
     )
     query_drafts: dict[UUID, QueryDraftRecord] = field(default_factory=dict)
+    kmindhub_workspace_mappings: dict[UUID, KMindHubWorkspaceMappingRecord] = field(
+        default_factory=dict
+    )
     platform_codes: dict[UUID, str] = field(default_factory=dict)
     platform_models: dict[UUID, str | None] = field(default_factory=dict)
     dispatches: list[tuple[UUID, PublishResult, QueryRunJobMessage, datetime]] = field(
@@ -89,6 +94,29 @@ class GeoApiStore:
         if project is None or project.tenant_id != tenant_id:
             return None
         return project
+
+    async def get_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+    ) -> KMindHubWorkspaceMappingRecord | None:
+        return self.kmindhub_workspace_mappings.get(tenant_id)
+
+    async def upsert_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubWorkspaceMappingCommand,
+    ) -> KMindHubWorkspaceMappingRecord:
+        now = _now()
+        current = self.kmindhub_workspace_mappings.get(tenant_id)
+        mapping = KMindHubWorkspaceMappingRecord(
+            **command.model_dump(),
+            id=current.id if current is not None else uuid4(),
+            tenant_id=tenant_id,
+            created_at=current.created_at if current is not None else now,
+            updated_at=now,
+        )
+        self.kmindhub_workspace_mappings[tenant_id] = mapping
+        return mapping
 
     async def get_query_project(
         self,

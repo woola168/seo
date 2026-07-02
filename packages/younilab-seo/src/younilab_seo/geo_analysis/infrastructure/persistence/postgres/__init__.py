@@ -14,6 +14,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryScheduleRow,
     GeoTopicRow,
     GeoWorkerLeaseRow,
+    TenantKMindHubWorkspaceMappingRow,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
     build_postgres_repository,
@@ -39,6 +40,7 @@ __all__ = [
     "GeoQueryScheduleRow",
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
+    "TenantKMindHubWorkspaceMappingRow",
     "PostgresGeoAnalysisRepository",
     "build_postgres_repository",
     "build_postgres_session_factory",

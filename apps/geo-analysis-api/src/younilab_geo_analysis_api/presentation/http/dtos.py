@@ -397,6 +397,39 @@ class RunResultResponse(ApiModel):
     created_at: datetime
 
 
+class KMindHubWorkspaceMappingRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    workspace_id: UUID
+    display_name: str = Field(min_length=1, max_length=200)
+    status: str = Field(default="active", max_length=32)
+
+
+class KMindHubWorkspaceProvisionRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class KMindHubWorkspaceMappingResponse(ApiModel):
+    id: UUID
+    tenant_id: UUID
+    workspace_id: UUID
+    display_name: str
+    provisioning_mode: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class PageResponse(ApiModel):
     """第一版 GEO 後台畫面使用的小型 collection response。"""
 

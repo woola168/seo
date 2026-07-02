@@ -35,6 +35,27 @@ class GeoProjectRow(SQLModel, table=True):
     )
 
 
+class TenantKMindHubWorkspaceMappingRow(SQLModel, table=True):
+    """每個 tenant 對應一個 KMindHub Insight workspace 的 reference-only mapping。"""
+
+    __tablename__ = "tenant_kmindhub_workspace_mapping"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            name="ux_tenant_kmindhub_workspace_mapping_tenant",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    tenant_id: UUID = Field(nullable=False, index=True)
+    workspace_id: UUID = Field(nullable=False)
+    display_name: str = Field(sa_column=Column(String(200), nullable=False))
+    provisioning_mode: str = Field(sa_column=Column(String(32), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
 class GeoMarketRow(SQLModel, table=True):
     """Market locale settings used when building runner messages."""
 

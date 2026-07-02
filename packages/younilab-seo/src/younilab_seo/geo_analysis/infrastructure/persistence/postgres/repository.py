@@ -30,6 +30,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceMappingRecord,
     PublishResult,
     QueryDraftRecord,
     QueryDraftSelectionCommand,
@@ -63,6 +65,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoRunResultReferenceRow,
     GeoRunResultRow,
     GeoTopicRow,
+    TenantKMindHubWorkspaceMappingRow,
 )
 
 
@@ -96,6 +99,51 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await self._get_project_row(session, tenant_id, project_id)
             return _project_record(row) if row is not None else None
+
+    async def get_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+    ) -> KMindHubWorkspaceMappingRecord | None:
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(TenantKMindHubWorkspaceMappingRow).where(
+                    TenantKMindHubWorkspaceMappingRow.tenant_id == tenant_id
+                )
+            )
+            return _kmindhub_workspace_mapping_record(row) if row is not None else None
+
+    async def upsert_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubWorkspaceMappingCommand,
+    ) -> KMindHubWorkspaceMappingRecord:
+        now = _now()
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(TenantKMindHubWorkspaceMappingRow).where(
+                    TenantKMindHubWorkspaceMappingRow.tenant_id == tenant_id
+                )
+            )
+            if row is None:
+                row = TenantKMindHubWorkspaceMappingRow(
+                    id=uuid4(),
+                    tenant_id=tenant_id,
+                    workspace_id=command.workspace_id,
+                    display_name=command.display_name,
+                    provisioning_mode=command.provisioning_mode,
+                    status=command.status,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+            else:
+                row.workspace_id = command.workspace_id
+                row.display_name = command.display_name
+                row.provisioning_mode = command.provisioning_mode
+                row.status = command.status
+                row.updated_at = now
+            await session.flush()
+            return _kmindhub_workspace_mapping_record(row)
 
     async def get_query_project(
         self,
@@ -1413,6 +1461,21 @@ def _project_record(row: GeoProjectRow) -> GeoProjectRecord:
         default_language=row.default_language,
         status=row.status,
         daily_run_budget=row.daily_run_budget,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _kmindhub_workspace_mapping_record(
+    row: TenantKMindHubWorkspaceMappingRow,
+) -> KMindHubWorkspaceMappingRecord:
+    return KMindHubWorkspaceMappingRecord(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        workspace_id=row.workspace_id,
+        display_name=row.display_name,
+        provisioning_mode=row.provisioning_mode,
+        status=row.status,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

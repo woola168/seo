@@ -8,6 +8,7 @@ from younilab_geo_analysis_api.presentation.http.routes import router
 from younilab_seo.geo_analysis.application import (
     Clock,
     GeoAnalysisRepository,
+    KMindHubWorkspaceClient,
     MessagePublisher,
     PermissionAuthorizer,
     QueryPlanningClient,
@@ -21,6 +22,7 @@ def create_app(
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,
+    kmindhub_client: KMindHubWorkspaceClient | None = None,
     authorizer: PermissionAuthorizer | None = None,
     reference_verifier: ResourceCatalogReferenceVerifier | None = None,
     callback_base_url: str | None = None,
@@ -30,6 +32,7 @@ def create_app(
         clock=clock,
         publisher=publisher,
         planning_client=planning_client,
+        kmindhub_client=kmindhub_client,
         authorizer=authorizer,
         reference_verifier=reference_verifier,
         callback_base_url=callback_base_url,
@@ -50,6 +53,9 @@ def create_app(
     app.state.geo_repository = dependencies.repository
     app.state.geo_authorizer = dependencies.authorizer
     app.state.manage_geo_setup = dependencies.manage_geo_setup
+    app.state.manage_kmindhub_workspace_mapping = (
+        dependencies.manage_kmindhub_workspace_mapping
+    )
     app.state.manage_query_planning = dependencies.manage_query_planning
     app.state.manage_query_run_jobs = dependencies.manage_query_run_jobs
     app.state.dispatch_query_run_job = dependencies.dispatch_query_run_job

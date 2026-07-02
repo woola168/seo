@@ -39,6 +39,15 @@ the `deploy/` directory when running with `-f deploy/docker-compose.yml`.
 
 `GEO_ANALYSIS_DATABASE_URL` 指向 GEO Analysis PostgreSQL database。`geo_ai_platform` 資料目前仍由人工 seed，例如 Gemini、ChatGPT 等 platform。
 
+KMindHub Insight workspace mapping 使用下列設定：
+
+```env
+KMINDHUB_INSIGHT_BASE_URL=http://kmindhub-insight-api:8000
+KMINDHUB_INSIGHT_TIMEOUT_SECONDS=30
+```
+
+tenant 第一次使用後續 analysis extraction 前，需先透過 GEO Analysis API 手動綁定既有 KMindHub workspace，或明確呼叫 provision endpoint 建立 workspace。Worker 不會在首次執行時自動建立 workspace；若 mapping 缺失，後續 extraction pipeline 應 fail closed，不可使用 default workspace。
+
 RabbitMQ publisher 設定：
 
 ```env
@@ -141,8 +150,11 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/ACCESS_CONTROL_DB" -f deploy/local/po
 ```powershell
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/009_geo_analysis_tenant_patch.sql
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql
 ```
 
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
 
 `009_geo_analysis_tenant_patch.sql` 會替 `geo_project` 新增 `tenant_id`，既有資料回填 default tenant，並建立 tenant 查詢 index。建議先完成 Access Control tenant patch、Resource Catalog tenant patch，再執行 GEO Analysis tenant patch。
+
+`010_kmindhub_workspace_mapping_patch.sql` 會建立 `tenant_kmindhub_workspace_mapping`，保存 tenant 到 KMindHub workspace 的 reference-only mapping。新環境可直接使用更新後的 `004_geo_analysis_schema.sql`。

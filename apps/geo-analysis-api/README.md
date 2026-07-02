@@ -17,12 +17,14 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
 - 既有遠端 DB 若已跑過舊版 schema，需手動執行 `deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql`，補上 Query Planning tables 並解除 `geo_project.customer_id` 的 `NOT NULL` 限制。
 - 既有遠端 DB 若尚未 tenant 化，需再手動執行 `deploy/local/postgresql/009_geo_analysis_tenant_patch.sql`，替 `geo_project` 補上 `tenant_id` 並回填 default tenant。
+- 既有遠端 DB 若要啟用 KMindHub workspace mapping，需手動執行 `deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql`。
 - 使用者 API 需帶 Access Control Bearer token；GEO Analysis 透過 `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。
 - `ProjectResponse` 會回傳 `tenantId`；project list/create/query/job/run result 都以目前 tenant 作為最外層資料邊界。
 - `customerId` / `seoTaskId` 維持 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
 - RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
+- KMindHub workspace 採手動優先策略；tenant 第一次使用後續 analysis extraction 前，需先用 API 綁定既有 workspace 或明確 provision workspace。Worker 不會在首次執行時自動建立 workspace，也不會 fallback 到 default workspace。
 - 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
 
 範例：
@@ -31,7 +33,59 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 $env:GEO_ANALYSIS_DATABASE_URL = "postgresql+asyncpg://resource_catalog:resource_catalog@127.0.0.1:5433/resource_catalog"
 $env:GEO_ANALYSIS_ACCESS_CONTROL_URL = "http://127.0.0.1:8000"
 $env:GEO_ANALYSIS_RESOURCE_CATALOG_URL = "http://127.0.0.1:8001"
+$env:KMINDHUB_INSIGHT_BASE_URL = "http://127.0.0.1:8010"
 uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
+```
+
+### KMindHub Workspace Mapping
+
+一個 tenant 只會對應一個 KMindHub workspace。`tenantId` 由 Access Control token 解析，request body 不接受 client 自行指定。
+
+手動綁定既有 workspace：
+
+```http
+PUT /api/geo/integrations/kmindhub/workspace
+Content-Type: application/json
+
+{
+  "workspaceId": "00000000-0000-4000-8000-000000000001",
+  "displayName": "Acme Workspace",
+  "status": "active"
+}
+```
+
+明確建立並保存 mapping：
+
+```http
+POST /api/geo/integrations/kmindhub/workspace/provision
+Content-Type: application/json
+
+{
+  "displayName": "Acme Workspace"
+}
+```
+
+`provision` 僅供 tenant 第一次建立 workspace mapping 使用；若 tenant 已有 mapping 會回 `409`，不會再次呼叫 KMindHub 建立 workspace。更換 workspace 請使用 `PUT /api/geo/integrations/kmindhub/workspace` 手動綁定既有 workspace。
+
+取得目前 tenant mapping：
+
+```http
+GET /api/geo/integrations/kmindhub/workspace
+```
+
+response：
+
+```json
+{
+  "id": "00000000-0000-4000-8000-000000000010",
+  "tenantId": "00000000-0000-4000-8000-000000000001",
+  "workspaceId": "00000000-0000-4000-8000-000000000011",
+  "displayName": "Acme Workspace",
+  "provisioningMode": "manual",
+  "status": "active",
+  "createdAt": "2026-07-02T00:00:00Z",
+  "updatedAt": "2026-07-02T00:00:00Z"
+}
 ```
 
 ### 手動建立 AI Platform
@@ -207,6 +261,9 @@ Problem Details 格式：
 
 | Method | Path | 作用 |
 | --- | --- | --- |
+| `GET` | `/api/geo/integrations/kmindhub/workspace` | 取得目前 tenant 綁定的 KMindHub workspace mapping；未設定回 `404`。 |
+| `PUT` | `/api/geo/integrations/kmindhub/workspace` | 手動綁定既有 KMindHub workspace。 |
+| `POST` | `/api/geo/integrations/kmindhub/workspace/provision` | 明確建立 KMindHub workspace 並保存 tenant mapping。 |
 | `GET` | `/api/geo/projects` | 列出 GEO project，可用 `customerId` 篩選。 |
 | `POST` | `/api/geo/projects` | 建立客戶的 GEO project。 |
 | `GET` | `/api/geo/projects/{projectId}` | 取得單一 GEO project。 |

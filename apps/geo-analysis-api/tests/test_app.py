@@ -91,6 +91,85 @@ def test_projects_are_scoped_by_authorized_tenant() -> None:
     assert detail_response.status_code == 404
 
 
+def test_kmindhub_workspace_mapping_endpoints() -> None:
+    workspace_id = uuid4()
+    client = _client()
+
+    missing_response = client.get("/api/geo/integrations/kmindhub/workspace")
+    assert missing_response.status_code == 404
+
+    bind_response = client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "workspaceId": str(workspace_id),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    assert bind_response.status_code == 200
+    body = bind_response.json()
+    assert body["tenantId"] == str(TENANT_ID)
+    assert body["workspaceId"] == str(workspace_id)
+    assert body["displayName"] == "Acme Workspace"
+    assert body["provisioningMode"] == "manual"
+    assert body["status"] == "active"
+
+    get_response = client.get("/api/geo/integrations/kmindhub/workspace")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["workspaceId"] == str(workspace_id)
+
+
+def test_kmindhub_workspace_provision_creates_remote_workspace() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    client = _client(kmindhub_client=kmindhub_client)
+
+    response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Acme Workspace"},
+    )
+
+    assert response.status_code == 201
+    assert kmindhub_client.created_display_names == ["Acme Workspace"]
+    assert response.json()["workspaceId"] == str(kmindhub_client.created_workspace_id)
+    assert response.json()["provisioningMode"] == "manual_provisioned"
+
+
+def test_kmindhub_workspace_provision_rejects_existing_mapping() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    client = _client(kmindhub_client=kmindhub_client)
+    first_response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Acme Workspace"},
+    )
+
+    second_response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Another Workspace"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == "KMindHub workspace mapping already exists"
+    assert kmindhub_client.created_display_names == ["Acme Workspace"]
+
+
+def test_kmindhub_workspace_mapping_rejects_tenant_id_from_request() -> None:
+    client = _client()
+
+    response = client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "tenantId": str(OTHER_TENANT_ID),
+            "workspaceId": str(uuid4()),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "body.tenantId" in _invalid_param_names(response.json())
+
+
 def test_projects_are_scoped_by_resource_grants() -> None:
     store = GeoApiStore()
     allowed_customer_id = uuid4()
@@ -774,6 +853,19 @@ class FakePublisher:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class FakeKMindHubClient:
+    created_workspace_id: UUID = field(default_factory=uuid4)
+    created_display_names: list[str] = field(default_factory=list)
+
+    async def create_workspace(self, display_name: str) -> UUID:
+        self.created_display_names.append(display_name)
+        return self.created_workspace_id
+
+    def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
+        return {"X-Workspace-Id": str(workspace_id)}
 
 
 @dataclass

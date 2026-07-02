@@ -31,6 +31,7 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoRunResultReferenceRow,
     GeoRunResultRow,
     PostgresGeoAnalysisRepository,
+    TenantKMindHubWorkspaceMappingRow,
     build_postgres_session_factory,
 )
 
@@ -63,9 +64,11 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
         GeoRunRequestRow.__tablename__,
         GeoRunResultRow.__tablename__,
         GeoRunResultReferenceRow.__tablename__,
+        TenantKMindHubWorkspaceMappingRow.__tablename__,
     }
 
     assert "geo_run_request" in defined_tables
+    assert "tenant_kmindhub_workspace_mapping" in defined_tables
     assert "geo_query_research_run" in defined_tables
     assert "geo_query_generation_run" in defined_tables
     assert "geo_query_draft" in defined_tables
@@ -112,6 +115,10 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
+    assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
+    assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["tenant_id"].foreign_keys
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["workspace_id"].foreign_keys
     assert "ALTER COLUMN customer_id DROP NOT NULL" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in patch

@@ -159,6 +159,30 @@ class GeoRunRequestRecord(ContractModel):
     results: list[GeoRunResultRecord] = Field(default_factory=list)
 
 
+class KMindHubWorkspaceMappingCommand(ContractModel):
+    """租戶綁定 KMindHub workspace 時使用的 application input。"""
+
+    workspace_id: UUID
+    display_name: str
+    provisioning_mode: str = "manual"
+    status: str = "active"
+
+
+class KMindHubWorkspaceMappingRecord(KMindHubWorkspaceMappingCommand):
+    """GEO Analysis 保存的 tenant 到 KMindHub workspace 對應快照。"""
+
+    id: UUID
+    tenant_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class KMindHubWorkspaceProvisionCommand(ContractModel):
+    """由使用者明確觸發建立 KMindHub workspace 的 input。"""
+
+    display_name: str
+
+
 class PublishResult(ContractModel):
     """message publisher 寫入 broker 後的結果與 evidence。"""
 

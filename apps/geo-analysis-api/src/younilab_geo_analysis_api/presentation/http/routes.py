@@ -13,6 +13,9 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     EntityResponse,
     ExternalCallbackRequest,
     JobResponse,
+    KMindHubWorkspaceMappingRequest,
+    KMindHubWorkspaceMappingResponse,
+    KMindHubWorkspaceProvisionRequest,
     MarketRequest,
     MarketResponse,
     PageResponse,
@@ -48,7 +51,10 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
     GeoTopicCommand,
+    KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceProvisionCommand,
     ManageQueryPlanning,
+    ManageKMindHubWorkspaceMapping,
     QueryDraftSelectionCommand,
     QueryGenerationCommand,
     QueryResearchCommand,
@@ -72,6 +78,10 @@ def _jobs(request: Request) -> ManageQueryRunJobs:
 
 def _planning(request: Request) -> ManageQueryPlanning:
     return request.app.state.manage_query_planning
+
+
+def _kmindhub_workspace(request: Request) -> ManageKMindHubWorkspaceMapping:
+    return request.app.state.manage_kmindhub_workspace_mapping
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -107,6 +117,59 @@ def _run_result_data(record) -> dict:
 
 def _planning_data(record) -> dict:
     return record.model_dump()
+
+
+@router.get(
+    "/integrations/kmindhub/workspace",
+    response_model=KMindHubWorkspaceMappingResponse,
+)
+async def get_kmindhub_workspace_mapping(
+    request: Request,
+) -> KMindHubWorkspaceMappingResponse:
+    principal = await _principal(request, "geo.projects.read")
+    mapping = await _kmindhub_workspace(request).get_mapping(principal.tenant_id)
+    if mapping is None:
+        raise HTTPException(status_code=404, detail="KMindHub workspace mapping not found")
+    return KMindHubWorkspaceMappingResponse(**_record_data(mapping))
+
+
+@router.put(
+    "/integrations/kmindhub/workspace",
+    response_model=KMindHubWorkspaceMappingResponse,
+)
+async def bind_kmindhub_workspace_mapping(
+    request: Request,
+    payload: KMindHubWorkspaceMappingRequest,
+) -> KMindHubWorkspaceMappingResponse:
+    principal = await _principal(request, "geo.projects.update")
+    try:
+        mapping = await _kmindhub_workspace(request).bind_workspace(
+            principal.tenant_id,
+            KMindHubWorkspaceMappingCommand(**payload.model_dump()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return KMindHubWorkspaceMappingResponse(**_record_data(mapping))
+
+
+@router.post(
+    "/integrations/kmindhub/workspace/provision",
+    response_model=KMindHubWorkspaceMappingResponse,
+    status_code=201,
+)
+async def provision_kmindhub_workspace_mapping(
+    request: Request,
+    payload: KMindHubWorkspaceProvisionRequest,
+) -> KMindHubWorkspaceMappingResponse:
+    principal = await _principal(request, "geo.projects.update")
+    try:
+        mapping = await _kmindhub_workspace(request).provision_workspace(
+            principal.tenant_id,
+            KMindHubWorkspaceProvisionCommand(**payload.model_dump()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return KMindHubWorkspaceMappingResponse(**_record_data(mapping))
 
 
 @router.get("/projects", response_model=PageResponse)

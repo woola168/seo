@@ -21,6 +21,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoRunResultRow,
     GeoTopicRow,
     GeoWorkerLeaseRow,
+    TenantKMindHubWorkspaceMappingRow,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
     build_postgres_repository,
@@ -53,6 +54,8 @@ __all__ = [
     "GeoRunResultRow",
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
+    "TenantKMindHubWorkspaceMappingRow",
+    "HttpKMindHubWorkspaceClient",
     "PostgresGeoAnalysisRepository",
     "HttpTrackingRunClient",
     "RabbitMqMessagePublisher",
@@ -82,6 +85,12 @@ def __getattr__(name: str):
         )
 
         return HttpTrackingRunClient
+    if name == "HttpKMindHubWorkspaceClient":
+        from younilab_seo.geo_analysis.infrastructure.kmindhub import (
+            HttpKMindHubWorkspaceClient,
+        )
+
+        return HttpKMindHubWorkspaceClient
     if name == "RabbitMqMessagePublisher":
         from younilab_seo.geo_analysis.infrastructure.messaging import (
             RabbitMqMessagePublisher,

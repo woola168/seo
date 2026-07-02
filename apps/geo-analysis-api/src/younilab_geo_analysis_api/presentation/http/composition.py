@@ -7,7 +7,9 @@ from younilab_seo.geo_analysis.application import (
     Clock,
     DispatchQueryRunJob,
     GeoAnalysisRepository,
+    KMindHubWorkspaceClient,
     ManageGeoSetup,
+    ManageKMindHubWorkspaceMapping,
     ManageQueryPlanning,
     ManageQueryRunJobs,
     MessagePublisher,
@@ -30,6 +32,7 @@ class GeoAnalysisApiDependencies:
     repository: GeoAnalysisRepository
     authorizer: PermissionAuthorizer
     manage_geo_setup: ManageGeoSetup
+    manage_kmindhub_workspace_mapping: ManageKMindHubWorkspaceMapping
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
     dispatch_query_run_job: DispatchQueryRunJob | None
@@ -50,6 +53,7 @@ def build_dependencies(
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,
+    kmindhub_client: KMindHubWorkspaceClient | None = None,
     authorizer: PermissionAuthorizer | None = None,
     reference_verifier: ResourceCatalogReferenceVerifier | None = None,
     callback_base_url: str | None = None,
@@ -58,15 +62,22 @@ def build_dependencies(
     active_clock = clock or SystemClock()
     active_publisher = publisher or _build_publisher()
     active_planning_client = planning_client or _build_planning_client()
+    active_kmindhub_client = kmindhub_client or _build_kmindhub_client()
     active_authorizer = authorizer or _build_authorizer()
     active_reference_verifier = reference_verifier or _build_reference_verifier()
     closeables = tuple(
-        item for item in (active_publisher, active_planning_client) if item is not None
+        item
+        for item in (active_publisher, active_planning_client, active_kmindhub_client)
+        if item is not None
     )
     return GeoAnalysisApiDependencies(
         repository=active_repository,
         authorizer=active_authorizer,
         manage_geo_setup=ManageGeoSetup(active_repository, active_reference_verifier),
+        manage_kmindhub_workspace_mapping=ManageKMindHubWorkspaceMapping(
+            active_repository,
+            active_kmindhub_client,
+        ),
         manage_query_planning=ManageQueryPlanning(
             active_repository,
             active_planning_client,
@@ -136,6 +147,15 @@ def _build_planning_client() -> QueryPlanningClient:
     return HttpTrackingRunClient(
         base_url=os.getenv("GEO_TRACKING_BASE_URL", "http://geo-tracking-api:8003"),
         timeout_seconds=float(os.getenv("GEO_TRACKING_TIMEOUT_SECONDS", "60")),
+    )
+
+
+def _build_kmindhub_client() -> KMindHubWorkspaceClient:
+    from younilab_seo.geo_analysis.infrastructure import HttpKMindHubWorkspaceClient
+
+    return HttpKMindHubWorkspaceClient(
+        base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
+        timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
     )
 
 

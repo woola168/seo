@@ -25,6 +25,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoRunResultRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceMappingRecord,
     PublishResult,
     QueryDraftRecord,
     QueryDraftSelectionCommand,
@@ -78,6 +80,32 @@ class QueryPlanningClient(Protocol):
 
     async def generate(self, command: QueryGenerationCommand) -> dict:
         raise NotImplementedError
+
+
+class KMindHubWorkspaceClient(Protocol):
+    """建立 KMindHub workspace 並提供 runtime workspace header 的 port。"""
+
+    async def create_workspace(self, display_name: str) -> UUID:
+        raise NotImplementedError
+
+    def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
+        raise NotImplementedError
+
+
+class KMindHubWorkspaceResolver(Protocol):
+    """用 tenant 解析後續 KMindHub runtime call 必須使用的 active workspace。"""
+
+    async def resolve_workspace_id(self, tenant_id: UUID) -> UUID:
+        raise NotImplementedError
+
+    async def workspace_headers(self, tenant_id: UUID) -> dict[str, str]:
+        raise NotImplementedError
+
+
+class KMindHubWorkspaceProvisionUnavailable(RuntimeError):
+    """KMindHub workspace provision API 暫時無法使用。"""
+
+    pass
 
 
 class ResourceCatalogVerificationDenied(PermissionError):
@@ -565,4 +593,17 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         draft_id: UUID,
         command: AcceptQueryDraftCommand,
     ) -> GeoQueryRecord | None:
+        raise NotImplementedError
+
+    async def get_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+    ) -> KMindHubWorkspaceMappingRecord | None:
+        raise NotImplementedError
+
+    async def upsert_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubWorkspaceMappingCommand,
+    ) -> KMindHubWorkspaceMappingRecord:
         raise NotImplementedError

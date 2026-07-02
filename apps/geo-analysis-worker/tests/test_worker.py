@@ -62,6 +62,10 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
 
     assert dependencies.consumer.queue_name == "geo.query-runs.gemini"
     assert dependencies.processor.supported_provider == "gemini"
+    workspace_id = uuid4()
+    assert dependencies.kmindhub_workspace_client.workspace_headers(workspace_id) == {
+        "X-Workspace-Id": str(workspace_id)
+    }
 
 
 def test_composition_builds_google_aio_provider_queue(monkeypatch) -> None:
