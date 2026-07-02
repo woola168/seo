@@ -7,16 +7,25 @@ from fastapi.testclient import TestClient
 from younilab_geo_analysis_api.presentation.http import create_app
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
+    AuthorizedPrincipal,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     PublishResult,
     QueryRunJobMessage,
+    ResourceCatalogVerificationDenied,
+    ResourceCatalogVerificationUnavailable,
+    ResourceTaskReference,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
 
 
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
+AUTH_HEADERS = {"Authorization": "Bearer test-token"}
+
+
 def test_project_topic_query_and_job_crud_flow() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     project_response = client.post(
         "/api/geo/projects",
@@ -29,6 +38,7 @@ def test_project_topic_query_and_job_crud_flow() -> None:
     )
     assert project_response.status_code == 201
     project_id = project_response.json()["id"]
+    assert project_response.json()["tenantId"] == str(TENANT_ID)
 
     topic_response = client.post(
         f"/api/geo/projects/{project_id}/topics",
@@ -64,8 +74,102 @@ def test_project_topic_query_and_job_crud_flow() -> None:
     assert jobs_response.json()["total"] == 1
 
 
+def test_projects_are_scoped_by_authorized_tenant() -> None:
+    store = GeoApiStore()
+    tenant_a = _client(repository=store, authorizer=FakeAuthorizer(TENANT_ID))
+    tenant_b = _client(repository=store, authorizer=FakeAuthorizer(OTHER_TENANT_ID))
+
+    created = tenant_a.post("/api/geo/projects", json={"name": "Tenant A GEO"})
+    assert created.status_code == 201
+    project_id = created.json()["id"]
+
+    list_response = tenant_b.get("/api/geo/projects")
+    detail_response = tenant_b.get(f"/api/geo/projects/{project_id}")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == []
+    assert detail_response.status_code == 404
+
+
+def test_projects_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+    allowed_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(allowed_customer_id), "name": "Allowed GEO"},
+    )
+    denied_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(denied_customer_id), "name": "Denied GEO"},
+    )
+    unscoped_project = admin.post("/api/geo/projects", json={"name": "Unscoped GEO"})
+    assert allowed_project.status_code == 201
+    assert denied_project.status_code == 201
+    assert unscoped_project.status_code == 201
+
+    list_response = restricted.get("/api/geo/projects")
+    denied_detail = restricted.get(f"/api/geo/projects/{denied_project.json()['id']}")
+    unscoped_detail = restricted.get(
+        f"/api/geo/projects/{unscoped_project.json()['id']}"
+    )
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()["items"]] == [
+        allowed_project.json()["id"]
+    ]
+    assert denied_detail.status_code == 404
+    assert unscoped_detail.status_code == 404
+
+
+def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed_query_id = _create_query_for_customer(admin, allowed_customer_id)
+    denied_query_id = _create_query_for_customer(admin, denied_customer_id)
+    allowed_job = admin.post(
+        f"/api/geo/queries/{allowed_query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    denied_job = admin.post(
+        f"/api/geo/queries/{denied_query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    assert allowed_job.status_code == 201
+    assert denied_job.status_code == 201
+    allowed_result_id = _add_run_result(store, UUID(allowed_job.json()["id"]))
+    denied_result_id = _add_run_result(store, UUID(denied_job.json()["id"]))
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    allowed_job_response = restricted.get(f"/api/geo/jobs/{allowed_job.json()['id']}")
+    denied_job_response = restricted.get(f"/api/geo/jobs/{denied_job.json()['id']}")
+    allowed_result_response = restricted.get(f"/api/geo/run-results/{allowed_result_id}")
+    denied_result_response = restricted.get(f"/api/geo/run-results/{denied_result_id}")
+
+    assert allowed_job_response.status_code == 200
+    assert denied_job_response.status_code == 404
+    assert allowed_result_response.status_code == 200
+    assert denied_result_response.status_code == 404
+
+
 def test_validation_error_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.post(
         "/api/geo/projects",
@@ -83,7 +187,7 @@ def test_validation_error_returns_problem_details() -> None:
 
 
 def test_project_allows_empty_customer_reference_but_rejects_task_without_customer() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.post("/api/geo/projects", json={"name": "Draft GEO"})
 
@@ -101,9 +205,67 @@ def test_project_allows_empty_customer_reference_but_rejects_task_without_custom
     assert invalid.json()["detail"] == "seoTaskId requires customerId"
 
 
+def test_project_rejects_task_from_different_customer() -> None:
+    client = _client(
+        reference_verifier=FakeReferenceVerifier(fixed_task_customer_id=uuid4())
+    )
+
+    response = client.post(
+        "/api/geo/projects",
+        json={
+            "customerId": str(uuid4()),
+            "seoTaskId": str(uuid4()),
+            "name": "Broken GEO",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "seoTaskId does not belong to customerId"
+
+
+def test_project_reference_verification_denied_returns_forbidden() -> None:
+    client = _client(reference_verifier=FakeReferenceVerifier(denied=True))
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "name": "Denied GEO"},
+    )
+
+    assert response.status_code == 403
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "resource catalog reference verification denied"
+
+
+def test_project_reference_verification_unavailable_returns_service_unavailable() -> None:
+    client = _client(reference_verifier=FakeReferenceVerifier(unavailable=True))
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "name": "Unavailable GEO"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "resource catalog unavailable"
+
+
+def test_project_request_rejects_client_tenant_id() -> None:
+    client = _client()
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"tenantId": str(uuid4()), "name": "Tenant spoof"},
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "body.tenantId" in _invalid_param_names(response.json())
+
+
 def test_query_research_generation_and_draft_accept_flow() -> None:
     planning_client = FakePlanningClient()
-    client = TestClient(create_app(planning_client=planning_client))
+    client = _client(planning_client=planning_client)
     project_response = client.post(
         "/api/geo/projects",
         json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
@@ -190,7 +352,7 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
 
 
 def test_query_research_rejects_empty_keywords() -> None:
-    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    client = _client(planning_client=FakePlanningClient())
     project_id = _create_project(client)
     payload = _query_research_payload()
     payload["keywords"] = []
@@ -205,7 +367,7 @@ def test_query_research_rejects_empty_keywords() -> None:
 
 
 def test_query_research_rejects_oversized_arrays() -> None:
-    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    client = _client(planning_client=FakePlanningClient())
     project_id = _create_project(client)
     cases = [
         ("keywords", [f"keyword-{index}" for index in range(11)]),
@@ -232,7 +394,7 @@ def test_query_research_rejects_oversized_arrays() -> None:
 
 
 def test_missing_resource_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.get(f"/api/geo/projects/{uuid4()}")
 
@@ -408,7 +570,7 @@ def test_project_run_results_are_scoped_to_project() -> None:
 
 
 def test_missing_run_result_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.get(f"/api/geo/run-results/{uuid4()}")
 
@@ -421,7 +583,7 @@ def test_app_lifespan_closes_injected_publisher() -> None:
     publisher = FakePublisher()
     store = GeoApiStore()
 
-    with TestClient(create_app(repository=store, publisher=publisher)) as client:
+    with _client(repository=store, publisher=publisher) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
@@ -456,6 +618,17 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     )
 
 
+def _client(**kwargs) -> TestClient:
+    return TestClient(
+        create_app(
+            authorizer=kwargs.pop("authorizer", FakeAuthorizer()),
+            reference_verifier=kwargs.pop("reference_verifier", FakeReferenceVerifier()),
+            **kwargs,
+        ),
+        headers=AUTH_HEADERS,
+    )
+
+
 def _client_with_job() -> tuple[TestClient, GeoApiStore, UUID]:
     client, store, query_id = _client_with_query()
     job_response = client.post(
@@ -473,12 +646,10 @@ def _client_with_query(
     market_type: str | None = None,
 ) -> tuple[TestClient, GeoApiStore, str]:
     store = GeoApiStore()
-    client = TestClient(
-        create_app(
-            repository=store,
-            publisher=publisher,
-            callback_base_url=callback_base_url,
-        )
+    client = _client(
+        repository=store,
+        publisher=publisher,
+        callback_base_url=callback_base_url,
     )
     project_response = client.post(
         "/api/geo/projects",
@@ -516,6 +687,24 @@ def _create_project(client: TestClient) -> str:
     )
     assert response.status_code == 201
     return response.json()["id"]
+
+
+def _create_query_for_customer(client: TestClient, customer_id: UUID) -> str:
+    project_response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": f"GEO {customer_id}"},
+    )
+    assert project_response.status_code == 201
+    query_response = client.post(
+        f"/api/geo/projects/{project_response.json()['id']}/queries",
+        json={
+            "queryText": "Who are reliable suppliers?",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+    assert query_response.status_code == 201
+    return query_response.json()["id"]
 
 
 def _query_research_payload() -> dict:
@@ -585,6 +774,63 @@ class FakePublisher:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class FakeAuthorizer:
+    tenant_id: UUID = TENANT_ID
+    has_global_resource_access: bool = True
+    customer_ids: frozenset[UUID] = frozenset()
+    task_ids: frozenset[UUID] = frozenset()
+
+    async def require(self, access_token: str, permission: str) -> AuthorizedPrincipal:
+        assert access_token == "test-token"
+        return AuthorizedPrincipal(
+            tenant_id=self.tenant_id,
+            permissions=frozenset({permission}),
+            has_global_resource_access=self.has_global_resource_access,
+            customer_ids=self.customer_ids,
+            task_ids=self.task_ids,
+        )
+
+
+@dataclass
+class FakeReferenceVerifier:
+    customer_id: UUID | None = None
+    fixed_task_customer_id: UUID | None = None
+    denied: bool = False
+    unavailable: bool = False
+
+    async def customer_exists(
+        self,
+        *,
+        access_token: str,
+        customer_id: UUID,
+    ) -> bool:
+        self._raise_if_configured()
+        if self.fixed_task_customer_id is None:
+            self.customer_id = customer_id
+        return True
+
+    async def get_task(
+        self,
+        *,
+        access_token: str,
+        task_id: UUID,
+    ) -> ResourceTaskReference | None:
+        self._raise_if_configured()
+        return ResourceTaskReference(
+            id=task_id,
+            customer_id=self.fixed_task_customer_id or self.customer_id or uuid4(),
+        )
+
+    def _raise_if_configured(self) -> None:
+        if self.denied:
+            raise ResourceCatalogVerificationDenied(
+                "resource catalog reference verification denied"
+            )
+        if self.unavailable:
+            raise ResourceCatalogVerificationUnavailable("resource catalog unavailable")
 
 
 class FakePlanningClient:

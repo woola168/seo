@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS geo_project (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
     customer_id uuid,
     seo_task_id uuid,
     name varchar(200) NOT NULL,
@@ -12,6 +13,9 @@ CREATE TABLE IF NOT EXISTS geo_project (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz
 );
+
+CREATE INDEX IF NOT EXISTS ix_geo_project_tenant_id
+    ON geo_project (tenant_id);
 
 CREATE INDEX IF NOT EXISTS ix_geo_project_customer_id
     ON geo_project (customer_id);

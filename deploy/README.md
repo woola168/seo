@@ -48,7 +48,11 @@ GEO_ANALYSIS_RABBITMQ_EXCHANGE=geo.query-runs
 GEO_ANALYSIS_RABBITMQ_QUEUE_PREFIX=geo.query-runs
 GEO_ANALYSIS_RABBITMQ_ROUTING_KEY_PREFIX=geo.query-runs
 GEO_ANALYSIS_CALLBACK_BASE_URL=http://geo-analysis-api:8002
+GEO_ANALYSIS_ACCESS_CONTROL_URL=http://access-control-api:8000
+GEO_ANALYSIS_RESOURCE_CATALOG_URL=http://resource-catalog-api:8001
 ```
+
+GEO Analysis API 會透過 Access Control `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。`customer_id` / `seo_task_id` 仍是 reference-only 欄位，但建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同一個 tenant。
 
 Queue 依 provider 拆分：
 
@@ -136,6 +140,9 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/ACCESS_CONTROL_DB" -f deploy/local/po
 
 ```powershell
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/009_geo_analysis_tenant_patch.sql
 ```
 
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
+
+`009_geo_analysis_tenant_patch.sql` 會替 `geo_project` 新增 `tenant_id`，既有資料回填 default tenant，並建立 tenant 查詢 index。建議先完成 Access Control tenant patch、Resource Catalog tenant patch，再執行 GEO Analysis tenant patch。

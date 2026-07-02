@@ -2,7 +2,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from younilab_seo.geo_analysis.application import GeoProjectReferenceError
+from younilab_seo.geo_analysis.application import (
+    GeoProjectReferenceError,
+    ResourceCatalogVerificationDenied,
+    ResourceCatalogVerificationUnavailable,
+)
 from younilab_seo.geo_analysis.domain import QueryRunJobStatusError
 
 
@@ -36,7 +40,29 @@ def register_error_handlers(app: FastAPI) -> None:
         request: Request,
         exc: GeoProjectReferenceError,
     ) -> JSONResponse:
-        return _problem(request, 422, str(exc))
+        status_code = 409 if "does not belong" in str(exc) else 422
+        return _problem(request, status_code, str(exc))
+
+    @app.exception_handler(ResourceCatalogVerificationDenied)
+    async def resource_catalog_denied(
+        request: Request,
+        exc: ResourceCatalogVerificationDenied,
+    ) -> JSONResponse:
+        return _problem(request, 403, str(exc))
+
+    @app.exception_handler(ResourceCatalogVerificationUnavailable)
+    async def resource_catalog_unavailable(
+        request: Request,
+        exc: ResourceCatalogVerificationUnavailable,
+    ) -> JSONResponse:
+        return _problem(request, 503, str(exc))
+
+    @app.exception_handler(PermissionError)
+    async def permission_error(
+        request: Request,
+        exc: PermissionError,
+    ) -> JSONResponse:
+        return _problem(request, 403, str(exc) or "access denied")
 
 
 def _problem(

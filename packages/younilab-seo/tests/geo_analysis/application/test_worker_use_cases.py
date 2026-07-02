@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import asyncio
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
     ExternalRunCallback,
@@ -14,6 +14,10 @@ from younilab_seo.geo_analysis.application import (
     TrackingRunResultItem,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
+
+
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
 
 
 @dataclass
@@ -29,6 +33,11 @@ class FakeRepository:
     job: GeoQueryRunJob
     callbacks: list[ExternalRunCallback] = field(default_factory=list)
     save_commands: list[SaveTrackingRunResultCommand] = field(default_factory=list)
+
+    async def get_job_tenant_id(self, job_id) -> UUID | None:
+        if job_id != self.job.id:
+            return None
+        return TENANT_ID
 
     async def apply_external_callback(
         self,
@@ -249,6 +258,31 @@ def test_worker_rejects_terminal_job_without_tracking_call() -> None:
     asyncio.run(run())
 
 
+def test_worker_marks_tenant_mismatch_failed_without_tracking_call() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+        ).execute(
+            make_message(job, platform="gemini").model_copy(
+                update={"tenant_id": OTHER_TENANT_ID}
+            )
+        )
+
+        assert result.status is JobStatus.FAILED
+        assert result.last_error_code == "tenant_mismatch"
+        assert tracking.messages == []
+        assert repository.save_commands[0].request_payload["reason"] == "tenant_mismatch"
+
+    asyncio.run(run())
+
+
 def make_job() -> GeoQueryRunJob:
     now = datetime(2026, 6, 25, tzinfo=UTC)
     return GeoQueryRunJob(
@@ -272,6 +306,7 @@ def make_job() -> GeoQueryRunJob:
 def make_message(job: GeoQueryRunJob, *, platform: str) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=job.id,
+        tenant_id=TENANT_ID,
         project_id=job.project_id,
         seo_task_id=uuid4(),
         query_id=job.query_id,

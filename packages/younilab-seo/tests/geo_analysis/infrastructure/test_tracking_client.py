@@ -86,6 +86,7 @@ def test_tracking_client_maps_failed_result() -> None:
 
 
 _JOB_ID = uuid4()
+_TENANT_ID = uuid4()
 _PROJECT_ID = uuid4()
 _SEO_TASK_ID = uuid4()
 _QUERY_ID = uuid4()
@@ -94,6 +95,7 @@ _QUERY_ID = uuid4()
 def _message() -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=_JOB_ID,
+        tenant_id=_TENANT_ID,
         project_id=_PROJECT_ID,
         seo_task_id=_SEO_TASK_ID,
         query_id=_QUERY_ID,

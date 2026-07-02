@@ -11,8 +11,14 @@ from younilab_seo.geo_analysis.application import (
     ManageQueryPlanning,
     ManageQueryRunJobs,
     MessagePublisher,
+    PermissionAuthorizer,
     QueryPlanningClient,
     ReceiveExternalRunCallback,
+    ResourceCatalogReferenceVerifier,
+)
+from younilab_seo.geo_analysis.infrastructure import (
+    AccessControlAuthorizer,
+    ResourceCatalogHttpReferenceVerifier,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
@@ -22,6 +28,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
 @dataclass(frozen=True)
 class GeoAnalysisApiDependencies:
     repository: GeoAnalysisRepository
+    authorizer: PermissionAuthorizer
     manage_geo_setup: ManageGeoSetup
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
@@ -43,18 +50,23 @@ def build_dependencies(
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,
+    authorizer: PermissionAuthorizer | None = None,
+    reference_verifier: ResourceCatalogReferenceVerifier | None = None,
     callback_base_url: str | None = None,
 ) -> GeoAnalysisApiDependencies:
     active_repository = repository or _build_repository()
     active_clock = clock or SystemClock()
     active_publisher = publisher or _build_publisher()
     active_planning_client = planning_client or _build_planning_client()
+    active_authorizer = authorizer or _build_authorizer()
+    active_reference_verifier = reference_verifier or _build_reference_verifier()
     closeables = tuple(
         item for item in (active_publisher, active_planning_client) if item is not None
     )
     return GeoAnalysisApiDependencies(
         repository=active_repository,
-        manage_geo_setup=ManageGeoSetup(active_repository),
+        authorizer=active_authorizer,
+        manage_geo_setup=ManageGeoSetup(active_repository, active_reference_verifier),
         manage_query_planning=ManageQueryPlanning(
             active_repository,
             active_planning_client,
@@ -124,4 +136,19 @@ def _build_planning_client() -> QueryPlanningClient:
     return HttpTrackingRunClient(
         base_url=os.getenv("GEO_TRACKING_BASE_URL", "http://geo-tracking-api:8003"),
         timeout_seconds=float(os.getenv("GEO_TRACKING_TIMEOUT_SECONDS", "60")),
+    )
+
+
+def _build_authorizer() -> PermissionAuthorizer:
+    return AccessControlAuthorizer(
+        os.getenv("GEO_ANALYSIS_ACCESS_CONTROL_URL", "http://access-control-api:8000")
+    )
+
+
+def _build_reference_verifier() -> ResourceCatalogReferenceVerifier:
+    return ResourceCatalogHttpReferenceVerifier(
+        os.getenv(
+            "GEO_ANALYSIS_RESOURCE_CATALOG_URL",
+            "http://resource-catalog-api:8001",
+        )
     )

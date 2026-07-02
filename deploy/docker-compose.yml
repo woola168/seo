@@ -64,6 +64,8 @@ services:
       - ${DEPLOY_ENV_FILE}
     depends_on:
       - rabbitmq
+      - access-control-api
+      - resource-catalog-api
     ports:
       - "127.0.0.1:18002:8002"
     networks:

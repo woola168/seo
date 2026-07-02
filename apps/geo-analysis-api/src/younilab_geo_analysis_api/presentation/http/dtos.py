@@ -18,6 +18,12 @@ class ApiModel(BaseModel):
 class ProjectRequest(ApiModel):
     """客戶擁有、可編輯的 GEO project 設定。"""
 
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
     customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str = Field(min_length=1, max_length=200)
@@ -39,6 +45,7 @@ class ProjectResponse(ProjectRequest):
     """回傳給後台的 GEO project resource。"""
 
     id: UUID
+    tenant_id: UUID
     created_at: datetime
     updated_at: datetime
 

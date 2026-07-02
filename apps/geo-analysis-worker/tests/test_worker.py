@@ -82,6 +82,7 @@ def test_composition_builds_google_aio_provider_queue(monkeypatch) -> None:
 def _message() -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=uuid4(),
+        tenant_id=uuid4(),
         project_id=uuid4(),
         seo_task_id=uuid4(),
         query_id=uuid4(),

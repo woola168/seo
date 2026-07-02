@@ -12,6 +12,7 @@ class GeoProjectRow(SQLModel, table=True):
     __tablename__ = "geo_project"
 
     id: UUID = Field(primary_key=True)
+    tenant_id: UUID = Field(nullable=False, index=True)
     customer_id: UUID | None = Field(default=None)
     seo_task_id: UUID | None = Field(default=None)
     name: str = Field(sa_column=Column(String(200), nullable=False))

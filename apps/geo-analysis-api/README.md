@@ -16,6 +16,10 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - 設定 `GEO_ANALYSIS_DATABASE_URL` 後，API 會使用 `PostgresGeoAnalysisRepository` 作為 PostgreSQL infrastructure adapter。
 - Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
 - 既有遠端 DB 若已跑過舊版 schema，需手動執行 `deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql`，補上 Query Planning tables 並解除 `geo_project.customer_id` 的 `NOT NULL` 限制。
+- 既有遠端 DB 若尚未 tenant 化，需再手動執行 `deploy/local/postgresql/009_geo_analysis_tenant_patch.sql`，替 `geo_project` 補上 `tenant_id` 並回填 default tenant。
+- 使用者 API 需帶 Access Control Bearer token；GEO Analysis 透過 `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。
+- `ProjectResponse` 會回傳 `tenantId`；project list/create/query/job/run result 都以目前 tenant 作為最外層資料邊界。
+- `customerId` / `seoTaskId` 維持 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
 - RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
@@ -25,6 +29,8 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 
 ```powershell
 $env:GEO_ANALYSIS_DATABASE_URL = "postgresql+asyncpg://resource_catalog:resource_catalog@127.0.0.1:5433/resource_catalog"
+$env:GEO_ANALYSIS_ACCESS_CONTROL_URL = "http://127.0.0.1:8000"
+$env:GEO_ANALYSIS_RESOURCE_CATALOG_URL = "http://127.0.0.1:8001"
 uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 ```
 

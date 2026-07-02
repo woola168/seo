@@ -19,6 +19,7 @@ class QueryRunJobMessage(ContractModel):
     """發布到 provider queue 的 GEO query run job message。"""
 
     job_id: UUID
+    tenant_id: UUID
     project_id: UUID
     seo_task_id: UUID
     query_id: UUID
@@ -38,6 +39,7 @@ class GeoQueryRunJobDispatchContext(ContractModel):
     """從已保存 job 組出 broker message 所需的 dispatch read model。"""
 
     job_id: UUID
+    tenant_id: UUID
     project_id: UUID
     seo_task_id: UUID | None
     query_id: UUID
@@ -181,6 +183,7 @@ class ExternalRunCallback(ContractModel):
 class GeoProjectCommand(ContractModel):
     """建立或更新 GEO project 的 application input。"""
 
+    tenant_id: UUID
     customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str

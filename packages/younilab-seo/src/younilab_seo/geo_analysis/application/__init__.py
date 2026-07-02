@@ -41,12 +41,18 @@ from younilab_seo.geo_analysis.application.contracts import (
     TrackingRunResponse,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
+    AuthorizedPrincipal,
     Clock,
     GeoAnalysisRepository,
     GeoQueryRunJobRepository,
     IdGenerator,
     MessagePublisher,
+    PermissionAuthorizer,
     QueryPlanningClient,
+    ResourceCatalogReferenceVerifier,
+    ResourceCatalogVerificationDenied,
+    ResourceCatalogVerificationUnavailable,
+    ResourceTaskReference,
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.application.use_cases import (
@@ -64,6 +70,7 @@ from younilab_seo.geo_analysis.application.use_cases import (
 __all__ = [
     "Clock",
     "AcceptQueryDraftCommand",
+    "AuthorizedPrincipal",
     "BrandMentionRules",
     "CreateQueryRunJobCommand",
     "DispatchQueryRunJob",
@@ -97,6 +104,7 @@ __all__ = [
     "ManageQueryPlanning",
     "ManageQueryRunJobs",
     "MessagePublisher",
+    "PermissionAuthorizer",
     "ProcessQueryRunJobMessage",
     "PublishResult",
     "QueryAudience",
@@ -112,6 +120,10 @@ __all__ = [
     "QueryRunJobMessageRejected",
     "QueryRunJobMessage",
     "ReceiveExternalRunCallback",
+    "ResourceCatalogReferenceVerifier",
+    "ResourceCatalogVerificationDenied",
+    "ResourceCatalogVerificationUnavailable",
+    "ResourceTaskReference",
     "SaveTrackingRunResultCommand",
     "TrackingRunClient",
     "TrackingRunReference",

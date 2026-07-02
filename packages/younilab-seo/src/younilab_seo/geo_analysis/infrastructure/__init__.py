@@ -30,6 +30,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository im
     PostgresGeoAnalysisRepository,
 )
 __all__ = [
+    "AccessControlAuthorizer",
     "GeoAiPlatformRow",
     "GeoEntityAliasRow",
     "GeoEntityRow",
@@ -56,12 +57,25 @@ __all__ = [
     "HttpTrackingRunClient",
     "RabbitMqMessagePublisher",
     "RabbitMqQueryRunJobConsumer",
+    "ResourceCatalogHttpReferenceVerifier",
     "build_postgres_repository",
     "build_postgres_session_factory",
 ]
 
 
 def __getattr__(name: str):
+    if name == "AccessControlAuthorizer":
+        from younilab_seo.geo_analysis.infrastructure.authorization import (
+            AccessControlAuthorizer,
+        )
+
+        return AccessControlAuthorizer
+    if name == "ResourceCatalogHttpReferenceVerifier":
+        from younilab_seo.geo_analysis.infrastructure.authorization import (
+            ResourceCatalogHttpReferenceVerifier,
+        )
+
+        return ResourceCatalogHttpReferenceVerifier
     if name == "HttpTrackingRunClient":
         from younilab_seo.geo_analysis.infrastructure.tracking import (
             HttpTrackingRunClient,

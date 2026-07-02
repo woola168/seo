@@ -8,9 +8,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryRunJobMessage,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
+    AuthorizedPrincipal,
     Clock,
     GeoQueryRunJobRepository,
     MessagePublisher,
+)
+from younilab_seo.geo_analysis.application.use_cases.access_policy import (
+    can_access_project,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 
@@ -28,8 +32,20 @@ class DispatchQueryRunJob:
     clock: Clock
     retry_delay: timedelta = timedelta(minutes=5)
 
-    async def execute(self, job_id: UUID, callback_base_url: str) -> GeoQueryRunJob:
+    async def execute(
+        self,
+        job_id: UUID,
+        callback_base_url: str,
+        principal: AuthorizedPrincipal | None = None,
+    ) -> GeoQueryRunJob:
         now = self.clock.now()
+        if principal is not None:
+            project = await self.repository.get_job_project(
+                principal.tenant_id,
+                job_id,
+            )
+            if project is None or not can_access_project(principal, project):
+                raise KeyError(job_id)
         job = await self.repository.get(job_id)
         context = await self.repository.get_job_dispatch_context(job_id)
         if context is None:
@@ -38,6 +54,7 @@ class DispatchQueryRunJob:
             raise DispatchQueryRunJobError("project seoTaskId is required to dispatch job")
         message = QueryRunJobMessage(
             job_id=context.job_id,
+            tenant_id=context.tenant_id,
             project_id=context.project_id,
             seo_task_id=context.seo_task_id,
             query_id=context.query_id,

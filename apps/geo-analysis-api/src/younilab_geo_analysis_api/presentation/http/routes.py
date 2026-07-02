@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from younilab_geo_analysis_api.presentation.http.dependencies import bearer_token
 from younilab_geo_analysis_api.presentation.http.dtos import (
     AliasRequest,
     AliasResponse,
@@ -55,6 +56,7 @@ from younilab_seo.geo_analysis.application import (
     ManageQueryRunJobs,
     ReceiveExternalRunCallback,
 )
+from younilab_seo.geo_analysis.application import AuthorizedPrincipal
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 
 router = APIRouter(prefix="/api/geo", tags=["geo-analysis"])
@@ -80,6 +82,15 @@ def _callback_receiver(request: Request) -> ReceiveExternalRunCallback:
     return request.app.state.receive_external_run_callback
 
 
+async def _principal(request: Request, permission: str) -> AuthorizedPrincipal:
+    token = await bearer_token(request.headers.get("authorization"))
+    return await request.app.state.geo_authorizer.require(token, permission)
+
+
+async def _access_token(request: Request) -> str:
+    return await bearer_token(request.headers.get("authorization"))
+
+
 def _record_data(record) -> dict:
     return record.model_dump()
 
@@ -100,7 +111,8 @@ def _planning_data(record) -> dict:
 
 @router.get("/projects", response_model=PageResponse)
 async def list_projects(request: Request, customer_id: UUID | None = None) -> PageResponse:
-    items = await _setup(request).list_projects(customer_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_projects(principal, customer_id)
     return PageResponse(
         items=[ProjectResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -109,15 +121,20 @@ async def list_projects(request: Request, customer_id: UUID | None = None) -> Pa
 
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
 async def create_project(request: Request, payload: ProjectRequest) -> ProjectResponse:
+    principal = await _principal(request, "geo.projects.create")
+    token = await _access_token(request)
     project = await _setup(request).create_project(
-        GeoProjectCommand(**payload.model_dump())
+        GeoProjectCommand(tenant_id=principal.tenant_id, **payload.model_dump()),
+        principal,
+        access_token=token,
     )
     return ProjectResponse(**_record_data(project))
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(request: Request, project_id: UUID) -> ProjectResponse:
-    project = await _setup(request).get_project(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    project = await _setup(request).get_project(principal, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     return ProjectResponse(**_record_data(project))
@@ -129,9 +146,13 @@ async def update_project(
     project_id: UUID,
     payload: ProjectRequest,
 ) -> ProjectResponse:
+    principal = await _principal(request, "geo.projects.update")
+    token = await _access_token(request)
     project = await _setup(request).update_project(
+        principal,
         project_id,
-        GeoProjectCommand(**payload.model_dump()),
+        GeoProjectCommand(tenant_id=principal.tenant_id, **payload.model_dump()),
+        access_token=token,
     )
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
@@ -140,13 +161,15 @@ async def update_project(
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(request: Request, project_id: UUID) -> None:
-    if not await _setup(request).delete_project(project_id):
+    principal = await _principal(request, "geo.projects.delete")
+    if not await _setup(request).delete_project(principal, project_id):
         raise HTTPException(status_code=404, detail="project not found")
 
 
 @router.get("/projects/{project_id}/markets", response_model=PageResponse)
 async def list_markets(request: Request, project_id: UUID) -> PageResponse:
-    items = await _setup(request).list_markets(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_markets(principal, project_id)
     return PageResponse(
         items=[MarketResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -159,7 +182,9 @@ async def create_market(
     project_id: UUID,
     payload: MarketRequest,
 ) -> MarketResponse:
+    principal = await _principal(request, "geo.projects.update")
     market = await _setup(request).create_market(
+        principal,
         project_id,
         GeoMarketCommand(**payload.model_dump()),
     )
@@ -174,7 +199,9 @@ async def update_market(
     market_id: UUID,
     payload: MarketRequest,
 ) -> MarketResponse:
+    principal = await _principal(request, "geo.projects.update")
     market = await _setup(request).update_market(
+        principal,
         market_id,
         GeoMarketCommand(**payload.model_dump()),
     )
@@ -185,13 +212,15 @@ async def update_market(
 
 @router.delete("/markets/{market_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_market(request: Request, market_id: UUID) -> None:
-    if not await _setup(request).delete_market(market_id):
+    principal = await _principal(request, "geo.projects.update")
+    if not await _setup(request).delete_market(principal, market_id):
         raise HTTPException(status_code=404, detail="market not found")
 
 
 @router.get("/projects/{project_id}/entities", response_model=PageResponse)
 async def list_entities(request: Request, project_id: UUID) -> PageResponse:
-    items = await _setup(request).list_entities(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_entities(principal, project_id)
     return PageResponse(
         items=[EntityResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -204,7 +233,9 @@ async def create_entity(
     project_id: UUID,
     payload: EntityRequest,
 ) -> EntityResponse:
+    principal = await _principal(request, "geo.projects.update")
     entity = await _setup(request).create_entity(
+        principal,
         project_id,
         GeoEntityCommand(**payload.model_dump()),
     )
@@ -215,7 +246,8 @@ async def create_entity(
 
 @router.get("/entities/{entity_id}", response_model=EntityResponse)
 async def get_entity(request: Request, entity_id: UUID) -> EntityResponse:
-    entity = await _setup(request).get_entity(entity_id)
+    principal = await _principal(request, "geo.projects.read")
+    entity = await _setup(request).get_entity(principal, entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="entity not found")
     return EntityResponse(**_record_data(entity))
@@ -227,7 +259,9 @@ async def update_entity(
     entity_id: UUID,
     payload: EntityRequest,
 ) -> EntityResponse:
+    principal = await _principal(request, "geo.projects.update")
     entity = await _setup(request).update_entity(
+        principal,
         entity_id,
         GeoEntityCommand(**payload.model_dump()),
     )
@@ -238,13 +272,15 @@ async def update_entity(
 
 @router.delete("/entities/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_entity(request: Request, entity_id: UUID) -> None:
-    if not await _setup(request).delete_entity(entity_id):
+    principal = await _principal(request, "geo.projects.update")
+    if not await _setup(request).delete_entity(principal, entity_id):
         raise HTTPException(status_code=404, detail="entity not found")
 
 
 @router.get("/entities/{entity_id}/aliases", response_model=PageResponse)
 async def list_aliases(request: Request, entity_id: UUID) -> PageResponse:
-    items = await _setup(request).list_aliases(entity_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_aliases(principal, entity_id)
     return PageResponse(
         items=[AliasResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -257,7 +293,9 @@ async def create_alias(
     entity_id: UUID,
     payload: AliasRequest,
 ) -> AliasResponse:
+    principal = await _principal(request, "geo.projects.update")
     alias = await _setup(request).create_alias(
+        principal,
         entity_id,
         GeoEntityAliasCommand(**payload.model_dump()),
     )
@@ -272,7 +310,9 @@ async def update_alias(
     alias_id: UUID,
     payload: AliasRequest,
 ) -> AliasResponse:
+    principal = await _principal(request, "geo.projects.update")
     alias = await _setup(request).update_alias(
+        principal,
         alias_id,
         GeoEntityAliasCommand(**payload.model_dump()),
     )
@@ -283,13 +323,15 @@ async def update_alias(
 
 @router.delete("/entity-aliases/{alias_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_alias(request: Request, alias_id: UUID) -> None:
-    if not await _setup(request).delete_alias(alias_id):
+    principal = await _principal(request, "geo.projects.update")
+    if not await _setup(request).delete_alias(principal, alias_id):
         raise HTTPException(status_code=404, detail="alias not found")
 
 
 @router.get("/projects/{project_id}/topics", response_model=PageResponse)
 async def list_topics(request: Request, project_id: UUID) -> PageResponse:
-    items = await _setup(request).list_topics(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_topics(principal, project_id)
     return PageResponse(
         items=[TopicResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -302,7 +344,9 @@ async def create_topic(
     project_id: UUID,
     payload: TopicRequest,
 ) -> TopicResponse:
+    principal = await _principal(request, "geo.projects.update")
     topic = await _setup(request).create_topic(
+        principal,
         project_id,
         GeoTopicCommand(**payload.model_dump()),
     )
@@ -317,7 +361,9 @@ async def update_topic(
     topic_id: UUID,
     payload: TopicRequest,
 ) -> TopicResponse:
+    principal = await _principal(request, "geo.projects.update")
     topic = await _setup(request).update_topic(
+        principal,
         topic_id,
         GeoTopicCommand(**payload.model_dump()),
     )
@@ -328,13 +374,15 @@ async def update_topic(
 
 @router.delete("/topics/{topic_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_topic(request: Request, topic_id: UUID) -> None:
-    if not await _setup(request).delete_topic(topic_id):
+    principal = await _principal(request, "geo.projects.update")
+    if not await _setup(request).delete_topic(principal, topic_id):
         raise HTTPException(status_code=404, detail="topic not found")
 
 
 @router.get("/projects/{project_id}/queries", response_model=PageResponse)
 async def list_queries(request: Request, project_id: UUID) -> PageResponse:
-    items = await _setup(request).list_queries(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_queries(principal, project_id)
     return PageResponse(
         items=[QueryResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -347,7 +395,9 @@ async def create_query(
     project_id: UUID,
     payload: QueryRequest,
 ) -> QueryResponse:
+    principal = await _principal(request, "geo.queries.manage")
     query = await _setup(request).create_query(
+        principal,
         project_id,
         GeoQueryCommand(**payload.model_dump()),
     )
@@ -358,7 +408,8 @@ async def create_query(
 
 @router.get("/queries/{query_id}", response_model=QueryResponse)
 async def get_query(request: Request, query_id: UUID) -> QueryResponse:
-    query = await _setup(request).get_query(query_id)
+    principal = await _principal(request, "geo.projects.read")
+    query = await _setup(request).get_query(principal, query_id)
     if query is None:
         raise HTTPException(status_code=404, detail="query not found")
     return QueryResponse(**_record_data(query))
@@ -370,7 +421,9 @@ async def update_query(
     query_id: UUID,
     payload: QueryRequest,
 ) -> QueryResponse:
+    principal = await _principal(request, "geo.queries.manage")
     query = await _setup(request).update_query(
+        principal,
         query_id,
         GeoQueryCommand(**payload.model_dump()),
     )
@@ -381,7 +434,8 @@ async def update_query(
 
 @router.delete("/queries/{query_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_query(request: Request, query_id: UUID) -> None:
-    if not await _setup(request).delete_query(query_id):
+    principal = await _principal(request, "geo.queries.manage")
+    if not await _setup(request).delete_query(principal, query_id):
         raise HTTPException(status_code=404, detail="query not found")
 
 
@@ -395,7 +449,9 @@ async def run_query_research(
     project_id: UUID,
     payload: QueryResearchRunRequest,
 ) -> QueryResearchRunResponse:
+    principal = await _principal(request, "geo.queries.manage")
     run = await _planning(request).run_query_research(
+        principal,
         project_id,
         QueryResearchCommand(**payload.model_dump()),
     )
@@ -406,7 +462,11 @@ async def run_query_research(
 
 @router.get("/projects/{project_id}/query-research-runs", response_model=PageResponse)
 async def list_query_research_runs(request: Request, project_id: UUID) -> PageResponse:
-    items = await _planning(request).list_query_research_runs(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _planning(request).list_query_research_runs(
+        principal,
+        project_id,
+    )
     return PageResponse(
         items=[QueryResearchRunResponse(**_planning_data(item)) for item in items],
         total=len(items),
@@ -421,7 +481,8 @@ async def get_query_research_run(
     request: Request,
     run_id: UUID,
 ) -> QueryResearchRunResponse:
-    run = await _planning(request).get_query_research_run(run_id)
+    principal = await _principal(request, "geo.projects.read")
+    run = await _planning(request).get_query_research_run(principal, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="query research run not found")
     return QueryResearchRunResponse(**_planning_data(run))
@@ -437,7 +498,9 @@ async def run_query_generation(
     project_id: UUID,
     payload: QueryGenerationRunRequest,
 ) -> QueryGenerationRunResponse:
+    principal = await _principal(request, "geo.queries.manage")
     run = await _planning(request).run_query_generation(
+        principal,
         project_id,
         QueryGenerationCommand(**payload.model_dump()),
     )
@@ -448,7 +511,11 @@ async def run_query_generation(
 
 @router.get("/projects/{project_id}/query-generation-runs", response_model=PageResponse)
 async def list_query_generation_runs(request: Request, project_id: UUID) -> PageResponse:
-    items = await _planning(request).list_query_generation_runs(project_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _planning(request).list_query_generation_runs(
+        principal,
+        project_id,
+    )
     return PageResponse(
         items=[QueryGenerationRunResponse(**_planning_data(item)) for item in items],
         total=len(items),
@@ -463,7 +530,8 @@ async def get_query_generation_run(
     request: Request,
     run_id: UUID,
 ) -> QueryGenerationRunResponse:
-    run = await _planning(request).get_query_generation_run(run_id)
+    principal = await _principal(request, "geo.projects.read")
+    run = await _planning(request).get_query_generation_run(principal, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="query generation run not found")
     return QueryGenerationRunResponse(**_planning_data(run))
@@ -475,8 +543,10 @@ async def update_query_draft_selection(
     draft_id: UUID,
     payload: QueryDraftSelectionRequest,
 ) -> QueryDraftResponse:
+    principal = await _principal(request, "geo.queries.manage")
     try:
         draft = await _planning(request).update_query_draft_selection(
+            principal,
             draft_id,
             QueryDraftSelectionCommand(**payload.model_dump()),
         )
@@ -494,8 +564,10 @@ async def accept_query_draft(
     draft_id: UUID,
     payload: AcceptQueryDraftRequest,
 ) -> QueryResponse:
+    principal = await _principal(request, "geo.queries.manage")
     try:
         query = await _planning(request).accept_query_draft(
+            principal,
             draft_id,
             AcceptQueryDraftCommand(**payload.model_dump()),
         )
@@ -508,7 +580,8 @@ async def accept_query_draft(
 
 @router.get("/queries/{query_id}/platforms", response_model=PageResponse)
 async def list_query_platforms(request: Request, query_id: UUID) -> PageResponse:
-    items = await _setup(request).list_query_platforms(query_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_query_platforms(principal, query_id)
     return PageResponse(
         items=[QueryPlatformResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -521,7 +594,9 @@ async def replace_query_platforms(
     query_id: UUID,
     payload: list[QueryPlatformRequest],
 ) -> PageResponse:
+    principal = await _principal(request, "geo.queries.manage")
     items = await _setup(request).replace_query_platforms(
+        principal,
         query_id,
         [GeoQueryPlatformCommand(**item.model_dump()) for item in payload],
     )
@@ -535,7 +610,8 @@ async def replace_query_platforms(
 
 @router.get("/queries/{query_id}/schedules", response_model=PageResponse)
 async def list_schedules(request: Request, query_id: UUID) -> PageResponse:
-    items = await _setup(request).list_schedules(query_id)
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_schedules(principal, query_id)
     return PageResponse(
         items=[ScheduleResponse(**_record_data(item)) for item in items],
         total=len(items),
@@ -548,7 +624,9 @@ async def create_schedule(
     query_id: UUID,
     payload: ScheduleRequest,
 ) -> ScheduleResponse:
+    principal = await _principal(request, "geo.queries.manage")
     schedule = await _setup(request).create_schedule(
+        principal,
         query_id,
         GeoQueryScheduleCommand(**payload.model_dump()),
     )
@@ -563,7 +641,9 @@ async def update_schedule(
     schedule_id: UUID,
     payload: ScheduleRequest,
 ) -> ScheduleResponse:
+    principal = await _principal(request, "geo.queries.manage")
     schedule = await _setup(request).update_schedule(
+        principal,
         schedule_id,
         GeoQueryScheduleCommand(**payload.model_dump()),
     )
@@ -574,7 +654,8 @@ async def update_schedule(
 
 @router.delete("/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_schedule(request: Request, schedule_id: UUID) -> None:
-    if not await _setup(request).delete_schedule(schedule_id):
+    principal = await _principal(request, "geo.queries.manage")
+    if not await _setup(request).delete_schedule(principal, schedule_id):
         raise HTTPException(status_code=404, detail="schedule not found")
 
 
@@ -584,7 +665,9 @@ async def create_job(
     query_id: UUID,
     payload: CreateJobRequest,
 ) -> JobResponse:
+    principal = await _principal(request, "geo.jobs.run")
     job = await _jobs(request).create_job(
+        principal,
         query_id,
         CreateQueryRunJobCommand(**payload.model_dump()),
     )
@@ -595,7 +678,8 @@ async def create_job(
 
 @router.get("/projects/{project_id}/jobs", response_model=PageResponse)
 async def list_jobs(request: Request, project_id: UUID) -> PageResponse:
-    jobs = await _jobs(request).list_jobs(project_id)
+    principal = await _principal(request, "geo.jobs.read")
+    jobs = await _jobs(request).list_jobs(principal, project_id)
     return PageResponse(
         items=[JobResponse(**_job_data(job)) for job in jobs],
         total=len(jobs),
@@ -604,7 +688,11 @@ async def list_jobs(request: Request, project_id: UUID) -> PageResponse:
 
 @router.get("/projects/{project_id}/run-results", response_model=PageResponse)
 async def list_project_run_results(request: Request, project_id: UUID) -> PageResponse:
-    items = await _jobs(request).list_project_run_results(project_id)
+    principal = await _principal(request, "geo.jobs.read")
+    items = await _jobs(request).list_project_run_results(
+        principal,
+        project_id,
+    )
     return PageResponse(
         items=[RunResultResponse(**_run_result_data(item)) for item in items],
         total=len(items),
@@ -613,7 +701,8 @@ async def list_project_run_results(request: Request, project_id: UUID) -> PageRe
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(request: Request, job_id: UUID) -> JobResponse:
-    job = await _jobs(request).get_job(job_id)
+    principal = await _principal(request, "geo.jobs.read")
+    job = await _jobs(request).get_job(principal, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return JobResponse(**_job_data(job))
@@ -621,10 +710,11 @@ async def get_job(request: Request, job_id: UUID) -> JobResponse:
 
 @router.get("/jobs/{job_id}/run-results", response_model=PageResponse)
 async def list_job_run_results(request: Request, job_id: UUID) -> PageResponse:
-    job = await _jobs(request).get_job(job_id)
+    principal = await _principal(request, "geo.jobs.read")
+    job = await _jobs(request).get_job(principal, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    items = await _jobs(request).list_job_run_results(job_id)
+    items = await _jobs(request).list_job_run_results(principal, job_id)
     return PageResponse(
         items=[RunResultResponse(**_run_result_data(item)) for item in items],
         total=len(items),
@@ -633,7 +723,8 @@ async def list_job_run_results(request: Request, job_id: UUID) -> PageResponse:
 
 @router.get("/run-results/{result_id}", response_model=RunResultResponse)
 async def get_run_result(request: Request, result_id: UUID) -> RunResultResponse:
-    result = await _jobs(request).get_run_result(result_id)
+    principal = await _principal(request, "geo.jobs.read")
+    result = await _jobs(request).get_run_result(principal, result_id)
     if result is None:
         raise HTTPException(status_code=404, detail="run result not found")
     return RunResultResponse(**_run_result_data(result))
@@ -641,9 +732,10 @@ async def get_run_result(request: Request, result_id: UUID) -> RunResultResponse
 
 @router.post("/jobs/{job_id}/dispatch", response_model=JobResponse)
 async def dispatch_job(request: Request, job_id: UUID) -> JobResponse:
+    principal = await _principal(request, "geo.jobs.run")
     dispatcher = _dispatcher(request)
     if dispatcher is None:
-        job = await _jobs(request).get_job(job_id)
+        job = await _jobs(request).get_job(principal, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         raise HTTPException(
@@ -651,7 +743,11 @@ async def dispatch_job(request: Request, job_id: UUID) -> JobResponse:
             detail="message publisher adapter is not configured",
         )
     try:
-        job = await dispatcher.execute(job_id, request.app.state.geo_callback_base_url)
+        job = await dispatcher.execute(
+            job_id,
+            request.app.state.geo_callback_base_url,
+            principal,
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
     except DispatchQueryRunJobError as exc:
@@ -661,7 +757,8 @@ async def dispatch_job(request: Request, job_id: UUID) -> JobResponse:
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
 async def cancel_job(request: Request, job_id: UUID) -> JobResponse:
-    job = await _jobs(request).cancel_job(job_id)
+    principal = await _principal(request, "geo.jobs.cancel")
+    job = await _jobs(request).cancel_job(principal, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return JobResponse(**_job_data(job))

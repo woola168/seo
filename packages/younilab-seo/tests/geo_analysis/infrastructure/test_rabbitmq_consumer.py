@@ -184,6 +184,7 @@ class FakeConnection:
 def _message_body() -> bytes:
     message = QueryRunJobMessage(
         job_id=uuid4(),
+        tenant_id=uuid4(),
         project_id=uuid4(),
         seo_task_id=uuid4(),
         query_id=uuid4(),
