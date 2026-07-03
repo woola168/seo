@@ -26,10 +26,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultAnalysisRecord,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubExtractionTaskMappingCommand,
+    KMindHubExtractionTaskMappingRecord,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceMappingRecord,
     PublishResult,
@@ -41,6 +44,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
@@ -62,9 +66,14 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
     GeoRunRequestRow,
+    GeoRunResultAnalysisRow,
+    GeoRunResultCitationClassificationRow,
+    GeoRunResultEntityMentionRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
+    GeoRunResultStatementRow,
     GeoTopicRow,
+    TenantKMindHubExtractionTaskMappingRow,
     TenantKMindHubWorkspaceMappingRow,
 )
 
@@ -144,6 +153,63 @@ class PostgresGeoAnalysisRepository:
                 row.updated_at = now
             await session.flush()
             return _kmindhub_workspace_mapping_record(row)
+
+    async def get_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        task_key: str,
+        schema_version: int,
+    ) -> KMindHubExtractionTaskMappingRecord | None:
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(TenantKMindHubExtractionTaskMappingRow).where(
+                    TenantKMindHubExtractionTaskMappingRow.tenant_id == tenant_id,
+                    TenantKMindHubExtractionTaskMappingRow.task_key == task_key,
+                    TenantKMindHubExtractionTaskMappingRow.schema_version
+                    == schema_version,
+                )
+            )
+            return (
+                _kmindhub_extraction_task_mapping_record(row)
+                if row is not None
+                else None
+            )
+
+    async def upsert_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubExtractionTaskMappingCommand,
+    ) -> KMindHubExtractionTaskMappingRecord:
+        now = _now()
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(TenantKMindHubExtractionTaskMappingRow).where(
+                    TenantKMindHubExtractionTaskMappingRow.tenant_id == tenant_id,
+                    TenantKMindHubExtractionTaskMappingRow.task_key == command.task_key,
+                    TenantKMindHubExtractionTaskMappingRow.schema_version
+                    == command.schema_version,
+                )
+            )
+            if row is None:
+                row = TenantKMindHubExtractionTaskMappingRow(
+                    id=uuid4(),
+                    tenant_id=tenant_id,
+                    workspace_id=command.workspace_id,
+                    task_key=command.task_key,
+                    schema_version=command.schema_version,
+                    kmindhub_task_id=command.kmindhub_task_id,
+                    status=command.status,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+            else:
+                row.workspace_id = command.workspace_id
+                row.kmindhub_task_id = command.kmindhub_task_id
+                row.status = command.status
+                row.updated_at = now
+            await session.flush()
+            return _kmindhub_extraction_task_mapping_record(row)
 
     async def get_query_project(
         self,
@@ -1102,6 +1168,68 @@ class PostgresGeoAnalysisRepository:
                 return None
             return await _run_result_record(session, row)
 
+    async def get_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysisRecord | None:
+        async with self._session_scope() as session:
+            row = await self._get_run_result_analysis_row(session, tenant_id, result_id)
+            return _run_result_analysis_record(row) if row is not None else None
+
+    async def save_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysisRecord | None:
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(
+                session,
+                tenant_id,
+                command.run_result_id,
+            )
+            if result is None:
+                return None
+            row = await session.scalar(
+                select(GeoRunResultAnalysisRow).where(
+                    GeoRunResultAnalysisRow.run_result_id == command.run_result_id,
+                    GeoRunResultAnalysisRow.task_key == command.task_key,
+                    GeoRunResultAnalysisRow.schema_version == command.schema_version,
+                )
+            )
+            if row is None:
+                row = GeoRunResultAnalysisRow(
+                    id=uuid4(),
+                    run_result_id=command.run_result_id,
+                    task_key=command.task_key,
+                    schema_version=command.schema_version,
+                    status=command.status,
+                    created_at=occurred_at,
+                    updated_at=occurred_at,
+                )
+                session.add(row)
+                await session.flush()
+            else:
+                await _delete_analysis_children(session, row.id)
+                row.updated_at = occurred_at
+            _apply_run_result_analysis(row, command, occurred_at)
+            for mention in command.entity_mentions:
+                session.add(
+                    _entity_mention_row(
+                        row.id,
+                        command.run_result_id,
+                        mention,
+                        occurred_at,
+                    )
+                )
+            for statement in command.statements:
+                session.add(_statement_row(row.id, command.run_result_id, statement, occurred_at))
+            for citation in command.citation_classifications:
+                session.add(_citation_classification_row(row.id, citation, occurred_at))
+            await session.flush()
+            return _run_result_analysis_record(row)
+
     async def create_query_research_run(
         self,
         tenant_id: UUID,
@@ -1419,6 +1547,42 @@ class PostgresGeoAnalysisRepository:
             )
         )
 
+    async def _get_run_result_row(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultRow | None:
+        return await session.scalar(
+            select(GeoRunResultRow)
+            .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+            .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+            .where(
+                GeoRunResultRow.id == result_id,
+                GeoProjectRow.tenant_id == tenant_id,
+            )
+        )
+
+    async def _get_run_result_analysis_row(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysisRow | None:
+        return await session.scalar(
+            select(GeoRunResultAnalysisRow)
+            .join(
+                GeoRunResultRow,
+                GeoRunResultAnalysisRow.run_result_id == GeoRunResultRow.id,
+            )
+            .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+            .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+            .where(
+                GeoRunResultAnalysisRow.run_result_id == result_id,
+                GeoProjectRow.tenant_id == tenant_id,
+            )
+        )
+
     async def _delete(self, model, item_id: UUID) -> bool:
         async with self._session_scope() as session:
             row = await session.get(model, item_id)
@@ -1475,6 +1639,22 @@ def _kmindhub_workspace_mapping_record(
         workspace_id=row.workspace_id,
         display_name=row.display_name,
         provisioning_mode=row.provisioning_mode,
+        status=row.status,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _kmindhub_extraction_task_mapping_record(
+    row: TenantKMindHubExtractionTaskMappingRow,
+) -> KMindHubExtractionTaskMappingRecord:
+    return KMindHubExtractionTaskMappingRecord(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        workspace_id=row.workspace_id,
+        task_key=row.task_key,
+        schema_version=row.schema_version,
+        kmindhub_task_id=row.kmindhub_task_id,
         status=row.status,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -1876,6 +2056,11 @@ async def _run_result_record(
             .order_by(GeoRunResultReferenceRow.position)
         )
     ).all()
+    analysis = await session.scalar(
+        select(GeoRunResultAnalysisRow)
+        .where(GeoRunResultAnalysisRow.run_result_id == row.id)
+        .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+    )
     return GeoRunResultRecord(
         id=row.id,
         run_request_id=row.run_request_id,
@@ -1903,6 +2088,128 @@ async def _run_result_record(
             for reference in references
         ],
         created_at=row.created_at,
+        analysis_status=analysis.status if analysis is not None else None,
+        analysis_error_code=analysis.error_code if analysis is not None else None,
+        analysis_error_message=analysis.error_message if analysis is not None else None,
+    )
+
+
+def _run_result_analysis_record(
+    row: GeoRunResultAnalysisRow,
+) -> GeoRunResultAnalysisRecord:
+    return GeoRunResultAnalysisRecord(
+        id=row.id,
+        run_result_id=row.run_result_id,
+        task_key=row.task_key,
+        schema_version=row.schema_version,
+        status=row.status,
+        summary=row.summary,
+        overall_sentiment=row.overall_sentiment,
+        theme=row.theme,
+        kmindhub_commit_batch_id=row.kmindhub_commit_batch_id,
+        kmindhub_item_id=row.kmindhub_item_id,
+        error_code=row.error_code,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        completed_at=row.completed_at,
+    )
+
+
+def _apply_run_result_analysis(
+    row: GeoRunResultAnalysisRow,
+    command: SaveRunResultAnalysisCommand,
+    occurred_at: datetime,
+) -> None:
+    row.status = command.status
+    row.summary = command.summary
+    row.overall_sentiment = command.overall_sentiment
+    row.theme = command.theme
+    row.kmindhub_commit_batch_id = command.kmindhub_commit_batch_id
+    row.kmindhub_item_id = command.kmindhub_item_id
+    row.error_code = command.error_code
+    row.error_message = command.error_message
+    row.updated_at = occurred_at
+    row.completed_at = occurred_at if command.status in {"completed", "failed"} else None
+
+
+async def _delete_analysis_children(
+    session: AsyncSession,
+    analysis_id: UUID,
+) -> None:
+    await session.execute(
+        delete(GeoRunResultEntityMentionRow).where(
+            GeoRunResultEntityMentionRow.analysis_id == analysis_id
+        )
+    )
+    await session.execute(
+        delete(GeoRunResultStatementRow).where(
+            GeoRunResultStatementRow.analysis_id == analysis_id
+        )
+    )
+    await session.execute(
+        delete(GeoRunResultCitationClassificationRow).where(
+            GeoRunResultCitationClassificationRow.analysis_id == analysis_id
+        )
+    )
+
+
+def _entity_mention_row(
+    analysis_id: UUID,
+    run_result_id: UUID,
+    command,
+    occurred_at: datetime,
+) -> GeoRunResultEntityMentionRow:
+    return GeoRunResultEntityMentionRow(
+        id=uuid4(),
+        run_result_id=run_result_id,
+        analysis_id=analysis_id,
+        entity_id=command.entity_id,
+        entity_name=command.entity_name,
+        entity_type=command.entity_type,
+        mention_count=command.mention_count,
+        sentiment=command.sentiment,
+        evidence_text=command.evidence_text,
+        kmindhub_item_id=command.kmindhub_item_id,
+        created_at=occurred_at,
+    )
+
+
+def _statement_row(
+    analysis_id: UUID,
+    run_result_id: UUID,
+    command,
+    occurred_at: datetime,
+) -> GeoRunResultStatementRow:
+    return GeoRunResultStatementRow(
+        id=uuid4(),
+        run_result_id=run_result_id,
+        analysis_id=analysis_id,
+        statement_text=command.statement_text,
+        theme=command.theme,
+        sentiment=command.sentiment,
+        subject_entity_name=command.subject_entity_name,
+        evidence_text=command.evidence_text,
+        kmindhub_item_id=command.kmindhub_item_id,
+        created_at=occurred_at,
+    )
+
+
+def _citation_classification_row(
+    analysis_id: UUID,
+    command,
+    occurred_at: datetime,
+) -> GeoRunResultCitationClassificationRow:
+    return GeoRunResultCitationClassificationRow(
+        id=uuid4(),
+        run_result_reference_id=command.run_result_reference_id,
+        analysis_id=analysis_id,
+        classification=command.classification,
+        matched_entity_id=command.matched_entity_id,
+        matched_domain=command.matched_domain,
+        confidence=command.confidence,
+        source=command.source,
+        created_at=occurred_at,
     )
 
 

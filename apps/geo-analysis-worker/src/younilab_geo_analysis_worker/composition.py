@@ -9,6 +9,7 @@ from younilab_seo.geo_analysis.application import (
     KMindHubWorkspaceClient,
     ManageKMindHubWorkspaceMapping,
     ProcessQueryRunJobMessage,
+    RunKMindHubAnalysisExtraction,
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
@@ -50,12 +51,19 @@ def build_dependencies(
         active_repository,
         active_kmindhub_client,
     )
+    analysis_extractor = RunKMindHubAnalysisExtraction(
+        active_repository,
+        kmindhub_workspace_resolver,
+        active_kmindhub_client,
+        active_clock,
+    )
     return GeoAnalysisWorkerDependencies(
         processor=ProcessQueryRunJobMessage(
             repository=active_repository,
             tracking_client=active_tracking_client,
             clock=active_clock,
             supported_provider=active_provider,
+            analysis_extractor=analysis_extractor,
         ),
         consumer=active_consumer,
         kmindhub_workspace_resolver=kmindhub_workspace_resolver,

@@ -94,7 +94,7 @@ GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.google_aio
 
 GEO Analysis provider worker 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
 
-目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。Mention、citation normalization、sentiment、visibility/SOV 與報表 metrics 尚未實作。
+目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。KMindHub analysis extraction 會在 worker 保存 raw result 後產生 summary、mention、statement 與 citation classification 的報表前處理資料；visibility/SOV 聚合與正式報表 API 尚未實作。
 
 ## GEO Tracking
 
@@ -151,6 +151,7 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/ACCESS_CONTROL_DB" -f deploy/local/po
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/009_geo_analysis_tenant_patch.sql
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/011_geo_analysis_kmindhub_extraction_patch.sql
 ```
 
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
@@ -158,3 +159,5 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 `009_geo_analysis_tenant_patch.sql` 會替 `geo_project` 新增 `tenant_id`，既有資料回填 default tenant，並建立 tenant 查詢 index。建議先完成 Access Control tenant patch、Resource Catalog tenant patch，再執行 GEO Analysis tenant patch。
 
 `010_kmindhub_workspace_mapping_patch.sql` 會建立 `tenant_kmindhub_workspace_mapping`，保存 tenant 到 KMindHub workspace 的 reference-only mapping。新環境可直接使用更新後的 `004_geo_analysis_schema.sql`。
+
+`011_geo_analysis_kmindhub_extraction_patch.sql` 會建立 KMindHub extraction task mapping 與 GEO run result analysis / mention / statement / citation classification tables。完整串接流程與欄位定義請參考 `docs/integrations/geo-analysis-kmindhub-insight-extraction.md`。

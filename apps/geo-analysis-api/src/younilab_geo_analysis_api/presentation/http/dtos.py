@@ -395,6 +395,9 @@ class RunResultResponse(ApiModel):
     run_at: datetime
     references: list[RunResultReferenceResponse]
     created_at: datetime
+    analysis_status: str | None = None
+    analysis_error_code: str | None = None
+    analysis_error_message: str | None = None
 
 
 class KMindHubWorkspaceMappingRequest(ApiModel):

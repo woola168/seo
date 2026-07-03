@@ -22,10 +22,13 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultAnalysisRecord,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubExtractionTaskMappingCommand,
+    KMindHubExtractionTaskMappingRecord,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceMappingRecord,
     PublishResult,
@@ -37,6 +40,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
@@ -56,6 +60,13 @@ class GeoApiStore:
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
     run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
+    run_result_analyses: dict[UUID, GeoRunResultAnalysisRecord] = field(
+        default_factory=dict
+    )
+    kmindhub_extraction_task_mappings: dict[
+        tuple[UUID, str, int],
+        KMindHubExtractionTaskMappingRecord,
+    ] = field(default_factory=dict)
     query_research_runs: dict[UUID, QueryResearchRunRecord] = field(
         default_factory=dict
     )
@@ -116,6 +127,34 @@ class GeoApiStore:
             updated_at=now,
         )
         self.kmindhub_workspace_mappings[tenant_id] = mapping
+        return mapping
+
+    async def get_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        task_key: str,
+        schema_version: int,
+    ) -> KMindHubExtractionTaskMappingRecord | None:
+        return self.kmindhub_extraction_task_mappings.get(
+            (tenant_id, task_key, schema_version)
+        )
+
+    async def upsert_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubExtractionTaskMappingCommand,
+    ) -> KMindHubExtractionTaskMappingRecord:
+        now = _now()
+        key = (tenant_id, command.task_key, command.schema_version)
+        current = self.kmindhub_extraction_task_mappings.get(key)
+        mapping = KMindHubExtractionTaskMappingRecord(
+            **command.model_dump(),
+            id=current.id if current is not None else uuid4(),
+            tenant_id=tenant_id,
+            created_at=current.created_at if current is not None else now,
+            updated_at=now,
+        )
+        self.kmindhub_extraction_task_mappings[key] = mapping
         return mapping
 
     async def get_query_project(
@@ -817,7 +856,11 @@ class GeoApiStore:
         if job is None or not self._project_matches(tenant_id, job.project_id):
             return []
         return sorted(
-            [item for item in self.run_results.values() if item.job_id == job_id],
+            [
+                self._run_result_with_analysis(item)
+                for item in self.run_results.values()
+                if item.job_id == job_id
+            ],
             key=lambda item: item.run_at,
             reverse=True,
         )
@@ -833,7 +876,11 @@ class GeoApiStore:
             job.id for job in self.jobs.values() if job.project_id == project_id
         }
         return sorted(
-            [item for item in self.run_results.values() if item.job_id in job_ids],
+            [
+                self._run_result_with_analysis(item)
+                for item in self.run_results.values()
+                if item.job_id in job_ids
+            ],
             key=lambda item: item.run_at,
             reverse=True,
         )
@@ -849,7 +896,47 @@ class GeoApiStore:
         job = self.jobs.get(result.job_id)
         if job is None or not self._project_matches(tenant_id, job.project_id):
             return None
-        return result
+        return self._run_result_with_analysis(result)
+
+    async def get_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysisRecord | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.run_result_analyses.get(result_id)
+
+    async def save_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysisRecord | None:
+        result = await self.get_run_result(tenant_id, command.run_result_id)
+        if result is None:
+            return None
+        current = self.run_result_analyses.get(command.run_result_id)
+        record = GeoRunResultAnalysisRecord(
+            id=current.id if current is not None else uuid4(),
+            run_result_id=command.run_result_id,
+            task_key=command.task_key,
+            schema_version=command.schema_version,
+            status=command.status,
+            summary=command.summary,
+            overall_sentiment=command.overall_sentiment,
+            theme=command.theme,
+            kmindhub_commit_batch_id=command.kmindhub_commit_batch_id,
+            kmindhub_item_id=command.kmindhub_item_id,
+            error_code=command.error_code,
+            error_message=command.error_message,
+            created_at=current.created_at if current is not None else occurred_at,
+            updated_at=occurred_at,
+            completed_at=occurred_at if command.status in {"completed", "failed"} else None,
+        )
+        self.run_result_analyses[command.run_result_id] = record
+        return record
 
     async def create_query_research_run(
         self,
@@ -1093,6 +1180,21 @@ class GeoApiStore:
     def _project_matches(self, tenant_id: UUID, project_id: UUID) -> bool:
         project = self.projects.get(project_id)
         return project is not None and project.tenant_id == tenant_id
+
+    def _run_result_with_analysis(
+        self,
+        result: GeoRunResultRecord,
+    ) -> GeoRunResultRecord:
+        analysis = self.run_result_analyses.get(result.id)
+        if analysis is None:
+            return result
+        return result.model_copy(
+            update={
+                "analysis_status": analysis.status,
+                "analysis_error_code": analysis.error_code,
+                "analysis_error_message": analysis.error_message,
+            }
+        )
 
 
 def _scope_fields(record) -> dict:

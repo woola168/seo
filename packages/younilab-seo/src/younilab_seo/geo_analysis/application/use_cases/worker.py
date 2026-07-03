@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 
 from younilab_seo.geo_analysis.application.contracts import (
     ExternalRunCallback,
@@ -14,6 +15,9 @@ from younilab_seo.geo_analysis.application.interfaces import (
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, QueryRunJobStatusError
 
 
+logger = logging.getLogger(__name__)
+
+
 class QueryRunJobMessageRejected(ValueError):
     """已消費 message 無法套用且不應重試時使用的錯誤。"""
 
@@ -26,6 +30,7 @@ class ProcessQueryRunJobMessage:
     tracking_client: TrackingRunClient
     clock: Clock
     supported_provider: str
+    analysis_extractor: object | None = None
 
     async def execute(self, message: QueryRunJobMessage) -> GeoQueryRunJob:
         """處理單一 provider queue message，並以 job 所屬 tenant 作為防線。"""
@@ -121,7 +126,7 @@ class ProcessQueryRunJobMessage:
             status = "succeeded"
             error_code = None
             error_message = None
-        return await self._save_or_reject(
+        job = await self._save_or_reject(
             SaveTrackingRunResultCommand(
                 message=message,
                 response=response,
@@ -131,6 +136,25 @@ class ProcessQueryRunJobMessage:
                 request_payload=request_payload,
             ),
         )
+        if status == "succeeded" and self.analysis_extractor is not None:
+            results = await self.repository.list_job_run_results(
+                message.tenant_id,
+                message.job_id,
+            )
+            for result in results:
+                try:
+                    await self.analysis_extractor.execute(message.tenant_id, result.id)
+                except Exception:
+                    logger.exception(
+                        "GEO analysis extraction failed after tracking success",
+                        extra={
+                            "tenant_id": str(message.tenant_id),
+                            "job_id": str(message.job_id),
+                            "run_result_id": str(result.id),
+                        },
+                    )
+                    continue
+        return job
 
     async def _save_or_reject(
         self,

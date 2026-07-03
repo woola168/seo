@@ -18,13 +18,15 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - 既有遠端 DB 若已跑過舊版 schema，需手動執行 `deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql`，補上 Query Planning tables 並解除 `geo_project.customer_id` 的 `NOT NULL` 限制。
 - 既有遠端 DB 若尚未 tenant 化，需再手動執行 `deploy/local/postgresql/009_geo_analysis_tenant_patch.sql`，替 `geo_project` 補上 `tenant_id` 並回填 default tenant。
 - 既有遠端 DB 若要啟用 KMindHub workspace mapping，需手動執行 `deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql`。
+- 既有遠端 DB 若要啟用 KMindHub analysis extraction，需手動執行 `deploy/local/postgresql/011_geo_analysis_kmindhub_extraction_patch.sql`。
 - 使用者 API 需帶 Access Control Bearer token；GEO Analysis 透過 `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。
 - `ProjectResponse` 會回傳 `tenantId`；project list/create/query/job/run result 都以目前 tenant 作為最外層資料邊界。
 - `customerId` / `seoTaskId` 維持 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
-- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Mention/citation/sentiment 與報表指標仍屬後續批次。
+- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。成功保存 raw result 後，worker 會同步觸發 KMindHub analysis extraction，保存 summary、mention、statement 與 citation classification 的報表前處理資料；正式報表聚合 API 與獨立 extraction queue 仍屬後續批次。
 - KMindHub workspace 採手動優先策略；tenant 第一次使用後續 analysis extraction 前，需先用 API 綁定既有 workspace 或明確 provision workspace。Worker 不會在首次執行時自動建立 workspace，也不會 fallback 到 default workspace。
+- KMindHub Insight extraction 的完整流程與欄位定義請參考 `docs/integrations/geo-analysis-kmindhub-insight-extraction.md`。
 - 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
 
 範例：
@@ -311,6 +313,7 @@ Problem Details 格式：
 | `GET` | `/api/geo/jobs/{jobId}` | 取得單一 job orchestration 狀態。 |
 | `GET` | `/api/geo/jobs/{jobId}/run-results` | 列出單一 job 的 raw results。 |
 | `GET` | `/api/geo/run-results/{resultId}` | 取得 run result detail，包含 raw response 與 references。 |
+| `POST` | `/api/geo/run-results/{resultId}/analysis-extractions` | 手動重跑或補跑 KMindHub analysis extraction，成功後回傳更新後的 run result analysis 狀態。 |
 | `POST` | `/api/geo/jobs/{jobId}/dispatch` | 派送 job 到 message broker。未設定 publisher 時回 `501`；RabbitMQ 啟用後依 provider 發布到 `geo.query-runs.{provider}`。 |
 | `POST` | `/api/geo/jobs/{jobId}/cancel` | 取消尚未進入 terminal state 的 job。 |
 | `POST` | `/api/geo/jobs/{jobId}/external-callbacks` | 接收外部 runner 狀態 callback，不接收 AI result content。 |

@@ -33,6 +33,7 @@ class FakeRepository:
     job: GeoQueryRunJob
     callbacks: list[ExternalRunCallback] = field(default_factory=list)
     save_commands: list[SaveTrackingRunResultCommand] = field(default_factory=list)
+    result_ids: list[UUID] = field(default_factory=list)
 
     async def get_job_tenant_id(self, job_id) -> UUID | None:
         if job_id != self.job.id:
@@ -70,7 +71,14 @@ class FakeRepository:
             now=occurred_at,
         )
         self.save_commands.append(command)
+        self.result_ids = [uuid4() for _ in (command.response.results if command.response else [])]
         return self.job
+
+    async def list_job_run_results(self, tenant_id: UUID, job_id: UUID):
+        return [
+            type("RunResult", (), {"id": result_id})()
+            for result_id in self.result_ids
+        ]
 
 
 @dataclass
@@ -101,6 +109,17 @@ class FakeTrackingClient:
         return self.result
 
 
+@dataclass
+class FakeAnalysisExtractor:
+    error: Exception | None = None
+    calls: list[tuple[UUID, UUID]] = field(default_factory=list)
+
+    async def execute(self, tenant_id: UUID, result_id: UUID) -> None:
+        self.calls.append((tenant_id, result_id))
+        if self.error is not None:
+            raise self.error
+
+
 def test_worker_marks_completed_tracking_run_succeeded() -> None:
     async def run() -> None:
         job = make_job()
@@ -126,6 +145,48 @@ def test_worker_marks_completed_tracking_run_succeeded() -> None:
         assert saved.raw_response == "Raw answer"
         assert saved.references[0].url == "https://example.com/reference"
         assert len(tracking.messages) == 1
+
+    asyncio.run(run())
+
+
+def test_worker_runs_analysis_extraction_after_completed_tracking_result() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        extractor = FakeAnalysisExtractor()
+
+        await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analysis_extractor=extractor,
+        ).execute(make_message(job, platform="gemini"))
+
+        assert extractor.calls == [(TENANT_ID, repository.result_ids[0])]
+
+    asyncio.run(run())
+
+
+def test_worker_keeps_tracking_job_succeeded_when_analysis_extraction_crashes() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        extractor = FakeAnalysisExtractor(error=RuntimeError("kmindhub unavailable"))
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analysis_extractor=extractor,
+        ).execute(make_message(job, platform="gemini"))
+
+        assert result.status is JobStatus.SUCCEEDED
+        assert result.last_error_code is None
+        assert extractor.calls == [(TENANT_ID, repository.result_ids[0])]
 
     asyncio.run(run())
 

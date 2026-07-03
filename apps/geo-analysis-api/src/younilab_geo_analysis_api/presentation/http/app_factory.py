@@ -58,6 +58,9 @@ def create_app(
     )
     app.state.manage_query_planning = dependencies.manage_query_planning
     app.state.manage_query_run_jobs = dependencies.manage_query_run_jobs
+    app.state.run_kmindhub_analysis_extraction = (
+        dependencies.run_kmindhub_analysis_extraction
+    )
     app.state.dispatch_query_run_job = dependencies.dispatch_query_run_job
     app.state.receive_external_run_callback = dependencies.receive_external_run_callback
     app.state.geo_callback_base_url = dependencies.callback_base_url

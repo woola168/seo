@@ -22,9 +22,15 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultAnalysisRecord,
     GeoRunResultRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubExtractionCommitResult,
+    KMindHubExtractionPreviewResult,
+    KMindHubExtractionTaskDefinition,
+    KMindHubExtractionTaskMappingCommand,
+    KMindHubExtractionTaskMappingRecord,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceMappingRecord,
     PublishResult,
@@ -35,6 +41,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchCommand,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
 )
@@ -91,6 +98,32 @@ class KMindHubWorkspaceClient(Protocol):
     def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
         raise NotImplementedError
 
+    async def create_extraction_task(
+        self,
+        *,
+        workspace_id: UUID,
+        definition: KMindHubExtractionTaskDefinition,
+    ) -> UUID:
+        raise NotImplementedError
+
+    async def preview_text_extraction(
+        self,
+        *,
+        workspace_id: UUID,
+        task_id: UUID,
+        text: str,
+    ) -> KMindHubExtractionPreviewResult:
+        raise NotImplementedError
+
+    async def commit_extraction_items(
+        self,
+        *,
+        workspace_id: UUID,
+        task_id: UUID,
+        items: list[dict],
+    ) -> KMindHubExtractionCommitResult:
+        raise NotImplementedError
+
 
 class KMindHubWorkspaceResolver(Protocol):
     """用 tenant 解析後續 KMindHub runtime call 必須使用的 active workspace。"""
@@ -104,6 +137,18 @@ class KMindHubWorkspaceResolver(Protocol):
 
 class KMindHubWorkspaceProvisionUnavailable(RuntimeError):
     """KMindHub workspace provision API 暫時無法使用。"""
+
+    pass
+
+
+class KMindHubExtractionUnavailable(RuntimeError):
+    """KMindHub extraction API 無法完成 task、preview 或 commit 呼叫。"""
+
+    pass
+
+
+class KMindHubExtractionValidationError(ValueError):
+    """KMindHub preview 結果不符合 GEO 報表資料規則。"""
 
     pass
 
@@ -249,6 +294,13 @@ class GeoQueryRunJobRepository(Protocol):
         tenant_id: UUID,
         result_id: UUID,
     ) -> GeoRunResultRecord | None:
+        raise NotImplementedError
+
+    async def get_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysisRecord | None:
         raise NotImplementedError
 
 
@@ -606,4 +658,27 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         tenant_id: UUID,
         command: KMindHubWorkspaceMappingCommand,
     ) -> KMindHubWorkspaceMappingRecord:
+        raise NotImplementedError
+
+    async def get_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        task_key: str,
+        schema_version: int,
+    ) -> KMindHubExtractionTaskMappingRecord | None:
+        raise NotImplementedError
+
+    async def upsert_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubExtractionTaskMappingCommand,
+    ) -> KMindHubExtractionTaskMappingRecord:
+        raise NotImplementedError
+
+    async def save_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysisRecord | None:
         raise NotImplementedError

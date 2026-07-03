@@ -56,6 +56,30 @@ class TenantKMindHubWorkspaceMappingRow(SQLModel, table=True):
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
+class TenantKMindHubExtractionTaskMappingRow(SQLModel, table=True):
+    """每個 tenant 的 GEO extraction schema version 對應一個 KMindHub task。"""
+
+    __tablename__ = "tenant_kmindhub_extraction_task_mapping"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "task_key",
+            "schema_version",
+            name="ux_tenant_kmindhub_extraction_task_mapping_version",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    tenant_id: UUID = Field(nullable=False, index=True)
+    workspace_id: UUID = Field(nullable=False)
+    task_key: str = Field(sa_column=Column(String(100), nullable=False))
+    schema_version: int = Field(sa_column=Column(Integer, nullable=False))
+    kmindhub_task_id: UUID = Field(nullable=False)
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
 class GeoMarketRow(SQLModel, table=True):
     """Market locale settings used when building runner messages."""
 
@@ -480,3 +504,87 @@ class GeoRunResultReferenceRow(SQLModel, table=True):
     title: str | None = Field(default=None, sa_column=Column(Text))
     domain: str | None = Field(default=None, sa_column=Column(String(255)))
     position: int = Field(sa_column=Column(Integer, nullable=False))
+
+
+class GeoRunResultAnalysisRow(SQLModel, table=True):
+    """KMindHub 對單筆 raw run result 的報表前處理狀態與摘要。"""
+
+    __tablename__ = "geo_run_result_analysis"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_result_id",
+            "task_key",
+            "schema_version",
+            name="ux_geo_run_result_analysis_version",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    task_key: str = Field(sa_column=Column(String(100), nullable=False))
+    schema_version: int = Field(sa_column=Column(Integer, nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    summary: str | None = Field(default=None, sa_column=Column(Text))
+    overall_sentiment: str | None = Field(default=None, sa_column=Column(String(32)))
+    theme: str | None = Field(default=None, sa_column=Column(String(200)))
+    kmindhub_commit_batch_id: str | None = Field(default=None, sa_column=Column(String(200)))
+    kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class GeoRunResultEntityMentionRow(SQLModel, table=True):
+    """AI answer 中被擷取出的品牌、競品或其他 entity mention。"""
+
+    __tablename__ = "geo_run_result_entity_mention"
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    analysis_id: UUID = Field(foreign_key="geo_run_result_analysis.id", nullable=False)
+    entity_id: UUID | None = Field(default=None)
+    entity_name: str = Field(sa_column=Column(String(200), nullable=False))
+    entity_type: str = Field(sa_column=Column(String(32), nullable=False))
+    mention_count: int = Field(sa_column=Column(Integer, nullable=False))
+    sentiment: str = Field(sa_column=Column(String(32), nullable=False))
+    evidence_text: str = Field(default="", sa_column=Column(Text, nullable=False))
+    kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoRunResultStatementRow(SQLModel, table=True):
+    """AI answer 中可供報表檢視的重要陳述。"""
+
+    __tablename__ = "geo_run_result_statement"
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    analysis_id: UUID = Field(foreign_key="geo_run_result_analysis.id", nullable=False)
+    statement_text: str = Field(sa_column=Column(Text, nullable=False))
+    theme: str = Field(default="", sa_column=Column(String(200), nullable=False))
+    sentiment: str = Field(sa_column=Column(String(32), nullable=False))
+    subject_entity_name: str | None = Field(default=None, sa_column=Column(String(200)))
+    evidence_text: str = Field(default="", sa_column=Column(Text, nullable=False))
+    kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoRunResultCitationClassificationRow(SQLModel, table=True):
+    """既有 citation reference 的分類結果，URL 來源仍以 raw reference 為準。"""
+
+    __tablename__ = "geo_run_result_citation_classification"
+
+    id: UUID = Field(primary_key=True)
+    run_result_reference_id: UUID = Field(
+        foreign_key="geo_run_result_reference.id",
+        nullable=False,
+    )
+    analysis_id: UUID = Field(foreign_key="geo_run_result_analysis.id", nullable=False)
+    classification: str = Field(sa_column=Column(String(32), nullable=False))
+    matched_entity_id: UUID | None = Field(default=None)
+    matched_domain: str | None = Field(default=None, sa_column=Column(String(255)))
+    confidence: float | None = Field(default=None, sa_column=Column(Numeric(5, 4)))
+    source: str = Field(default="rule_based", sa_column=Column(String(64), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))

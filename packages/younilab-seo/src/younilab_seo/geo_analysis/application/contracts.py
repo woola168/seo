@@ -139,6 +139,160 @@ class GeoRunResultRecord(ContractModel):
     run_at: datetime
     references: list[GeoRunResultReferenceRecord] = Field(default_factory=list)
     created_at: datetime
+    analysis_status: str | None = None
+    analysis_error_code: str | None = None
+    analysis_error_message: str | None = None
+
+
+class KMindHubExtractionTaskField(ContractModel):
+    """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
+
+    name: str
+    field_type: str = "string"
+    lookup_role: str = "ignored"
+    display_name: str
+    description: str
+    normalization: dict = Field(default_factory=dict)
+    examples: str = ""
+    sort_order: int = 0
+    is_visible: bool = True
+    is_extracted: bool = True
+
+
+class KMindHubExtractionTaskDefinition(ContractModel):
+    """GEO 系統版本化管理的 KMindHub extraction task schema。"""
+
+    task_key: str
+    schema_version: int
+    name: str
+    task: str
+    description: str
+    fields: list[KMindHubExtractionTaskField]
+    status: str = "active"
+
+
+class KMindHubExtractionTaskMappingCommand(ContractModel):
+    """保存 tenant 在特定 schema version 對應的 KMindHub extraction task。"""
+
+    workspace_id: UUID
+    task_key: str
+    schema_version: int
+    kmindhub_task_id: UUID
+    status: str = "active"
+
+
+class KMindHubExtractionTaskMappingRecord(KMindHubExtractionTaskMappingCommand):
+    """已建立且可被 worker 重用的 KMindHub extraction task mapping。"""
+
+    id: UUID
+    tenant_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class KMindHubExtractionFieldValue(ContractModel):
+    """KMindHub preview / commit item 中單一欄位的值與 evidence。"""
+
+    value: object | None = None
+    evidence: list = Field(default_factory=list)
+
+
+class KMindHubExtractionPreviewItem(ContractModel):
+    """KMindHub preview 產出的暫存 item；通過驗證後才可 commit。"""
+
+    fields: dict[str, KMindHubExtractionFieldValue] = Field(default_factory=dict)
+    verification: dict = Field(default_factory=dict)
+    display_fields: list = Field(default_factory=list)
+    candidates: list = Field(default_factory=list)
+
+
+class KMindHubExtractionPreviewResult(ContractModel):
+    """KMindHub extraction preview response 的 application read model。"""
+
+    task_id: UUID
+    items: list[KMindHubExtractionPreviewItem] = Field(default_factory=list)
+
+
+class KMindHubExtractionCommitResult(ContractModel):
+    """KMindHub commit 後回傳的批次與 item ids。"""
+
+    commit_batch_id: str | None = None
+    item_ids: list[str] = Field(default_factory=list)
+
+
+class GeoRunResultEntityMentionCommand(ContractModel):
+    """從 AI answer 擷取出的單一品牌、競品或其他 entity mention。"""
+
+    entity_id: UUID | None = None
+    entity_name: str
+    entity_type: str
+    mention_count: int = 0
+    sentiment: str
+    evidence_text: str = ""
+    kmindhub_item_id: str | None = None
+
+
+class GeoRunResultStatementCommand(ContractModel):
+    """從 AI answer 擷取出的可供報表或人工檢視的重要陳述。"""
+
+    statement_text: str
+    theme: str = ""
+    sentiment: str
+    subject_entity_name: str | None = None
+    evidence_text: str = ""
+    kmindhub_item_id: str | None = None
+
+
+class GeoRunResultCitationClassificationCommand(ContractModel):
+    """根據既有 reference URL 判斷 citation 類型，不讓 KMindHub 重新產生 URL。"""
+
+    run_result_reference_id: UUID
+    classification: str
+    matched_entity_id: UUID | None = None
+    matched_domain: str | None = None
+    confidence: float | None = None
+    source: str = "rule_based"
+
+
+class SaveRunResultAnalysisCommand(ContractModel):
+    """保存單筆 run result 的 KMindHub analysis 狀態與正規化結果。"""
+
+    run_result_id: UUID
+    task_key: str = "geo_answer_analysis"
+    schema_version: int = 1
+    status: str
+    summary: str | None = None
+    overall_sentiment: str | None = None
+    theme: str | None = None
+    kmindhub_commit_batch_id: str | None = None
+    kmindhub_item_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    entity_mentions: list[GeoRunResultEntityMentionCommand] = Field(default_factory=list)
+    statements: list[GeoRunResultStatementCommand] = Field(default_factory=list)
+    citation_classifications: list[GeoRunResultCitationClassificationCommand] = Field(
+        default_factory=list
+    )
+
+
+class GeoRunResultAnalysisRecord(ContractModel):
+    """GEO run result 已完成或失敗的 KMindHub analysis 狀態。"""
+
+    id: UUID
+    run_result_id: UUID
+    task_key: str
+    schema_version: int
+    status: str
+    summary: str | None = None
+    overall_sentiment: str | None = None
+    theme: str | None = None
+    kmindhub_commit_batch_id: str | None = None
+    kmindhub_item_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
 
 
 class GeoRunRequestRecord(ContractModel):

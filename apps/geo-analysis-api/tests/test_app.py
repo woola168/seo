@@ -8,6 +8,10 @@ from younilab_geo_analysis_api.presentation.http import create_app
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AuthorizedPrincipal,
+    KMindHubExtractionCommitResult,
+    KMindHubExtractionFieldValue,
+    KMindHubExtractionPreviewItem,
+    KMindHubExtractionPreviewResult,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     PublishResult,
@@ -658,6 +662,27 @@ def test_missing_run_result_returns_problem_details() -> None:
     assert response.json()["detail"] == "run result not found"
 
 
+def test_run_result_analysis_extraction_can_be_retried() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    store = GeoApiStore()
+    client, store, job_id = _client_with_job(repository=store, kmindhub_client=kmindhub_client)
+    result_id = _add_run_result(store, job_id)
+    client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "workspaceId": str(kmindhub_client.created_workspace_id),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    response = client.post(f"/api/geo/run-results/{result_id}/analysis-extractions")
+
+    assert response.status_code == 200
+    assert response.json()["analysisStatus"] == "completed"
+    assert kmindhub_client.preview_texts == ["Raw answer"]
+    assert kmindhub_client.committed_items
+
+
 def test_app_lifespan_closes_injected_publisher() -> None:
     publisher = FakePublisher()
     store = GeoApiStore()
@@ -708,8 +733,8 @@ def _client(**kwargs) -> TestClient:
     )
 
 
-def _client_with_job() -> tuple[TestClient, GeoApiStore, UUID]:
-    client, store, query_id = _client_with_query()
+def _client_with_job(**kwargs) -> tuple[TestClient, GeoApiStore, UUID]:
+    client, store, query_id = _client_with_query(**kwargs)
     job_response = client.post(
         f"/api/geo/queries/{query_id}/jobs",
         json={"platformId": str(uuid4())},
@@ -723,12 +748,15 @@ def _client_with_query(
     publisher=None,
     callback_base_url: str | None = None,
     market_type: str | None = None,
+    repository: GeoApiStore | None = None,
+    kmindhub_client=None,
 ) -> tuple[TestClient, GeoApiStore, str]:
-    store = GeoApiStore()
+    store = repository or GeoApiStore()
     client = _client(
         repository=store,
         publisher=publisher,
         callback_base_url=callback_base_url,
+        **({"kmindhub_client": kmindhub_client} if kmindhub_client is not None else {}),
     )
     project_response = client.post(
         "/api/geo/projects",
@@ -859,6 +887,9 @@ class FakePublisher:
 class FakeKMindHubClient:
     created_workspace_id: UUID = field(default_factory=uuid4)
     created_display_names: list[str] = field(default_factory=list)
+    created_task_ids: list[UUID] = field(default_factory=list)
+    preview_texts: list[str] = field(default_factory=list)
+    committed_items: list[list[dict]] = field(default_factory=list)
 
     async def create_workspace(self, display_name: str) -> UUID:
         self.created_display_names.append(display_name)
@@ -866,6 +897,51 @@ class FakeKMindHubClient:
 
     def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
         return {"X-Workspace-Id": str(workspace_id)}
+
+    async def create_extraction_task(self, *, workspace_id, definition) -> UUID:
+        task_id = uuid4()
+        self.created_task_ids.append(task_id)
+        return task_id
+
+    async def preview_text_extraction(self, *, workspace_id, task_id, text):
+        self.preview_texts.append(text)
+        return KMindHubExtractionPreviewResult(
+            task_id=task_id,
+            items=[
+                KMindHubExtractionPreviewItem(
+                    fields={
+                        "summary": KMindHubExtractionFieldValue(value="Raw answer"),
+                        "overallSentiment": KMindHubExtractionFieldValue(
+                            value="neutral"
+                        ),
+                        "theme": KMindHubExtractionFieldValue(value="供應商比較"),
+                        "entityName": KMindHubExtractionFieldValue(value="Acme"),
+                        "entityType": KMindHubExtractionFieldValue(value="own_brand"),
+                        "mentionCount": KMindHubExtractionFieldValue(value=1),
+                        "statementText": KMindHubExtractionFieldValue(
+                            value="Raw answer"
+                        ),
+                        "statementSentiment": KMindHubExtractionFieldValue(
+                            value="neutral"
+                        ),
+                        "subjectEntityName": KMindHubExtractionFieldValue(
+                            value="Acme"
+                        ),
+                        "evidenceText": KMindHubExtractionFieldValue(
+                            value="Raw answer"
+                        ),
+                    },
+                    verification={"passed": True},
+                )
+            ],
+        )
+
+    async def commit_extraction_items(self, *, workspace_id, task_id, items):
+        self.committed_items.append(items)
+        return KMindHubExtractionCommitResult(
+            commit_batch_id="commit-batch-1",
+            item_ids=["item-1"],
+        )
 
 
 @dataclass

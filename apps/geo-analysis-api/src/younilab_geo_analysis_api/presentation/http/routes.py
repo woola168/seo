@@ -61,6 +61,7 @@ from younilab_seo.geo_analysis.application import (
     ManageGeoSetup,
     ManageQueryRunJobs,
     ReceiveExternalRunCallback,
+    RunKMindHubAnalysisExtraction,
 )
 from younilab_seo.geo_analysis.application import AuthorizedPrincipal
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob
@@ -82,6 +83,10 @@ def _planning(request: Request) -> ManageQueryPlanning:
 
 def _kmindhub_workspace(request: Request) -> ManageKMindHubWorkspaceMapping:
     return request.app.state.manage_kmindhub_workspace_mapping
+
+
+def _analysis_extractor(request: Request) -> RunKMindHubAnalysisExtraction:
+    return request.app.state.run_kmindhub_analysis_extraction
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -791,6 +796,25 @@ async def get_run_result(request: Request, result_id: UUID) -> RunResultResponse
     if result is None:
         raise HTTPException(status_code=404, detail="run result not found")
     return RunResultResponse(**_run_result_data(result))
+
+
+@router.post(
+    "/run-results/{result_id}/analysis-extractions",
+    response_model=RunResultResponse,
+)
+async def run_result_analysis_extraction(
+    request: Request,
+    result_id: UUID,
+) -> RunResultResponse:
+    principal = await _principal(request, "geo.jobs.run")
+    result = await _jobs(request).get_run_result(principal, result_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="run result not found")
+    await _analysis_extractor(request).execute(principal.tenant_id, result_id)
+    updated = await _jobs(request).get_run_result(principal, result_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="run result not found")
+    return RunResultResponse(**_run_result_data(updated))
 
 
 @router.post("/jobs/{job_id}/dispatch", response_model=JobResponse)

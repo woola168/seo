@@ -17,6 +17,7 @@ from younilab_seo.geo_analysis.application import (
     QueryPlanningClient,
     ReceiveExternalRunCallback,
     ResourceCatalogReferenceVerifier,
+    RunKMindHubAnalysisExtraction,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
@@ -35,6 +36,7 @@ class GeoAnalysisApiDependencies:
     manage_kmindhub_workspace_mapping: ManageKMindHubWorkspaceMapping
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
+    run_kmindhub_analysis_extraction: RunKMindHubAnalysisExtraction
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
     callback_base_url: str
@@ -84,6 +86,12 @@ def build_dependencies(
             active_clock,
         ),
         manage_query_run_jobs=ManageQueryRunJobs(active_repository, active_clock),
+        run_kmindhub_analysis_extraction=RunKMindHubAnalysisExtraction(
+            active_repository,
+            ManageKMindHubWorkspaceMapping(active_repository, active_kmindhub_client),
+            active_kmindhub_client,
+            active_clock,
+        ),
         dispatch_query_run_job=(
             DispatchQueryRunJob(active_repository, active_publisher, active_clock)
             if active_publisher is not None
