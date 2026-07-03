@@ -13,7 +13,7 @@ from younilab_seo.resource_catalog.infrastructure.persistence.postgres.models im
 
 
 class PostgresResourceCatalogRepository:
-    """catalog persistence 使用的 PostgreSQL ResourceCatalogRepository adapter。"""
+    """PostgreSQL ResourceCatalogRepository adapter."""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
@@ -21,10 +21,11 @@ class PostgresResourceCatalogRepository:
     async def list_customers(
         self,
         *,
+        tenant_id: UUID,
         search: str,
         status: ResourceStatus | None,
     ) -> list[Customer]:
-        statement = select(CustomerRow)
+        statement = select(CustomerRow).where(CustomerRow.tenant_id == tenant_id)
         if search.strip():
             statement = statement.where(
                 CustomerRow.name.ilike(f"%{search.strip()}%")
@@ -35,9 +36,17 @@ class PostgresResourceCatalogRepository:
             rows = (await session.scalars(statement.order_by(CustomerRow.name))).all()
             return [_customer_from_row(row) for row in rows]
 
-    async def get_customer(self, customer_id: UUID) -> Customer | None:
+    async def get_customer(
+        self,
+        tenant_id: UUID,
+        customer_id: UUID,
+    ) -> Customer | None:
+        statement = select(CustomerRow).where(
+            CustomerRow.tenant_id == tenant_id,
+            CustomerRow.id == customer_id,
+        )
         async with self._session_scope() as session:
-            row = await session.get(CustomerRow, customer_id)
+            row = (await session.scalars(statement)).one_or_none()
             return _customer_from_row(row) if row is not None else None
 
     async def save_customer(self, customer: Customer) -> None:
@@ -46,12 +55,14 @@ class PostgresResourceCatalogRepository:
             if row is None:
                 row = CustomerRow(
                     id=customer.id,
+                    tenant_id=customer.tenant_id,
                     name=customer.name,
                     status=customer.status.value,
                     created_at=customer.created_at,
                     updated_at=customer.updated_at,
                 )
                 session.add(row)
+            row.tenant_id = customer.tenant_id
             row.name = customer.name
             row.status = customer.status.value
             row.updated_at = customer.updated_at
@@ -59,11 +70,12 @@ class PostgresResourceCatalogRepository:
     async def list_tasks(
         self,
         *,
+        tenant_id: UUID,
         search: str,
         customer_id: UUID | None,
         status: ResourceStatus | None,
     ) -> list[SeoTask]:
-        statement = select(TaskRow)
+        statement = select(TaskRow).where(TaskRow.tenant_id == tenant_id)
         if search.strip():
             statement = statement.where(TaskRow.name.ilike(f"%{search.strip()}%"))
         if customer_id is not None:
@@ -74,9 +86,13 @@ class PostgresResourceCatalogRepository:
             rows = (await session.scalars(statement.order_by(TaskRow.name))).all()
             return [_task_from_row(row) for row in rows]
 
-    async def get_task(self, task_id: UUID) -> SeoTask | None:
+    async def get_task(self, tenant_id: UUID, task_id: UUID) -> SeoTask | None:
+        statement = select(TaskRow).where(
+            TaskRow.tenant_id == tenant_id,
+            TaskRow.id == task_id,
+        )
         async with self._session_scope() as session:
-            row = await session.get(TaskRow, task_id)
+            row = (await session.scalars(statement)).one_or_none()
             return _task_from_row(row) if row is not None else None
 
     async def save_task(self, task: SeoTask) -> None:
@@ -85,6 +101,7 @@ class PostgresResourceCatalogRepository:
             if row is None:
                 row = TaskRow(
                     id=task.id,
+                    tenant_id=task.tenant_id,
                     customer_id=task.customer_id,
                     name=task.name,
                     status=task.status.value,
@@ -92,6 +109,7 @@ class PostgresResourceCatalogRepository:
                     updated_at=task.updated_at,
                 )
                 session.add(row)
+            row.tenant_id = task.tenant_id
             row.customer_id = task.customer_id
             row.name = task.name
             row.status = task.status.value
@@ -107,6 +125,7 @@ class PostgresResourceCatalogRepository:
 def _customer_from_row(row: CustomerRow) -> Customer:
     return Customer(
         id=row.id,
+        tenant_id=row.tenant_id,
         name=row.name,
         status=ResourceStatus(row.status),
         created_at=row.created_at,
@@ -117,6 +136,7 @@ def _customer_from_row(row: CustomerRow) -> Customer:
 def _task_from_row(row: TaskRow) -> SeoTask:
     return SeoTask(
         id=row.id,
+        tenant_id=row.tenant_id,
         customer_id=row.customer_id,
         name=row.name,
         status=ResourceStatus(row.status),

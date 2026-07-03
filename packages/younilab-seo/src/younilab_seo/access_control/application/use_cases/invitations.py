@@ -13,6 +13,7 @@ from younilab_seo.access_control.application.interfaces import (
     NotificationPublisher,
     PasswordHasher,
     RecoveryTokenProvider,
+    ResourceGrantVerifier,
 )
 from younilab_seo.access_control.application.models import Notification, UserInvitation
 from younilab_seo.access_control.domain import AccountStatus, UserAccount
@@ -31,6 +32,7 @@ class InvitationService:
         clock: Clock,
         id_generator: IdGenerator,
         portal_url: str,
+        resource_grant_verifier: ResourceGrantVerifier | None = None,
     ) -> None:
         self._repository = repository
         self._password_hasher = password_hasher
@@ -39,6 +41,7 @@ class InvitationService:
         self._clock = clock
         self._id_generator = id_generator
         self._portal_url = portal_url.rstrip("/")
+        self._resource_grant_verifier = resource_grant_verifier
 
     async def invite(
         self,
@@ -51,17 +54,36 @@ class InvitationService:
         customer_ids: set[UUID],
         task_ids: set[UUID],
         send_invitation: bool,
+        access_token: str | None = None,
     ) -> UserInvitation:
         """建立包含 roles、grants 與選擇性寄送的受邀帳號。"""
         normalized_email = email.strip().lower()
+        actor = await self._repository.get_user(actor_user_id)
+        if actor is None:
+            raise ResourceNotFound
         if await self._repository.get_user_by_email(normalized_email) is not None:
             raise Conflict("email already exists")
-        if len(await self._repository.get_roles(role_ids)) != len(role_ids):
+        if len(await self._repository.get_roles(role_ids, actor.tenant_id)) != len(role_ids):
             raise ResourceNotFound
         if department_id is not None:
             department = await self._repository.get_department(department_id)
-            if department is None or not department.is_active:
+            if (
+                department is None
+                or not department.is_active
+                or department.tenant_id != actor.tenant_id
+            ):
                 raise ResourceNotFound
+        if self._resource_grant_verifier is not None:
+            await self._resource_grant_verifier.require_customers_in_tenant(
+                actor.tenant_id,
+                customer_ids,
+                access_token,
+            )
+            await self._resource_grant_verifier.require_tasks_in_tenant(
+                actor.tenant_id,
+                task_ids,
+                access_token,
+            )
 
         now = self._clock.now()
         user = UserAccount(
@@ -69,6 +91,8 @@ class InvitationService:
             email=normalized_email,
             display_name=display_name,
             status=AccountStatus.INVITED,
+            tenant_id=actor.tenant_id,
+            tenant_name=actor.tenant_name,
             department_id=department_id,
             invited_at=now,
             created_at=now,

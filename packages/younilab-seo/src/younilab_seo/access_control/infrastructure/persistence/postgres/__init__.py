@@ -11,6 +11,7 @@ from younilab_seo.access_control.infrastructure.persistence.postgres.models impo
     RefreshSessionRow,
     RoleRow,
     TaskAccessGrantRow,
+    TenantRow,
     UserRoleRow,
     UserRow,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "RefreshSessionRow",
     "RoleRow",
     "TaskAccessGrantRow",
+    "TenantRow",
     "UserRoleRow",
     "UserRow",
     "build_postgres_repository",

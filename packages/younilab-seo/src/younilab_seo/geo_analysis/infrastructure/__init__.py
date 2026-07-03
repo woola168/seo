@@ -16,11 +16,17 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryRow,
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
+    GeoRunResultAnalysisRow,
+    GeoRunResultCitationClassificationRow,
+    GeoRunResultEntityMentionRow,
     GeoRunRequestRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
+    GeoRunResultStatementRow,
     GeoTopicRow,
     GeoWorkerLeaseRow,
+    TenantKMindHubExtractionTaskMappingRow,
+    TenantKMindHubWorkspaceMappingRow,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
     build_postgres_repository,
@@ -30,6 +36,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository im
     PostgresGeoAnalysisRepository,
 )
 __all__ = [
+    "AccessControlAuthorizer",
     "GeoAiPlatformRow",
     "GeoEntityAliasRow",
     "GeoEntityRow",
@@ -47,27 +54,53 @@ __all__ = [
     "GeoQueryRow",
     "GeoQueryRunJobRow",
     "GeoQueryScheduleRow",
+    "GeoRunResultAnalysisRow",
+    "GeoRunResultCitationClassificationRow",
+    "GeoRunResultEntityMentionRow",
     "GeoRunRequestRow",
     "GeoRunResultReferenceRow",
     "GeoRunResultRow",
+    "GeoRunResultStatementRow",
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
+    "TenantKMindHubExtractionTaskMappingRow",
+    "TenantKMindHubWorkspaceMappingRow",
+    "HttpKMindHubWorkspaceClient",
     "PostgresGeoAnalysisRepository",
     "HttpTrackingRunClient",
     "RabbitMqMessagePublisher",
     "RabbitMqQueryRunJobConsumer",
+    "ResourceCatalogHttpReferenceVerifier",
     "build_postgres_repository",
     "build_postgres_session_factory",
 ]
 
 
 def __getattr__(name: str):
+    if name == "AccessControlAuthorizer":
+        from younilab_seo.geo_analysis.infrastructure.authorization import (
+            AccessControlAuthorizer,
+        )
+
+        return AccessControlAuthorizer
+    if name == "ResourceCatalogHttpReferenceVerifier":
+        from younilab_seo.geo_analysis.infrastructure.authorization import (
+            ResourceCatalogHttpReferenceVerifier,
+        )
+
+        return ResourceCatalogHttpReferenceVerifier
     if name == "HttpTrackingRunClient":
         from younilab_seo.geo_analysis.infrastructure.tracking import (
             HttpTrackingRunClient,
         )
 
         return HttpTrackingRunClient
+    if name == "HttpKMindHubWorkspaceClient":
+        from younilab_seo.geo_analysis.infrastructure.kmindhub import (
+            HttpKMindHubWorkspaceClient,
+        )
+
+        return HttpKMindHubWorkspaceClient
     if name == "RabbitMqMessagePublisher":
         from younilab_seo.geo_analysis.infrastructure.messaging import (
             RabbitMqMessagePublisher,

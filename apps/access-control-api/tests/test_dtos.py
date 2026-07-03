@@ -17,6 +17,7 @@ from younilab_seo.access_control.domain import AccountStatus, Role, UserAccount
 
 
 USER_ID = UUID("11111111-1111-4111-8111-111111111111")
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 ROLE_ID = UUID("22222222-2222-4222-8222-222222222222")
 CUSTOMER_ID = UUID("33333333-3333-4333-8333-333333333333")
 TASK_ID = UUID("44444444-4444-4444-8444-444444444444")
@@ -68,6 +69,7 @@ def test_response_dtos_map_domain_models() -> None:
         has_global_resource_access=True,
     )
     capabilities = Capabilities(
+        tenant_id=TENANT_ID,
         permissions=frozenset({"tasks.read", "customers.read"}),
         has_global_resource_access=False,
         customer_ids=frozenset({CUSTOMER_ID}),
@@ -80,4 +82,5 @@ def test_response_dtos_map_domain_models() -> None:
         "customers.read",
         "tasks.read",
     ]
+    assert CapabilitiesResponse.from_domain(capabilities).tenant_id == TENANT_ID
     assert CapabilitiesResponse.from_domain(capabilities).task_ids == [TASK_ID]

@@ -158,6 +158,7 @@ def test_rabbitmq_publisher_resets_cached_connection_after_publish_error() -> No
 def _message(platform: str) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=uuid4(),
+        tenant_id=uuid4(),
         project_id=uuid4(),
         seo_task_id=uuid4(),
         query_id=uuid4(),

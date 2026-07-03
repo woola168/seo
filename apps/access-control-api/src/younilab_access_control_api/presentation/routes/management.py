@@ -45,7 +45,9 @@ async def list_roles(
     await require_permission(request, principal, "roles.read")
     return [
         RoleResponse.from_domain(role)
-        for role in await request.app.state.management.list_roles()
+        for role in await request.app.state.management.list_roles(
+            principal.user.tenant_id
+        )
     ]
 
 
@@ -60,6 +62,7 @@ async def create_role(
         role_id=request.app.state.id_generator.new_id(),
         name=payload.name,
         permissions=payload.permissions,
+        tenant_id=principal.user.tenant_id,
     )
     return RoleResponse.from_domain(role)
 
@@ -75,6 +78,7 @@ async def replace_role_permissions(
     role = await request.app.state.management.replace_role_permissions(
         role_id=role_id,
         permissions=payload.permissions,
+        tenant_id=principal.user.tenant_id,
     )
     return RoleResponse.from_domain(role)
 
@@ -86,7 +90,10 @@ async def delete_role(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> None:
     await require_permission(request, principal, "roles.manage")
-    await request.app.state.management.delete_role(role_id)
+    await request.app.state.management.delete_role(
+        role_id,
+        principal.user.tenant_id,
+    )
 
 
 @router.get("/users", response_model=list[UserAccessResponse])
@@ -98,7 +105,9 @@ async def list_users(
     await require_permission(request, principal, "access-grants.read")
     return [
         UserAccessResponse.from_domain(user)
-        for user in await request.app.state.management.list_users()
+        for user in await request.app.state.management.list_users(
+            principal.user.tenant_id
+        )
     ]
 
 
@@ -111,7 +120,10 @@ async def get_user(
     await require_permission(request, principal, "users.read")
     await require_permission(request, principal, "access-grants.read")
     return UserAccessResponse.from_domain(
-        await request.app.state.management.get_user(user_id)
+        await request.app.state.management.get_user(
+            user_id,
+            principal.user.tenant_id,
+        )
     )
 
 
@@ -127,6 +139,7 @@ async def update_user(
         user_id=user_id,
         display_name=payload.display_name,
         department_id=payload.department_id,
+        tenant_id=principal.user.tenant_id,
     )
     return UserAccessResponse.from_domain(user)
 
@@ -143,6 +156,7 @@ async def update_user_status(
         actor_user_id=principal.user.id,
         user_id=user_id,
         status=payload.status,
+        tenant_id=principal.user.tenant_id,
     )
     return UserAccessResponse.from_domain(user)
 
@@ -157,6 +171,7 @@ async def delete_user(
     await request.app.state.management.delete_user(
         actor_user_id=principal.user.id,
         user_id=user_id,
+        tenant_id=principal.user.tenant_id,
     )
 
 
@@ -170,7 +185,10 @@ async def revoke_user_sessions(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> None:
     await require_permission(request, principal, "users.manage")
-    await request.app.state.management.revoke_user_sessions(user_id)
+    await request.app.state.management.revoke_user_sessions(
+        user_id,
+        principal.user.tenant_id,
+    )
 
 
 @router.post(
@@ -183,7 +201,10 @@ async def request_user_password_reset(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> None:
     await require_permission(request, principal, "users.manage")
-    user = await request.app.state.management.get_user(user_id)
+    user = await request.app.state.management.get_user(
+        user_id,
+        principal.user.tenant_id,
+    )
     await request.app.state.account_recovery.request_reset(user.email)
 
 
@@ -207,6 +228,7 @@ async def create_user_invitation(
         customer_ids=payload.customer_ids,
         task_ids=payload.task_ids,
         send_invitation=payload.send_invitation,
+        access_token=principal.access_token,
     )
     return UserInvitationResponse.from_application(invitation)
 
@@ -248,11 +270,16 @@ async def list_departments(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> list[DepartmentResponse]:
     await require_permission(request, principal, "departments.read")
-    departments = await request.app.state.management.list_departments()
+    departments = await request.app.state.management.list_departments(
+        principal.user.tenant_id
+    )
     return [
         DepartmentResponse.from_domain(
             department,
-            await request.app.state.repository.department_member_count(department.id),
+            await request.app.state.repository.department_member_count(
+                department.id,
+                principal.user.tenant_id,
+            ),
         )
         for department in departments
     ]
@@ -273,6 +300,7 @@ async def create_department(
         department_id=request.app.state.id_generator.new_id(),
         name=payload.name,
         description=payload.description,
+        tenant_id=principal.user.tenant_id,
     )
     return DepartmentResponse.from_domain(department, 0)
 
@@ -292,8 +320,12 @@ async def update_department(
         department_id=department_id,
         name=payload.name,
         description=payload.description,
+        tenant_id=principal.user.tenant_id,
     )
-    count = await request.app.state.repository.department_member_count(department.id)
+    count = await request.app.state.repository.department_member_count(
+        department.id,
+        principal.user.tenant_id,
+    )
     return DepartmentResponse.from_domain(department, count)
 
 
@@ -307,7 +339,10 @@ async def delete_department(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> None:
     await require_permission(request, principal, "departments.manage")
-    await request.app.state.management.archive_department(department_id)
+    await request.app.state.management.archive_department(
+        department_id,
+        principal.user.tenant_id,
+    )
 
 
 @router.put("/users/{user_id}/roles", response_model=UserAccessResponse)
@@ -321,6 +356,7 @@ async def replace_user_roles(
     user = await request.app.state.management.replace_user_roles(
         user_id=user_id,
         role_ids=payload.role_ids,
+        tenant_id=principal.user.tenant_id,
     )
     return UserAccessResponse.from_domain(user)
 
@@ -339,6 +375,8 @@ async def replace_customer_grants(
     user = await request.app.state.management.replace_customer_grants(
         user_id=user_id,
         customer_ids=payload.customer_ids,
+        tenant_id=principal.user.tenant_id,
+        access_token=principal.access_token,
     )
     return UserAccessResponse.from_domain(user)
 
@@ -357,5 +395,7 @@ async def replace_task_grants(
     user = await request.app.state.management.replace_task_grants(
         user_id=user_id,
         task_ids=payload.task_ids,
+        tenant_id=principal.user.tenant_id,
+        access_token=principal.access_token,
     )
     return UserAccessResponse.from_domain(user)

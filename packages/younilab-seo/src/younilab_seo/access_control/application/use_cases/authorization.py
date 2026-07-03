@@ -35,7 +35,7 @@ class AuthorizationService:
         user = await self._repository.get_user(request.user_id)
         if user is None:
             raise ResourceNotFound
-        roles = await self._repository.get_roles(user.role_ids)
+        roles = await self._repository.get_roles(user.role_ids, user.tenant_id)
         resource = (
             ProtectedResource(
                 type=ResourceType(request.resource.type.value),
@@ -70,8 +70,9 @@ class AuthorizationService:
         user = await self._repository.get_user(user_id)
         if user is None:
             raise ResourceNotFound
-        roles = await self._repository.get_roles(user.role_ids)
+        roles = await self._repository.get_roles(user.role_ids, user.tenant_id)
         return Capabilities(
+            tenant_id=user.tenant_id,
             permissions=self._policy.effective_permissions(user=user, roles=roles),
             has_global_resource_access=any(
                 role.has_global_resource_access for role in roles

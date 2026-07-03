@@ -37,6 +37,9 @@ def test_postgres_rows_preserve_uuid_and_timezone_types() -> None:
     )
 
     assert "id UUID NOT NULL" in customer_ddl
+    assert "tenant_id UUID NOT NULL" in customer_ddl
     assert "created_at TIMESTAMP WITH TIME ZONE NOT NULL" in customer_ddl
+    assert "CONSTRAINT ux_customer_tenant_name UNIQUE (tenant_id, name)" in customer_ddl
+    assert "tenant_id UUID NOT NULL" in task_ddl
     assert "customer_id UUID NOT NULL" in task_ddl
     assert "TIMESTAMP WITHOUT TIME ZONE" not in customer_ddl + task_ddl

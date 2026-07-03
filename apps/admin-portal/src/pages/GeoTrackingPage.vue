@@ -201,6 +201,14 @@ function normalizedTopics(): GeoTopicInput[] {
 
 function canSubmit(): boolean {
   const keywords = lines(form.keywords);
+  if (!form.seoTaskId.trim()) {
+    error.value = "請填寫 SEO 任務 ID。";
+    return false;
+  }
+  if (!form.brandName.trim()) {
+    error.value = "請填寫品牌名稱。";
+    return false;
+  }
   if (!keywords.length) {
     error.value = "請至少輸入一個關鍵字。";
     return false;
@@ -219,6 +227,10 @@ function canSubmit(): boolean {
   }
   if (!form.audienceName.trim() || !form.audienceDescription.trim()) {
     error.value = "請填寫 Audience 名稱與描述。";
+    return false;
+  }
+  if (!Number.isFinite(form.maxQueries) || form.maxQueries < 1) {
+    error.value = "請輸入 Query 數量，且至少為 1。";
     return false;
   }
   return true;

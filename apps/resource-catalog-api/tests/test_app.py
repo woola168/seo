@@ -1,10 +1,16 @@
-﻿from fastapi.testclient import TestClient
+from uuid import UUID
+
+from fastapi.testclient import TestClient
 
 from younilab_resource_catalog_api import create_app
+from younilab_seo.resource_catalog.application import AuthorizedPrincipal
 from younilab_seo.resource_catalog.infrastructure import (
     AllowAllAuthorizer,
     MemoryResourceCatalogRepository,
 )
+
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_TENANT_ID = UUID("99999999-9999-4999-8999-999999999999")
 
 
 def create_test_client() -> TestClient:
@@ -30,6 +36,7 @@ def test_customer_and_task_endpoints() -> None:
     )
     assert customer_response.status_code == 201
     customer_id = customer_response.json()["id"]
+    assert customer_response.json()["tenantId"] == str(TENANT_ID)
 
     task_response = client.post(
         "/api/tasks",
@@ -38,9 +45,127 @@ def test_customer_and_task_endpoints() -> None:
     )
     assert task_response.status_code == 201
     assert task_response.json()["customerName"] == "Acme"
+    assert task_response.json()["tenantId"] == str(TENANT_ID)
 
     assert client.get("/api/customers", headers=headers).json()["total"] == 1
     assert client.get("/api/tasks", headers=headers).json()["total"] == 1
+
+
+def test_resource_catalog_routes_are_tenant_scoped() -> None:
+    client = TestClient(
+        create_app(
+            repository=MemoryResourceCatalogRepository(),
+            authorizer=TokenTenantAuthorizer(
+                {
+                    "tenant-a": AuthorizedPrincipal(
+                        tenant_id=TENANT_ID,
+                        permissions=frozenset(),
+                        has_global_resource_access=True,
+                        customer_ids=frozenset(),
+                        task_ids=frozenset(),
+                    ),
+                    "tenant-b": AuthorizedPrincipal(
+                        tenant_id=OTHER_TENANT_ID,
+                        permissions=frozenset(),
+                        has_global_resource_access=True,
+                        customer_ids=frozenset(),
+                        task_ids=frozenset(),
+                    ),
+                }
+            ),
+        )
+    )
+
+    response_a = client.post(
+        "/api/customers",
+        headers={"Authorization": "Bearer tenant-a"},
+        json={"name": "Acme"},
+    )
+    response_b = client.post(
+        "/api/customers",
+        headers={"Authorization": "Bearer tenant-b"},
+        json={"name": "Acme"},
+    )
+
+    assert response_a.status_code == 201
+    assert response_b.status_code == 201
+    assert client.get(
+        "/api/customers",
+        headers={"Authorization": "Bearer tenant-a"},
+    ).json()["items"] == [response_a.json()]
+    assert client.get(
+        f"/api/customers/{response_a.json()['id']}",
+        headers={"Authorization": "Bearer tenant-b"},
+    ).status_code == 404
+
+
+def test_resource_catalog_routes_apply_resource_grants() -> None:
+    repository = MemoryResourceCatalogRepository()
+    authorizer = TokenTenantAuthorizer({})
+    client = TestClient(create_app(repository=repository, authorizer=authorizer))
+    global_headers = {"Authorization": "Bearer global"}
+
+    authorizer.principals_by_token["global"] = AuthorizedPrincipal(
+        tenant_id=TENANT_ID,
+        permissions=frozenset(),
+        has_global_resource_access=True,
+        customer_ids=frozenset(),
+        task_ids=frozenset(),
+    )
+    customer_a = client.post(
+        "/api/customers",
+        headers=global_headers,
+        json={"name": "Acme"},
+    ).json()
+    customer_b = client.post(
+        "/api/customers",
+        headers=global_headers,
+        json={"name": "Beta"},
+    ).json()
+    task_a = client.post(
+        "/api/tasks",
+        headers=global_headers,
+        json={"customerId": customer_a["id"], "name": "Audit"},
+    ).json()
+    task_b = client.post(
+        "/api/tasks",
+        headers=global_headers,
+        json={"customerId": customer_b["id"], "name": "Tracking"},
+    ).json()
+    authorizer.principals_by_token["scoped"] = AuthorizedPrincipal(
+        tenant_id=TENANT_ID,
+        permissions=frozenset(),
+        has_global_resource_access=False,
+        customer_ids=frozenset({UUID(customer_a["id"])}),
+        task_ids=frozenset({UUID(task_b["id"])}),
+    )
+    scoped_headers = {"Authorization": "Bearer scoped"}
+
+    assert client.get("/api/customers", headers=scoped_headers).json()["items"] == [
+        customer_a
+    ]
+    assert client.get("/api/tasks", headers=scoped_headers).json()["items"] == [
+        task_a,
+        task_b,
+    ]
+    assert client.get(
+        f"/api/customers/{customer_b['id']}",
+        headers=scoped_headers,
+    ).status_code == 404
+    assert client.get(
+        f"/api/tasks/{task_b['id']}",
+        headers=scoped_headers,
+    ).status_code == 200
+    assert client.post(
+        "/api/tasks",
+        headers=scoped_headers,
+        json={"customerId": customer_b["id"], "name": "Blocked"},
+    ).status_code == 404
+    assert client.patch(
+        f"/api/tasks/{task_a['id']}",
+        headers=scoped_headers,
+        json={"customerId": customer_b["id"], "name": "Moved"},
+    ).status_code == 404
 
 
 def test_blank_customer_name_returns_problem_details() -> None:
@@ -95,3 +220,15 @@ def test_validation_problem_details_lists_multiple_invalid_fields() -> None:
 
 def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
+
+
+class TokenTenantAuthorizer:
+    def __init__(self, principals_by_token: dict[str, AuthorizedPrincipal]) -> None:
+        self.principals_by_token = principals_by_token
+
+    async def require(
+        self,
+        access_token: str,
+        permission: str,
+    ) -> AuthorizedPrincipal:
+        return self.principals_by_token[access_token]

@@ -36,6 +36,11 @@ type GeoTab =
   | "jobs"
   | "reports";
 
+type GeoFormValidationError = {
+  field: string;
+  message: string;
+};
+
 const props = defineProps<{
   activeTab?: GeoTab;
 }>();
@@ -69,6 +74,7 @@ const queryStageFilter = ref("");
 const queryPriorityFilter = ref("");
 const jobPlatformFilter = ref("");
 const jobStatusFilter = ref("");
+const formErrors = reactive<Record<string, string>>({});
 
 const customers = ref<CustomerSummary[]>([]);
 const tasks = ref<TaskSummary[]>([]);
@@ -262,6 +268,25 @@ watch(selectedProjectId, (projectId) => {
 
 function setMessage(message: string): void {
   localMessage.value = message;
+}
+
+function setFormErrors(errors: GeoFormValidationError[]): boolean {
+  for (const field of Object.keys(formErrors)) {
+    delete formErrors[field];
+  }
+  for (const error of errors) {
+    formErrors[error.field] = error.message;
+  }
+  if (errors.length) {
+    setMessage(errors[0].message);
+  }
+  return errors.length === 0;
+}
+
+function selectedProjectValidation(): GeoFormValidationError[] {
+  return selectedProject.value
+    ? []
+    : [{ field: "project", message: "請先選擇 GEO project。" }];
 }
 
 function getErrorMessage(error: unknown): string {
@@ -549,8 +574,20 @@ function resetForms(): void {
 }
 
 async function createProject(): Promise<void> {
-  if (!projectForm.name.trim() || !projectForm.customerId.trim()) {
-    setMessage("請輸入 project 名稱與 customerId。");
+  const errors: GeoFormValidationError[] = [];
+  if (!projectForm.name.trim()) {
+    errors.push({ field: "projectName", message: "請輸入 Project 名稱。" });
+  }
+  if (!projectForm.customerId.trim()) {
+    errors.push({ field: "projectCustomerId", message: "請選擇或輸入 Customer。" });
+  }
+  if (!projectForm.defaultRegion.trim()) {
+    errors.push({ field: "projectRegion", message: "請輸入 Region。" });
+  }
+  if (!projectForm.defaultLanguage.trim()) {
+    errors.push({ field: "projectLanguage", message: "請輸入 Language。" });
+  }
+  if (!setFormErrors(errors)) {
     return;
   }
   actionLoading.value = true;
@@ -591,11 +628,17 @@ async function deleteProject(projectId: string): Promise<void> {
 }
 
 async function createEntity(): Promise<void> {
-  if (!selectedProject.value || !entityForm.name.trim()) return;
+  const errors = selectedProjectValidation();
+  if (!entityForm.name.trim()) {
+    errors.push({ field: "entityName", message: "請輸入 Entity 名稱。" });
+  }
+  if (!setFormErrors(errors)) return;
+  const project = selectedProject.value;
+  if (!project) return;
   actionLoading.value = true;
   try {
     if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
-    const entity = await api.geoAnalysis.createEntity(selectedProject.value.id, {
+    const entity = await api.geoAnalysis.createEntity(project.id, {
       entityType: entityForm.entityType,
       name: entityForm.name.trim(),
       websiteUrl: entityForm.websiteUrl.trim() || null,
@@ -638,11 +681,17 @@ async function deleteEntity(entityId: string): Promise<void> {
 }
 
 async function createTopic(): Promise<void> {
-  if (!selectedProject.value || !topicForm.name.trim()) return;
+  const errors = selectedProjectValidation();
+  if (!topicForm.name.trim()) {
+    errors.push({ field: "topicName", message: "請輸入 Topic。" });
+  }
+  if (!setFormErrors(errors)) return;
+  const project = selectedProject.value;
+  if (!project) return;
   actionLoading.value = true;
   try {
     if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
-    const topic = await api.geoAnalysis.createTopic(selectedProject.value.id, {
+    const topic = await api.geoAnalysis.createTopic(project.id, {
       name: topicForm.name.trim(),
       description: topicForm.description.trim(),
       status: "active",
@@ -660,15 +709,21 @@ async function createTopic(): Promise<void> {
 }
 
 async function createQuery(): Promise<void> {
-  if (!selectedProject.value || !queryForm.queryText.trim()) return;
+  const errors = selectedProjectValidation();
+  if (!queryForm.queryText.trim()) {
+    errors.push({ field: "queryText", message: "請輸入 Query。" });
+  }
+  if (!setFormErrors(errors)) return;
+  const project = selectedProject.value;
+  if (!project) return;
   actionLoading.value = true;
   try {
     if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
-    const query = await api.geoAnalysis.createQuery(selectedProject.value.id, {
+    const query = await api.geoAnalysis.createQuery(project.id, {
       topicId: queryForm.topicId || null,
       queryText: queryForm.queryText.trim(),
-      region: selectedProject.value.defaultRegion,
-      language: selectedProject.value.defaultLanguage,
+      region: project.defaultRegion,
+      language: project.defaultLanguage,
       marketType: queryForm.marketType,
       intent: queryForm.intent.trim() || null,
       buyerStage: queryForm.buyerStage.trim() || null,
@@ -706,7 +761,17 @@ async function deleteQuery(queryId: string): Promise<void> {
 }
 
 async function createSchedule(): Promise<void> {
-  if (!scheduleForm.queryId) return;
+  const errors = selectedProjectValidation();
+  if (!scheduleForm.queryId) {
+    errors.push({ field: "scheduleQueryId", message: "請選擇 Query。" });
+  }
+  if (!scheduleForm.platformId) {
+    errors.push({ field: "schedulePlatformId", message: "請選擇 Platform。" });
+  }
+  if (!scheduleForm.timezone.trim()) {
+    errors.push({ field: "scheduleTimezone", message: "請輸入 Timezone。" });
+  }
+  if (!setFormErrors(errors)) return;
   actionLoading.value = true;
   try {
     if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
@@ -764,7 +829,14 @@ async function deleteSchedule(scheduleId: string): Promise<void> {
 }
 
 async function createManualJob(): Promise<void> {
-  if (!jobForm.queryId) return;
+  const errors = selectedProjectValidation();
+  if (!jobForm.queryId) {
+    errors.push({ field: "jobQueryId", message: "請選擇 Query。" });
+  }
+  if (!jobForm.platformId) {
+    errors.push({ field: "jobPlatformId", message: "請選擇 Platform。" });
+  }
+  if (!setFormErrors(errors)) return;
   actionLoading.value = true;
   try {
     if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
@@ -938,6 +1010,7 @@ async function cancelJob(jobId: string): Promise<void> {
             <label>
               Project 名稱
               <input v-model="projectForm.name" type="text" placeholder="金山旅宿 GEO 追蹤" />
+              <small v-if="formErrors.projectName" class="form-error">{{ formErrors.projectName }}</small>
             </label>
             <label>
               Customer
@@ -948,6 +1021,7 @@ async function cancelJob(jobId: string): Promise<void> {
                 </option>
               </select>
               <input v-else v-model="projectForm.customerId" type="text" placeholder="customer UUID" />
+              <small v-if="formErrors.projectCustomerId" class="form-error">{{ formErrors.projectCustomerId }}</small>
             </label>
             <label>
               SEO Task
@@ -962,10 +1036,12 @@ async function cancelJob(jobId: string): Promise<void> {
             <label>
               Region
               <input v-model="projectForm.defaultRegion" type="text" />
+              <small v-if="formErrors.projectRegion" class="form-error">{{ formErrors.projectRegion }}</small>
             </label>
             <label>
               Language
               <input v-model="projectForm.defaultLanguage" type="text" />
+              <small v-if="formErrors.projectLanguage" class="form-error">{{ formErrors.projectLanguage }}</small>
             </label>
             <label>
               Daily Budget
@@ -1041,6 +1117,7 @@ async function cancelJob(jobId: string): Promise<void> {
             <label>
               名稱
               <input v-model="entityForm.name" type="text" placeholder="金山旅宿" />
+              <small v-if="formErrors.entityName" class="form-error">{{ formErrors.entityName }}</small>
             </label>
             <label>
               Website URL
@@ -1102,6 +1179,7 @@ async function cancelJob(jobId: string): Promise<void> {
               <label>
                 Topic
                 <input v-model="topicForm.name" type="text" placeholder="溫泉住宿推薦" />
+                <small v-if="formErrors.topicName" class="form-error">{{ formErrors.topicName }}</small>
               </label>
               <label>
                 Description
@@ -1153,6 +1231,7 @@ async function cancelJob(jobId: string): Promise<void> {
               <label class="geo-form-full">
                 Query
                 <textarea v-model="queryForm.queryText" rows="3" placeholder="北海岸適合週末放鬆的溫泉住宿推薦"></textarea>
+                <small v-if="formErrors.queryText" class="form-error">{{ formErrors.queryText }}</small>
               </label>
               <div class="geo-form-actions">
                 <button class="button button-primary" type="submit" :disabled="actionLoading">建立 Query</button>
@@ -1246,6 +1325,7 @@ async function cancelJob(jobId: string): Promise<void> {
                   {{ query.queryText }}
                 </option>
               </select>
+              <small v-if="formErrors.scheduleQueryId" class="form-error">{{ formErrors.scheduleQueryId }}</small>
             </label>
             <label>
               Platform
@@ -1254,6 +1334,7 @@ async function cancelJob(jobId: string): Promise<void> {
                   {{ platform.name }} / {{ platform.model }}
                 </option>
               </select>
+              <small v-if="formErrors.schedulePlatformId" class="form-error">{{ formErrors.schedulePlatformId }}</small>
             </label>
             <label>
               Frequency
@@ -1274,6 +1355,7 @@ async function cancelJob(jobId: string): Promise<void> {
             <label>
               Timezone
               <input v-model="scheduleForm.timezone" type="text" />
+              <small v-if="formErrors.scheduleTimezone" class="form-error">{{ formErrors.scheduleTimezone }}</small>
             </label>
             <label>
               Next run
@@ -1337,6 +1419,7 @@ async function cancelJob(jobId: string): Promise<void> {
                   {{ query.queryText }}
                 </option>
               </select>
+              <small v-if="formErrors.jobQueryId" class="form-error">{{ formErrors.jobQueryId }}</small>
             </label>
             <label>
               Platform
@@ -1345,6 +1428,7 @@ async function cancelJob(jobId: string): Promise<void> {
                   {{ platform.name }}
                 </option>
               </select>
+              <small v-if="formErrors.jobPlatformId" class="form-error">{{ formErrors.jobPlatformId }}</small>
             </label>
             <label>
               Priority

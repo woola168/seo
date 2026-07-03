@@ -6,8 +6,17 @@ from younilab_seo.resource_catalog.domain import Customer, ResourceStatus, SeoTa
 
 def test_resources_normalize_names_and_archive() -> None:
     now = datetime.now(UTC)
-    customer = Customer(uuid4(), " Acme ", ResourceStatus.ACTIVE, now, now)
-    task = SeoTask(uuid4(), customer.id, " Audit ", ResourceStatus.ACTIVE, now, now)
+    tenant_id = uuid4()
+    customer = Customer(uuid4(), tenant_id, " Acme ", ResourceStatus.ACTIVE, now, now)
+    task = SeoTask(
+        uuid4(),
+        tenant_id,
+        customer.id,
+        " Audit ",
+        ResourceStatus.ACTIVE,
+        now,
+        now,
+    )
 
     customer.archive(now)
     task.archive(now)

@@ -31,6 +31,8 @@ Problem Details 格式：
 
 ## Authentication
 
+目前第一批 tenant foundation 仍維持 `email` 全系統唯一；登入、密碼重設與邀請流程不需要 `tenantCode`。未來若要允許不同 tenant 使用相同 email，需另批新增 tenant-aware login/reset/invitation contract。
+
 | Method | Path | Auth | Request | Response |
 | --- | --- | --- | --- | --- |
 | `POST` | `/api/auth/login` | 不需 Bearer | `LoginRequest` | `TokenResponse` |
@@ -80,6 +82,8 @@ Request / response shape：
 // UserResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
+  "tenantName": "Default Tenant",
   "email": "user@example.com",
   "displayName": "User Name",
   "status": "active",
@@ -94,6 +98,7 @@ Request / response shape：
 
 // CapabilitiesResponse
 {
+  "tenantId": "uuid",
   "permissions": ["users.read"],
   "hasGlobalResourceAccess": false,
   "customerIds": ["uuid"],
@@ -130,6 +135,8 @@ Request / response shape：
 `resource.type` 目前支援 `customer` 與 `task`。Batch request 最多 100 筆。
 
 ## Access Management
+
+Customer/task access grants 會以目前登入者的 tenant 為邊界寫入；後端會先向 Resource Catalog 驗證傳入的 customer/task 屬於同一個 tenant。若 Resource Catalog 無法確認，API 會 fail closed，不會寫入 grants。
 
 ### Permissions / Roles
 
@@ -199,6 +206,8 @@ Request / response shape：
 // UserAccessResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
+  "tenantName": "Default Tenant",
   "email": "user@example.com",
   "displayName": "User Name",
   "status": "active",

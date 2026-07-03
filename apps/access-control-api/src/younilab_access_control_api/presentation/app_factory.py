@@ -18,6 +18,7 @@ from younilab_seo.access_control.application import (
     OperationNotAllowed,
     PasswordHasher,
     RecoveryTokenProvider,
+    ResourceGrantVerifier,
     ResourceNotFound,
     TokenProvider,
 )
@@ -44,6 +45,7 @@ def create_app(
     id_generator: IdGenerator | None = None,
     recovery_token_provider: RecoveryTokenProvider | None = None,
     notifications: NotificationPublisher | None = None,
+    resource_grant_verifier: ResourceGrantVerifier | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
         settings=settings,
@@ -54,6 +56,7 @@ def create_app(
         id_generator=id_generator,
         recovery_token_provider=recovery_token_provider,
         notifications=notifications,
+        resource_grant_verifier=resource_grant_verifier,
     )
 
     app = FastAPI(title="Younilab SEO Access Control API", version="0.1.0")

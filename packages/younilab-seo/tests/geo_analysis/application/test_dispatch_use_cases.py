@@ -15,6 +15,9 @@ from younilab_seo.geo_analysis.application import (
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 
 
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+
+
 @dataclass
 class FakeClock:
     current: datetime = datetime(2026, 6, 22, tzinfo=UTC)
@@ -52,6 +55,10 @@ class FakeRepository:
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
         assert job_id == self.job.id
         return self.job
+
+    async def get_job_tenant_id(self, job_id: UUID) -> UUID | None:
+        assert job_id == self.job.id
+        return self.context.tenant_id
 
     async def save(self, job: GeoQueryRunJob) -> None:
         self.job = job
@@ -121,6 +128,7 @@ def make_job() -> GeoQueryRunJob:
 def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=job.id,
+        tenant_id=TENANT_ID,
         project_id=job.project_id,
         seo_task_id=uuid4(),
         query_id=job.query_id,
@@ -139,6 +147,7 @@ def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
 def make_context(job: GeoQueryRunJob) -> GeoQueryRunJobDispatchContext:
     return GeoQueryRunJobDispatchContext(
         job_id=job.id,
+        tenant_id=TENANT_ID,
         project_id=job.project_id,
         seo_task_id=uuid4(),
         query_id=job.query_id,

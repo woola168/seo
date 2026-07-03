@@ -3,7 +3,16 @@ from younilab_seo.geo_analysis.application.use_cases.dispatch import (
     DispatchQueryRunJobError,
     ReceiveExternalRunCallback,
 )
+from younilab_seo.geo_analysis.application.use_cases.analysis_extraction import (
+    RunKMindHubAnalysisExtraction,
+    RunResultAnalysisNotFound,
+)
 from younilab_seo.geo_analysis.application.use_cases.jobs import ManageQueryRunJobs
+from younilab_seo.geo_analysis.application.use_cases.kmindhub import (
+    KMindHubWorkspaceMappingAlreadyExists,
+    KMindHubWorkspaceMappingNotFound,
+    ManageKMindHubWorkspaceMapping,
+)
 from younilab_seo.geo_analysis.application.use_cases.planning import (
     GeoProjectReferenceError,
     ManageQueryPlanning,
@@ -18,10 +27,15 @@ __all__ = [
     "DispatchQueryRunJob",
     "DispatchQueryRunJobError",
     "GeoProjectReferenceError",
+    "KMindHubWorkspaceMappingAlreadyExists",
+    "KMindHubWorkspaceMappingNotFound",
     "ManageGeoSetup",
+    "ManageKMindHubWorkspaceMapping",
     "ManageQueryPlanning",
     "ManageQueryRunJobs",
     "ProcessQueryRunJobMessage",
     "QueryRunJobMessageRejected",
     "ReceiveExternalRunCallback",
+    "RunKMindHubAnalysisExtraction",
+    "RunResultAnalysisNotFound",
 ]

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 
 from younilab_seo.geo_analysis.application.contracts import (
     ExternalRunCallback,
@@ -14,21 +15,46 @@ from younilab_seo.geo_analysis.application.interfaces import (
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, QueryRunJobStatusError
 
 
+logger = logging.getLogger(__name__)
+
+
 class QueryRunJobMessageRejected(ValueError):
-    """Raised when a consumed message cannot be applied and should not be retried."""
+    """已消費 message 無法套用且不應重試時使用的錯誤。"""
 
 
 @dataclass(frozen=True)
 class ProcessQueryRunJobMessage:
-    """Runs a published query job through geo-tracking and records runner status."""
+    """將已發布的 query job 交給 geo-tracking 執行並保存 runner 狀態。"""
 
     repository: GeoQueryRunJobRepository
     tracking_client: TrackingRunClient
     clock: Clock
     supported_provider: str
+    analysis_extractor: object | None = None
 
     async def execute(self, message: QueryRunJobMessage) -> GeoQueryRunJob:
+        """處理單一 provider queue message，並以 job 所屬 tenant 作為防線。"""
+
         worker_run_id = f"worker-{message.job_id}"
+        job_tenant_id = await self.repository.get_job_tenant_id(message.job_id)
+        if job_tenant_id is None:
+            raise QueryRunJobMessageRejected(f"job {message.job_id} not found")
+        if job_tenant_id != message.tenant_id:
+            return await self._save_or_reject(
+                SaveTrackingRunResultCommand(
+                    message=message,
+                    status="failed",
+                    error_code="tenant_mismatch",
+                    error_message="queue message tenant does not match job project tenant",
+                    request_payload={
+                        "reason": "tenant_mismatch",
+                        "queueMessage": message.model_dump(
+                            mode="json",
+                            by_alias=True,
+                        ),
+                    },
+                ),
+            )
         if message.platform != self.supported_provider:
             return await self._save_or_reject(
                 SaveTrackingRunResultCommand(
@@ -82,6 +108,8 @@ class ProcessQueryRunJobMessage:
         response: TrackingRunResponse,
         request_payload: dict,
     ) -> GeoQueryRunJob:
+        """將 tracking response 轉成 job 終態與 raw result 保存命令。"""
+
         failed = next(
             (result for result in response.results if result.status != "completed"),
             None,
@@ -98,7 +126,7 @@ class ProcessQueryRunJobMessage:
             status = "succeeded"
             error_code = None
             error_message = None
-        return await self._save_or_reject(
+        job = await self._save_or_reject(
             SaveTrackingRunResultCommand(
                 message=message,
                 response=response,
@@ -108,11 +136,32 @@ class ProcessQueryRunJobMessage:
                 request_payload=request_payload,
             ),
         )
+        if status == "succeeded" and self.analysis_extractor is not None:
+            results = await self.repository.list_job_run_results(
+                message.tenant_id,
+                message.job_id,
+            )
+            for result in results:
+                try:
+                    await self.analysis_extractor.execute(message.tenant_id, result.id)
+                except Exception:
+                    logger.exception(
+                        "GEO analysis extraction failed after tracking success",
+                        extra={
+                            "tenant_id": str(message.tenant_id),
+                            "job_id": str(message.job_id),
+                            "run_result_id": str(result.id),
+                        },
+                    )
+                    continue
+        return job
 
     async def _save_or_reject(
         self,
         command: SaveTrackingRunResultCommand,
     ) -> GeoQueryRunJob:
+        """保存 worker 結果，若 job 狀態已不接受回寫則轉為 poison message rejection。"""
+
         try:
             return await self.repository.save_tracking_run_result(
                 command=command,

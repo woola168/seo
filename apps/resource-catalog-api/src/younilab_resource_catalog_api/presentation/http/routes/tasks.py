@@ -28,8 +28,9 @@ async def list_tasks(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
 ) -> PageResponse:
-    await request.app.state.authorizer.require(token, "tasks.read")
-    tasks = await request.app.state.catalog.list_tasks(
+    principal = await request.app.state.authorizer.require(token, "tasks.read")
+    tasks = await request.app.state.catalog.list_tasks_for(
+        principal,
         search=search,
         customer_id=customer_id,
         status=resource_status,
@@ -37,7 +38,12 @@ async def list_tasks(
     items = [
         TaskResponse.from_domain(
             task,
-            (await request.app.state.catalog.get_customer(task.customer_id)).name,
+            (
+                await request.app.state.catalog.get_customer(
+                    principal.tenant_id,
+                    task.customer_id,
+                )
+            ).name,
         )
         for task in tasks
     ]
@@ -50,12 +56,16 @@ async def create_task(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> TaskResponse:
-    await request.app.state.authorizer.require(token, "tasks.create")
-    task = await request.app.state.catalog.create_task(
+    principal = await request.app.state.authorizer.require(token, "tasks.create")
+    task = await request.app.state.catalog.create_task_for(
+        principal,
         customer_id=payload.customer_id,
         name=payload.name,
     )
-    customer = await request.app.state.catalog.get_customer(task.customer_id)
+    customer = await request.app.state.catalog.get_customer(
+        principal.tenant_id,
+        task.customer_id,
+    )
     return TaskResponse.from_domain(task, customer.name)
 
 
@@ -65,9 +75,12 @@ async def get_task(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> TaskResponse:
-    await request.app.state.authorizer.require(token, "tasks.read")
-    task = await request.app.state.catalog.get_task(task_id)
-    customer = await request.app.state.catalog.get_customer(task.customer_id)
+    principal = await request.app.state.authorizer.require(token, "tasks.read")
+    task = await request.app.state.catalog.get_task_for(principal, task_id)
+    customer = await request.app.state.catalog.get_customer(
+        principal.tenant_id,
+        task.customer_id,
+    )
     return TaskResponse.from_domain(task, customer.name)
 
 
@@ -78,13 +91,17 @@ async def update_task(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> TaskResponse:
-    await request.app.state.authorizer.require(token, "tasks.update")
-    task = await request.app.state.catalog.update_task(
+    principal = await request.app.state.authorizer.require(token, "tasks.update")
+    task = await request.app.state.catalog.update_task_for(
+        principal,
         task_id,
         customer_id=payload.customer_id,
         name=payload.name,
     )
-    customer = await request.app.state.catalog.get_customer(task.customer_id)
+    customer = await request.app.state.catalog.get_customer(
+        principal.tenant_id,
+        task.customer_id,
+    )
     return TaskResponse.from_domain(task, customer.name)
 
 
@@ -94,5 +111,5 @@ async def delete_task(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> None:
-    await request.app.state.authorizer.require(token, "tasks.delete")
-    await request.app.state.catalog.archive_task(task_id)
+    principal = await request.app.state.authorizer.require(token, "tasks.delete")
+    await request.app.state.catalog.archive_task_for(principal, task_id)

@@ -15,10 +15,12 @@ def test_memory_repository_filters_archived_customers() -> None:
     async def scenario() -> None:
         repository = MemoryResourceCatalogRepository()
         now = datetime.now(UTC)
-        customer = Customer(uuid4(), "Acme", ResourceStatus.ARCHIVED, now, now)
+        tenant_id = uuid4()
+        customer = Customer(uuid4(), tenant_id, "Acme", ResourceStatus.ARCHIVED, now, now)
         await repository.save_customer(customer)
 
         assert await repository.list_customers(
+            tenant_id=tenant_id,
             search="",
             status=ResourceStatus.ACTIVE,
         ) == []

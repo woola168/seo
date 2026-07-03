@@ -14,6 +14,10 @@ uv run uvicorn younilab_resource_catalog_api.main:app --port 8001 --reload
 - JSON 欄位使用 `camelCase`。
 - 所有 `/api` endpoint 需帶 `Authorization: Bearer <accessToken>`。
 - API 會將 Bearer token 交給 Access Control API 判斷 `customers.*` 或 `tasks.*` permission。
+- API 會使用 Access Control `/api/me/capabilities` 回傳的 `tenantId` 作為資料範圍；前端不可在 request 指定 tenant。
+- 若 `hasGlobalResourceAccess` 為 `false`，API 會再依 `customerIds` / `taskIds` 收斂可見資料。
+- `customer.name` 只在同一個 tenant 內唯一；不同 tenant 可使用相同 customer name。
+- Task 建立或更新時，指定的 `customerId` 必須屬於同一個 tenant。
 - Access Control 無法使用時採 fail closed。
 - 刪除客戶或任務會將狀態改為 `archived`，不會實體刪除資料。
 - 錯誤回應使用 `application/problem+json`。
@@ -79,6 +83,7 @@ Problem Details 格式：
 // CustomerResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
   "name": "Acme",
   "status": "active",
   "createdAt": "2026-06-22T10:00:00Z",
@@ -92,6 +97,8 @@ Problem Details 格式：
 GET /api/customers?search=acme&status=active&page=1&pageSize=20
 Authorization: Bearer <accessToken>
 ```
+
+非 global resource access 使用者只會看見 `customerIds` 內的 customers；未授權 customer 的 detail、update、delete 會回 `404`。
 
 ## Tasks
 
@@ -110,6 +117,13 @@ GET /api/tasks?customerId=<customerId>&search=audit&status=active&page=1&pageSiz
 Authorization: Bearer <accessToken>
 ```
 
+非 global resource access 使用者只會看見：
+
+- `taskIds` 內明確授權的 tasks。
+- 或 `customerId` 屬於 `customerIds` 的 tasks。
+
+建立 task 時，目標 `customerId` 必須在使用者的 `customerIds` 內；更新 task 若要移到另一個 customer，新的 `customerId` 也必須已授權。未授權 resource 會回 `404`。
+
 ```json
 // SaveTaskRequest
 {
@@ -120,6 +134,7 @@ Authorization: Bearer <accessToken>
 // TaskResponse
 {
   "id": "uuid",
+  "tenantId": "uuid",
   "customerId": "uuid",
   "customerName": "Acme",
   "name": "SEO audit",

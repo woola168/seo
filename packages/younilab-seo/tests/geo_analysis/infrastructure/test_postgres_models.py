@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -16,6 +16,9 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchCommand,
     GeoQueryRunJobRepository,
 )
+
+
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 from younilab_seo.geo_analysis.infrastructure import (
     GeoMessageDispatchLogRow,
     GeoProjectRow,
@@ -28,6 +31,7 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoRunResultReferenceRow,
     GeoRunResultRow,
     PostgresGeoAnalysisRepository,
+    TenantKMindHubWorkspaceMappingRow,
     build_postgres_session_factory,
 )
 
@@ -60,9 +64,11 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
         GeoRunRequestRow.__tablename__,
         GeoRunResultRow.__tablename__,
         GeoRunResultReferenceRow.__tablename__,
+        TenantKMindHubWorkspaceMappingRow.__tablename__,
     }
 
     assert "geo_run_request" in defined_tables
+    assert "tenant_kmindhub_workspace_mapping" in defined_tables
     assert "geo_query_research_run" in defined_tables
     assert "geo_query_generation_run" in defined_tables
     assert "geo_query_draft" in defined_tables
@@ -92,6 +98,8 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     patch = patch_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
+    assert "tenant_id uuid NOT NULL" in schema
+    assert "ix_geo_project_tenant_id" in schema
     assert "customer_id uuid," in schema
     assert "customer_id uuid NOT NULL" not in schema
     assert GeoProjectRow.__table__.columns["customer_id"].nullable is True
@@ -107,6 +115,10 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
+    assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
+    assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["tenant_id"].foreign_keys
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["workspace_id"].foreign_keys
     assert "ALTER COLUMN customer_id DROP NOT NULL" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in patch
@@ -139,9 +151,10 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
 
     try:
         project = await repository.create_project(
-            GeoProjectCommand(name=f"Query Planning {uuid4()}")
+            GeoProjectCommand(tenant_id=TENANT_ID, name=f"Query Planning {uuid4()}")
         )
         research_run = await repository.create_query_research_run(
+            TENANT_ID,
             project.id,
             QueryResearchCommand(
                 provider="gemini",
@@ -162,6 +175,7 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
             now,
         )
         generation_run = await repository.create_query_generation_run(
+            TENANT_ID,
             project.id,
             QueryGenerationCommand(
                 seo_task_id=uuid4(),
@@ -201,6 +215,7 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
 
         draft_id = generation_run.drafts[0].id
         accepted_query = await repository.accept_query_draft(
+            TENANT_ID,
             draft_id,
             AcceptQueryDraftCommand(create_topic_if_missing=True),
         )
@@ -208,6 +223,7 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
         assert accepted_query is not None
         with pytest.raises(ValueError, match="query draft already accepted"):
             await repository.update_query_draft_selection(
+                TENANT_ID,
                 draft_id,
                 QueryDraftSelectionCommand(selection_status="rejected"),
             )
