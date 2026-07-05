@@ -524,6 +524,8 @@ class GeoRunResultAnalysisRow(SQLModel, table=True):
     task_key: str = Field(sa_column=Column(String(100), nullable=False))
     schema_version: int = Field(sa_column=Column(Integer, nullable=False))
     status: str = Field(sa_column=Column(String(32), nullable=False))
+    analyzer: str | None = Field(default=None, sa_column=Column(String(64)))
+    analyzer_version: str | None = Field(default=None, sa_column=Column(String(100)))
     summary: str | None = Field(default=None, sa_column=Column(Text))
     overall_sentiment: str | None = Field(default=None, sa_column=Column(String(32)))
     theme: str | None = Field(default=None, sa_column=Column(String(200)))
@@ -547,9 +549,13 @@ class GeoRunResultEntityMentionRow(SQLModel, table=True):
     entity_id: UUID | None = Field(default=None)
     entity_name: str = Field(sa_column=Column(String(200), nullable=False))
     entity_type: str = Field(sa_column=Column(String(32), nullable=False))
+    entity_role: str | None = Field(default=None, sa_column=Column(String(32)))
+    mentioned: bool | None = Field(default=None, sa_column=Column(Boolean))
+    first_mention_order: int | None = Field(default=None, sa_column=Column(Integer))
     mention_count: int = Field(sa_column=Column(Integer, nullable=False))
     sentiment: str = Field(sa_column=Column(String(32), nullable=False))
     evidence_text: str = Field(default="", sa_column=Column(Text, nullable=False))
+    confidence: float | None = Field(default=None, sa_column=Column(Numeric(5, 4)))
     kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
@@ -563,11 +569,30 @@ class GeoRunResultStatementRow(SQLModel, table=True):
     run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
     analysis_id: UUID = Field(foreign_key="geo_run_result_analysis.id", nullable=False)
     statement_text: str = Field(sa_column=Column(Text, nullable=False))
+    entity_id: UUID | None = Field(default=None)
+    entity_role: str | None = Field(default=None, sa_column=Column(String(32)))
+    entity_name: str | None = Field(default=None, sa_column=Column(String(200)))
     theme: str = Field(default="", sa_column=Column(String(200), nullable=False))
     sentiment: str = Field(sa_column=Column(String(32), nullable=False))
     subject_entity_name: str | None = Field(default=None, sa_column=Column(String(200)))
     evidence_text: str = Field(default="", sa_column=Column(Text, nullable=False))
+    confidence: float | None = Field(default=None, sa_column=Column(Numeric(5, 4)))
     kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoResponseSemanticFactRow(SQLModel, table=True):
+    """從 provider 原始回應中抽取出的語意事實。"""
+
+    __tablename__ = "geo_response_semantic_fact"
+
+    id: UUID = Field(primary_key=True)
+    analysis_id: UUID = Field(foreign_key="geo_run_result_analysis.id", nullable=False)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    fact_type: str = Field(sa_column=Column(String(32), nullable=False))
+    value: str = Field(sa_column=Column(Text, nullable=False))
+    evidence_text: str | None = Field(default=None, sa_column=Column(Text))
+    confidence: float | None = Field(default=None, sa_column=Column(Numeric(5, 4)))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 

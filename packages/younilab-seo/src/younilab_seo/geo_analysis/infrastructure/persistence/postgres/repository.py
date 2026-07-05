@@ -26,9 +26,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoEntityMentionFact,
+    GeoResponseSemanticFact,
     GeoRunResultAnalysisRecord,
+    GeoRunResultAnalysis,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
+    GeoSentimentFact,
     GeoTopicCommand,
     GeoTopicRecord,
     KMindHubExtractionTaskMappingCommand,
@@ -44,6 +48,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
@@ -66,6 +71,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
     GeoRunRequestRow,
+    GeoResponseSemanticFactRow,
     GeoRunResultAnalysisRow,
     GeoRunResultCitationClassificationRow,
     GeoRunResultEntityMentionRow,
@@ -1177,6 +1183,95 @@ class PostgresGeoAnalysisRepository:
             row = await self._get_run_result_analysis_row(session, tenant_id, result_id)
             return _run_result_analysis_record(row) if row is not None else None
 
+    async def get_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(session, tenant_id, result_id)
+            if result is None:
+                return None
+            row = await session.scalar(
+                select(GeoRunResultAnalysisRow)
+                .where(
+                    GeoRunResultAnalysisRow.run_result_id == result_id,
+                    GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
+                )
+                .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+            )
+            if row is None:
+                return None
+            return await _semantic_analysis_record(session, row)
+
+    async def save_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveSemanticRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysis | None:
+        analysis = command.analysis
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(
+                session,
+                tenant_id,
+                analysis.run_result_id,
+            )
+            if result is None:
+                return None
+            row = await session.scalar(
+                select(GeoRunResultAnalysisRow).where(
+                    GeoRunResultAnalysisRow.run_result_id == analysis.run_result_id,
+                    GeoRunResultAnalysisRow.task_key == command.task_key,
+                    GeoRunResultAnalysisRow.schema_version == command.schema_version,
+                )
+            )
+            if row is None:
+                row = GeoRunResultAnalysisRow(
+                    id=uuid4(),
+                    run_result_id=analysis.run_result_id,
+                    task_key=command.task_key,
+                    schema_version=command.schema_version,
+                    status=analysis.status,
+                    created_at=occurred_at,
+                    updated_at=occurred_at,
+                )
+                session.add(row)
+                await session.flush()
+            else:
+                await _delete_semantic_analysis_children(session, row.id)
+                row.updated_at = occurred_at
+            _apply_semantic_analysis(row, analysis, occurred_at)
+            for mention in analysis.entity_mentions:
+                session.add(
+                    _semantic_entity_mention_row(
+                        row.id,
+                        analysis.run_result_id,
+                        mention,
+                        occurred_at,
+                    )
+                )
+            for sentiment in analysis.sentiments:
+                session.add(
+                    _semantic_statement_row(
+                        row.id,
+                        analysis.run_result_id,
+                        sentiment,
+                        occurred_at,
+                    )
+                )
+            for fact in analysis.semantic_facts:
+                session.add(
+                    _response_semantic_fact_row(
+                        row.id,
+                        analysis.run_result_id,
+                        fact,
+                        occurred_at,
+                    )
+                )
+            await session.flush()
+            return await _semantic_analysis_record(session, row)
+
     async def save_run_result_analysis(
         self,
         tenant_id: UUID,
@@ -1579,6 +1674,7 @@ class PostgresGeoAnalysisRepository:
             .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
             .where(
                 GeoRunResultAnalysisRow.run_result_id == result_id,
+                GeoRunResultAnalysisRow.task_key == "geo_answer_analysis",
                 GeoProjectRow.tenant_id == tenant_id,
             )
         )
@@ -2058,7 +2154,10 @@ async def _run_result_record(
     ).all()
     analysis = await session.scalar(
         select(GeoRunResultAnalysisRow)
-        .where(GeoRunResultAnalysisRow.run_result_id == row.id)
+        .where(
+            GeoRunResultAnalysisRow.run_result_id == row.id,
+            GeoRunResultAnalysisRow.task_key == "geo_answer_analysis",
+        )
         .order_by(GeoRunResultAnalysisRow.updated_at.desc())
     )
     return GeoRunResultRecord(
@@ -2116,6 +2215,81 @@ def _run_result_analysis_record(
     )
 
 
+async def _semantic_analysis_record(
+    session: AsyncSession,
+    row: GeoRunResultAnalysisRow,
+) -> GeoRunResultAnalysis:
+    mention_rows = (
+        await session.scalars(
+            select(GeoRunResultEntityMentionRow)
+            .where(GeoRunResultEntityMentionRow.analysis_id == row.id)
+            .order_by(GeoRunResultEntityMentionRow.created_at)
+        )
+    ).all()
+    statement_rows = (
+        await session.scalars(
+            select(GeoRunResultStatementRow)
+            .where(GeoRunResultStatementRow.analysis_id == row.id)
+            .order_by(GeoRunResultStatementRow.created_at)
+        )
+    ).all()
+    semantic_rows = (
+        await session.scalars(
+            select(GeoResponseSemanticFactRow)
+            .where(GeoResponseSemanticFactRow.analysis_id == row.id)
+            .order_by(GeoResponseSemanticFactRow.created_at)
+        )
+    ).all()
+    return GeoRunResultAnalysis(
+        run_result_id=row.run_result_id,
+        analyzer=row.analyzer or row.task_key,
+        analyzer_version=row.analyzer_version,
+        status=row.status,
+        entity_mentions=[
+            GeoEntityMentionFact(
+                entity_id=mention.entity_id,
+                entity_role=mention.entity_role or mention.entity_type,
+                entity_name=mention.entity_name,
+                mentioned=mention.mentioned if mention.mentioned is not None else mention.mention_count > 0,
+                first_mention_order=mention.first_mention_order,
+                evidence_text=_empty_to_none(mention.evidence_text),
+                confidence=mention.confidence,
+            )
+            for mention in mention_rows
+            if mention.entity_id is not None
+        ],
+        sentiments=[
+            GeoSentimentFact(
+                entity_id=statement.entity_id,
+                entity_role=statement.entity_role,
+                entity_name=statement.entity_name or statement.subject_entity_name or "",
+                sentiment=statement.sentiment,
+                theme=statement.theme,
+                statement=statement.statement_text,
+                evidence_text=_empty_to_none(statement.evidence_text),
+                confidence=statement.confidence,
+            )
+            for statement in statement_rows
+            if statement.entity_id is not None and statement.entity_role is not None
+        ],
+        semantic_facts=[
+            GeoResponseSemanticFact(
+                fact_type=fact.fact_type,
+                value=fact.value,
+                evidence_text=fact.evidence_text,
+                confidence=fact.confidence,
+            )
+            for fact in semantic_rows
+        ],
+        error_code=row.error_code,
+        error_message=row.error_message,
+    )
+
+
+def _empty_to_none(value: str | None) -> str | None:
+    return value or None
+
+
 def _apply_run_result_analysis(
     row: GeoRunResultAnalysisRow,
     command: SaveRunResultAnalysisCommand,
@@ -2131,6 +2305,20 @@ def _apply_run_result_analysis(
     row.error_message = command.error_message
     row.updated_at = occurred_at
     row.completed_at = occurred_at if command.status in {"completed", "failed"} else None
+
+
+def _apply_semantic_analysis(
+    row: GeoRunResultAnalysisRow,
+    analysis: GeoRunResultAnalysis,
+    occurred_at: datetime,
+) -> None:
+    row.status = analysis.status
+    row.analyzer = analysis.analyzer
+    row.analyzer_version = analysis.analyzer_version
+    row.error_code = analysis.error_code
+    row.error_message = analysis.error_message
+    row.updated_at = occurred_at
+    row.completed_at = occurred_at if analysis.status in {"completed", "failed"} else None
 
 
 async def _delete_analysis_children(
@@ -2150,6 +2338,32 @@ async def _delete_analysis_children(
     await session.execute(
         delete(GeoRunResultCitationClassificationRow).where(
             GeoRunResultCitationClassificationRow.analysis_id == analysis_id
+        )
+    )
+    await session.execute(
+        delete(GeoResponseSemanticFactRow).where(
+            GeoResponseSemanticFactRow.analysis_id == analysis_id
+        )
+    )
+
+
+async def _delete_semantic_analysis_children(
+    session: AsyncSession,
+    analysis_id: UUID,
+) -> None:
+    await session.execute(
+        delete(GeoRunResultEntityMentionRow).where(
+            GeoRunResultEntityMentionRow.analysis_id == analysis_id
+        )
+    )
+    await session.execute(
+        delete(GeoRunResultStatementRow).where(
+            GeoRunResultStatementRow.analysis_id == analysis_id
+        )
+    )
+    await session.execute(
+        delete(GeoResponseSemanticFactRow).where(
+            GeoResponseSemanticFactRow.analysis_id == analysis_id
         )
     )
 
@@ -2175,6 +2389,30 @@ def _entity_mention_row(
     )
 
 
+def _semantic_entity_mention_row(
+    analysis_id: UUID,
+    run_result_id: UUID,
+    command: GeoEntityMentionFact,
+    occurred_at: datetime,
+) -> GeoRunResultEntityMentionRow:
+    return GeoRunResultEntityMentionRow(
+        id=uuid4(),
+        run_result_id=run_result_id,
+        analysis_id=analysis_id,
+        entity_id=command.entity_id,
+        entity_name=command.entity_name,
+        entity_type=command.entity_role,
+        entity_role=command.entity_role,
+        mentioned=command.mentioned,
+        first_mention_order=command.first_mention_order,
+        mention_count=1 if command.mentioned else 0,
+        sentiment="unknown",
+        evidence_text=command.evidence_text or "",
+        confidence=command.confidence,
+        created_at=occurred_at,
+    )
+
+
 def _statement_row(
     analysis_id: UUID,
     run_result_id: UUID,
@@ -2191,6 +2429,47 @@ def _statement_row(
         subject_entity_name=command.subject_entity_name,
         evidence_text=command.evidence_text,
         kmindhub_item_id=command.kmindhub_item_id,
+        created_at=occurred_at,
+    )
+
+
+def _semantic_statement_row(
+    analysis_id: UUID,
+    run_result_id: UUID,
+    command: GeoSentimentFact,
+    occurred_at: datetime,
+) -> GeoRunResultStatementRow:
+    return GeoRunResultStatementRow(
+        id=uuid4(),
+        run_result_id=run_result_id,
+        analysis_id=analysis_id,
+        statement_text=command.statement,
+        entity_id=command.entity_id,
+        entity_role=command.entity_role,
+        entity_name=command.entity_name,
+        theme=command.theme,
+        sentiment=command.sentiment,
+        subject_entity_name=command.entity_name,
+        evidence_text=command.evidence_text or "",
+        confidence=command.confidence,
+        created_at=occurred_at,
+    )
+
+
+def _response_semantic_fact_row(
+    analysis_id: UUID,
+    run_result_id: UUID,
+    command: GeoResponseSemanticFact,
+    occurred_at: datetime,
+) -> GeoResponseSemanticFactRow:
+    return GeoResponseSemanticFactRow(
+        id=uuid4(),
+        analysis_id=analysis_id,
+        run_result_id=run_result_id,
+        fact_type=command.fact_type,
+        value=command.value,
+        evidence_text=command.evidence_text,
+        confidence=command.confidence,
         created_at=occurred_at,
     )
 

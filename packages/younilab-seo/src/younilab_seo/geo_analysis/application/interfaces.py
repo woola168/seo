@@ -43,6 +43,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchCommand,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
@@ -313,6 +314,21 @@ class GeoQueryRunJobRepository(Protocol):
         tenant_id: UUID,
         result_id: UUID,
     ) -> GeoRunResultAnalysisRecord | None:
+        raise NotImplementedError
+
+    async def get_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        raise NotImplementedError
+
+    async def save_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveSemanticRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysis | None:
         raise NotImplementedError
 
 

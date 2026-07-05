@@ -245,6 +245,14 @@ class GeoRunResultAnalysis(ContractModel):
     error_message: str | None = None
 
 
+class SaveSemanticRunResultAnalysisCommand(ContractModel):
+    """保存 semantic analyzer facts 時使用的 persistence input。"""
+
+    analysis: GeoRunResultAnalysis
+    task_key: str = "geo_semantic_analysis"
+    schema_version: int = 1
+
+
 class KMindHubExtractionTaskField(ContractModel):
     """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
 

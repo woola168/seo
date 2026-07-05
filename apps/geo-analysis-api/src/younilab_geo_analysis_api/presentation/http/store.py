@@ -23,6 +23,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoRunResultAnalysisRecord,
+    GeoRunResultAnalysis,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
@@ -40,6 +41,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
@@ -61,6 +63,9 @@ class GeoApiStore:
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
     run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
     run_result_analyses: dict[UUID, GeoRunResultAnalysisRecord] = field(
+        default_factory=dict
+    )
+    semantic_run_result_analyses: dict[UUID, GeoRunResultAnalysis] = field(
         default_factory=dict
     )
     kmindhub_extraction_task_mappings: dict[
@@ -907,6 +912,30 @@ class GeoApiStore:
         if result is None:
             return None
         return self.run_result_analyses.get(result_id)
+
+    async def get_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.semantic_run_result_analyses.get(result_id)
+
+    async def save_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveSemanticRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysis | None:
+        result = await self.get_run_result(tenant_id, command.analysis.run_result_id)
+        if result is None:
+            return None
+        self.semantic_run_result_analyses[command.analysis.run_result_id] = (
+            command.analysis
+        )
+        return command.analysis
 
     async def save_run_result_analysis(
         self,

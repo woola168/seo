@@ -1,4 +1,5 @@
-﻿from datetime import datetime, timezone
+﻿import asyncio
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
@@ -12,6 +13,7 @@ from younilab_seo.geo_analysis.application import (
     KMindHubExtractionFieldValue,
     KMindHubExtractionPreviewItem,
     KMindHubExtractionPreviewResult,
+    GeoRunResultAnalysis,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     PublishResult,
@@ -19,6 +21,7 @@ from younilab_seo.geo_analysis.application import (
     ResourceCatalogVerificationDenied,
     ResourceCatalogVerificationUnavailable,
     ResourceTaskReference,
+    SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
 
@@ -681,6 +684,61 @@ def test_run_result_analysis_extraction_can_be_retried() -> None:
     assert response.json()["analysisStatus"] == "completed"
     assert kmindhub_client.preview_texts == ["Raw answer"]
     assert kmindhub_client.committed_items
+
+
+def test_store_saves_and_loads_semantic_run_result_analysis() -> None:
+    async def run() -> None:
+        store = GeoApiStore()
+        client, store, job_id = _client_with_job(repository=store)
+        result_id = _add_run_result(store, job_id)
+        entity_id = uuid4()
+        analysis = GeoRunResultAnalysis(
+            runResultId=result_id,
+            analyzer="fake",
+            analyzerVersion="v1",
+            status="completed",
+            entityMentions=[
+                {
+                    "entityId": str(entity_id),
+                    "entityRole": "own_brand",
+                    "entityName": "Acme",
+                    "mentioned": True,
+                    "firstMentionOrder": 1,
+                }
+            ],
+            sentiments=[
+                {
+                    "entityId": str(entity_id),
+                    "entityRole": "own_brand",
+                    "entityName": "Acme",
+                    "sentiment": "positive",
+                    "theme": "供應商比較",
+                    "statement": "Acme is recommended.",
+                }
+            ],
+            semanticFacts=[
+                {
+                    "factType": "topic",
+                    "value": "供應商比較",
+                }
+            ],
+        )
+
+        saved = await store.save_semantic_run_result_analysis(
+            TENANT_ID,
+            SaveSemanticRunResultAnalysisCommand(analysis=analysis),
+            datetime(2026, 7, 5, tzinfo=timezone.utc),
+        )
+        loaded = await store.get_semantic_run_result_analysis(TENANT_ID, result_id)
+
+        client.close()
+        assert saved == analysis
+        assert loaded is not None
+        assert loaded.entity_mentions[0].first_mention_order == 1
+        assert loaded.sentiments[0].sentiment == "positive"
+        assert loaded.semantic_facts[0].fact_type == "topic"
+
+    asyncio.run(run())
 
 
 def test_app_lifespan_closes_injected_publisher() -> None:
