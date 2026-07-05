@@ -10,6 +10,10 @@ def _camel_case(value: str) -> str:
     return head + "".join(part.capitalize() for part in tail)
 
 
+def _is_timezone_aware(value: datetime) -> bool:
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
+
+
 class ContractModel(BaseModel):
     """GEO application 邊界使用的 camelCase contract 基底。"""
 
@@ -292,6 +296,125 @@ class SaveRunResultCitationNormalizationCommand(ContractModel):
     """保存 citation normalization lifecycle 與 facts 時使用的 persistence input。"""
 
     normalization: GeoRunResultCitationNormalization
+
+
+class GeoMetricRunResultInput(ContractModel):
+    """報表公式計算使用的 completed run result metadata。"""
+
+    run_result_id: UUID
+    query_id: UUID | None = None
+    topic_id: UUID | None = None
+    provider: str | None = None
+    region: str | None = None
+    language: str | None = None
+    completed_at: datetime
+
+    @model_validator(mode="after")
+    def validate_completed_at_timezone(self):
+        if not _is_timezone_aware(self.completed_at):
+            raise ValueError("completedAt must be timezone-aware")
+        return self
+
+
+class GeoMetricFormulaQuery(ContractModel):
+    """限制報表公式計算期間與可選維度的 in-memory query。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime | None = None
+    comparison_end: datetime | None = None
+    query_id: UUID | None = None
+    topic_id: UUID | None = None
+    provider: str | None = None
+    region: str | None = None
+    language: str | None = None
+
+    @model_validator(mode="after")
+    def validate_periods(self):
+        period_values = [self.period_start, self.period_end]
+        if self.comparison_start is not None:
+            period_values.append(self.comparison_start)
+        if self.comparison_end is not None:
+            period_values.append(self.comparison_end)
+        if any(not _is_timezone_aware(value) for value in period_values):
+            raise ValueError("metric formula periods must be timezone-aware")
+        if self.period_end <= self.period_start:
+            raise ValueError("periodEnd must be later than periodStart")
+        if (self.comparison_start is None) != (self.comparison_end is None):
+            raise ValueError(
+                "comparisonStart and comparisonEnd must be provided together"
+            )
+        if (
+            self.comparison_start is not None
+            and self.comparison_end is not None
+            and self.comparison_end <= self.comparison_start
+        ):
+            raise ValueError("comparisonEnd must be later than comparisonStart")
+        if self.comparison_end is not None and self.comparison_end > self.period_start:
+            raise ValueError("comparisonEnd must not be later than periodStart")
+        return self
+
+
+class GeoMetricEntityMentionInput(GeoEntityMentionFact):
+    """報表公式計算使用、已帶入 run result identity 的 entity mention fact。"""
+
+    run_result_id: UUID
+
+
+class GeoMetricSentimentInput(GeoSentimentFact):
+    """報表公式計算使用、已帶入 run result identity 的 sentiment fact。"""
+
+    run_result_id: UUID
+
+
+class GeoMetricFormulaSource(ContractModel):
+    """已正規化 facts 與 run result metadata 的純公式輸入。"""
+
+    run_results: list[GeoMetricRunResultInput] = Field(default_factory=list)
+    entity_mentions: list[GeoMetricEntityMentionInput] = Field(default_factory=list)
+    sentiments: list[GeoMetricSentimentInput] = Field(default_factory=list)
+    citations: list[GeoRunResultCitationFact] = Field(default_factory=list)
+
+
+class GeoMetricValue(ContractModel):
+    """單一報表 metric 的可呈現計算結果。"""
+
+    metric_name: Literal[
+        "visibility",
+        "mentions",
+        "sov",
+        "average_position",
+        "citation_count",
+        "used_percent",
+        "share_percent",
+        "sentiment_count",
+    ]
+    scope_type: Literal[
+        "project",
+        "entity",
+        "citation_url",
+        "citation_domain",
+        "sentiment",
+    ]
+    scope_value: str | None = None
+    scope_label: str | None = None
+    value: float
+    unit: Literal["percent", "count", "position"]
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: Literal["pp", "count", "position"] | None = None
+
+
+class GeoMetricFormulaResult(ContractModel):
+    """報表公式核心針對目前期間與前期比較產生的 metrics。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    metrics: list[GeoMetricValue] = Field(default_factory=list)
 
 
 class KMindHubExtractionTaskField(ContractModel):
