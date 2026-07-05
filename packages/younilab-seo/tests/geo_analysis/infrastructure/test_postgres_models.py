@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -11,6 +11,7 @@ from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
     GeoEntityMentionFact,
     GeoAnalysisRepository,
+    GeoMetricFormulaQuery,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
@@ -529,6 +530,20 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         assert loaded.entity_mentions[0].entity_name == "Acme"
         assert loaded.sentiments[0].sentiment == "positive"
         assert loaded.semantic_facts[0].value == "ERP"
+        source = await repository.get_metric_formula_source(
+            TENANT_ID,
+            project_id,
+            GeoMetricFormulaQuery(
+                period_start=now - timedelta(days=1),
+                period_end=now + timedelta(days=1),
+                provider="gemini",
+                region="TW",
+                language="zh-TW",
+            ),
+            "url_domain:v1",
+        )
+        assert [mention.entity_name for mention in source.entity_mentions] == ["Acme"]
+        assert [sentiment.sentiment for sentiment in source.sentiments] == ["positive"]
         assert await repository.get_semantic_run_result_analysis(uuid4(), result_id) is None
 
         await repository.save_semantic_run_result_analysis(
@@ -696,6 +711,20 @@ async def test_postgres_repository_saves_and_loads_citation_normalization_with_r
         )
         assert loaded is not None
         assert [citation.domain for citation in loaded.citations] == ["acme.com"]
+        source = await repository.get_metric_formula_source(
+            TENANT_ID,
+            project_id,
+            GeoMetricFormulaQuery(
+                period_start=now - timedelta(days=1),
+                period_end=now + timedelta(days=1),
+                provider="gemini",
+                region="TW",
+                language="zh-TW",
+            ),
+            "url_domain:v1",
+        )
+        assert [item.run_result_id for item in source.run_results] == [result_id]
+        assert [citation.domain for citation in source.citations] == ["acme.com"]
         assert (
             await repository.get_run_result_citation_normalization(
                 uuid4(),

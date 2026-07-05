@@ -17,6 +17,10 @@ from younilab_seo.geo_analysis.application.use_cases.kmindhub import (
     KMindHubWorkspaceMappingNotFound,
     ManageKMindHubWorkspaceMapping,
 )
+from younilab_seo.geo_analysis.application.use_cases.metric_source import (
+    BuildGeoMetricFormulaSource,
+    GeoMetricFormulaSourceProjectNotFound,
+)
 from younilab_seo.geo_analysis.application.use_cases.metrics_formula import (
     CalculateGeoMetricFormulas,
 )
@@ -39,7 +43,9 @@ __all__ = [
     "DispatchQueryRunJobError",
     "GeoProjectReferenceError",
     "AnalyzeRunResult",
+    "BuildGeoMetricFormulaSource",
     "CalculateGeoMetricFormulas",
+    "GeoMetricFormulaSourceProjectNotFound",
     "NormalizeRunResultCitations",
     "KMindHubWorkspaceMappingAlreadyExists",
     "KMindHubWorkspaceMappingNotFound",

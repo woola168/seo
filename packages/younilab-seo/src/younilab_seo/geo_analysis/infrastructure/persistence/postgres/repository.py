@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from younilab_seo.geo_analysis.application.contracts import (
@@ -17,6 +17,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
+    GeoMetricEntityMentionInput,
+    GeoMetricFormulaQuery,
+    GeoMetricFormulaSource,
+    GeoMetricRunResultInput,
+    GeoMetricSentimentInput,
     GeoProjectCommand,
     GeoProjectRecord,
     GeoQueryCommand,
@@ -119,6 +124,54 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await self._get_project_row(session, tenant_id, project_id)
             return _project_record(row) if row is not None else None
+
+    async def get_metric_formula_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoMetricFormulaQuery,
+        normalizer_version: str,
+    ) -> GeoMetricFormulaSource:
+        async with self._session_scope() as session:
+            run_rows = await _metric_run_result_rows(
+                session,
+                tenant_id,
+                project_id,
+                query,
+            )
+            run_result_ids = {row.id for row, _topic_id in run_rows}
+            if not run_result_ids:
+                return GeoMetricFormulaSource()
+
+            analysis_ids = await _metric_semantic_analysis_ids(
+                session,
+                run_result_ids,
+            )
+            normalization_ids = await _metric_citation_normalization_ids(
+                session,
+                run_result_ids,
+                normalizer_version,
+            )
+            return GeoMetricFormulaSource(
+                run_results=[
+                    GeoMetricRunResultInput(
+                        run_result_id=row.id,
+                        query_id=row.query_id,
+                        topic_id=topic_id,
+                        provider=row.provider,
+                        region=row.region,
+                        language=row.language,
+                        completed_at=row.run_at,
+                    )
+                    for row, topic_id in run_rows
+                ],
+                entity_mentions=await _metric_entity_mentions(
+                    session,
+                    analysis_ids,
+                ),
+                sentiments=await _metric_sentiments(session, analysis_ids),
+                citations=await _metric_citations(session, normalization_ids),
+            )
 
     async def get_kmindhub_workspace_mapping(
         self,
@@ -2267,6 +2320,209 @@ async def _run_result_record(
         analysis_error_code=analysis.error_code if analysis is not None else None,
         analysis_error_message=analysis.error_message if analysis is not None else None,
     )
+
+
+async def _metric_run_result_rows(
+    session: AsyncSession,
+    tenant_id: UUID,
+    project_id: UUID,
+    query: GeoMetricFormulaQuery,
+) -> list[tuple[GeoRunResultRow, UUID | None]]:
+    comparison_start, comparison_end = _metric_comparison_period(query)
+    period_filters = [
+        and_(
+            GeoRunResultRow.run_at >= query.period_start,
+            GeoRunResultRow.run_at < query.period_end,
+        ),
+        and_(
+            GeoRunResultRow.run_at >= comparison_start,
+            GeoRunResultRow.run_at < comparison_end,
+        ),
+    ]
+    statement = (
+        select(GeoRunResultRow, GeoQueryRow.topic_id)
+        .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+        .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+        .join(GeoQueryRow, GeoRunResultRow.query_id == GeoQueryRow.id)
+        .where(
+            GeoProjectRow.tenant_id == tenant_id,
+            GeoQueryRunJobRow.project_id == project_id,
+            GeoRunResultRow.status == "completed",
+            or_(*period_filters),
+        )
+        .order_by(GeoRunResultRow.run_at)
+    )
+    if query.query_id is not None:
+        statement = statement.where(GeoRunResultRow.query_id == query.query_id)
+    if query.topic_id is not None:
+        statement = statement.where(GeoQueryRow.topic_id == query.topic_id)
+    if query.provider is not None:
+        statement = statement.where(GeoRunResultRow.provider == query.provider)
+    if query.region is not None:
+        statement = statement.where(GeoRunResultRow.region == query.region)
+    if query.language is not None:
+        statement = statement.where(GeoRunResultRow.language == query.language)
+
+    rows = (await session.execute(statement)).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+def _metric_comparison_period(
+    query: GeoMetricFormulaQuery,
+) -> tuple[datetime, datetime]:
+    if query.comparison_start is not None and query.comparison_end is not None:
+        return query.comparison_start, query.comparison_end
+    duration = query.period_end - query.period_start
+    return query.period_start - duration, query.period_start
+
+
+async def _metric_semantic_analysis_ids(
+    session: AsyncSession,
+    run_result_ids: set[UUID],
+) -> list[UUID]:
+    rows = (
+        await session.scalars(
+            select(GeoRunResultAnalysisRow)
+            .where(
+                GeoRunResultAnalysisRow.run_result_id.in_(run_result_ids),
+                GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
+                GeoRunResultAnalysisRow.status == "completed",
+            )
+            .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+        )
+    ).all()
+    selected: list[UUID] = []
+    seen: set[UUID] = set()
+    for row in rows:
+        if row.run_result_id not in seen:
+            selected.append(row.id)
+            seen.add(row.run_result_id)
+    return selected
+
+
+async def _metric_citation_normalization_ids(
+    session: AsyncSession,
+    run_result_ids: set[UUID],
+    normalizer_version: str,
+) -> list[UUID]:
+    rows = (
+        await session.scalars(
+            select(GeoRunResultCitationNormalizationRow)
+            .where(
+                GeoRunResultCitationNormalizationRow.run_result_id.in_(run_result_ids),
+                GeoRunResultCitationNormalizationRow.normalizer_version
+                == normalizer_version,
+                GeoRunResultCitationNormalizationRow.status == "completed",
+            )
+            .order_by(GeoRunResultCitationNormalizationRow.updated_at.desc())
+        )
+    ).all()
+    selected: list[UUID] = []
+    seen: set[UUID] = set()
+    for row in rows:
+        if row.run_result_id not in seen:
+            selected.append(row.id)
+            seen.add(row.run_result_id)
+    return selected
+
+
+async def _metric_entity_mentions(
+    session: AsyncSession,
+    analysis_ids: list[UUID],
+) -> list[GeoMetricEntityMentionInput]:
+    if not analysis_ids:
+        return []
+    rows = (
+        await session.scalars(
+            select(GeoRunResultEntityMentionRow)
+            .where(GeoRunResultEntityMentionRow.analysis_id.in_(analysis_ids))
+            .order_by(GeoRunResultEntityMentionRow.created_at)
+        )
+    ).all()
+    mentions: list[GeoMetricEntityMentionInput] = []
+    for row in rows:
+        role = row.entity_role or row.entity_type
+        if row.entity_id is None or role not in {"own_brand", "competitor"}:
+            continue
+        mentioned = row.mentioned if row.mentioned is not None else row.mention_count > 0
+        mentions.append(
+            GeoMetricEntityMentionInput(
+                run_result_id=row.run_result_id,
+                entity_id=row.entity_id,
+                entity_role=role,
+                entity_name=row.entity_name,
+                mentioned=mentioned,
+                first_mention_order=row.first_mention_order if mentioned else None,
+                evidence_text=_empty_to_none(row.evidence_text) if mentioned else None,
+                confidence=row.confidence,
+            )
+        )
+    return mentions
+
+
+async def _metric_sentiments(
+    session: AsyncSession,
+    analysis_ids: list[UUID],
+) -> list[GeoMetricSentimentInput]:
+    if not analysis_ids:
+        return []
+    rows = (
+        await session.scalars(
+            select(GeoRunResultStatementRow)
+            .where(GeoRunResultStatementRow.analysis_id.in_(analysis_ids))
+            .order_by(GeoRunResultStatementRow.created_at)
+        )
+    ).all()
+    sentiments: list[GeoMetricSentimentInput] = []
+    for row in rows:
+        if (
+            row.entity_id is None
+            or row.entity_role not in {"own_brand", "competitor"}
+            or row.sentiment not in {"positive", "negative"}
+        ):
+            continue
+        sentiments.append(
+            GeoMetricSentimentInput(
+                run_result_id=row.run_result_id,
+                entity_id=row.entity_id,
+                entity_role=row.entity_role,
+                entity_name=row.entity_name or row.subject_entity_name or "",
+                sentiment=row.sentiment,
+                theme=row.theme,
+                statement=row.statement_text,
+                evidence_text=_empty_to_none(row.evidence_text),
+                confidence=row.confidence,
+            )
+        )
+    return sentiments
+
+
+async def _metric_citations(
+    session: AsyncSession,
+    normalization_ids: list[UUID],
+) -> list[GeoRunResultCitationFact]:
+    if not normalization_ids:
+        return []
+    rows = (
+        await session.scalars(
+            select(GeoRunResultCitationRow)
+            .where(GeoRunResultCitationRow.normalization_id.in_(normalization_ids))
+            .order_by(GeoRunResultCitationRow.position)
+        )
+    ).all()
+    return [
+        GeoRunResultCitationFact(
+            run_result_id=row.run_result_id,
+            reference_id=row.reference_id,
+            url=row.url,
+            domain=row.domain,
+            title=row.title,
+            position=row.position,
+            ownership=row.ownership,
+            source_type=row.source_type,
+        )
+        for row in rows
+    ]
 
 
 def _run_result_analysis_record(

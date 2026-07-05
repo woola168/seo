@@ -14,6 +14,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
+    GeoMetricFormulaQuery,
+    GeoMetricFormulaSource,
     GeoProjectCommand,
     GeoProjectRecord,
     GeoQueryCommand,
@@ -366,6 +368,15 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         tenant_id: UUID,
         project_id: UUID,
     ) -> GeoProjectRecord | None:
+        raise NotImplementedError
+
+    async def get_metric_formula_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoMetricFormulaQuery,
+        normalizer_version: str,
+    ) -> GeoMetricFormulaSource:
         raise NotImplementedError
 
     async def get_query_project(
