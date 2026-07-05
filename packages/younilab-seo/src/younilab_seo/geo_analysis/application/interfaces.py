@@ -5,6 +5,7 @@ from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
     AcceptQueryDraftCommand,
+    AnalyzeGeoRunResultCommand,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
     GeoEntityAliasCommand,
@@ -23,6 +24,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoRunResultAnalysisRecord,
+    GeoRunResultAnalysis,
     GeoRunResultRecord,
     GeoTopicCommand,
     GeoTopicRecord,
@@ -86,6 +88,16 @@ class QueryPlanningClient(Protocol):
         raise NotImplementedError
 
     async def generate(self, command: QueryGenerationCommand) -> dict:
+        raise NotImplementedError
+
+
+class GeoRunResultAnalyzer(Protocol):
+    """Semantic analysis runtime 的替換接縫。"""
+
+    async def analyze(
+        self,
+        command: AnalyzeGeoRunResultCommand,
+    ) -> GeoRunResultAnalysis:
         raise NotImplementedError
 
 

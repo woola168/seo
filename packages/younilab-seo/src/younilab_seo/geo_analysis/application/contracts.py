@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _camel_case(value: str) -> str:
@@ -142,6 +143,106 @@ class GeoRunResultRecord(ContractModel):
     analysis_status: str | None = None
     analysis_error_code: str | None = None
     analysis_error_message: str | None = None
+
+
+class GeoAnalysisEntityInput(ContractModel):
+    """Semantic analysis 使用的品牌或競品快照。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    name: str
+    website_url: str | None = None
+
+
+class GeoAnalysisEntityContext(ContractModel):
+    """單筆 run result analysis 可比較的自有品牌與競品集合。"""
+
+    own_brand: GeoAnalysisEntityInput
+    competitors: list[GeoAnalysisEntityInput] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_entity_roles(self):
+        if self.own_brand.entity_role != "own_brand":
+            raise ValueError("ownBrand entityRole must be own_brand")
+        if any(competitor.entity_role != "competitor" for competitor in self.competitors):
+            raise ValueError("competitor entityRole must be competitor")
+        return self
+
+
+class AnalyzeGeoRunResultCommand(ContractModel):
+    """送入 semantic analyzer 的完整 run result 與專案上下文。"""
+
+    run_result_id: UUID
+    project_id: UUID
+    query_id: UUID
+    query_text: str
+    topic_id: UUID | None = None
+    topic_name: str | None = None
+    topic_description: str | None = None
+    provider: str
+    surface: str
+    model: str
+    region: str
+    language: str
+    raw_response: str
+    entities: GeoAnalysisEntityContext
+
+
+class GeoEntityMentionFact(ContractModel):
+    """單一 tracked entity 在回答中的 mention 與相對排序事實。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    mentioned: bool
+    first_mention_order: int | None = Field(default=None, ge=1)
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_position(self):
+        if not self.mentioned:
+            if self.first_mention_order is not None:
+                raise ValueError("firstMentionOrder must be empty when mentioned is false")
+            if self.evidence_text is not None:
+                raise ValueError("evidenceText must be empty when mentioned is false")
+        return self
+
+
+class GeoSentimentFact(ContractModel):
+    """品牌或競品相關的 statement-level positive / negative sentiment。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    sentiment: Literal["positive", "negative"]
+    theme: str
+    statement: str
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class GeoResponseSemanticFact(ContractModel):
+    """回答細節與後續建議模組可使用的 semantic label 或常見陳述。"""
+
+    fact_type: Literal["product", "service", "topic", "common_statement"]
+    value: str
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class GeoRunResultAnalysis(ContractModel):
+    """Semantic analyzer 對單筆 run result 回傳的 normalized facts。"""
+
+    run_result_id: UUID
+    analyzer: str
+    analyzer_version: str | None = None
+    status: Literal["completed", "failed"]
+    entity_mentions: list[GeoEntityMentionFact] = Field(default_factory=list)
+    sentiments: list[GeoSentimentFact] = Field(default_factory=list)
+    semantic_facts: list[GeoResponseSemanticFact] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class KMindHubExtractionTaskField(ContractModel):
