@@ -86,6 +86,7 @@ from younilab_seo.geo_analysis.application.interfaces import (
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.application.use_cases import (
+    AnalyzeRunResult,
     DispatchQueryRunJob,
     DispatchQueryRunJobError,
     GeoProjectReferenceError,
@@ -100,6 +101,7 @@ from younilab_seo.geo_analysis.application.use_cases import (
     ReceiveExternalRunCallback,
     RunKMindHubAnalysisExtraction,
     RunResultAnalysisNotFound,
+    RunResultSemanticAnalysisNotFound,
 )
 
 __all__ = [
@@ -107,6 +109,7 @@ __all__ = [
     "AcceptQueryDraftCommand",
     "AnalyzeGeoRunResultCommand",
     "AuthorizedPrincipal",
+    "AnalyzeRunResult",
     "BrandMentionRules",
     "CreateQueryRunJobCommand",
     "DispatchQueryRunJob",
@@ -192,6 +195,7 @@ __all__ = [
     "ResourceTaskReference",
     "RunKMindHubAnalysisExtraction",
     "RunResultAnalysisNotFound",
+    "RunResultSemanticAnalysisNotFound",
     "SaveSemanticRunResultAnalysisCommand",
     "SaveRunResultAnalysisCommand",
     "SaveTrackingRunResultCommand",
