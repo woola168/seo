@@ -254,6 +254,40 @@ class SaveSemanticRunResultAnalysisCommand(ContractModel):
     schema_version: int = 1
 
 
+class NormalizeRunResultCitationsCommand(ContractModel):
+    """將已保存 runner references 轉成報表 citation facts 的 application input。"""
+
+    tenant_id: UUID
+    run_result_id: UUID
+    normalizer_version: str = "url_domain:v1"
+
+
+class GeoRunResultCitationFact(ContractModel):
+    """單一 runner reference 的 deterministic citation fact。"""
+
+    run_result_id: UUID
+    reference_id: UUID
+    url: str
+    domain: str
+    title: str | None = None
+    position: int
+    ownership: Literal["owned", "other"]
+    source_type: Literal["owned_site", "unknown"]
+
+
+class GeoRunResultCitationNormalization(ContractModel):
+    """單筆 run result citation normalization 的 application result。"""
+
+    run_result_id: UUID
+    project_id: UUID | None = None
+    normalizer_version: str = "url_domain:v1"
+    status: Literal["completed", "failed"]
+    citations: list[GeoRunResultCitationFact] = Field(default_factory=list)
+    skipped_reference_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class KMindHubExtractionTaskField(ContractModel):
     """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
 

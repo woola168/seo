@@ -7,6 +7,10 @@ from younilab_seo.geo_analysis.application.use_cases.analysis_extraction import 
     RunKMindHubAnalysisExtraction,
     RunResultAnalysisNotFound,
 )
+from younilab_seo.geo_analysis.application.use_cases.citation_normalization import (
+    NormalizeRunResultCitations,
+    RunResultCitationNormalizationNotFound,
+)
 from younilab_seo.geo_analysis.application.use_cases.jobs import ManageQueryRunJobs
 from younilab_seo.geo_analysis.application.use_cases.kmindhub import (
     KMindHubWorkspaceMappingAlreadyExists,
@@ -32,6 +36,7 @@ __all__ = [
     "DispatchQueryRunJobError",
     "GeoProjectReferenceError",
     "AnalyzeRunResult",
+    "NormalizeRunResultCitations",
     "KMindHubWorkspaceMappingAlreadyExists",
     "KMindHubWorkspaceMappingNotFound",
     "ManageGeoSetup",
@@ -43,5 +48,6 @@ __all__ = [
     "ReceiveExternalRunCallback",
     "RunKMindHubAnalysisExtraction",
     "RunResultAnalysisNotFound",
+    "RunResultCitationNormalizationNotFound",
     "RunResultSemanticAnalysisNotFound",
 ]
