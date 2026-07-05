@@ -288,6 +288,12 @@ class GeoRunResultCitationNormalization(ContractModel):
     error_message: str | None = None
 
 
+class SaveRunResultCitationNormalizationCommand(ContractModel):
+    """保存 citation normalization lifecycle 與 facts 時使用的 persistence input。"""
+
+    normalization: GeoRunResultCitationNormalization
+
+
 class KMindHubExtractionTaskField(ContractModel):
     """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
 

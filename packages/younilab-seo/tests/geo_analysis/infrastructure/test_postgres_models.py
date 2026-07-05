@@ -13,6 +13,8 @@ from younilab_seo.geo_analysis.application import (
     GeoAnalysisRepository,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
     GeoProjectCommand,
     QueryAudience,
     QueryDraftSelectionCommand,
@@ -20,6 +22,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchCommand,
     GeoQueryRunJobRepository,
     GeoSentimentFact,
+    SaveRunResultCitationNormalizationCommand,
     SaveRunResultAnalysisCommand,
     SaveSemanticRunResultAnalysisCommand,
 )
@@ -39,6 +42,8 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoResponseSemanticFactRow,
     GeoRunResultAnalysisRow,
     GeoRunResultEntityMentionRow,
+    GeoRunResultCitationNormalizationRow,
+    GeoRunResultCitationRow,
     GeoRunRequestRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
@@ -81,6 +86,8 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
         GeoRunResultRow.__tablename__,
         GeoRunResultReferenceRow.__tablename__,
         GeoResponseSemanticFactRow.__tablename__,
+        GeoRunResultCitationNormalizationRow.__tablename__,
+        GeoRunResultCitationRow.__tablename__,
         TenantKMindHubWorkspaceMappingRow.__tablename__,
     }
 
@@ -93,6 +100,8 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
     assert "geo_run_result" in defined_tables
     assert "geo_run_result_reference" in defined_tables
     assert "geo_response_semantic_fact" in defined_tables
+    assert "geo_run_result_citation_normalization" in defined_tables
+    assert "geo_run_result_citation" in defined_tables
     assert "geo_response_mention" not in defined_tables
     assert "geo_daily_query_metric" not in defined_tables
 
@@ -152,6 +161,13 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "ix_geo_response_semantic_fact_analysis" in analysis_metrics_patch
     assert "ix_geo_run_result_entity_mention_analysis" in analysis_metrics_patch
     assert "ix_geo_run_result_statement_analysis" in analysis_metrics_patch
+    assert (
+        "CREATE TABLE IF NOT EXISTS geo_run_result_citation_normalization"
+        in analysis_metrics_patch
+    )
+    assert "CREATE TABLE IF NOT EXISTS geo_run_result_citation" in analysis_metrics_patch
+    assert "ux_geo_run_result_citation_normalization_version" in analysis_metrics_patch
+    assert "ix_geo_run_result_citation_reference" in analysis_metrics_patch
 
 
 def test_semantic_analysis_rows_expose_phase_two_columns() -> None:
@@ -166,6 +182,22 @@ def test_semantic_analysis_rows_expose_phase_two_columns() -> None:
     assert "entity_name" in GeoRunResultStatementRow.__table__.columns
     assert "confidence" in GeoRunResultStatementRow.__table__.columns
     assert GeoResponseSemanticFactRow.__tablename__ == "geo_response_semantic_fact"
+
+
+def test_citation_normalization_rows_expose_phase_six_columns() -> None:
+    assert (
+        GeoRunResultCitationNormalizationRow.__tablename__
+        == "geo_run_result_citation_normalization"
+    )
+    assert GeoRunResultCitationRow.__tablename__ == "geo_run_result_citation"
+    assert "normalizer_version" in GeoRunResultCitationNormalizationRow.__table__.columns
+    assert (
+        "skipped_reference_count"
+        in GeoRunResultCitationNormalizationRow.__table__.columns
+    )
+    assert "reference_id" in GeoRunResultCitationRow.__table__.columns
+    assert "ownership" in GeoRunResultCitationRow.__table__.columns
+    assert "source_type" in GeoRunResultCitationRow.__table__.columns
 
 
 class _CapturedScalarResult:
@@ -525,5 +557,201 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         assert (await repository.get_run_result_analysis(TENANT_ID, result_id)).summary == (
             "legacy analysis"
         )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_postgres_repository_saves_and_loads_citation_normalization_with_real_database() -> None:
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    project_id = uuid4()
+    query_id = uuid4()
+    job_id = uuid4()
+    run_request_id = uuid4()
+    result_id = uuid4()
+    reference_id = uuid4()
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    try:
+        async with session_factory() as session:
+            async with session.begin():
+                session.add_all(
+                    [
+                        GeoProjectRow(
+                            id=project_id,
+                            tenant_id=TENANT_ID,
+                            name=f"Citation Persistence {uuid4()}",
+                            status="active",
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        GeoQueryRow(
+                            id=query_id,
+                            project_id=project_id,
+                            query_text="Who cites Acme?",
+                            region="TW",
+                            language="zh-TW",
+                            market_type="b2b_procurement",
+                            priority="normal",
+                            status="active",
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        GeoQueryRunJobRow(
+                            id=job_id,
+                            project_id=project_id,
+                            query_id=query_id,
+                            platform_id=uuid4(),
+                            job_type="manual_run",
+                            priority="normal",
+                            scheduled_for=now,
+                            status="completed",
+                            dedupe_key=f"citation-{uuid4()}",
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        GeoRunRequestRow(
+                            id=run_request_id,
+                            job_id=job_id,
+                            tracking_run_request_id=f"tracking-{uuid4()}",
+                            seo_task_id=uuid4(),
+                            provider="gemini",
+                            timing="run_now",
+                            status="completed",
+                            request_payload={},
+                            created_at=now,
+                            completed_at=now,
+                        ),
+                        GeoRunResultRow(
+                            id=result_id,
+                            run_request_id=run_request_id,
+                            job_id=job_id,
+                            tracking_result_id=f"result-{uuid4()}",
+                            query_id=query_id,
+                            provider="gemini",
+                            surface="ai_overview",
+                            model="gemini-2.5-pro",
+                            region="TW",
+                            language="zh-TW",
+                            status="completed",
+                            raw_response="Raw answer",
+                            run_at=now,
+                            created_at=now,
+                        ),
+                        GeoRunResultReferenceRow(
+                            id=reference_id,
+                            run_result_id=result_id,
+                            url="https://acme.com/source",
+                            title="Acme Source",
+                            domain="acme.com",
+                            position=1,
+                        ),
+                    ]
+                )
+
+        saved = await repository.save_run_result_citation_normalization(
+            TENANT_ID,
+            SaveRunResultCitationNormalizationCommand(
+                normalization=GeoRunResultCitationNormalization(
+                    run_result_id=result_id,
+                    project_id=project_id,
+                    normalizer_version="url_domain:v1",
+                    status="completed",
+                    citations=[
+                        GeoRunResultCitationFact(
+                            run_result_id=result_id,
+                            reference_id=reference_id,
+                            url="https://acme.com/source",
+                            domain="acme.com",
+                            title="Acme Source",
+                            position=1,
+                            ownership="owned",
+                            source_type="owned_site",
+                        )
+                    ],
+                )
+            ),
+            now,
+        )
+
+        assert saved is not None
+        assert saved.citations[0].reference_id == reference_id
+        loaded = await repository.get_run_result_citation_normalization(
+            TENANT_ID,
+            result_id,
+            "url_domain:v1",
+        )
+        assert loaded is not None
+        assert [citation.domain for citation in loaded.citations] == ["acme.com"]
+        assert (
+            await repository.get_run_result_citation_normalization(
+                uuid4(),
+                result_id,
+                "url_domain:v1",
+            )
+            is None
+        )
+
+        rerun = await repository.save_run_result_citation_normalization(
+            TENANT_ID,
+            SaveRunResultCitationNormalizationCommand(
+                normalization=GeoRunResultCitationNormalization(
+                    run_result_id=result_id,
+                    project_id=project_id,
+                    normalizer_version="url_domain:v1",
+                    status="completed",
+                    skipped_reference_count=1,
+                )
+            ),
+            now,
+        )
+        assert rerun is not None
+        assert rerun.citations == []
+        assert rerun.skipped_reference_count == 1
+        overwritten = await repository.get_run_result_citation_normalization(
+            TENANT_ID,
+            result_id,
+            "url_domain:v1",
+        )
+        assert overwritten is not None
+        assert overwritten.citations == []
+        assert overwritten.skipped_reference_count == 1
+        with pytest.raises(ValueError, match="reference_id must belong"):
+            await repository.save_run_result_citation_normalization(
+                TENANT_ID,
+                SaveRunResultCitationNormalizationCommand(
+                    normalization=GeoRunResultCitationNormalization(
+                        run_result_id=result_id,
+                        project_id=project_id,
+                        normalizer_version="url_domain:v2",
+                        status="completed",
+                        citations=[
+                            GeoRunResultCitationFact(
+                                run_result_id=result_id,
+                                reference_id=uuid4(),
+                                url="https://example.com/invalid",
+                                domain="example.com",
+                                position=1,
+                                ownership="other",
+                                source_type="unknown",
+                            )
+                        ],
+                    )
+                ),
+                now,
+            )
     finally:
         await engine.dispose()

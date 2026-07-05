@@ -613,3 +613,52 @@ class GeoRunResultCitationClassificationRow(SQLModel, table=True):
     confidence: float | None = Field(default=None, sa_column=Column(Numeric(5, 4)))
     source: str = Field(default="rule_based", sa_column=Column(String(64), nullable=False))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GeoRunResultCitationNormalizationRow(SQLModel, table=True):
+    """單筆 run result citation normalization lifecycle。"""
+
+    __tablename__ = "geo_run_result_citation_normalization"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_result_id",
+            "normalizer_version",
+            name="ux_geo_run_result_citation_normalization_version",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
+    normalizer_version: str = Field(sa_column=Column(String(100), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    skipped_reference_count: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False),
+    )
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class GeoRunResultCitationRow(SQLModel, table=True):
+    """Normalized citation fact used by report metrics."""
+
+    __tablename__ = "geo_run_result_citation"
+
+    id: UUID = Field(primary_key=True)
+    normalization_id: UUID = Field(
+        foreign_key="geo_run_result_citation_normalization.id",
+        nullable=False,
+    )
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    reference_id: UUID = Field(foreign_key="geo_run_result_reference.id", nullable=False)
+    url: str = Field(sa_column=Column(Text, nullable=False))
+    domain: str = Field(sa_column=Column(String(255), nullable=False))
+    title: str | None = Field(default=None, sa_column=Column(Text))
+    position: int = Field(sa_column=Column(Integer, nullable=False))
+    ownership: str = Field(sa_column=Column(String(32), nullable=False))
+    source_type: str = Field(sa_column=Column(String(32), nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))

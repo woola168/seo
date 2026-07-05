@@ -24,6 +24,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryScheduleRecord,
     GeoRunResultAnalysisRecord,
     GeoRunResultAnalysis,
+    GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
@@ -41,6 +42,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultCitationNormalizationCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
@@ -68,6 +70,10 @@ class GeoApiStore:
     semantic_run_result_analyses: dict[UUID, GeoRunResultAnalysis] = field(
         default_factory=dict
     )
+    run_result_citation_normalizations: dict[
+        tuple[UUID, str],
+        GeoRunResultCitationNormalization,
+    ] = field(default_factory=dict)
     kmindhub_extraction_task_mappings: dict[
         tuple[UUID, str, int],
         KMindHubExtractionTaskMappingRecord,
@@ -936,6 +942,42 @@ class GeoApiStore:
             command.analysis
         )
         return command.analysis
+
+    async def get_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        normalizer_version: str,
+    ) -> GeoRunResultCitationNormalization | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.run_result_citation_normalizations.get(
+            (result_id, normalizer_version)
+        )
+
+    async def save_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultCitationNormalizationCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultCitationNormalization | None:
+        normalization = command.normalization
+        result = await self.get_run_result(tenant_id, normalization.run_result_id)
+        if result is None:
+            return None
+        reference_ids = {reference.id for reference in result.references}
+        for citation in normalization.citations:
+            if citation.run_result_id != normalization.run_result_id:
+                raise ValueError(
+                    "citation run_result_id must match normalization run_result_id"
+                )
+            if citation.reference_id not in reference_ids:
+                raise ValueError("citation reference_id must belong to run result")
+        self.run_result_citation_normalizations[
+            (normalization.run_result_id, normalization.normalizer_version)
+        ] = normalization
+        return normalization
 
     async def save_run_result_analysis(
         self,

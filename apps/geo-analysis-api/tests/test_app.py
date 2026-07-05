@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from younilab_geo_analysis_api.presentation.http import create_app
@@ -16,6 +17,8 @@ from younilab_seo.geo_analysis.application import (
     KMindHubExtractionPreviewItem,
     KMindHubExtractionPreviewResult,
     GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     PublishResult,
@@ -24,6 +27,7 @@ from younilab_seo.geo_analysis.application import (
     ResourceCatalogVerificationUnavailable,
     ResourceTaskReference,
     RunKMindHubAnalysisExtraction,
+    SaveRunResultCitationNormalizationCommand,
     SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
@@ -769,6 +773,71 @@ def test_store_saves_and_loads_semantic_run_result_analysis() -> None:
         assert loaded.entity_mentions[0].first_mention_order == 1
         assert loaded.sentiments[0].sentiment == "positive"
         assert loaded.semantic_facts[0].fact_type == "topic"
+
+    asyncio.run(run())
+
+
+def test_store_saves_and_loads_citation_normalization() -> None:
+    async def run() -> None:
+        store = GeoApiStore()
+        client, store, job_id = _client_with_job(repository=store)
+        result_id = _add_run_result(store, job_id)
+        reference_id = store.run_results[result_id].references[0].id
+        normalization = GeoRunResultCitationNormalization(
+            runResultId=result_id,
+            projectId=store.jobs[job_id].project_id,
+            status="completed",
+            citations=[
+                GeoRunResultCitationFact(
+                    runResultId=result_id,
+                    referenceId=reference_id,
+                    url="https://example.com/reference",
+                    domain="example.com",
+                    title="Example reference",
+                    position=1,
+                    ownership="other",
+                    sourceType="unknown",
+                )
+            ],
+        )
+
+        saved = await store.save_run_result_citation_normalization(
+            TENANT_ID,
+            SaveRunResultCitationNormalizationCommand(normalization=normalization),
+            datetime(2026, 7, 5, tzinfo=timezone.utc),
+        )
+        loaded = await store.get_run_result_citation_normalization(
+            TENANT_ID,
+            result_id,
+            "url_domain:v1",
+        )
+
+        client.close()
+        assert saved == normalization
+        assert loaded == normalization
+        with pytest.raises(ValueError, match="reference_id must belong"):
+            await store.save_run_result_citation_normalization(
+                TENANT_ID,
+                SaveRunResultCitationNormalizationCommand(
+                    normalization=GeoRunResultCitationNormalization(
+                        runResultId=result_id,
+                        projectId=store.jobs[job_id].project_id,
+                        status="completed",
+                        citations=[
+                            GeoRunResultCitationFact(
+                                runResultId=result_id,
+                                referenceId=uuid4(),
+                                url="https://example.com/other",
+                                domain="example.com",
+                                position=1,
+                                ownership="other",
+                                sourceType="unknown",
+                            )
+                        ],
+                    )
+                ),
+                datetime(2026, 7, 5, tzinfo=timezone.utc),
+            )
 
     asyncio.run(run())
 

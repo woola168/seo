@@ -28,6 +28,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryScheduleRecord,
     GeoEntityMentionFact,
     GeoResponseSemanticFact,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
     GeoRunResultAnalysisRecord,
     GeoRunResultAnalysis,
     GeoRunResultRecord,
@@ -48,6 +50,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultCitationNormalizationCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
@@ -74,6 +77,8 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoResponseSemanticFactRow,
     GeoRunResultAnalysisRow,
     GeoRunResultCitationClassificationRow,
+    GeoRunResultCitationNormalizationRow,
+    GeoRunResultCitationRow,
     GeoRunResultEntityMentionRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
@@ -1272,6 +1277,77 @@ class PostgresGeoAnalysisRepository:
             await session.flush()
             return await _semantic_analysis_record(session, row)
 
+    async def get_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        normalizer_version: str,
+    ) -> GeoRunResultCitationNormalization | None:
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(session, tenant_id, result_id)
+            if result is None:
+                return None
+            row = await session.scalar(
+                select(GeoRunResultCitationNormalizationRow).where(
+                    GeoRunResultCitationNormalizationRow.run_result_id == result_id,
+                    GeoRunResultCitationNormalizationRow.normalizer_version
+                    == normalizer_version,
+                )
+            )
+            if row is None:
+                return None
+            return await _citation_normalization_record(session, row)
+
+    async def save_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultCitationNormalizationCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultCitationNormalization | None:
+        normalization = command.normalization
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(
+                session,
+                tenant_id,
+                normalization.run_result_id,
+            )
+            if result is None:
+                return None
+            project_id = await _run_result_project_id(session, result)
+            row = await session.scalar(
+                select(GeoRunResultCitationNormalizationRow).where(
+                    GeoRunResultCitationNormalizationRow.run_result_id
+                    == normalization.run_result_id,
+                    GeoRunResultCitationNormalizationRow.normalizer_version
+                    == normalization.normalizer_version,
+                )
+            )
+            if row is None:
+                row = GeoRunResultCitationNormalizationRow(
+                    id=uuid4(),
+                    run_result_id=normalization.run_result_id,
+                    project_id=project_id,
+                    normalizer_version=normalization.normalizer_version,
+                    status=normalization.status,
+                    created_at=occurred_at,
+                    updated_at=occurred_at,
+                )
+                session.add(row)
+                await session.flush()
+            else:
+                await _delete_citation_normalization_children(session, row.id)
+                row.updated_at = occurred_at
+            await _validate_citation_facts(
+                session,
+                normalization.run_result_id,
+                normalization.citations,
+            )
+            _apply_citation_normalization(row, normalization, project_id, occurred_at)
+            for citation in normalization.citations:
+                session.add(_citation_fact_row(row.id, citation, occurred_at))
+            await session.flush()
+            return await _citation_normalization_record(session, row)
+
     async def save_run_result_analysis(
         self,
         tenant_id: UUID,
@@ -2286,6 +2362,41 @@ async def _semantic_analysis_record(
     )
 
 
+async def _citation_normalization_record(
+    session: AsyncSession,
+    row: GeoRunResultCitationNormalizationRow,
+) -> GeoRunResultCitationNormalization:
+    citation_rows = (
+        await session.scalars(
+            select(GeoRunResultCitationRow)
+            .where(GeoRunResultCitationRow.normalization_id == row.id)
+            .order_by(GeoRunResultCitationRow.position)
+        )
+    ).all()
+    return GeoRunResultCitationNormalization(
+        run_result_id=row.run_result_id,
+        project_id=row.project_id,
+        normalizer_version=row.normalizer_version,
+        status=row.status,
+        citations=[
+            GeoRunResultCitationFact(
+                run_result_id=citation.run_result_id,
+                reference_id=citation.reference_id,
+                url=citation.url,
+                domain=citation.domain,
+                title=citation.title,
+                position=citation.position,
+                ownership=citation.ownership,
+                source_type=citation.source_type,
+            )
+            for citation in citation_rows
+        ],
+        skipped_reference_count=row.skipped_reference_count,
+        error_code=row.error_code,
+        error_message=row.error_message,
+    )
+
+
 def _empty_to_none(value: str | None) -> str | None:
     return value or None
 
@@ -2319,6 +2430,59 @@ def _apply_semantic_analysis(
     row.error_message = analysis.error_message
     row.updated_at = occurred_at
     row.completed_at = occurred_at if analysis.status in {"completed", "failed"} else None
+
+
+async def _run_result_project_id(
+    session: AsyncSession,
+    row: GeoRunResultRow,
+) -> UUID:
+    project_id = await session.scalar(
+        select(GeoQueryRunJobRow.project_id).where(GeoQueryRunJobRow.id == row.job_id)
+    )
+    if project_id is None:
+        raise LookupError("run result project context is missing")
+    return project_id
+
+
+async def _validate_citation_facts(
+    session: AsyncSession,
+    run_result_id: UUID,
+    citations: list[GeoRunResultCitationFact],
+) -> None:
+    if any(citation.run_result_id != run_result_id for citation in citations):
+        raise ValueError("citation run_result_id must match normalization run_result_id")
+    reference_ids = {citation.reference_id for citation in citations}
+    if not reference_ids:
+        return
+    existing = set(
+        (
+            await session.scalars(
+                select(GeoRunResultReferenceRow.id).where(
+                    GeoRunResultReferenceRow.run_result_id == run_result_id,
+                    GeoRunResultReferenceRow.id.in_(reference_ids),
+                )
+            )
+        ).all()
+    )
+    if existing != reference_ids:
+        raise ValueError("citation reference_id must belong to run result")
+
+
+def _apply_citation_normalization(
+    row: GeoRunResultCitationNormalizationRow,
+    normalization: GeoRunResultCitationNormalization,
+    project_id: UUID,
+    occurred_at: datetime,
+) -> None:
+    row.project_id = project_id
+    row.status = normalization.status
+    row.error_code = normalization.error_code
+    row.error_message = normalization.error_message
+    row.skipped_reference_count = normalization.skipped_reference_count
+    row.updated_at = occurred_at
+    row.completed_at = (
+        occurred_at if normalization.status in {"completed", "failed"} else None
+    )
 
 
 async def _delete_analysis_children(
@@ -2364,6 +2528,17 @@ async def _delete_semantic_analysis_children(
     await session.execute(
         delete(GeoResponseSemanticFactRow).where(
             GeoResponseSemanticFactRow.analysis_id == analysis_id
+        )
+    )
+
+
+async def _delete_citation_normalization_children(
+    session: AsyncSession,
+    normalization_id: UUID,
+) -> None:
+    await session.execute(
+        delete(GeoRunResultCitationRow).where(
+            GeoRunResultCitationRow.normalization_id == normalization_id
         )
     )
 
@@ -2488,6 +2663,26 @@ def _citation_classification_row(
         matched_domain=command.matched_domain,
         confidence=command.confidence,
         source=command.source,
+        created_at=occurred_at,
+    )
+
+
+def _citation_fact_row(
+    normalization_id: UUID,
+    command: GeoRunResultCitationFact,
+    occurred_at: datetime,
+) -> GeoRunResultCitationRow:
+    return GeoRunResultCitationRow(
+        id=uuid4(),
+        normalization_id=normalization_id,
+        run_result_id=command.run_result_id,
+        reference_id=command.reference_id,
+        url=command.url,
+        domain=command.domain,
+        title=command.title,
+        position=command.position,
+        ownership=command.ownership,
+        source_type=command.source_type,
         created_at=occurred_at,
     )
 

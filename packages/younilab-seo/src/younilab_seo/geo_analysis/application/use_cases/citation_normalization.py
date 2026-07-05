@@ -6,8 +6,9 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoEntityRecord,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
+    SaveRunResultCitationNormalizationCommand,
 )
-from younilab_seo.geo_analysis.application.interfaces import GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces import Clock, GeoAnalysisRepository
 
 
 DEFAULT_CITATION_NORMALIZER_VERSION = "url_domain:v1"
@@ -22,36 +23,52 @@ class NormalizeRunResultCitations:
     """從 runner references 產生報表可計算的 deterministic citation facts。"""
 
     repository: GeoAnalysisRepository
+    clock: Clock
     normalizer_version: str = DEFAULT_CITATION_NORMALIZER_VERSION
 
     async def execute(
         self,
         tenant_id: UUID,
         run_result_id: UUID,
+        force_renormalize: bool = False,
         normalizer_version: str | None = None,
     ) -> GeoRunResultCitationNormalization:
         version = normalizer_version or self.normalizer_version
         result = await self.repository.get_run_result(tenant_id, run_result_id)
         if result is None:
             raise RunResultCitationNormalizationNotFound("run result not found")
+        if not force_renormalize:
+            current = await self.repository.get_run_result_citation_normalization(
+                tenant_id,
+                run_result_id,
+                version,
+            )
+            if current is not None:
+                return current
 
         query = await self.repository.get_query(tenant_id, result.query_id)
         if query is None:
-            return self._failed(
-                run_result_id,
-                None,
-                version,
-                "query_context_missing",
-                "query context is missing",
+            return await self._save(
+                tenant_id,
+                self._failed(
+                    run_result_id,
+                    None,
+                    version,
+                    "query_context_missing",
+                    "query context is missing",
+                ),
             )
 
         if result.status != "completed":
-            return self._failed(
-                run_result_id,
-                query.project_id,
-                version,
-                "run_result_not_normalizable",
-                "run result is not completed",
+            return await self._save(
+                tenant_id,
+                self._failed(
+                    run_result_id,
+                    query.project_id,
+                    version,
+                    "run_result_not_normalizable",
+                    "run result is not completed",
+                ),
             )
 
         entities = await self.repository.list_entities(tenant_id, query.project_id)
@@ -82,13 +99,16 @@ class NormalizeRunResultCitations:
                 )
             )
 
-        return GeoRunResultCitationNormalization(
-            run_result_id=result.id,
-            project_id=query.project_id,
-            normalizer_version=version,
-            status="completed",
-            citations=citations,
-            skipped_reference_count=skipped_reference_count,
+        return await self._save(
+            tenant_id,
+            GeoRunResultCitationNormalization(
+                run_result_id=result.id,
+                project_id=query.project_id,
+                normalizer_version=version,
+                status="completed",
+                citations=citations,
+                skipped_reference_count=skipped_reference_count,
+            ),
         )
 
     def _failed(
@@ -107,6 +127,20 @@ class NormalizeRunResultCitations:
             error_code=error_code,
             error_message=error_message,
         )
+
+    async def _save(
+        self,
+        tenant_id: UUID,
+        normalization: GeoRunResultCitationNormalization,
+    ) -> GeoRunResultCitationNormalization:
+        saved = await self.repository.save_run_result_citation_normalization(
+            tenant_id,
+            SaveRunResultCitationNormalizationCommand(normalization=normalization),
+            self.clock.now(),
+        )
+        if saved is None:
+            raise RunResultCitationNormalizationNotFound("run result not found")
+        return saved
 
 
 def _owned_domains(entities: list[GeoEntityRecord]) -> set[str]:

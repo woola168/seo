@@ -16,6 +16,7 @@ from younilab_seo.geo_analysis.application import (
     NormalizeRunResultCitations,
     NormalizeRunResultCitationsCommand,
     RunResultCitationNormalizationNotFound,
+    SaveRunResultCitationNormalizationCommand,
 )
 
 
@@ -24,10 +25,26 @@ NOW = datetime(2026, 7, 5, tzinfo=UTC)
 
 
 @dataclass
+class FakeClock:
+    current: datetime = NOW
+
+    def now(self) -> datetime:
+        return self.current
+
+
+@dataclass
 class FakeRepository:
     result: GeoRunResultRecord | None = None
     query: GeoQueryRecord | None = None
     entities: list[GeoEntityRecord] = field(default_factory=list)
+    citation_normalizations: dict[
+        tuple[UUID, str],
+        GeoRunResultCitationNormalization,
+    ] = field(default_factory=dict)
+    saved_commands: list[SaveRunResultCitationNormalizationCommand] = field(
+        default_factory=list
+    )
+    save_returns_none: bool = False
 
     async def get_run_result(self, tenant_id, result_id):
         if (
@@ -53,6 +70,31 @@ class FakeRepository:
             for entity in self.entities
             if tenant_id == TENANT_ID and entity.project_id == project_id
         ]
+
+    async def get_run_result_citation_normalization(
+        self,
+        tenant_id,
+        result_id,
+        normalizer_version,
+    ):
+        if tenant_id != TENANT_ID:
+            return None
+        return self.citation_normalizations.get((result_id, normalizer_version))
+
+    async def save_run_result_citation_normalization(
+        self,
+        tenant_id,
+        command: SaveRunResultCitationNormalizationCommand,
+        occurred_at,
+    ):
+        if tenant_id != TENANT_ID or self.save_returns_none:
+            return None
+        self.saved_commands.append(command)
+        normalization = command.normalization
+        self.citation_normalizations[
+            (normalization.run_result_id, normalization.normalizer_version)
+        ] = normalization
+        return normalization
 
 
 def test_citation_contracts_use_camel_case_shape() -> None:
@@ -120,7 +162,7 @@ def test_normalize_run_result_citations_marks_owned_domain() -> None:
             own_brand_url="https://www.acme.com",
         )
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -137,6 +179,61 @@ def test_normalize_run_result_citations_marks_owned_domain() -> None:
         ]
         assert result.citations[0].url == "https://acme.com/products?utm_source=test"
         assert result.skipped_reference_count == 0
+        assert repository.saved_commands[-1].normalization == result
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_returns_existing_without_force() -> None:
+    async def run() -> None:
+        repository = _repository()
+        existing = GeoRunResultCitationNormalization(
+            run_result_id=repository.result.id,
+            project_id=repository.query.project_id,
+            normalizer_version="url_domain:v1",
+            status="completed",
+        )
+        repository.citation_normalizations[
+            (repository.result.id, existing.normalizer_version)
+        ] = existing
+
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
+            TENANT_ID,
+            repository.result.id,
+        )
+
+        assert result == existing
+        assert repository.saved_commands == []
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_force_rerun_saves_new_result() -> None:
+    async def run() -> None:
+        repository = _repository(references=[_reference("https://example.com/first")])
+        existing = GeoRunResultCitationNormalization(
+            run_result_id=repository.result.id,
+            project_id=repository.query.project_id,
+            normalizer_version="url_domain:v1",
+            status="completed",
+        )
+        repository.citation_normalizations[
+            (repository.result.id, existing.normalizer_version)
+        ] = existing
+
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
+            TENANT_ID,
+            repository.result.id,
+            force_renormalize=True,
+        )
+
+        assert [citation.url for citation in result.citations] == [
+            "https://example.com/first"
+        ]
+        assert repository.saved_commands[-1].normalization == result
+        assert repository.citation_normalizations[
+            (repository.result.id, "url_domain:v1")
+        ] == result
 
     asyncio.run(run())
 
@@ -148,7 +245,7 @@ def test_normalize_run_result_citations_marks_unmatched_domain_unknown() -> None
             own_brand_url="https://acme.com",
         )
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -166,7 +263,7 @@ def test_normalize_run_result_citations_uses_execute_version_override() -> None:
     async def run() -> None:
         repository = _repository()
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
             normalizer_version="url_domain:test",
@@ -212,7 +309,7 @@ def test_normalize_run_result_citations_uses_only_active_own_brand_domains() -> 
             ]
         )
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -244,7 +341,7 @@ def test_normalize_run_result_citations_ignores_missing_or_invalid_own_brand_url
             )
         )
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -260,7 +357,7 @@ def test_normalize_run_result_citations_accepts_domain_without_scheme() -> None:
     async def run() -> None:
         repository = _repository(references=[_reference("example.com/path")])
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -275,7 +372,7 @@ def test_normalize_run_result_citations_handles_missing_references() -> None:
     async def run() -> None:
         repository = _repository(references=[])
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -298,7 +395,7 @@ def test_normalize_run_result_citations_skips_invalid_reference_urls() -> None:
             ]
         )
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -313,7 +410,7 @@ def test_normalize_run_result_citations_failed_when_run_result_not_completed() -
     async def run() -> None:
         repository = _repository(status="failed")
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -321,6 +418,7 @@ def test_normalize_run_result_citations_failed_when_run_result_not_completed() -
         assert result.status == "failed"
         assert result.error_code == "run_result_not_normalizable"
         assert result.citations == []
+        assert repository.saved_commands[-1].normalization == result
 
     asyncio.run(run())
 
@@ -330,7 +428,7 @@ def test_normalize_run_result_citations_failed_when_query_missing() -> None:
         repository = _repository()
         repository.query = None
 
-        result = await NormalizeRunResultCitations(repository).execute(
+        result = await NormalizeRunResultCitations(repository, FakeClock()).execute(
             TENANT_ID,
             repository.result.id,
         )
@@ -338,6 +436,21 @@ def test_normalize_run_result_citations_failed_when_query_missing() -> None:
         assert result.status == "failed"
         assert result.project_id is None
         assert result.error_code == "query_context_missing"
+        assert repository.saved_commands[-1].normalization == result
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_raises_when_save_returns_none() -> None:
+    async def run() -> None:
+        repository = _repository()
+        repository.save_returns_none = True
+
+        with pytest.raises(RunResultCitationNormalizationNotFound):
+            await NormalizeRunResultCitations(repository, FakeClock()).execute(
+                TENANT_ID,
+                repository.result.id,
+            )
 
     asyncio.run(run())
 
@@ -345,7 +458,7 @@ def test_normalize_run_result_citations_failed_when_query_missing() -> None:
 def test_normalize_run_result_citations_missing_run_result_raises() -> None:
     async def run() -> None:
         with pytest.raises(RunResultCitationNormalizationNotFound):
-            await NormalizeRunResultCitations(FakeRepository()).execute(
+            await NormalizeRunResultCitations(FakeRepository(), FakeClock()).execute(
                 TENANT_ID,
                 uuid4(),
             )
