@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from younilab_seo.geo_analysis.application import (
+    AnalyzeRunResult,
     Clock,
     GeoAnalysisRepository,
     KMindHubWorkspaceClient,
@@ -12,6 +13,7 @@ from younilab_seo.geo_analysis.application import (
     RunKMindHubAnalysisExtraction,
     TrackingRunClient,
 )
+from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
@@ -21,6 +23,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
 class GeoAnalysisWorkerDependencies:
     processor: ProcessQueryRunJobMessage
     consumer: Any
+    analyze_run_result: AnalyzeRunResult
     kmindhub_workspace_resolver: ManageKMindHubWorkspaceMapping
     kmindhub_workspace_client: KMindHubWorkspaceClient
     closeables: tuple[object, ...] = ()
@@ -57,6 +60,11 @@ def build_dependencies(
         active_kmindhub_client,
         active_clock,
     )
+    semantic_analyzer = KMindHubGeoRunResultAnalyzer(
+        active_repository,
+        kmindhub_workspace_resolver,
+        active_kmindhub_client,
+    )
     return GeoAnalysisWorkerDependencies(
         processor=ProcessQueryRunJobMessage(
             repository=active_repository,
@@ -66,6 +74,11 @@ def build_dependencies(
             analysis_extractor=analysis_extractor,
         ),
         consumer=active_consumer,
+        analyze_run_result=AnalyzeRunResult(
+            active_repository,
+            semantic_analyzer,
+            active_clock,
+        ),
         kmindhub_workspace_resolver=kmindhub_workspace_resolver,
         kmindhub_workspace_client=active_kmindhub_client,
         closeables=(active_tracking_client, active_kmindhub_client),

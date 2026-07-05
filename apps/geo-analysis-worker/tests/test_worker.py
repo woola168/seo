@@ -15,7 +15,12 @@ sys.modules["aio_pika"] = fake_aio_pika
 
 from younilab_geo_analysis_worker.composition import build_dependencies
 from younilab_geo_analysis_worker.worker import GeoAnalysisWorker
-from younilab_seo.geo_analysis.application import QueryRunJobMessage
+from younilab_seo.geo_analysis.application import (
+    AnalyzeRunResult,
+    QueryRunJobMessage,
+    RunKMindHubAnalysisExtraction,
+)
+from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 
 
 @dataclass
@@ -62,6 +67,16 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
 
     assert dependencies.consumer.queue_name == "geo.query-runs.gemini"
     assert dependencies.processor.supported_provider == "gemini"
+    assert isinstance(dependencies.analyze_run_result, AnalyzeRunResult)
+    assert isinstance(
+        dependencies.analyze_run_result.analyzer,
+        KMindHubGeoRunResultAnalyzer,
+    )
+    assert isinstance(
+        dependencies.processor.analysis_extractor,
+        RunKMindHubAnalysisExtraction,
+    )
+    assert not hasattr(dependencies.processor, "analyze_run_result")
     workspace_id = uuid4()
     assert dependencies.kmindhub_workspace_client.workspace_headers(workspace_id) == {
         "X-Workspace-Id": str(workspace_id)

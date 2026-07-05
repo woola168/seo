@@ -6,8 +6,10 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from younilab_geo_analysis_api.presentation.http import create_app
+from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
+    AnalyzeRunResult,
     AuthorizedPrincipal,
     KMindHubExtractionCommitResult,
     KMindHubExtractionFieldValue,
@@ -21,9 +23,11 @@ from younilab_seo.geo_analysis.application import (
     ResourceCatalogVerificationDenied,
     ResourceCatalogVerificationUnavailable,
     ResourceTaskReference,
+    RunKMindHubAnalysisExtraction,
     SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
+from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -125,6 +129,34 @@ def test_kmindhub_workspace_mapping_endpoints() -> None:
 
     assert get_response.status_code == 200
     assert get_response.json()["workspaceId"] == str(workspace_id)
+
+
+def test_composition_builds_report_semantic_analysis_dependency() -> None:
+    kmindhub_client = FakeKMindHubClient()
+    dependencies = build_dependencies(
+        repository=GeoApiStore(),
+        planning_client=FakePlanningClient(),
+        kmindhub_client=kmindhub_client,
+        authorizer=FakeAuthorizer(),
+        reference_verifier=FakeReferenceVerifier(),
+    )
+
+    assert isinstance(dependencies.analyze_run_result, AnalyzeRunResult)
+    assert isinstance(
+        dependencies.analyze_run_result.analyzer,
+        KMindHubGeoRunResultAnalyzer,
+    )
+    assert isinstance(
+        dependencies.run_kmindhub_analysis_extraction,
+        RunKMindHubAnalysisExtraction,
+    )
+    assert dependencies.closeables.count(kmindhub_client) == 1
+
+
+def test_app_state_exposes_report_semantic_analysis_dependency() -> None:
+    client = _client(kmindhub_client=FakeKMindHubClient())
+
+    assert isinstance(client.app.state.analyze_run_result, AnalyzeRunResult)
 
 
 def test_kmindhub_workspace_provision_creates_remote_workspace() -> None:

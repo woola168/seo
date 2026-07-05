@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
+    AnalyzeRunResult,
     Clock,
     DispatchQueryRunJob,
     GeoAnalysisRepository,
@@ -21,6 +22,7 @@ from younilab_seo.geo_analysis.application import (
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
+    KMindHubGeoRunResultAnalyzer,
     ResourceCatalogHttpReferenceVerifier,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
@@ -36,6 +38,7 @@ class GeoAnalysisApiDependencies:
     manage_kmindhub_workspace_mapping: ManageKMindHubWorkspaceMapping
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
+    analyze_run_result: AnalyzeRunResult
     run_kmindhub_analysis_extraction: RunKMindHubAnalysisExtraction
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
@@ -67,6 +70,15 @@ def build_dependencies(
     active_kmindhub_client = kmindhub_client or _build_kmindhub_client()
     active_authorizer = authorizer or _build_authorizer()
     active_reference_verifier = reference_verifier or _build_reference_verifier()
+    kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
+        active_repository,
+        active_kmindhub_client,
+    )
+    semantic_analyzer = KMindHubGeoRunResultAnalyzer(
+        active_repository,
+        kmindhub_workspace_resolver,
+        active_kmindhub_client,
+    )
     closeables = tuple(
         item
         for item in (active_publisher, active_planning_client, active_kmindhub_client)
@@ -76,19 +88,21 @@ def build_dependencies(
         repository=active_repository,
         authorizer=active_authorizer,
         manage_geo_setup=ManageGeoSetup(active_repository, active_reference_verifier),
-        manage_kmindhub_workspace_mapping=ManageKMindHubWorkspaceMapping(
-            active_repository,
-            active_kmindhub_client,
-        ),
+        manage_kmindhub_workspace_mapping=kmindhub_workspace_resolver,
         manage_query_planning=ManageQueryPlanning(
             active_repository,
             active_planning_client,
             active_clock,
         ),
         manage_query_run_jobs=ManageQueryRunJobs(active_repository, active_clock),
+        analyze_run_result=AnalyzeRunResult(
+            active_repository,
+            semantic_analyzer,
+            active_clock,
+        ),
         run_kmindhub_analysis_extraction=RunKMindHubAnalysisExtraction(
             active_repository,
-            ManageKMindHubWorkspaceMapping(active_repository, active_kmindhub_client),
+            kmindhub_workspace_resolver,
             active_kmindhub_client,
             active_clock,
         ),
