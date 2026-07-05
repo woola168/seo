@@ -168,6 +168,7 @@ def test_analyze_run_result_saves_completed_semantic_facts() -> None:
         assert result.sentiments[0].sentiment == "positive"
         assert result.semantic_facts[0].value == "ERP"
         assert repository.saved_commands[-1].analysis == result
+        assert analyzer.commands[0].tenant_id == TENANT_ID
         assert analyzer.commands[0].project_id == project_id
         assert analyzer.commands[0].topic_id == topic_id
         assert analyzer.commands[0].entities.own_brand.name == "Acme"

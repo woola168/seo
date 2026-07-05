@@ -70,6 +70,7 @@ def test_query_research_command_rejects_tracking_incompatible_payload(
 
 def test_analyze_geo_run_result_command_accepts_camel_case_payload() -> None:
     command = AnalyzeGeoRunResultCommand(
+        tenantId=UUID("00000000-0000-4000-8000-000000000000"),
         runResultId=UUID("00000000-0000-4000-8000-000000000001"),
         projectId=UUID("00000000-0000-4000-8000-000000000002"),
         queryId=UUID("00000000-0000-4000-8000-000000000003"),
@@ -100,10 +101,12 @@ def test_analyze_geo_run_result_command_accepts_camel_case_payload() -> None:
         },
     )
 
+    assert command.tenant_id == UUID("00000000-0000-4000-8000-000000000000")
     assert command.run_result_id == UUID("00000000-0000-4000-8000-000000000001")
     assert command.query_text == "Who are reliable suppliers?"
     assert command.entities.own_brand.name == "Acme"
     dumped = command.model_dump(mode="json", by_alias=True)
+    assert dumped["tenantId"] == "00000000-0000-4000-8000-000000000000"
     assert dumped["runResultId"] == "00000000-0000-4000-8000-000000000001"
     assert dumped["rawResponse"] == "Acme is frequently recommended."
     assert dumped["entities"]["ownBrand"]["websiteUrl"] == "https://acme.example"

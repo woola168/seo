@@ -7,8 +7,15 @@ SENTIMENT_VALUES = frozenset(
     {"positive", "neutral", "negative", "mixed", "unknown"}
 )
 ENTITY_TYPE_VALUES = frozenset({"own_brand", "competitor", "other"})
+SEMANTIC_ENTITY_ROLE_VALUES = frozenset({"own_brand", "competitor"})
+SEMANTIC_SENTIMENT_VALUES = frozenset({"positive", "negative"})
+SEMANTIC_FACT_TYPE_VALUES = frozenset(
+    {"product", "service", "topic", "common_statement"}
+)
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
+SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 1
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -107,6 +114,124 @@ def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "必須能在 raw answer 中找到相同或高度相近的片段。",
                 "Acme 在售後服務上較具優勢。",
                 9,
+            ),
+        ],
+    )
+
+
+def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
+    """定義 semantic facts extraction task schema。"""
+
+    return KMindHubExtractionTaskDefinition(
+        task_key=SEMANTIC_ANALYSIS_TASK_KEY,
+        schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
+        name="GEO semantic analysis v1",
+        task=(
+            "Extract entity mentions, statement sentiment, and semantic labels "
+            "from one AI answer using the supplied entity context."
+        ),
+        description=(
+            "只輸出 GEO semantic facts，不處理 citations、dashboard metrics 或 URL normalization。"
+        ),
+        fields=[
+            _field(
+                "entityId",
+                "Entity ID",
+                "Tracked entity UUID for mention or sentiment facts.",
+                "Use the entity id from the provided own brand or competitor context.",
+                "00000000-0000-4000-8000-000000000001",
+                0,
+            ),
+            _field(
+                "entityRole",
+                "Entity role",
+                "Tracked entity role.",
+                _enum_instruction(SEMANTIC_ENTITY_ROLE_VALUES),
+                "own_brand",
+                1,
+            ),
+            _field(
+                "entityName",
+                "Entity name",
+                "Tracked entity name as it appears in the entity context.",
+                "Use the canonical entity name from the provided context.",
+                "Acme",
+                2,
+            ),
+            _field(
+                "mentioned",
+                "Mentioned",
+                "Whether the entity appears in the AI answer.",
+                "Use true or false.",
+                "true",
+                3,
+                field_type="boolean",
+            ),
+            _field(
+                "firstMentionOrder",
+                "First mention order",
+                "One-based order among tracked entities mentioned in the answer.",
+                "Leave empty when mentioned is false.",
+                "1",
+                4,
+                field_type="int",
+            ),
+            _field(
+                "sentiment",
+                "Sentiment",
+                "Statement-level sentiment for the tracked entity.",
+                _enum_instruction(SEMANTIC_SENTIMENT_VALUES),
+                "positive",
+                5,
+            ),
+            _field(
+                "theme",
+                "Theme",
+                "Short theme for a sentiment statement.",
+                "Use a concise stable theme.",
+                "product fit",
+                6,
+            ),
+            _field(
+                "statement",
+                "Statement",
+                "A sentiment-bearing statement from the answer.",
+                "Copy the statement from the answer or summarize only when needed.",
+                "Acme ERP is suitable for manufacturers.",
+                7,
+            ),
+            _field(
+                "factType",
+                "Semantic fact type",
+                "Semantic label category.",
+                _enum_instruction(SEMANTIC_FACT_TYPE_VALUES),
+                "product",
+                8,
+            ),
+            _field(
+                "value",
+                "Semantic fact value",
+                "Product, service, topic, or common statement value.",
+                "Return one stable normalized value.",
+                "ERP",
+                9,
+            ),
+            _field(
+                "evidenceText",
+                "Evidence text",
+                "Exact supporting text from the raw answer.",
+                "Use text that exists in the raw answer.",
+                "Acme ERP",
+                10,
+            ),
+            _field(
+                "confidence",
+                "Confidence",
+                "Confidence score between 0 and 1.",
+                "Use a decimal number between 0 and 1.",
+                "0.9",
+                11,
+                field_type="float",
             ),
         ],
     )

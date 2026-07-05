@@ -172,6 +172,7 @@ class GeoAnalysisEntityContext(ContractModel):
 class AnalyzeGeoRunResultCommand(ContractModel):
     """送入 semantic analyzer 的完整 run result 與專案上下文。"""
 
+    tenant_id: UUID
     run_result_id: UUID
     project_id: UUID
     query_id: UUID

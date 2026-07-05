@@ -83,6 +83,7 @@ class AnalyzeRunResult:
             None,
         )
         command = AnalyzeGeoRunResultCommand(
+            tenant_id=tenant_id,
             run_result_id=result.id,
             project_id=query.project_id,
             query_id=query.id,

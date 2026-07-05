@@ -67,6 +67,7 @@ __all__ = [
     "GeoWorkerLeaseRow",
     "TenantKMindHubExtractionTaskMappingRow",
     "TenantKMindHubWorkspaceMappingRow",
+    "KMindHubGeoRunResultAnalyzer",
     "HttpKMindHubWorkspaceClient",
     "PostgresGeoAnalysisRepository",
     "HttpTrackingRunClient",
@@ -103,6 +104,12 @@ def __getattr__(name: str):
         )
 
         return HttpKMindHubWorkspaceClient
+    if name == "KMindHubGeoRunResultAnalyzer":
+        from younilab_seo.geo_analysis.infrastructure.kmindhub import (
+            KMindHubGeoRunResultAnalyzer,
+        )
+
+        return KMindHubGeoRunResultAnalyzer
     if name == "RabbitMqMessagePublisher":
         from younilab_seo.geo_analysis.infrastructure.messaging import (
             RabbitMqMessagePublisher,
