@@ -1,7 +1,8 @@
 from dataclasses import asdict
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from younilab_geo_analysis_api.presentation.http.dependencies import bearer_token
 from younilab_geo_analysis_api.presentation.http.dtos import (
@@ -18,6 +19,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     KMindHubWorkspaceProvisionRequest,
     MarketRequest,
     MarketResponse,
+    MetricFormulaResultResponse,
     PageResponse,
     ProjectRequest,
     ProjectResponse,
@@ -39,6 +41,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
 )
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    CalculateGeoReportMetrics,
     CreateQueryRunJobCommand,
     DispatchQueryRunJob,
     DispatchQueryRunJobError,
@@ -50,6 +53,8 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
+    GeoMetricFormulaQuery,
+    GeoMetricFormulaSourceProjectNotFound,
     GeoTopicCommand,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceProvisionCommand,
@@ -87,6 +92,10 @@ def _kmindhub_workspace(request: Request) -> ManageKMindHubWorkspaceMapping:
 
 def _analysis_extractor(request: Request) -> RunKMindHubAnalysisExtraction:
     return request.app.state.run_kmindhub_analysis_extraction
+
+
+def _report_metrics(request: Request) -> CalculateGeoReportMetrics:
+    return request.app.state.calculate_geo_report_metrics
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -206,6 +215,51 @@ async def get_project(request: Request, project_id: UUID) -> ProjectResponse:
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     return ProjectResponse(**_record_data(project))
+
+
+@router.get(
+    "/projects/{project_id}/metrics",
+    response_model=MetricFormulaResultResponse,
+)
+async def get_project_metrics(
+    request: Request,
+    project_id: UUID,
+    period_start: datetime = Query(alias="periodStart"),
+    period_end: datetime = Query(alias="periodEnd"),
+    comparison_start: datetime | None = Query(default=None, alias="comparisonStart"),
+    comparison_end: datetime | None = Query(default=None, alias="comparisonEnd"),
+    query_id: UUID | None = Query(default=None, alias="queryId"),
+    topic_id: UUID | None = Query(default=None, alias="topicId"),
+    provider: str | None = None,
+    region: str | None = None,
+    language: str | None = None,
+) -> MetricFormulaResultResponse:
+    principal = await _principal(request, "geo.projects.read")
+    project = await _setup(request).get_project(principal, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        metrics_query = GeoMetricFormulaQuery(
+            period_start=period_start,
+            period_end=period_end,
+            comparison_start=comparison_start,
+            comparison_end=comparison_end,
+            query_id=query_id,
+            topic_id=topic_id,
+            provider=provider,
+            region=region,
+            language=language,
+        )
+        result = await _report_metrics(request).execute(
+            principal.tenant_id,
+            project_id,
+            metrics_query,
+        )
+    except GeoMetricFormulaSourceProjectNotFound:
+        raise HTTPException(status_code=404, detail="project not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return MetricFormulaResultResponse(**result.model_dump())
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)

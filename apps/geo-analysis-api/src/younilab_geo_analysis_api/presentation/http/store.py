@@ -13,6 +13,11 @@ from younilab_seo.geo_analysis.application import (
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
+    GeoMetricEntityMentionInput,
+    GeoMetricFormulaQuery,
+    GeoMetricFormulaSource,
+    GeoMetricRunResultInput,
+    GeoMetricSentimentInput,
     GeoProjectCommand,
     GeoProjectRecord,
     GeoQueryCommand,
@@ -24,6 +29,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryScheduleRecord,
     GeoRunResultAnalysisRecord,
     GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
@@ -896,6 +902,40 @@ class GeoApiStore:
             reverse=True,
         )
 
+    async def get_metric_formula_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoMetricFormulaQuery,
+        normalizer_version: str,
+    ) -> GeoMetricFormulaSource:
+        if not self._project_matches(tenant_id, project_id):
+            return GeoMetricFormulaSource()
+
+        source_results = [
+            (result, self.queries.get(result.query_id))
+            for result in self.run_results.values()
+            if self._metric_run_result_matches(project_id, result, query)
+        ]
+        run_result_ids = {result.id for result, _query in source_results}
+        return GeoMetricFormulaSource(
+            run_results=[
+                GeoMetricRunResultInput(
+                    run_result_id=result.id,
+                    query_id=result.query_id,
+                    topic_id=source_query.topic_id if source_query is not None else None,
+                    provider=result.provider,
+                    region=result.region,
+                    language=result.language,
+                    completed_at=_normalize_datetime(result.run_at),
+                )
+                for result, source_query in source_results
+            ],
+            entity_mentions=self._metric_entity_mentions(run_result_ids),
+            sentiments=self._metric_sentiments(run_result_ids),
+            citations=self._metric_citations(run_result_ids, normalizer_version),
+        )
+
     async def get_run_result(
         self,
         tenant_id: UUID,
@@ -1252,6 +1292,90 @@ class GeoApiStore:
         project = self.projects.get(project_id)
         return project is not None and project.tenant_id == tenant_id
 
+    def _metric_run_result_matches(
+        self,
+        project_id: UUID,
+        result: GeoRunResultRecord,
+        query: GeoMetricFormulaQuery,
+    ) -> bool:
+        job = self.jobs.get(result.job_id)
+        source_query = self.queries.get(result.query_id)
+        if (
+            job is None
+            or job.project_id != project_id
+            or result.status != "completed"
+            or source_query is None
+        ):
+            return False
+        completed_at = _normalize_datetime(result.run_at)
+        comparison_start, comparison_end = _metric_comparison_period(query)
+        in_current_period = query.period_start <= completed_at < query.period_end
+        in_comparison_period = comparison_start <= completed_at < comparison_end
+        if not (in_current_period or in_comparison_period):
+            return False
+        if query.query_id is not None and result.query_id != query.query_id:
+            return False
+        if query.topic_id is not None and source_query.topic_id != query.topic_id:
+            return False
+        if query.provider is not None and result.provider != query.provider:
+            return False
+        if query.region is not None and result.region != query.region:
+            return False
+        if query.language is not None and result.language != query.language:
+            return False
+        return True
+
+    def _metric_entity_mentions(
+        self,
+        run_result_ids: set[UUID],
+    ) -> list[GeoMetricEntityMentionInput]:
+        facts: list[GeoMetricEntityMentionInput] = []
+        for result_id in run_result_ids:
+            analysis = self.semantic_run_result_analyses.get(result_id)
+            if analysis is None or analysis.status != "completed":
+                continue
+            facts.extend(
+                GeoMetricEntityMentionInput(
+                    run_result_id=result_id,
+                    **mention.model_dump(),
+                )
+                for mention in analysis.entity_mentions
+            )
+        return facts
+
+    def _metric_sentiments(
+        self,
+        run_result_ids: set[UUID],
+    ) -> list[GeoMetricSentimentInput]:
+        facts: list[GeoMetricSentimentInput] = []
+        for result_id in run_result_ids:
+            analysis = self.semantic_run_result_analyses.get(result_id)
+            if analysis is None or analysis.status != "completed":
+                continue
+            facts.extend(
+                GeoMetricSentimentInput(
+                    run_result_id=result_id,
+                    **sentiment.model_dump(),
+                )
+                for sentiment in analysis.sentiments
+            )
+        return facts
+
+    def _metric_citations(
+        self,
+        run_result_ids: set[UUID],
+        normalizer_version: str,
+    ) -> list[GeoRunResultCitationFact]:
+        citations: list[GeoRunResultCitationFact] = []
+        for result_id in run_result_ids:
+            normalization = self.run_result_citation_normalizations.get(
+                (result_id, normalizer_version)
+            )
+            if normalization is None or normalization.status != "completed":
+                continue
+            citations.extend(normalization.citations)
+        return citations
+
     def _run_result_with_analysis(
         self,
         result: GeoRunResultRecord,
@@ -1287,6 +1411,15 @@ def _normalize_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).replace(microsecond=0)
+
+
+def _metric_comparison_period(
+    query: GeoMetricFormulaQuery,
+) -> tuple[datetime, datetime]:
+    if query.comparison_start is not None and query.comparison_end is not None:
+        return query.comparison_start, query.comparison_end
+    duration = query.period_end - query.period_start
+    return query.period_start - duration, query.period_start
 
 
 def _result_references(result) -> list[tuple[str, str | None]]:

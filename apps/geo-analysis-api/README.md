@@ -1,6 +1,6 @@
 ﻿# GEO Analysis API
 
-GEO Analysis API 提供 Phase 1 的 GEO 專案設定、market、entity、topic、query、platform assignment、schedule 與 query run job orchestration endpoint。實際 AI 跑題由 `geo-tracking-api` 負責；本服務負責 dispatch、job orchestration，以及 worker 回寫的 raw result / references 保存。Mention/citation/sentiment 與報表指標仍屬後續批次。
+GEO Analysis API 提供 GEO 專案設定、market、entity、topic、query、platform assignment、schedule、query run job orchestration 與 report metrics endpoint。實際 AI 跑題由 `geo-tracking-api` 負責；本服務負責 dispatch、job orchestration、worker 回寫的 raw result / references 保存，以及透過 application use case 讀取已正規化 facts 計算報表指標。
 
 開發環境可用下列方式啟動：
 
@@ -24,7 +24,7 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - `customerId` / `seoTaskId` 維持 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。
 - 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
-- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。成功保存 raw result 後，worker 會同步觸發 KMindHub analysis extraction，保存 summary、mention、statement 與 citation classification 的報表前處理資料；正式報表聚合 API 與獨立 extraction queue 仍屬後續批次。
+- RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Report metrics API 讀取新的 semantic facts / citation facts pipeline；metrics snapshot persistence 與額外 worker trigger 仍屬後續批次。
 - KMindHub workspace 採手動優先策略；tenant 第一次使用後續 analysis extraction 前，需先用 API 綁定既有 workspace 或明確 provision workspace。Worker 不會在首次執行時自動建立 workspace，也不會 fallback 到 default workspace。
 - KMindHub Insight extraction 的完整流程與欄位定義請參考 `docs/integrations/geo-analysis-kmindhub-insight-extraction.md`。
 - 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
@@ -87,6 +87,49 @@ response：
   "status": "active",
   "createdAt": "2026-07-02T00:00:00Z",
   "updatedAt": "2026-07-02T00:00:00Z"
+}
+```
+
+### Report Metrics
+
+報表指標由 `CalculateGeoReportMetrics` application use case 計算，API route 只負責授權、query parameter validation 與 response DTO mapping。資料來源是已保存的 completed run results、semantic facts 與 citation normalization facts；API 不會在讀取 metrics 時觸發 worker 或重新分析。
+
+```http
+GET /api/geo/projects/{projectId}/metrics?periodStart=2026-06-24T00:00:00Z&periodEnd=2026-06-26T00:00:00Z&comparisonStart=2026-06-22T00:00:00Z&comparisonEnd=2026-06-24T00:00:00Z
+Authorization: Bearer <access-token>
+```
+
+可選 query parameters：
+
+- `queryId`
+- `topicId`
+- `provider`
+- `region`
+- `language`
+
+response：
+
+```json
+{
+  "periodStart": "2026-06-24T00:00:00Z",
+  "periodEnd": "2026-06-26T00:00:00Z",
+  "comparisonStart": "2026-06-22T00:00:00Z",
+  "comparisonEnd": "2026-06-24T00:00:00Z",
+  "metrics": [
+    {
+      "metricName": "visibility",
+      "scopeType": "project",
+      "scopeValue": null,
+      "scopeLabel": null,
+      "value": 100,
+      "unit": "percent",
+      "numerator": 1,
+      "denominator": 1,
+      "comparisonValue": 0,
+      "delta": 100,
+      "deltaUnit": "pp"
+    }
+  ]
 }
 ```
 

@@ -400,6 +400,28 @@ class RunResultResponse(ApiModel):
     analysis_error_message: str | None = None
 
 
+class MetricValueResponse(ApiModel):
+    metric_name: str
+    scope_type: str
+    scope_value: str | None = None
+    scope_label: str | None = None
+    value: float
+    unit: str
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: str | None = None
+
+
+class MetricFormulaResultResponse(ApiModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    metrics: list[MetricValueResponse]
+
+
 class KMindHubWorkspaceMappingRequest(ApiModel):
     model_config = ConfigDict(
         alias_generator=_camel_case,

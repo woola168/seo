@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
+    BuildGeoMetricFormulaSource,
+    CalculateGeoReportMetrics,
     Clock,
     DispatchQueryRunJob,
     GeoAnalysisRepository,
@@ -39,6 +41,7 @@ class GeoAnalysisApiDependencies:
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
     analyze_run_result: AnalyzeRunResult
+    calculate_geo_report_metrics: CalculateGeoReportMetrics
     run_kmindhub_analysis_extraction: RunKMindHubAnalysisExtraction
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
@@ -99,6 +102,9 @@ def build_dependencies(
             active_repository,
             semantic_analyzer,
             active_clock,
+        ),
+        calculate_geo_report_metrics=CalculateGeoReportMetrics(
+            BuildGeoMetricFormulaSource(active_repository),
         ),
         run_kmindhub_analysis_extraction=RunKMindHubAnalysisExtraction(
             active_repository,

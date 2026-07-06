@@ -12,6 +12,7 @@ from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
     AuthorizedPrincipal,
+    CalculateGeoReportMetrics,
     KMindHubExtractionCommitResult,
     KMindHubExtractionFieldValue,
     KMindHubExtractionPreviewItem,
@@ -154,6 +155,10 @@ def test_composition_builds_report_semantic_analysis_dependency() -> None:
         dependencies.run_kmindhub_analysis_extraction,
         RunKMindHubAnalysisExtraction,
     )
+    assert isinstance(
+        dependencies.calculate_geo_report_metrics,
+        CalculateGeoReportMetrics,
+    )
     assert dependencies.closeables.count(kmindhub_client) == 1
 
 
@@ -161,6 +166,10 @@ def test_app_state_exposes_report_semantic_analysis_dependency() -> None:
     client = _client(kmindhub_client=FakeKMindHubClient())
 
     assert isinstance(client.app.state.analyze_run_result, AnalyzeRunResult)
+    assert isinstance(
+        client.app.state.calculate_geo_report_metrics,
+        CalculateGeoReportMetrics,
+    )
 
 
 def test_kmindhub_workspace_provision_creates_remote_workspace() -> None:
@@ -691,6 +700,149 @@ def test_project_run_results_are_scoped_to_project() -> None:
     assert [item["id"] for item in response.json()["items"]] == [str(result_id)]
 
 
+def test_project_metrics_returns_report_metrics() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+    project_id = store.jobs[job_id].project_id
+    entity_id = uuid4()
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+        entityMentions=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "mentioned": True,
+                "firstMentionOrder": 1,
+            }
+        ],
+        sentiments=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "sentiment": "positive",
+                "theme": "供應商比較",
+                "statement": "Acme is recommended.",
+            }
+        ],
+    )
+    normalization = GeoRunResultCitationNormalization(
+        runResultId=result_id,
+        projectId=project_id,
+        status="completed",
+        citations=[
+            GeoRunResultCitationFact(
+                runResultId=result_id,
+                referenceId=store.run_results[result_id].references[0].id,
+                url="https://example.com/reference",
+                domain="example.com",
+                position=1,
+                ownership="other",
+                sourceType="unknown",
+            )
+        ],
+    )
+    store.run_result_citation_normalizations[
+        (result_id, normalization.normalizer_version)
+    ] = normalization
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-22T00:00:00+00:00",
+            "comparisonEnd": "2026-06-24T00:00:00+00:00",
+            "provider": "gemini",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["periodStart"] == "2026-06-24T00:00:00Z"
+    assert body["comparisonStart"] == "2026-06-22T00:00:00Z"
+    assert "period_start" not in body
+    visibility = _metric(body["metrics"], "visibility", "project")
+    citation = _metric(
+        body["metrics"],
+        "citation_count",
+        "citation_url",
+        "https://example.com/reference",
+    )
+    sentiment = _metric(body["metrics"], "sentiment_count", "sentiment", "positive")
+    assert visibility["value"] == 100
+    assert visibility["comparisonValue"] == 0
+    assert citation["scopeLabel"] == "https://example.com/reference"
+    assert sentiment["value"] == 1
+
+
+def test_project_metrics_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(allowed_customer_id), "name": "Allowed GEO"},
+    )
+    denied_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(denied_customer_id), "name": "Denied GEO"},
+    )
+    assert allowed_project.status_code == 201
+    assert denied_project.status_code == 201
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    allowed_response = restricted.get(
+        f"/api/geo/projects/{allowed_project.json()['id']}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+    denied_response = restricted.get(
+        f"/api/geo/projects/{denied_project.json()['id']}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+
+    assert allowed_response.status_code == 200
+    assert denied_response.status_code == 404
+
+
+def test_project_metrics_validation_error_returns_problem_details() -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-23T00:00:00+00:00",
+            "comparisonEnd": "2026-06-25T00:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "comparisonEnd" in response.json()["detail"]
+
+
 def test_missing_run_result_returns_problem_details() -> None:
     client = _client()
 
@@ -944,6 +1096,22 @@ def _client_with_query(
 
 def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
+
+
+def _metric(
+    metrics: list[dict],
+    metric_name: str,
+    scope_type: str,
+    scope_value: str | None = None,
+) -> dict:
+    for metric in metrics:
+        if (
+            metric["metricName"] == metric_name
+            and metric["scopeType"] == scope_type
+            and metric["scopeValue"] == scope_value
+        ):
+            return metric
+    raise AssertionError(f"metric not found: {metric_name} {scope_type} {scope_value}")
 
 
 def _create_project(client: TestClient) -> str:
