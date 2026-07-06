@@ -20,6 +20,7 @@ from younilab_seo.geo_analysis.application import (
     QueryPlanningClient,
     ReceiveExternalRunCallback,
     ResourceCatalogReferenceVerifier,
+    GetGeoDashboardReport,
     RunKMindHubAnalysisExtraction,
 )
 from younilab_seo.geo_analysis.infrastructure import (
@@ -42,6 +43,7 @@ class GeoAnalysisApiDependencies:
     manage_query_run_jobs: ManageQueryRunJobs
     analyze_run_result: AnalyzeRunResult
     calculate_geo_report_metrics: CalculateGeoReportMetrics
+    get_geo_dashboard_report: GetGeoDashboardReport
     run_kmindhub_analysis_extraction: RunKMindHubAnalysisExtraction
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
@@ -82,6 +84,7 @@ def build_dependencies(
         kmindhub_workspace_resolver,
         active_kmindhub_client,
     )
+    metric_source_builder = BuildGeoMetricFormulaSource(active_repository)
     closeables = tuple(
         item
         for item in (active_publisher, active_planning_client, active_kmindhub_client)
@@ -104,7 +107,10 @@ def build_dependencies(
             active_clock,
         ),
         calculate_geo_report_metrics=CalculateGeoReportMetrics(
-            BuildGeoMetricFormulaSource(active_repository),
+            metric_source_builder,
+        ),
+        get_geo_dashboard_report=GetGeoDashboardReport(
+            metric_source_builder,
         ),
         run_kmindhub_analysis_extraction=RunKMindHubAnalysisExtraction(
             active_repository,

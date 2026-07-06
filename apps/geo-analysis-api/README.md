@@ -133,6 +133,53 @@ response：
 }
 ```
 
+### Dashboard Report
+
+Dashboard 報表由 `GetGeoDashboardReport` application use case 即時計算 read model，資料來源與 metrics endpoint 相同，都是已保存的 completed run results、semantic facts 與 citation normalization facts。API 不會在讀取 dashboard 時觸發 worker、重新分析或寫入 snapshot。
+
+```http
+GET /api/geo/projects/{projectId}/reports/dashboard?periodStart=2026-06-24T00:00:00Z&periodEnd=2026-06-26T00:00:00Z&comparisonStart=2026-06-22T00:00:00Z&comparisonEnd=2026-06-24T00:00:00Z
+Authorization: Bearer <access-token>
+```
+
+可選 query parameters 與 `/metrics` 相同：
+
+- `queryId`
+- `topicId`
+- `provider`
+- `region`
+- `language`
+
+response：
+
+```json
+{
+  "periodStart": "2026-06-24T00:00:00Z",
+  "periodEnd": "2026-06-26T00:00:00Z",
+  "comparisonStart": "2026-06-22T00:00:00Z",
+  "comparisonEnd": "2026-06-24T00:00:00Z",
+  "overview": [
+    {
+      "metricName": "visibility",
+      "label": "Visibility",
+      "metric": {
+        "value": 100,
+        "unit": "percent",
+        "numerator": 1,
+        "denominator": 1,
+        "comparisonValue": 0,
+        "delta": 100,
+        "deltaUnit": "pp"
+      }
+    }
+  ],
+  "entities": [],
+  "citationUrls": [],
+  "citationDomains": [],
+  "sentiments": []
+}
+```
+
 ### 手動建立 AI Platform
 
 遠端部署目前不由 CI/CD 自動執行 DB schema 或 seed。執行 `004_geo_analysis_schema.sql` 後，需手動在 `geo_ai_platform` 寫入可派送的平台資料，後續建立 query platform、schedule、job 時會使用這些 `id`。

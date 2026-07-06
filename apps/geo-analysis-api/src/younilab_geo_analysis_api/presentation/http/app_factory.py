@@ -60,6 +60,7 @@ def create_app(
     app.state.manage_query_run_jobs = dependencies.manage_query_run_jobs
     app.state.analyze_run_result = dependencies.analyze_run_result
     app.state.calculate_geo_report_metrics = dependencies.calculate_geo_report_metrics
+    app.state.get_geo_dashboard_report = dependencies.get_geo_dashboard_report
     app.state.run_kmindhub_analysis_extraction = (
         dependencies.run_kmindhub_analysis_extraction
     )

@@ -10,6 +10,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     AliasResponse,
     AcceptQueryDraftRequest,
     CreateJobRequest,
+    DashboardReportResponse,
     EntityRequest,
     EntityResponse,
     ExternalCallbackRequest,
@@ -56,6 +57,7 @@ from younilab_seo.geo_analysis.application import (
     GeoMetricFormulaQuery,
     GeoMetricFormulaSourceProjectNotFound,
     GeoTopicCommand,
+    GetGeoDashboardReport,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceProvisionCommand,
     ManageQueryPlanning,
@@ -96,6 +98,10 @@ def _analysis_extractor(request: Request) -> RunKMindHubAnalysisExtraction:
 
 def _report_metrics(request: Request) -> CalculateGeoReportMetrics:
     return request.app.state.calculate_geo_report_metrics
+
+
+def _dashboard_report(request: Request) -> GetGeoDashboardReport:
+    return request.app.state.get_geo_dashboard_report
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -260,6 +266,51 @@ async def get_project_metrics(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     return MetricFormulaResultResponse(**result.model_dump())
+
+
+@router.get(
+    "/projects/{project_id}/reports/dashboard",
+    response_model=DashboardReportResponse,
+)
+async def get_project_dashboard_report(
+    request: Request,
+    project_id: UUID,
+    period_start: datetime = Query(alias="periodStart"),
+    period_end: datetime = Query(alias="periodEnd"),
+    comparison_start: datetime | None = Query(default=None, alias="comparisonStart"),
+    comparison_end: datetime | None = Query(default=None, alias="comparisonEnd"),
+    query_id: UUID | None = Query(default=None, alias="queryId"),
+    topic_id: UUID | None = Query(default=None, alias="topicId"),
+    provider: str | None = None,
+    region: str | None = None,
+    language: str | None = None,
+) -> DashboardReportResponse:
+    principal = await _principal(request, "geo.projects.read")
+    project = await _setup(request).get_project(principal, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        metrics_query = GeoMetricFormulaQuery(
+            period_start=period_start,
+            period_end=period_end,
+            comparison_start=comparison_start,
+            comparison_end=comparison_end,
+            query_id=query_id,
+            topic_id=topic_id,
+            provider=provider,
+            region=region,
+            language=language,
+        )
+        result = await _dashboard_report(request).execute(
+            principal.tenant_id,
+            project_id,
+            metrics_query,
+        )
+    except GeoMetricFormulaSourceProjectNotFound:
+        raise HTTPException(status_code=404, detail="project not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return DashboardReportResponse(**result.model_dump())
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)

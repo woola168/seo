@@ -422,6 +422,59 @@ class MetricFormulaResultResponse(ApiModel):
     metrics: list[MetricValueResponse]
 
 
+class DashboardMetricValueResponse(ApiModel):
+    value: float
+    unit: str
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: str | None = None
+
+
+class DashboardOverviewCardResponse(ApiModel):
+    metric_name: str
+    label: str
+    metric: DashboardMetricValueResponse
+
+
+class DashboardEntityRowResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    visibility: DashboardMetricValueResponse
+    mentions: DashboardMetricValueResponse
+    average_position: DashboardMetricValueResponse
+
+
+class DashboardCitationRowResponse(ApiModel):
+    scope_type: str
+    value: str
+    label: str
+    ownership: str | None = None
+    source_type: str | None = None
+    citation_count: DashboardMetricValueResponse
+    used_percent: DashboardMetricValueResponse
+    share_percent: DashboardMetricValueResponse
+
+
+class DashboardSentimentRowResponse(ApiModel):
+    sentiment: str
+    statement_count: DashboardMetricValueResponse
+
+
+class DashboardReportResponse(ApiModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    overview: list[DashboardOverviewCardResponse]
+    entities: list[DashboardEntityRowResponse]
+    citation_urls: list[DashboardCitationRowResponse]
+    citation_domains: list[DashboardCitationRowResponse]
+    sentiments: list[DashboardSentimentRowResponse]
+
+
 class KMindHubWorkspaceMappingRequest(ApiModel):
     model_config = ConfigDict(
         alias_generator=_camel_case,
