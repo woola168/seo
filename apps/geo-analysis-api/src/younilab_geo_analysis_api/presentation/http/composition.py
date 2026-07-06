@@ -21,7 +21,6 @@ from younilab_seo.geo_analysis.application import (
     ReceiveExternalRunCallback,
     ResourceCatalogReferenceVerifier,
     GetGeoDashboardReport,
-    RunKMindHubAnalysisExtraction,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
@@ -44,7 +43,6 @@ class GeoAnalysisApiDependencies:
     analyze_run_result: AnalyzeRunResult
     calculate_geo_report_metrics: CalculateGeoReportMetrics
     get_geo_dashboard_report: GetGeoDashboardReport
-    run_kmindhub_analysis_extraction: RunKMindHubAnalysisExtraction
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
     callback_base_url: str
@@ -111,12 +109,6 @@ def build_dependencies(
         ),
         get_geo_dashboard_report=GetGeoDashboardReport(
             metric_source_builder,
-        ),
-        run_kmindhub_analysis_extraction=RunKMindHubAnalysisExtraction(
-            active_repository,
-            kmindhub_workspace_resolver,
-            active_kmindhub_client,
-            active_clock,
         ),
         dispatch_query_run_job=(
             DispatchQueryRunJob(active_repository, active_publisher, active_clock)

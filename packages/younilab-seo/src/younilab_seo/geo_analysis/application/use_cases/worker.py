@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 import logging
+from typing import Protocol
+from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
     ExternalRunCallback,
@@ -18,6 +20,12 @@ from younilab_seo.geo_analysis.domain import GeoQueryRunJob, QueryRunJobStatusEr
 logger = logging.getLogger(__name__)
 
 
+class RunResultPipelineStep(Protocol):
+    """Post-tracking step that enriches a saved run result for reporting."""
+
+    async def execute(self, tenant_id: UUID, run_result_id: UUID) -> object: ...
+
+
 class QueryRunJobMessageRejected(ValueError):
     """已消費 message 無法套用且不應重試時使用的錯誤。"""
 
@@ -30,7 +38,8 @@ class ProcessQueryRunJobMessage:
     tracking_client: TrackingRunClient
     clock: Clock
     supported_provider: str
-    analysis_extractor: object | None = None
+    analyze_run_result: RunResultPipelineStep | None = None
+    normalize_run_result_citations: RunResultPipelineStep | None = None
 
     async def execute(self, message: QueryRunJobMessage) -> GeoQueryRunJob:
         """處理單一 provider queue message，並以 job 所屬 tenant 作為防線。"""
@@ -136,17 +145,39 @@ class ProcessQueryRunJobMessage:
                 request_payload=request_payload,
             ),
         )
-        if status == "succeeded" and self.analysis_extractor is not None:
+        if (
+            status == "succeeded"
+            and self.analyze_run_result is not None
+            and self.normalize_run_result_citations is not None
+        ):
             results = await self.repository.list_job_run_results(
                 message.tenant_id,
                 message.job_id,
             )
             for result in results:
                 try:
-                    await self.analysis_extractor.execute(message.tenant_id, result.id)
+                    await self.analyze_run_result.execute(
+                        message.tenant_id,
+                        result.id,
+                    )
                 except Exception:
                     logger.exception(
-                        "GEO analysis extraction failed after tracking success",
+                        "GEO semantic analysis failed after tracking success",
+                        extra={
+                            "tenant_id": str(message.tenant_id),
+                            "job_id": str(message.job_id),
+                            "run_result_id": str(result.id),
+                        },
+                    )
+                    continue
+                try:
+                    await self.normalize_run_result_citations.execute(
+                        message.tenant_id,
+                        result.id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "GEO citation normalization failed after tracking success",
                         extra={
                             "tenant_id": str(message.tenant_id),
                             "job_id": str(message.job_id),

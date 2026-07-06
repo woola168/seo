@@ -28,7 +28,6 @@ from younilab_seo.geo_analysis.application import (
     ResourceCatalogVerificationDenied,
     ResourceCatalogVerificationUnavailable,
     ResourceTaskReference,
-    RunKMindHubAnalysisExtraction,
     SaveRunResultCitationNormalizationCommand,
     SaveSemanticRunResultAnalysisCommand,
 )
@@ -152,10 +151,7 @@ def test_composition_builds_report_semantic_analysis_dependency() -> None:
         dependencies.analyze_run_result.analyzer,
         KMindHubGeoRunResultAnalyzer,
     )
-    assert isinstance(
-        dependencies.run_kmindhub_analysis_extraction,
-        RunKMindHubAnalysisExtraction,
-    )
+    assert not hasattr(dependencies, "run_kmindhub_analysis_extraction")
     assert isinstance(
         dependencies.calculate_geo_report_metrics,
         CalculateGeoReportMetrics,
@@ -171,6 +167,7 @@ def test_app_state_exposes_report_semantic_analysis_dependency() -> None:
     client = _client(kmindhub_client=FakeKMindHubClient())
 
     assert isinstance(client.app.state.analyze_run_result, AnalyzeRunResult)
+    assert not hasattr(client.app.state, "run_kmindhub_analysis_extraction")
     assert isinstance(
         client.app.state.calculate_geo_report_metrics,
         CalculateGeoReportMetrics,
@@ -1010,7 +1007,7 @@ def test_missing_run_result_returns_problem_details() -> None:
     assert response.json()["detail"] == "run result not found"
 
 
-def test_run_result_analysis_extraction_can_be_retried() -> None:
+def test_run_result_analysis_extraction_route_is_disabled() -> None:
     kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
     store = GeoApiStore()
     client, store, job_id = _client_with_job(repository=store, kmindhub_client=kmindhub_client)
@@ -1025,10 +1022,14 @@ def test_run_result_analysis_extraction_can_be_retried() -> None:
 
     response = client.post(f"/api/geo/run-results/{result_id}/analysis-extractions")
 
-    assert response.status_code == 200
-    assert response.json()["analysisStatus"] == "completed"
-    assert kmindhub_client.preview_texts == ["Raw answer"]
-    assert kmindhub_client.committed_items
+    assert response.status_code == 410
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == (
+        "legacy analysis extraction is disabled; dashboard reports use the "
+        "worker semantic and citation pipeline"
+    )
+    assert kmindhub_client.preview_texts == []
+    assert kmindhub_client.committed_items == []
 
 
 def test_store_saves_and_loads_semantic_run_result_analysis() -> None:

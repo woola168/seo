@@ -9,8 +9,8 @@ from younilab_seo.geo_analysis.application import (
     GeoAnalysisRepository,
     KMindHubWorkspaceClient,
     ManageKMindHubWorkspaceMapping,
+    NormalizeRunResultCitations,
     ProcessQueryRunJobMessage,
-    RunKMindHubAnalysisExtraction,
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
@@ -24,6 +24,7 @@ class GeoAnalysisWorkerDependencies:
     processor: ProcessQueryRunJobMessage
     consumer: Any
     analyze_run_result: AnalyzeRunResult
+    normalize_run_result_citations: NormalizeRunResultCitations
     kmindhub_workspace_resolver: ManageKMindHubWorkspaceMapping
     kmindhub_workspace_client: KMindHubWorkspaceClient
     closeables: tuple[object, ...] = ()
@@ -54,16 +55,19 @@ def build_dependencies(
         active_repository,
         active_kmindhub_client,
     )
-    analysis_extractor = RunKMindHubAnalysisExtraction(
-        active_repository,
-        kmindhub_workspace_resolver,
-        active_kmindhub_client,
-        active_clock,
-    )
     semantic_analyzer = KMindHubGeoRunResultAnalyzer(
         active_repository,
         kmindhub_workspace_resolver,
         active_kmindhub_client,
+    )
+    analyze_run_result = AnalyzeRunResult(
+        active_repository,
+        semantic_analyzer,
+        active_clock,
+    )
+    normalize_run_result_citations = NormalizeRunResultCitations(
+        active_repository,
+        active_clock,
     )
     return GeoAnalysisWorkerDependencies(
         processor=ProcessQueryRunJobMessage(
@@ -71,14 +75,12 @@ def build_dependencies(
             tracking_client=active_tracking_client,
             clock=active_clock,
             supported_provider=active_provider,
-            analysis_extractor=analysis_extractor,
+            analyze_run_result=analyze_run_result,
+            normalize_run_result_citations=normalize_run_result_citations,
         ),
         consumer=active_consumer,
-        analyze_run_result=AnalyzeRunResult(
-            active_repository,
-            semantic_analyzer,
-            active_clock,
-        ),
+        analyze_run_result=analyze_run_result,
+        normalize_run_result_citations=normalize_run_result_citations,
         kmindhub_workspace_resolver=kmindhub_workspace_resolver,
         kmindhub_workspace_client=active_kmindhub_client,
         closeables=(active_tracking_client, active_kmindhub_client),

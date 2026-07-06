@@ -17,8 +17,8 @@ from younilab_geo_analysis_worker.composition import build_dependencies
 from younilab_geo_analysis_worker.worker import GeoAnalysisWorker
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
+    NormalizeRunResultCitations,
     QueryRunJobMessage,
-    RunKMindHubAnalysisExtraction,
 )
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 
@@ -69,14 +69,19 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     assert dependencies.processor.supported_provider == "gemini"
     assert isinstance(dependencies.analyze_run_result, AnalyzeRunResult)
     assert isinstance(
+        dependencies.normalize_run_result_citations,
+        NormalizeRunResultCitations,
+    )
+    assert isinstance(
         dependencies.analyze_run_result.analyzer,
         KMindHubGeoRunResultAnalyzer,
     )
-    assert isinstance(
-        dependencies.processor.analysis_extractor,
-        RunKMindHubAnalysisExtraction,
+    assert dependencies.processor.analyze_run_result is dependencies.analyze_run_result
+    assert (
+        dependencies.processor.normalize_run_result_citations
+        is dependencies.normalize_run_result_citations
     )
-    assert not hasattr(dependencies.processor, "analyze_run_result")
+    assert not hasattr(dependencies.processor, "analysis_extractor")
     workspace_id = uuid4()
     assert dependencies.kmindhub_workspace_client.workspace_headers(workspace_id) == {
         "X-Workspace-Id": str(workspace_id)
