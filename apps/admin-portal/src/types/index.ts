@@ -11,6 +11,7 @@ export type PageId =
   | "geo-analysis-schedules"
   | "geo-analysis-jobs"
   | "geo-analysis-reports"
+  | "geo-analysis-report-design"
   | "geo-analysis-flow-check"
   | "geo-analysis-query-research"
   | "geo-tracking";
@@ -510,6 +511,71 @@ export interface GeoRecommendation {
   title: string;
   description: string;
   priority: "low" | "normal" | "high";
+}
+
+export interface GeoDashboardMetricValue {
+  value: number;
+  unit: "percent" | "count" | "position";
+  numerator: number | null;
+  denominator: number | null;
+  comparisonValue: number | null;
+  delta: number | null;
+  deltaUnit: "pp" | "count" | "position" | null;
+}
+
+export interface GeoDashboardOverviewCard {
+  metricName: "visibility" | "mentions" | "sov" | "average_position";
+  label: string;
+  metric: GeoDashboardMetricValue;
+}
+
+export interface GeoDashboardEntityRow {
+  entityId: string;
+  entityRole: "own_brand" | "competitor";
+  entityName: string;
+  visibility: GeoDashboardMetricValue;
+  mentions: GeoDashboardMetricValue;
+  averagePosition: GeoDashboardMetricValue;
+}
+
+export interface GeoDashboardCitationRow {
+  scopeType: "url" | "domain";
+  value: string;
+  label: string;
+  ownership: string | null;
+  sourceType: string | null;
+  citationCount: GeoDashboardMetricValue;
+  usedPercent: GeoDashboardMetricValue;
+  sharePercent: GeoDashboardMetricValue;
+}
+
+export interface GeoDashboardSentimentRow {
+  sentiment: "positive" | "negative";
+  statementCount: GeoDashboardMetricValue;
+}
+
+export interface GeoDashboardReport {
+  periodStart: string;
+  periodEnd: string;
+  comparisonStart: string;
+  comparisonEnd: string;
+  overview: GeoDashboardOverviewCard[];
+  entities: GeoDashboardEntityRow[];
+  citationUrls: GeoDashboardCitationRow[];
+  citationDomains: GeoDashboardCitationRow[];
+  sentiments: GeoDashboardSentimentRow[];
+}
+
+export interface GeoDashboardReportQuery {
+  periodStart: string;
+  periodEnd: string;
+  comparisonStart: string;
+  comparisonEnd: string;
+  queryId?: string;
+  topicId?: string;
+  provider?: string;
+  region?: string;
+  language?: string;
 }
 
 export interface GeoProjectResource {

@@ -126,6 +126,30 @@ describe("portal router", () => {
     );
   });
 
+  it("protects GEO report design and keeps it under GEO navigation", async () => {
+    const unauthenticated = createPortalRouter(createMemoryHistory(), () => false);
+
+    await unauthenticated.push("/geo-analysis/report-design");
+    await unauthenticated.isReady();
+
+    expect(unauthenticated.currentRoute.value.name).toBe("login");
+    expect(unauthenticated.currentRoute.value.query.redirect).toBe(
+      "/geo-analysis/report-design",
+    );
+
+    const authenticated = createPortalRouter(createMemoryHistory(), () => true);
+
+    await authenticated.push("/geo-analysis/report-design");
+    await authenticated.isReady();
+
+    expect(authenticated.currentRoute.value.name).toBe(
+      "geo-analysis-report-design",
+    );
+    expect(getRoutePage(authenticated.currentRoute.value.meta.page)).toBe(
+      "geo-analysis-report-design",
+    );
+  });
+
   it("protects the new employee page and preserves its destination", async () => {
     const router = createPortalRouter(createMemoryHistory(), () => false);
 
@@ -247,6 +271,9 @@ describe("route helpers", () => {
     );
     expect(getRoutePage("geo-analysis-flow-check")).toBe(
       "geo-analysis-flow-check",
+    );
+    expect(getRoutePage("geo-analysis-report-design")).toBe(
+      "geo-analysis-report-design",
     );
     expect(getRoutePage(undefined)).toBe("dashboard");
   });
