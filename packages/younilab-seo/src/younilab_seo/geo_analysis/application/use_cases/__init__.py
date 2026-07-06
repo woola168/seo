@@ -11,6 +11,9 @@ from younilab_seo.geo_analysis.application.use_cases.citation_normalization impo
     NormalizeRunResultCitations,
     RunResultCitationNormalizationNotFound,
 )
+from younilab_seo.geo_analysis.application.use_cases.dashboard_report import (
+    GetGeoDashboardReport,
+)
 from younilab_seo.geo_analysis.application.use_cases.jobs import ManageQueryRunJobs
 from younilab_seo.geo_analysis.application.use_cases.kmindhub import (
     KMindHubWorkspaceMappingAlreadyExists,
@@ -49,6 +52,7 @@ __all__ = [
     "BuildGeoMetricFormulaSource",
     "CalculateGeoMetricFormulas",
     "CalculateGeoReportMetrics",
+    "GetGeoDashboardReport",
     "GeoMetricFormulaSourceProjectNotFound",
     "NormalizeRunResultCitations",
     "KMindHubWorkspaceMappingAlreadyExists",

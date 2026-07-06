@@ -417,6 +417,71 @@ class GeoMetricFormulaResult(ContractModel):
     metrics: list[GeoMetricValue] = Field(default_factory=list)
 
 
+class GeoDashboardMetricValue(ContractModel):
+    """Dashboard read model 中可直接呈現的單一 metric value。"""
+
+    value: float
+    unit: Literal["percent", "count", "position"]
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: Literal["pp", "count", "position"] | None = None
+
+
+class GeoDashboardOverviewCard(ContractModel):
+    """Dashboard overview 區塊的一張 KPI card。"""
+
+    metric_name: Literal["visibility", "mentions", "sov", "average_position"]
+    label: str
+    metric: GeoDashboardMetricValue
+
+
+class GeoDashboardEntityRow(ContractModel):
+    """Dashboard entity comparison table 的一列。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    visibility: GeoDashboardMetricValue
+    mentions: GeoDashboardMetricValue
+    average_position: GeoDashboardMetricValue
+
+
+class GeoDashboardCitationRow(ContractModel):
+    """Dashboard citation table 的 URL 或 domain grouping row。"""
+
+    scope_type: Literal["url", "domain"]
+    value: str
+    label: str
+    ownership: str | None = None
+    source_type: str | None = None
+    citation_count: GeoDashboardMetricValue
+    used_percent: GeoDashboardMetricValue
+    share_percent: GeoDashboardMetricValue
+
+
+class GeoDashboardSentimentRow(ContractModel):
+    """Dashboard sentiment breakdown 的 positive / negative row。"""
+
+    sentiment: Literal["positive", "negative"]
+    statement_count: GeoDashboardMetricValue
+
+
+class GeoDashboardReport(ContractModel):
+    """Dashboard 頁面可直接使用的 request-time report view model。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    overview: list[GeoDashboardOverviewCard] = Field(default_factory=list)
+    entities: list[GeoDashboardEntityRow] = Field(default_factory=list)
+    citation_urls: list[GeoDashboardCitationRow] = Field(default_factory=list)
+    citation_domains: list[GeoDashboardCitationRow] = Field(default_factory=list)
+    sentiments: list[GeoDashboardSentimentRow] = Field(default_factory=list)
+
+
 class KMindHubExtractionTaskField(ContractModel):
     """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
 
