@@ -28,6 +28,9 @@ from younilab_seo.geo_analysis.application.use_cases.planning import (
     GeoProjectReferenceError,
     ManageQueryPlanning,
 )
+from younilab_seo.geo_analysis.application.use_cases.report_metrics import (
+    CalculateGeoReportMetrics,
+)
 from younilab_seo.geo_analysis.application.use_cases.semantic_analysis import (
     AnalyzeRunResult,
     RunResultSemanticAnalysisNotFound,
@@ -45,6 +48,7 @@ __all__ = [
     "AnalyzeRunResult",
     "BuildGeoMetricFormulaSource",
     "CalculateGeoMetricFormulas",
+    "CalculateGeoReportMetrics",
     "GeoMetricFormulaSourceProjectNotFound",
     "NormalizeRunResultCitations",
     "KMindHubWorkspaceMappingAlreadyExists",
