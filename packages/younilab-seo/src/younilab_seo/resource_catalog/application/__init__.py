@@ -5,6 +5,7 @@ from younilab_seo.resource_catalog.application.errors import (
     ResourceNotFound,
 )
 from younilab_seo.resource_catalog.application.interfaces import (
+    AuthorizedPrincipal,
     Clock,
     CustomerRepository,
     IdGenerator,
@@ -12,14 +13,19 @@ from younilab_seo.resource_catalog.application.interfaces import (
     ResourceCatalogRepository,
     TaskRepository,
 )
-from younilab_seo.resource_catalog.application.service import ResourceCatalogService
+from younilab_seo.resource_catalog.application.service import (
+    ManageResourceCatalog,
+    ResourceCatalogService,
+)
 
 __all__ = [
     "AccessDenied",
+    "AuthorizedPrincipal",
     "Clock",
     "Conflict",
     "CustomerRepository",
     "IdGenerator",
+    "ManageResourceCatalog",
     "PermissionAuthorizer",
     "ResourceCatalogError",
     "ResourceCatalogRepository",

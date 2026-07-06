@@ -11,9 +11,10 @@ class ResourceStatus(StrEnum):
 
 @dataclass
 class Customer:
-    """封存而非刪除的 customer master-data resource。"""
+    """Customer master data owned by a single tenant."""
 
     id: UUID
+    tenant_id: UUID
     name: str
     status: ResourceStatus
     created_at: datetime
@@ -38,9 +39,10 @@ class Customer:
 
 @dataclass
 class SeoTask:
-    """歸屬於單一 customer 的 SEO task master-data resource。"""
+    """SEO task owned by a tenant and attached to one customer."""
 
     id: UUID
+    tenant_id: UUID
     customer_id: UUID
     name: str
     status: ResourceStatus

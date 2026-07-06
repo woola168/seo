@@ -1,12 +1,17 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _camel_case(value: str) -> str:
     head, *tail = value.split("_")
     return head + "".join(part.capitalize() for part in tail)
+
+
+def _is_timezone_aware(value: datetime) -> bool:
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
 
 
 class ContractModel(BaseModel):
@@ -19,6 +24,7 @@ class QueryRunJobMessage(ContractModel):
     """發布到 provider queue 的 GEO query run job message。"""
 
     job_id: UUID
+    tenant_id: UUID
     project_id: UUID
     seo_task_id: UUID
     query_id: UUID
@@ -38,6 +44,7 @@ class GeoQueryRunJobDispatchContext(ContractModel):
     """從已保存 job 組出 broker message 所需的 dispatch read model。"""
 
     job_id: UUID
+    tenant_id: UUID
     project_id: UUID
     seo_task_id: UUID | None
     query_id: UUID
@@ -137,6 +144,493 @@ class GeoRunResultRecord(ContractModel):
     run_at: datetime
     references: list[GeoRunResultReferenceRecord] = Field(default_factory=list)
     created_at: datetime
+    analysis_status: str | None = None
+    analysis_error_code: str | None = None
+    analysis_error_message: str | None = None
+
+
+class GeoAnalysisEntityInput(ContractModel):
+    """Semantic analysis 使用的品牌或競品快照。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    name: str
+    website_url: str | None = None
+
+
+class GeoAnalysisEntityContext(ContractModel):
+    """單筆 run result analysis 可比較的自有品牌與競品集合。"""
+
+    own_brand: GeoAnalysisEntityInput
+    competitors: list[GeoAnalysisEntityInput] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_entity_roles(self):
+        if self.own_brand.entity_role != "own_brand":
+            raise ValueError("ownBrand entityRole must be own_brand")
+        if any(competitor.entity_role != "competitor" for competitor in self.competitors):
+            raise ValueError("competitor entityRole must be competitor")
+        return self
+
+
+class AnalyzeGeoRunResultCommand(ContractModel):
+    """送入 semantic analyzer 的完整 run result 與專案上下文。"""
+
+    tenant_id: UUID
+    run_result_id: UUID
+    project_id: UUID
+    query_id: UUID
+    query_text: str
+    topic_id: UUID | None = None
+    topic_name: str | None = None
+    topic_description: str | None = None
+    provider: str
+    surface: str
+    model: str
+    region: str
+    language: str
+    raw_response: str
+    entities: GeoAnalysisEntityContext
+
+
+class GeoEntityMentionFact(ContractModel):
+    """單一 tracked entity 在回答中的 mention 與相對排序事實。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    mentioned: bool
+    first_mention_order: int | None = Field(default=None, ge=1)
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_position(self):
+        if not self.mentioned:
+            if self.first_mention_order is not None:
+                raise ValueError("firstMentionOrder must be empty when mentioned is false")
+            if self.evidence_text is not None:
+                raise ValueError("evidenceText must be empty when mentioned is false")
+        return self
+
+
+class GeoSentimentFact(ContractModel):
+    """品牌或競品相關的 statement-level positive / negative sentiment。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    sentiment: Literal["positive", "negative"]
+    theme: str
+    statement: str
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class GeoResponseSemanticFact(ContractModel):
+    """回答細節與後續建議模組可使用的 semantic label 或常見陳述。"""
+
+    fact_type: Literal["product", "service", "topic", "common_statement"]
+    value: str
+    evidence_text: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class GeoRunResultAnalysis(ContractModel):
+    """Semantic analyzer 對單筆 run result 回傳的 normalized facts。"""
+
+    run_result_id: UUID
+    analyzer: str
+    analyzer_version: str | None = None
+    status: Literal["completed", "failed"]
+    entity_mentions: list[GeoEntityMentionFact] = Field(default_factory=list)
+    sentiments: list[GeoSentimentFact] = Field(default_factory=list)
+    semantic_facts: list[GeoResponseSemanticFact] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class SaveSemanticRunResultAnalysisCommand(ContractModel):
+    """保存 semantic analyzer facts 時使用的 persistence input。"""
+
+    analysis: GeoRunResultAnalysis
+    task_key: str = "geo_semantic_analysis"
+    schema_version: int = 1
+
+
+class NormalizeRunResultCitationsCommand(ContractModel):
+    """將已保存 runner references 轉成報表 citation facts 的 application input。"""
+
+    tenant_id: UUID
+    run_result_id: UUID
+    normalizer_version: str = "url_domain:v1"
+
+
+class GeoRunResultCitationFact(ContractModel):
+    """單一 runner reference 的 deterministic citation fact。"""
+
+    run_result_id: UUID
+    reference_id: UUID
+    url: str
+    domain: str
+    title: str | None = None
+    position: int
+    ownership: Literal["owned", "other"]
+    source_type: Literal["owned_site", "unknown"]
+
+
+class GeoRunResultCitationNormalization(ContractModel):
+    """單筆 run result citation normalization 的 application result。"""
+
+    run_result_id: UUID
+    project_id: UUID | None = None
+    normalizer_version: str = "url_domain:v1"
+    status: Literal["completed", "failed"]
+    citations: list[GeoRunResultCitationFact] = Field(default_factory=list)
+    skipped_reference_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class SaveRunResultCitationNormalizationCommand(ContractModel):
+    """保存 citation normalization lifecycle 與 facts 時使用的 persistence input。"""
+
+    normalization: GeoRunResultCitationNormalization
+
+
+class GeoMetricRunResultInput(ContractModel):
+    """報表公式計算使用的 completed run result metadata。"""
+
+    run_result_id: UUID
+    query_id: UUID | None = None
+    topic_id: UUID | None = None
+    provider: str | None = None
+    region: str | None = None
+    language: str | None = None
+    completed_at: datetime
+
+    @model_validator(mode="after")
+    def validate_completed_at_timezone(self):
+        if not _is_timezone_aware(self.completed_at):
+            raise ValueError("completedAt must be timezone-aware")
+        return self
+
+
+class GeoMetricFormulaQuery(ContractModel):
+    """限制報表公式計算期間與可選維度的 in-memory query。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime | None = None
+    comparison_end: datetime | None = None
+    query_id: UUID | None = None
+    topic_id: UUID | None = None
+    provider: str | None = None
+    region: str | None = None
+    language: str | None = None
+
+    @model_validator(mode="after")
+    def validate_periods(self):
+        period_values = [self.period_start, self.period_end]
+        if self.comparison_start is not None:
+            period_values.append(self.comparison_start)
+        if self.comparison_end is not None:
+            period_values.append(self.comparison_end)
+        if any(not _is_timezone_aware(value) for value in period_values):
+            raise ValueError("metric formula periods must be timezone-aware")
+        if self.period_end <= self.period_start:
+            raise ValueError("periodEnd must be later than periodStart")
+        if (self.comparison_start is None) != (self.comparison_end is None):
+            raise ValueError(
+                "comparisonStart and comparisonEnd must be provided together"
+            )
+        if (
+            self.comparison_start is not None
+            and self.comparison_end is not None
+            and self.comparison_end <= self.comparison_start
+        ):
+            raise ValueError("comparisonEnd must be later than comparisonStart")
+        if self.comparison_end is not None and self.comparison_end > self.period_start:
+            raise ValueError("comparisonEnd must not be later than periodStart")
+        return self
+
+
+class GeoMetricEntityMentionInput(GeoEntityMentionFact):
+    """報表公式計算使用、已帶入 run result identity 的 entity mention fact。"""
+
+    run_result_id: UUID
+
+
+class GeoMetricSentimentInput(GeoSentimentFact):
+    """報表公式計算使用、已帶入 run result identity 的 sentiment fact。"""
+
+    run_result_id: UUID
+
+
+class GeoMetricFormulaSource(ContractModel):
+    """已正規化 facts 與 run result metadata 的純公式輸入。"""
+
+    run_results: list[GeoMetricRunResultInput] = Field(default_factory=list)
+    entity_mentions: list[GeoMetricEntityMentionInput] = Field(default_factory=list)
+    sentiments: list[GeoMetricSentimentInput] = Field(default_factory=list)
+    citations: list[GeoRunResultCitationFact] = Field(default_factory=list)
+
+
+class GeoMetricValue(ContractModel):
+    """單一報表 metric 的可呈現計算結果。"""
+
+    metric_name: Literal[
+        "visibility",
+        "mentions",
+        "sov",
+        "average_position",
+        "citation_count",
+        "used_percent",
+        "share_percent",
+        "sentiment_count",
+    ]
+    scope_type: Literal[
+        "project",
+        "entity",
+        "citation_url",
+        "citation_domain",
+        "sentiment",
+    ]
+    scope_value: str | None = None
+    scope_label: str | None = None
+    value: float
+    unit: Literal["percent", "count", "position"]
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: Literal["pp", "count", "position"] | None = None
+
+
+class GeoMetricFormulaResult(ContractModel):
+    """報表公式核心針對目前期間與前期比較產生的 metrics。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    metrics: list[GeoMetricValue] = Field(default_factory=list)
+
+
+class GeoDashboardMetricValue(ContractModel):
+    """Dashboard read model 中可直接呈現的單一 metric value。"""
+
+    value: float
+    unit: Literal["percent", "count", "position"]
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: Literal["pp", "count", "position"] | None = None
+
+
+class GeoDashboardOverviewCard(ContractModel):
+    """Dashboard overview 區塊的一張 KPI card。"""
+
+    metric_name: Literal["visibility", "mentions", "sov", "average_position"]
+    label: str
+    metric: GeoDashboardMetricValue
+
+
+class GeoDashboardEntityRow(ContractModel):
+    """Dashboard entity comparison table 的一列。"""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    visibility: GeoDashboardMetricValue
+    mentions: GeoDashboardMetricValue
+    average_position: GeoDashboardMetricValue
+
+
+class GeoDashboardCitationRow(ContractModel):
+    """Dashboard citation table 的 URL 或 domain grouping row。"""
+
+    scope_type: Literal["url", "domain"]
+    value: str
+    label: str
+    ownership: str | None = None
+    source_type: str | None = None
+    citation_count: GeoDashboardMetricValue
+    used_percent: GeoDashboardMetricValue
+    share_percent: GeoDashboardMetricValue
+
+
+class GeoDashboardSentimentRow(ContractModel):
+    """Dashboard sentiment breakdown 的 positive / negative row。"""
+
+    sentiment: Literal["positive", "negative"]
+    statement_count: GeoDashboardMetricValue
+
+
+class GeoDashboardReport(ContractModel):
+    """Dashboard 頁面可直接使用的 request-time report view model。"""
+
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    overview: list[GeoDashboardOverviewCard] = Field(default_factory=list)
+    entities: list[GeoDashboardEntityRow] = Field(default_factory=list)
+    citation_urls: list[GeoDashboardCitationRow] = Field(default_factory=list)
+    citation_domains: list[GeoDashboardCitationRow] = Field(default_factory=list)
+    sentiments: list[GeoDashboardSentimentRow] = Field(default_factory=list)
+
+
+class KMindHubExtractionTaskField(ContractModel):
+    """定義 KMindHub extraction task 欄位，以及 GEO 端會再次驗證的正規化規則。"""
+
+    name: str
+    field_type: str = "string"
+    lookup_role: str = "ignored"
+    display_name: str
+    description: str
+    normalization: dict = Field(default_factory=dict)
+    examples: str = ""
+    sort_order: int = 0
+    is_visible: bool = True
+    is_extracted: bool = True
+
+
+class KMindHubExtractionTaskDefinition(ContractModel):
+    """GEO 系統版本化管理的 KMindHub extraction task schema。"""
+
+    task_key: str
+    schema_version: int
+    name: str
+    task: str
+    description: str
+    fields: list[KMindHubExtractionTaskField]
+    status: str = "active"
+
+
+class KMindHubExtractionTaskMappingCommand(ContractModel):
+    """保存 tenant 在特定 schema version 對應的 KMindHub extraction task。"""
+
+    workspace_id: UUID
+    task_key: str
+    schema_version: int
+    kmindhub_task_id: UUID
+    status: str = "active"
+
+
+class KMindHubExtractionTaskMappingRecord(KMindHubExtractionTaskMappingCommand):
+    """已建立且可被 worker 重用的 KMindHub extraction task mapping。"""
+
+    id: UUID
+    tenant_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class KMindHubExtractionFieldValue(ContractModel):
+    """KMindHub preview / commit item 中單一欄位的值與 evidence。"""
+
+    value: object | None = None
+    evidence: list = Field(default_factory=list)
+
+
+class KMindHubExtractionPreviewItem(ContractModel):
+    """KMindHub preview 產出的暫存 item；通過驗證後才可 commit。"""
+
+    fields: dict[str, KMindHubExtractionFieldValue] = Field(default_factory=dict)
+    verification: dict = Field(default_factory=dict)
+    display_fields: list = Field(default_factory=list)
+    candidates: list = Field(default_factory=list)
+
+
+class KMindHubExtractionPreviewResult(ContractModel):
+    """KMindHub extraction preview response 的 application read model。"""
+
+    task_id: UUID
+    items: list[KMindHubExtractionPreviewItem] = Field(default_factory=list)
+
+
+class KMindHubExtractionCommitResult(ContractModel):
+    """KMindHub commit 後回傳的批次與 item ids。"""
+
+    commit_batch_id: str | None = None
+    item_ids: list[str] = Field(default_factory=list)
+
+
+class GeoRunResultEntityMentionCommand(ContractModel):
+    """從 AI answer 擷取出的單一品牌、競品或其他 entity mention。"""
+
+    entity_id: UUID | None = None
+    entity_name: str
+    entity_type: str
+    mention_count: int = 0
+    sentiment: str
+    evidence_text: str = ""
+    kmindhub_item_id: str | None = None
+
+
+class GeoRunResultStatementCommand(ContractModel):
+    """從 AI answer 擷取出的可供報表或人工檢視的重要陳述。"""
+
+    statement_text: str
+    theme: str = ""
+    sentiment: str
+    subject_entity_name: str | None = None
+    evidence_text: str = ""
+    kmindhub_item_id: str | None = None
+
+
+class GeoRunResultCitationClassificationCommand(ContractModel):
+    """根據既有 reference URL 判斷 citation 類型，不讓 KMindHub 重新產生 URL。"""
+
+    run_result_reference_id: UUID
+    classification: str
+    matched_entity_id: UUID | None = None
+    matched_domain: str | None = None
+    confidence: float | None = None
+    source: str = "rule_based"
+
+
+class SaveRunResultAnalysisCommand(ContractModel):
+    """保存單筆 run result 的 KMindHub analysis 狀態與正規化結果。"""
+
+    run_result_id: UUID
+    task_key: str = "geo_answer_analysis"
+    schema_version: int = 1
+    status: str
+    summary: str | None = None
+    overall_sentiment: str | None = None
+    theme: str | None = None
+    kmindhub_commit_batch_id: str | None = None
+    kmindhub_item_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    entity_mentions: list[GeoRunResultEntityMentionCommand] = Field(default_factory=list)
+    statements: list[GeoRunResultStatementCommand] = Field(default_factory=list)
+    citation_classifications: list[GeoRunResultCitationClassificationCommand] = Field(
+        default_factory=list
+    )
+
+
+class GeoRunResultAnalysisRecord(ContractModel):
+    """GEO run result 已完成或失敗的 KMindHub analysis 狀態。"""
+
+    id: UUID
+    run_result_id: UUID
+    task_key: str
+    schema_version: int
+    status: str
+    summary: str | None = None
+    overall_sentiment: str | None = None
+    theme: str | None = None
+    kmindhub_commit_batch_id: str | None = None
+    kmindhub_item_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
 
 
 class GeoRunRequestRecord(ContractModel):
@@ -155,6 +649,30 @@ class GeoRunRequestRecord(ContractModel):
     created_at: datetime
     completed_at: datetime | None = None
     results: list[GeoRunResultRecord] = Field(default_factory=list)
+
+
+class KMindHubWorkspaceMappingCommand(ContractModel):
+    """租戶綁定 KMindHub workspace 時使用的 application input。"""
+
+    workspace_id: UUID
+    display_name: str
+    provisioning_mode: str = "manual"
+    status: str = "active"
+
+
+class KMindHubWorkspaceMappingRecord(KMindHubWorkspaceMappingCommand):
+    """GEO Analysis 保存的 tenant 到 KMindHub workspace 對應快照。"""
+
+    id: UUID
+    tenant_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class KMindHubWorkspaceProvisionCommand(ContractModel):
+    """由使用者明確觸發建立 KMindHub workspace 的 input。"""
+
+    display_name: str
 
 
 class PublishResult(ContractModel):
@@ -181,6 +699,7 @@ class ExternalRunCallback(ContractModel):
 class GeoProjectCommand(ContractModel):
     """建立或更新 GEO project 的 application input。"""
 
+    tenant_id: UUID
     customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str

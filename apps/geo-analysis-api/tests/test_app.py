@@ -1,22 +1,47 @@
-﻿from datetime import datetime, timezone
+﻿import asyncio
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from younilab_geo_analysis_api.presentation.http import create_app
+from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
+    AnalyzeRunResult,
+    AuthorizedPrincipal,
+    CalculateGeoReportMetrics,
+    GetGeoDashboardReport,
+    KMindHubExtractionCommitResult,
+    KMindHubExtractionFieldValue,
+    KMindHubExtractionPreviewItem,
+    KMindHubExtractionPreviewResult,
+    GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     PublishResult,
     QueryRunJobMessage,
+    ResourceCatalogVerificationDenied,
+    ResourceCatalogVerificationUnavailable,
+    ResourceTaskReference,
+    SaveRunResultCitationNormalizationCommand,
+    SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
+from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
+
+
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
+AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
 def test_project_topic_query_and_job_crud_flow() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     project_response = client.post(
         "/api/geo/projects",
@@ -29,6 +54,7 @@ def test_project_topic_query_and_job_crud_flow() -> None:
     )
     assert project_response.status_code == 201
     project_id = project_response.json()["id"]
+    assert project_response.json()["tenantId"] == str(TENANT_ID)
 
     topic_response = client.post(
         f"/api/geo/projects/{project_id}/topics",
@@ -64,8 +90,223 @@ def test_project_topic_query_and_job_crud_flow() -> None:
     assert jobs_response.json()["total"] == 1
 
 
+def test_projects_are_scoped_by_authorized_tenant() -> None:
+    store = GeoApiStore()
+    tenant_a = _client(repository=store, authorizer=FakeAuthorizer(TENANT_ID))
+    tenant_b = _client(repository=store, authorizer=FakeAuthorizer(OTHER_TENANT_ID))
+
+    created = tenant_a.post("/api/geo/projects", json={"name": "Tenant A GEO"})
+    assert created.status_code == 201
+    project_id = created.json()["id"]
+
+    list_response = tenant_b.get("/api/geo/projects")
+    detail_response = tenant_b.get(f"/api/geo/projects/{project_id}")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == []
+    assert detail_response.status_code == 404
+
+
+def test_kmindhub_workspace_mapping_endpoints() -> None:
+    workspace_id = uuid4()
+    client = _client()
+
+    missing_response = client.get("/api/geo/integrations/kmindhub/workspace")
+    assert missing_response.status_code == 404
+
+    bind_response = client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "workspaceId": str(workspace_id),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    assert bind_response.status_code == 200
+    body = bind_response.json()
+    assert body["tenantId"] == str(TENANT_ID)
+    assert body["workspaceId"] == str(workspace_id)
+    assert body["displayName"] == "Acme Workspace"
+    assert body["provisioningMode"] == "manual"
+    assert body["status"] == "active"
+
+    get_response = client.get("/api/geo/integrations/kmindhub/workspace")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["workspaceId"] == str(workspace_id)
+
+
+def test_composition_builds_report_semantic_analysis_dependency() -> None:
+    kmindhub_client = FakeKMindHubClient()
+    dependencies = build_dependencies(
+        repository=GeoApiStore(),
+        planning_client=FakePlanningClient(),
+        kmindhub_client=kmindhub_client,
+        authorizer=FakeAuthorizer(),
+        reference_verifier=FakeReferenceVerifier(),
+    )
+
+    assert isinstance(dependencies.analyze_run_result, AnalyzeRunResult)
+    assert isinstance(
+        dependencies.analyze_run_result.analyzer,
+        KMindHubGeoRunResultAnalyzer,
+    )
+    assert not hasattr(dependencies, "run_kmindhub_analysis_extraction")
+    assert isinstance(
+        dependencies.calculate_geo_report_metrics,
+        CalculateGeoReportMetrics,
+    )
+    assert isinstance(
+        dependencies.get_geo_dashboard_report,
+        GetGeoDashboardReport,
+    )
+    assert dependencies.closeables.count(kmindhub_client) == 1
+
+
+def test_app_state_exposes_report_semantic_analysis_dependency() -> None:
+    client = _client(kmindhub_client=FakeKMindHubClient())
+
+    assert isinstance(client.app.state.analyze_run_result, AnalyzeRunResult)
+    assert not hasattr(client.app.state, "run_kmindhub_analysis_extraction")
+    assert isinstance(
+        client.app.state.calculate_geo_report_metrics,
+        CalculateGeoReportMetrics,
+    )
+    assert isinstance(
+        client.app.state.get_geo_dashboard_report,
+        GetGeoDashboardReport,
+    )
+
+
+def test_kmindhub_workspace_provision_creates_remote_workspace() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    client = _client(kmindhub_client=kmindhub_client)
+
+    response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Acme Workspace"},
+    )
+
+    assert response.status_code == 201
+    assert kmindhub_client.created_display_names == ["Acme Workspace"]
+    assert response.json()["workspaceId"] == str(kmindhub_client.created_workspace_id)
+    assert response.json()["provisioningMode"] == "manual_provisioned"
+
+
+def test_kmindhub_workspace_provision_rejects_existing_mapping() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    client = _client(kmindhub_client=kmindhub_client)
+    first_response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Acme Workspace"},
+    )
+
+    second_response = client.post(
+        "/api/geo/integrations/kmindhub/workspace/provision",
+        json={"displayName": "Another Workspace"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == "KMindHub workspace mapping already exists"
+    assert kmindhub_client.created_display_names == ["Acme Workspace"]
+
+
+def test_kmindhub_workspace_mapping_rejects_tenant_id_from_request() -> None:
+    client = _client()
+
+    response = client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "tenantId": str(OTHER_TENANT_ID),
+            "workspaceId": str(uuid4()),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "body.tenantId" in _invalid_param_names(response.json())
+
+
+def test_projects_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+    allowed_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(allowed_customer_id), "name": "Allowed GEO"},
+    )
+    denied_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(denied_customer_id), "name": "Denied GEO"},
+    )
+    unscoped_project = admin.post("/api/geo/projects", json={"name": "Unscoped GEO"})
+    assert allowed_project.status_code == 201
+    assert denied_project.status_code == 201
+    assert unscoped_project.status_code == 201
+
+    list_response = restricted.get("/api/geo/projects")
+    denied_detail = restricted.get(f"/api/geo/projects/{denied_project.json()['id']}")
+    unscoped_detail = restricted.get(
+        f"/api/geo/projects/{unscoped_project.json()['id']}"
+    )
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()["items"]] == [
+        allowed_project.json()["id"]
+    ]
+    assert denied_detail.status_code == 404
+    assert unscoped_detail.status_code == 404
+
+
+def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed_query_id = _create_query_for_customer(admin, allowed_customer_id)
+    denied_query_id = _create_query_for_customer(admin, denied_customer_id)
+    allowed_job = admin.post(
+        f"/api/geo/queries/{allowed_query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    denied_job = admin.post(
+        f"/api/geo/queries/{denied_query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    assert allowed_job.status_code == 201
+    assert denied_job.status_code == 201
+    allowed_result_id = _add_run_result(store, UUID(allowed_job.json()["id"]))
+    denied_result_id = _add_run_result(store, UUID(denied_job.json()["id"]))
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    allowed_job_response = restricted.get(f"/api/geo/jobs/{allowed_job.json()['id']}")
+    denied_job_response = restricted.get(f"/api/geo/jobs/{denied_job.json()['id']}")
+    allowed_result_response = restricted.get(f"/api/geo/run-results/{allowed_result_id}")
+    denied_result_response = restricted.get(f"/api/geo/run-results/{denied_result_id}")
+
+    assert allowed_job_response.status_code == 200
+    assert denied_job_response.status_code == 404
+    assert allowed_result_response.status_code == 200
+    assert denied_result_response.status_code == 404
+
+
 def test_validation_error_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.post(
         "/api/geo/projects",
@@ -83,7 +324,7 @@ def test_validation_error_returns_problem_details() -> None:
 
 
 def test_project_allows_empty_customer_reference_but_rejects_task_without_customer() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.post("/api/geo/projects", json={"name": "Draft GEO"})
 
@@ -101,9 +342,67 @@ def test_project_allows_empty_customer_reference_but_rejects_task_without_custom
     assert invalid.json()["detail"] == "seoTaskId requires customerId"
 
 
+def test_project_rejects_task_from_different_customer() -> None:
+    client = _client(
+        reference_verifier=FakeReferenceVerifier(fixed_task_customer_id=uuid4())
+    )
+
+    response = client.post(
+        "/api/geo/projects",
+        json={
+            "customerId": str(uuid4()),
+            "seoTaskId": str(uuid4()),
+            "name": "Broken GEO",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "seoTaskId does not belong to customerId"
+
+
+def test_project_reference_verification_denied_returns_forbidden() -> None:
+    client = _client(reference_verifier=FakeReferenceVerifier(denied=True))
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "name": "Denied GEO"},
+    )
+
+    assert response.status_code == 403
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "resource catalog reference verification denied"
+
+
+def test_project_reference_verification_unavailable_returns_service_unavailable() -> None:
+    client = _client(reference_verifier=FakeReferenceVerifier(unavailable=True))
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "name": "Unavailable GEO"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "resource catalog unavailable"
+
+
+def test_project_request_rejects_client_tenant_id() -> None:
+    client = _client()
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"tenantId": str(uuid4()), "name": "Tenant spoof"},
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "body.tenantId" in _invalid_param_names(response.json())
+
+
 def test_query_research_generation_and_draft_accept_flow() -> None:
     planning_client = FakePlanningClient()
-    client = TestClient(create_app(planning_client=planning_client))
+    client = _client(planning_client=planning_client)
     project_response = client.post(
         "/api/geo/projects",
         json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
@@ -190,7 +489,7 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
 
 
 def test_query_research_rejects_empty_keywords() -> None:
-    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    client = _client(planning_client=FakePlanningClient())
     project_id = _create_project(client)
     payload = _query_research_payload()
     payload["keywords"] = []
@@ -205,7 +504,7 @@ def test_query_research_rejects_empty_keywords() -> None:
 
 
 def test_query_research_rejects_oversized_arrays() -> None:
-    client = TestClient(create_app(planning_client=FakePlanningClient()))
+    client = _client(planning_client=FakePlanningClient())
     project_id = _create_project(client)
     cases = [
         ("keywords", [f"keyword-{index}" for index in range(11)]),
@@ -232,7 +531,7 @@ def test_query_research_rejects_oversized_arrays() -> None:
 
 
 def test_missing_resource_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.get(f"/api/geo/projects/{uuid4()}")
 
@@ -407,8 +706,299 @@ def test_project_run_results_are_scoped_to_project() -> None:
     assert [item["id"] for item in response.json()["items"]] == [str(result_id)]
 
 
+def test_project_metrics_returns_report_metrics() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+    project_id = store.jobs[job_id].project_id
+    entity_id = uuid4()
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+        entityMentions=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "mentioned": True,
+                "firstMentionOrder": 1,
+            }
+        ],
+        sentiments=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "sentiment": "positive",
+                "theme": "供應商比較",
+                "statement": "Acme is recommended.",
+            }
+        ],
+    )
+    normalization = GeoRunResultCitationNormalization(
+        runResultId=result_id,
+        projectId=project_id,
+        status="completed",
+        citations=[
+            GeoRunResultCitationFact(
+                runResultId=result_id,
+                referenceId=store.run_results[result_id].references[0].id,
+                url="https://example.com/reference",
+                domain="example.com",
+                position=1,
+                ownership="other",
+                sourceType="unknown",
+            )
+        ],
+    )
+    store.run_result_citation_normalizations[
+        (result_id, normalization.normalizer_version)
+    ] = normalization
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-22T00:00:00+00:00",
+            "comparisonEnd": "2026-06-24T00:00:00+00:00",
+            "provider": "gemini",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["periodStart"] == "2026-06-24T00:00:00Z"
+    assert body["comparisonStart"] == "2026-06-22T00:00:00Z"
+    assert "period_start" not in body
+    visibility = _metric(body["metrics"], "visibility", "project")
+    citation = _metric(
+        body["metrics"],
+        "citation_count",
+        "citation_url",
+        "https://example.com/reference",
+    )
+    sentiment = _metric(body["metrics"], "sentiment_count", "sentiment", "positive")
+    assert visibility["value"] == 100
+    assert visibility["comparisonValue"] == 0
+    assert citation["scopeLabel"] == "https://example.com/reference"
+    assert sentiment["value"] == 1
+
+
+def test_project_dashboard_report_returns_report_view_model() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+    project_id = store.jobs[job_id].project_id
+    entity_id = uuid4()
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+        entityMentions=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "mentioned": True,
+                "firstMentionOrder": 1,
+            }
+        ],
+        sentiments=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "sentiment": "positive",
+                "theme": "供應商比較",
+                "statement": "Acme is recommended.",
+            }
+        ],
+    )
+    normalization = GeoRunResultCitationNormalization(
+        runResultId=result_id,
+        projectId=project_id,
+        status="completed",
+        citations=[
+            GeoRunResultCitationFact(
+                runResultId=result_id,
+                referenceId=store.run_results[result_id].references[0].id,
+                url="https://example.com/reference",
+                domain="example.com",
+                position=1,
+                ownership="other",
+                sourceType="unknown",
+            )
+        ],
+    )
+    store.run_result_citation_normalizations[
+        (result_id, normalization.normalizer_version)
+    ] = normalization
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/reports/dashboard",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-22T00:00:00+00:00",
+            "comparisonEnd": "2026-06-24T00:00:00+00:00",
+            "provider": "gemini",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["periodStart"] == "2026-06-24T00:00:00Z"
+    assert body["comparisonStart"] == "2026-06-22T00:00:00Z"
+    assert "citation_urls" not in body
+    visibility = next(
+        item for item in body["overview"] if item["metricName"] == "visibility"
+    )
+    assert visibility["metric"]["value"] == 100
+    assert visibility["metric"]["comparisonValue"] == 0
+    entity = body["entities"][0]
+    assert entity["entityRole"] == "own_brand"
+    assert entity["visibility"]["value"] == 100
+    citation_url = body["citationUrls"][0]
+    assert citation_url["value"] == "https://example.com/reference"
+    assert citation_url["ownership"] == "other"
+    assert citation_url["citationCount"]["value"] == 1
+    citation_domain = body["citationDomains"][0]
+    assert citation_domain["value"] == "example.com"
+    sentiment = body["sentiments"][0]
+    assert sentiment["sentiment"] == "positive"
+    assert sentiment["statementCount"]["value"] == 1
+
+
+def test_project_metrics_are_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(allowed_customer_id), "name": "Allowed GEO"},
+    )
+    denied_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(denied_customer_id), "name": "Denied GEO"},
+    )
+    assert allowed_project.status_code == 201
+    assert denied_project.status_code == 201
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    allowed_response = restricted.get(
+        f"/api/geo/projects/{allowed_project.json()['id']}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+    denied_response = restricted.get(
+        f"/api/geo/projects/{denied_project.json()['id']}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+
+    assert allowed_response.status_code == 200
+    assert denied_response.status_code == 404
+
+
+def test_project_dashboard_report_is_scoped_by_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(allowed_customer_id), "name": "Allowed GEO"},
+    )
+    denied_project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(denied_customer_id), "name": "Denied GEO"},
+    )
+    assert allowed_project.status_code == 201
+    assert denied_project.status_code == 201
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    allowed_response = restricted.get(
+        f"/api/geo/projects/{allowed_project.json()['id']}/reports/dashboard",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+    denied_response = restricted.get(
+        f"/api/geo/projects/{denied_project.json()['id']}/reports/dashboard",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+        },
+    )
+
+    assert allowed_response.status_code == 200
+    assert denied_response.status_code == 404
+
+
+def test_project_metrics_validation_error_returns_problem_details() -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/metrics",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-23T00:00:00+00:00",
+            "comparisonEnd": "2026-06-25T00:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "comparisonEnd" in response.json()["detail"]
+
+
+def test_project_dashboard_report_validation_error_returns_problem_details() -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    response = client.get(
+        f"/api/geo/projects/{project_id}/reports/dashboard",
+        params={
+            "periodStart": "2026-06-24T00:00:00+00:00",
+            "periodEnd": "2026-06-26T00:00:00+00:00",
+            "comparisonStart": "2026-06-23T00:00:00+00:00",
+            "comparisonEnd": "2026-06-25T00:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "comparisonEnd" in response.json()["detail"]
+
+
 def test_missing_run_result_returns_problem_details() -> None:
-    client = TestClient(create_app())
+    client = _client()
 
     response = client.get(f"/api/geo/run-results/{uuid4()}")
 
@@ -417,11 +1007,156 @@ def test_missing_run_result_returns_problem_details() -> None:
     assert response.json()["detail"] == "run result not found"
 
 
+def test_run_result_analysis_extraction_route_is_disabled() -> None:
+    kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
+    store = GeoApiStore()
+    client, store, job_id = _client_with_job(repository=store, kmindhub_client=kmindhub_client)
+    result_id = _add_run_result(store, job_id)
+    client.put(
+        "/api/geo/integrations/kmindhub/workspace",
+        json={
+            "workspaceId": str(kmindhub_client.created_workspace_id),
+            "displayName": "Acme Workspace",
+        },
+    )
+
+    response = client.post(f"/api/geo/run-results/{result_id}/analysis-extractions")
+
+    assert response.status_code == 410
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == (
+        "legacy analysis extraction is disabled; dashboard reports use the "
+        "worker semantic and citation pipeline"
+    )
+    assert kmindhub_client.preview_texts == []
+    assert kmindhub_client.committed_items == []
+
+
+def test_store_saves_and_loads_semantic_run_result_analysis() -> None:
+    async def run() -> None:
+        store = GeoApiStore()
+        client, store, job_id = _client_with_job(repository=store)
+        result_id = _add_run_result(store, job_id)
+        entity_id = uuid4()
+        analysis = GeoRunResultAnalysis(
+            runResultId=result_id,
+            analyzer="fake",
+            analyzerVersion="v1",
+            status="completed",
+            entityMentions=[
+                {
+                    "entityId": str(entity_id),
+                    "entityRole": "own_brand",
+                    "entityName": "Acme",
+                    "mentioned": True,
+                    "firstMentionOrder": 1,
+                }
+            ],
+            sentiments=[
+                {
+                    "entityId": str(entity_id),
+                    "entityRole": "own_brand",
+                    "entityName": "Acme",
+                    "sentiment": "positive",
+                    "theme": "供應商比較",
+                    "statement": "Acme is recommended.",
+                }
+            ],
+            semanticFacts=[
+                {
+                    "factType": "topic",
+                    "value": "供應商比較",
+                }
+            ],
+        )
+
+        saved = await store.save_semantic_run_result_analysis(
+            TENANT_ID,
+            SaveSemanticRunResultAnalysisCommand(analysis=analysis),
+            datetime(2026, 7, 5, tzinfo=timezone.utc),
+        )
+        loaded = await store.get_semantic_run_result_analysis(TENANT_ID, result_id)
+
+        client.close()
+        assert saved == analysis
+        assert loaded is not None
+        assert loaded.entity_mentions[0].first_mention_order == 1
+        assert loaded.sentiments[0].sentiment == "positive"
+        assert loaded.semantic_facts[0].fact_type == "topic"
+
+    asyncio.run(run())
+
+
+def test_store_saves_and_loads_citation_normalization() -> None:
+    async def run() -> None:
+        store = GeoApiStore()
+        client, store, job_id = _client_with_job(repository=store)
+        result_id = _add_run_result(store, job_id)
+        reference_id = store.run_results[result_id].references[0].id
+        normalization = GeoRunResultCitationNormalization(
+            runResultId=result_id,
+            projectId=store.jobs[job_id].project_id,
+            status="completed",
+            citations=[
+                GeoRunResultCitationFact(
+                    runResultId=result_id,
+                    referenceId=reference_id,
+                    url="https://example.com/reference",
+                    domain="example.com",
+                    title="Example reference",
+                    position=1,
+                    ownership="other",
+                    sourceType="unknown",
+                )
+            ],
+        )
+
+        saved = await store.save_run_result_citation_normalization(
+            TENANT_ID,
+            SaveRunResultCitationNormalizationCommand(normalization=normalization),
+            datetime(2026, 7, 5, tzinfo=timezone.utc),
+        )
+        loaded = await store.get_run_result_citation_normalization(
+            TENANT_ID,
+            result_id,
+            "url_domain:v1",
+        )
+
+        client.close()
+        assert saved == normalization
+        assert loaded == normalization
+        with pytest.raises(ValueError, match="reference_id must belong"):
+            await store.save_run_result_citation_normalization(
+                TENANT_ID,
+                SaveRunResultCitationNormalizationCommand(
+                    normalization=GeoRunResultCitationNormalization(
+                        runResultId=result_id,
+                        projectId=store.jobs[job_id].project_id,
+                        status="completed",
+                        citations=[
+                            GeoRunResultCitationFact(
+                                runResultId=result_id,
+                                referenceId=uuid4(),
+                                url="https://example.com/other",
+                                domain="example.com",
+                                position=1,
+                                ownership="other",
+                                sourceType="unknown",
+                            )
+                        ],
+                    )
+                ),
+                datetime(2026, 7, 5, tzinfo=timezone.utc),
+            )
+
+    asyncio.run(run())
+
+
 def test_app_lifespan_closes_injected_publisher() -> None:
     publisher = FakePublisher()
     store = GeoApiStore()
 
-    with TestClient(create_app(repository=store, publisher=publisher)) as client:
+    with _client(repository=store, publisher=publisher) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
@@ -456,8 +1191,19 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     )
 
 
-def _client_with_job() -> tuple[TestClient, GeoApiStore, UUID]:
-    client, store, query_id = _client_with_query()
+def _client(**kwargs) -> TestClient:
+    return TestClient(
+        create_app(
+            authorizer=kwargs.pop("authorizer", FakeAuthorizer()),
+            reference_verifier=kwargs.pop("reference_verifier", FakeReferenceVerifier()),
+            **kwargs,
+        ),
+        headers=AUTH_HEADERS,
+    )
+
+
+def _client_with_job(**kwargs) -> tuple[TestClient, GeoApiStore, UUID]:
+    client, store, query_id = _client_with_query(**kwargs)
     job_response = client.post(
         f"/api/geo/queries/{query_id}/jobs",
         json={"platformId": str(uuid4())},
@@ -471,14 +1217,15 @@ def _client_with_query(
     publisher=None,
     callback_base_url: str | None = None,
     market_type: str | None = None,
+    repository: GeoApiStore | None = None,
+    kmindhub_client=None,
 ) -> tuple[TestClient, GeoApiStore, str]:
-    store = GeoApiStore()
-    client = TestClient(
-        create_app(
-            repository=store,
-            publisher=publisher,
-            callback_base_url=callback_base_url,
-        )
+    store = repository or GeoApiStore()
+    client = _client(
+        repository=store,
+        publisher=publisher,
+        callback_base_url=callback_base_url,
+        **({"kmindhub_client": kmindhub_client} if kmindhub_client is not None else {}),
     )
     project_response = client.post(
         "/api/geo/projects",
@@ -509,6 +1256,22 @@ def _invalid_param_names(body: dict) -> set[str]:
     return {item["name"] for item in body["invalidParams"]}
 
 
+def _metric(
+    metrics: list[dict],
+    metric_name: str,
+    scope_type: str,
+    scope_value: str | None = None,
+) -> dict:
+    for metric in metrics:
+        if (
+            metric["metricName"] == metric_name
+            and metric["scopeType"] == scope_type
+            and metric["scopeValue"] == scope_value
+        ):
+            return metric
+    raise AssertionError(f"metric not found: {metric_name} {scope_type} {scope_value}")
+
+
 def _create_project(client: TestClient) -> str:
     response = client.post(
         "/api/geo/projects",
@@ -516,6 +1279,24 @@ def _create_project(client: TestClient) -> str:
     )
     assert response.status_code == 201
     return response.json()["id"]
+
+
+def _create_query_for_customer(client: TestClient, customer_id: UUID) -> str:
+    project_response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": f"GEO {customer_id}"},
+    )
+    assert project_response.status_code == 201
+    query_response = client.post(
+        f"/api/geo/projects/{project_response.json()['id']}/queries",
+        json={
+            "queryText": "Who are reliable suppliers?",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+    assert query_response.status_code == 201
+    return query_response.json()["id"]
 
 
 def _query_research_payload() -> dict:
@@ -585,6 +1366,124 @@ class FakePublisher:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class FakeKMindHubClient:
+    created_workspace_id: UUID = field(default_factory=uuid4)
+    created_display_names: list[str] = field(default_factory=list)
+    created_task_ids: list[UUID] = field(default_factory=list)
+    preview_texts: list[str] = field(default_factory=list)
+    committed_items: list[list[dict]] = field(default_factory=list)
+
+    async def create_workspace(self, display_name: str) -> UUID:
+        self.created_display_names.append(display_name)
+        return self.created_workspace_id
+
+    def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
+        return {"X-Workspace-Id": str(workspace_id)}
+
+    async def create_extraction_task(self, *, workspace_id, definition) -> UUID:
+        task_id = uuid4()
+        self.created_task_ids.append(task_id)
+        return task_id
+
+    async def preview_text_extraction(self, *, workspace_id, task_id, text):
+        self.preview_texts.append(text)
+        return KMindHubExtractionPreviewResult(
+            task_id=task_id,
+            items=[
+                KMindHubExtractionPreviewItem(
+                    fields={
+                        "summary": KMindHubExtractionFieldValue(value="Raw answer"),
+                        "overallSentiment": KMindHubExtractionFieldValue(
+                            value="neutral"
+                        ),
+                        "theme": KMindHubExtractionFieldValue(value="供應商比較"),
+                        "entityName": KMindHubExtractionFieldValue(value="Acme"),
+                        "entityType": KMindHubExtractionFieldValue(value="own_brand"),
+                        "mentionCount": KMindHubExtractionFieldValue(value=1),
+                        "statementText": KMindHubExtractionFieldValue(
+                            value="Raw answer"
+                        ),
+                        "statementSentiment": KMindHubExtractionFieldValue(
+                            value="neutral"
+                        ),
+                        "subjectEntityName": KMindHubExtractionFieldValue(
+                            value="Acme"
+                        ),
+                        "evidenceText": KMindHubExtractionFieldValue(
+                            value="Raw answer"
+                        ),
+                    },
+                    verification={"passed": True},
+                )
+            ],
+        )
+
+    async def commit_extraction_items(self, *, workspace_id, task_id, items):
+        self.committed_items.append(items)
+        return KMindHubExtractionCommitResult(
+            commit_batch_id="commit-batch-1",
+            item_ids=["item-1"],
+        )
+
+
+@dataclass
+class FakeAuthorizer:
+    tenant_id: UUID = TENANT_ID
+    has_global_resource_access: bool = True
+    customer_ids: frozenset[UUID] = frozenset()
+    task_ids: frozenset[UUID] = frozenset()
+
+    async def require(self, access_token: str, permission: str) -> AuthorizedPrincipal:
+        assert access_token == "test-token"
+        return AuthorizedPrincipal(
+            tenant_id=self.tenant_id,
+            permissions=frozenset({permission}),
+            has_global_resource_access=self.has_global_resource_access,
+            customer_ids=self.customer_ids,
+            task_ids=self.task_ids,
+        )
+
+
+@dataclass
+class FakeReferenceVerifier:
+    customer_id: UUID | None = None
+    fixed_task_customer_id: UUID | None = None
+    denied: bool = False
+    unavailable: bool = False
+
+    async def customer_exists(
+        self,
+        *,
+        access_token: str,
+        customer_id: UUID,
+    ) -> bool:
+        self._raise_if_configured()
+        if self.fixed_task_customer_id is None:
+            self.customer_id = customer_id
+        return True
+
+    async def get_task(
+        self,
+        *,
+        access_token: str,
+        task_id: UUID,
+    ) -> ResourceTaskReference | None:
+        self._raise_if_configured()
+        return ResourceTaskReference(
+            id=task_id,
+            customer_id=self.fixed_task_customer_id or self.customer_id or uuid4(),
+        )
+
+    def _raise_if_configured(self) -> None:
+        if self.denied:
+            raise ResourceCatalogVerificationDenied(
+                "resource catalog reference verification denied"
+            )
+        if self.unavailable:
+            raise ResourceCatalogVerificationUnavailable("resource catalog unavailable")
 
 
 class FakePlanningClient:

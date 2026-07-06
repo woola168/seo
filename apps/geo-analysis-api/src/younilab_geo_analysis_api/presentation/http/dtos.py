@@ -18,6 +18,12 @@ class ApiModel(BaseModel):
 class ProjectRequest(ApiModel):
     """客戶擁有、可編輯的 GEO project 設定。"""
 
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
     customer_id: UUID | None = None
     seo_task_id: UUID | None = None
     name: str = Field(min_length=1, max_length=200)
@@ -39,6 +45,7 @@ class ProjectResponse(ProjectRequest):
     """回傳給後台的 GEO project resource。"""
 
     id: UUID
+    tenant_id: UUID
     created_at: datetime
     updated_at: datetime
 
@@ -388,6 +395,117 @@ class RunResultResponse(ApiModel):
     run_at: datetime
     references: list[RunResultReferenceResponse]
     created_at: datetime
+    analysis_status: str | None = None
+    analysis_error_code: str | None = None
+    analysis_error_message: str | None = None
+
+
+class MetricValueResponse(ApiModel):
+    metric_name: str
+    scope_type: str
+    scope_value: str | None = None
+    scope_label: str | None = None
+    value: float
+    unit: str
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: str | None = None
+
+
+class MetricFormulaResultResponse(ApiModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    metrics: list[MetricValueResponse]
+
+
+class DashboardMetricValueResponse(ApiModel):
+    value: float
+    unit: str
+    numerator: float | None = None
+    denominator: float | None = None
+    comparison_value: float | None = None
+    delta: float | None = None
+    delta_unit: str | None = None
+
+
+class DashboardOverviewCardResponse(ApiModel):
+    metric_name: str
+    label: str
+    metric: DashboardMetricValueResponse
+
+
+class DashboardEntityRowResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    visibility: DashboardMetricValueResponse
+    mentions: DashboardMetricValueResponse
+    average_position: DashboardMetricValueResponse
+
+
+class DashboardCitationRowResponse(ApiModel):
+    scope_type: str
+    value: str
+    label: str
+    ownership: str | None = None
+    source_type: str | None = None
+    citation_count: DashboardMetricValueResponse
+    used_percent: DashboardMetricValueResponse
+    share_percent: DashboardMetricValueResponse
+
+
+class DashboardSentimentRowResponse(ApiModel):
+    sentiment: str
+    statement_count: DashboardMetricValueResponse
+
+
+class DashboardReportResponse(ApiModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    overview: list[DashboardOverviewCardResponse]
+    entities: list[DashboardEntityRowResponse]
+    citation_urls: list[DashboardCitationRowResponse]
+    citation_domains: list[DashboardCitationRowResponse]
+    sentiments: list[DashboardSentimentRowResponse]
+
+
+class KMindHubWorkspaceMappingRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    workspace_id: UUID
+    display_name: str = Field(min_length=1, max_length=200)
+    status: str = Field(default="active", max_length=32)
+
+
+class KMindHubWorkspaceProvisionRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class KMindHubWorkspaceMappingResponse(ApiModel):
+    id: UUID
+    tenant_id: UUID
+    workspace_id: UUID
+    display_name: str
+    provisioning_mode: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class PageResponse(ApiModel):

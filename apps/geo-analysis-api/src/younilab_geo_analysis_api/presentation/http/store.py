@@ -13,6 +13,11 @@ from younilab_seo.geo_analysis.application import (
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
+    GeoMetricEntityMentionInput,
+    GeoMetricFormulaQuery,
+    GeoMetricFormulaSource,
+    GeoMetricRunResultInput,
+    GeoMetricSentimentInput,
     GeoProjectCommand,
     GeoProjectRecord,
     GeoQueryCommand,
@@ -22,10 +27,18 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoRunResultAnalysisRecord,
+    GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
     GeoTopicRecord,
+    KMindHubExtractionTaskMappingCommand,
+    KMindHubExtractionTaskMappingRecord,
+    KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceMappingRecord,
     PublishResult,
     QueryDraftRecord,
     QueryDraftSelectionCommand,
@@ -35,6 +48,9 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultCitationNormalizationCommand,
+    SaveSemanticRunResultAnalysisCommand,
+    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
@@ -54,6 +70,20 @@ class GeoApiStore:
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
     run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
+    run_result_analyses: dict[UUID, GeoRunResultAnalysisRecord] = field(
+        default_factory=dict
+    )
+    semantic_run_result_analyses: dict[UUID, GeoRunResultAnalysis] = field(
+        default_factory=dict
+    )
+    run_result_citation_normalizations: dict[
+        tuple[UUID, str],
+        GeoRunResultCitationNormalization,
+    ] = field(default_factory=dict)
+    kmindhub_extraction_task_mappings: dict[
+        tuple[UUID, str, int],
+        KMindHubExtractionTaskMappingRecord,
+    ] = field(default_factory=dict)
     query_research_runs: dict[UUID, QueryResearchRunRecord] = field(
         default_factory=dict
     )
@@ -61,6 +91,9 @@ class GeoApiStore:
         default_factory=dict
     )
     query_drafts: dict[UUID, QueryDraftRecord] = field(default_factory=dict)
+    kmindhub_workspace_mappings: dict[UUID, KMindHubWorkspaceMappingRecord] = field(
+        default_factory=dict
+    )
     platform_codes: dict[UUID, str] = field(default_factory=dict)
     platform_models: dict[UUID, str | None] = field(default_factory=dict)
     dispatches: list[tuple[UUID, PublishResult, QueryRunJobMessage, datetime]] = field(
@@ -70,15 +103,186 @@ class GeoApiStore:
 
     async def list_projects(
         self,
+        tenant_id: UUID,
         customer_id: UUID | None = None,
     ) -> list[GeoProjectRecord]:
-        items = list(self.projects.values())
+        items = [
+            item for item in self.projects.values() if item.tenant_id == tenant_id
+        ]
         if customer_id is not None:
             items = [item for item in items if item.customer_id == customer_id]
         return items
 
-    async def get_project(self, project_id: UUID) -> GeoProjectRecord | None:
-        return self.projects.get(project_id)
+    async def get_project(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> GeoProjectRecord | None:
+        project = self.projects.get(project_id)
+        if project is None or project.tenant_id != tenant_id:
+            return None
+        return project
+
+    async def get_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+    ) -> KMindHubWorkspaceMappingRecord | None:
+        return self.kmindhub_workspace_mappings.get(tenant_id)
+
+    async def upsert_kmindhub_workspace_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubWorkspaceMappingCommand,
+    ) -> KMindHubWorkspaceMappingRecord:
+        now = _now()
+        current = self.kmindhub_workspace_mappings.get(tenant_id)
+        mapping = KMindHubWorkspaceMappingRecord(
+            **command.model_dump(),
+            id=current.id if current is not None else uuid4(),
+            tenant_id=tenant_id,
+            created_at=current.created_at if current is not None else now,
+            updated_at=now,
+        )
+        self.kmindhub_workspace_mappings[tenant_id] = mapping
+        return mapping
+
+    async def get_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        task_key: str,
+        schema_version: int,
+    ) -> KMindHubExtractionTaskMappingRecord | None:
+        return self.kmindhub_extraction_task_mappings.get(
+            (tenant_id, task_key, schema_version)
+        )
+
+    async def upsert_kmindhub_extraction_task_mapping(
+        self,
+        tenant_id: UUID,
+        command: KMindHubExtractionTaskMappingCommand,
+    ) -> KMindHubExtractionTaskMappingRecord:
+        now = _now()
+        key = (tenant_id, command.task_key, command.schema_version)
+        current = self.kmindhub_extraction_task_mappings.get(key)
+        mapping = KMindHubExtractionTaskMappingRecord(
+            **command.model_dump(),
+            id=current.id if current is not None else uuid4(),
+            tenant_id=tenant_id,
+            created_at=current.created_at if current is not None else now,
+            updated_at=now,
+        )
+        self.kmindhub_extraction_task_mappings[key] = mapping
+        return mapping
+
+    async def get_query_project(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+    ) -> GeoProjectRecord | None:
+        query = self.queries.get(query_id)
+        if query is None:
+            return None
+        return await self.get_project(tenant_id, query.project_id)
+
+    async def get_market_project(
+        self,
+        tenant_id: UUID,
+        market_id: UUID,
+    ) -> GeoProjectRecord | None:
+        market = self.markets.get(market_id)
+        if market is None:
+            return None
+        return await self.get_project(tenant_id, market.project_id)
+
+    async def get_entity_project(
+        self,
+        tenant_id: UUID,
+        entity_id: UUID,
+    ) -> GeoProjectRecord | None:
+        entity = self.entities.get(entity_id)
+        if entity is None:
+            return None
+        return await self.get_project(tenant_id, entity.project_id)
+
+    async def get_alias_project(
+        self,
+        tenant_id: UUID,
+        alias_id: UUID,
+    ) -> GeoProjectRecord | None:
+        alias = self.aliases.get(alias_id)
+        if alias is None:
+            return None
+        return await self.get_entity_project(tenant_id, alias.entity_id)
+
+    async def get_topic_project(
+        self,
+        tenant_id: UUID,
+        topic_id: UUID,
+    ) -> GeoProjectRecord | None:
+        topic = self.topics.get(topic_id)
+        if topic is None:
+            return None
+        return await self.get_project(tenant_id, topic.project_id)
+
+    async def get_schedule_project(
+        self,
+        tenant_id: UUID,
+        schedule_id: UUID,
+    ) -> GeoProjectRecord | None:
+        schedule = self.schedules.get(schedule_id)
+        if schedule is None:
+            return None
+        return await self.get_query_project(tenant_id, schedule.query_id)
+
+    async def get_job_project(
+        self,
+        tenant_id: UUID,
+        job_id: UUID,
+    ) -> GeoProjectRecord | None:
+        job = self.jobs.get(job_id)
+        if job is None:
+            return None
+        return await self.get_project(tenant_id, job.project_id)
+
+    async def get_run_result_project(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoProjectRecord | None:
+        result = self.run_results.get(result_id)
+        if result is None:
+            return None
+        return await self.get_job_project(tenant_id, result.job_id)
+
+    async def get_query_research_run_project(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+    ) -> GeoProjectRecord | None:
+        run = self.query_research_runs.get(run_id)
+        if run is None:
+            return None
+        return await self.get_project(tenant_id, run.project_id)
+
+    async def get_query_generation_run_project(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+    ) -> GeoProjectRecord | None:
+        run = self.query_generation_runs.get(run_id)
+        if run is None:
+            return None
+        return await self.get_project(tenant_id, run.project_id)
+
+    async def get_query_draft_project(
+        self,
+        tenant_id: UUID,
+        draft_id: UUID,
+    ) -> GeoProjectRecord | None:
+        draft = self.query_drafts.get(draft_id)
+        if draft is None:
+            return None
+        return await self.get_project(tenant_id, draft.project_id)
 
     async def create_project(self, command: GeoProjectCommand) -> GeoProjectRecord:
         now = _now()
@@ -93,13 +297,15 @@ class GeoApiStore:
 
     async def update_project(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: GeoProjectCommand,
     ) -> GeoProjectRecord | None:
-        if project_id not in self.projects:
+        if await self.get_project(tenant_id, project_id) is None:
             return None
         project = GeoProjectRecord(
-            **command.model_dump(),
+            **command.model_dump(exclude={"tenant_id"}),
+            tenant_id=tenant_id,
             id=project_id,
             created_at=self.projects[project_id].created_at,
             updated_at=_now(),
@@ -107,18 +313,27 @@ class GeoApiStore:
         self.projects[project_id] = project
         return project
 
-    async def delete_project(self, project_id: UUID) -> bool:
+    async def delete_project(self, tenant_id: UUID, project_id: UUID) -> bool:
+        if await self.get_project(tenant_id, project_id) is None:
+            return False
         return self.projects.pop(project_id, None) is not None
 
-    async def list_markets(self, project_id: UUID) -> list[GeoMarketRecord]:
+    async def list_markets(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoMarketRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [item for item in self.markets.values() if item.project_id == project_id]
 
     async def create_market(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: GeoMarketCommand,
     ) -> GeoMarketRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         now = _now()
         market = GeoMarketRecord(
@@ -133,9 +348,13 @@ class GeoApiStore:
 
     async def update_market(
         self,
+        tenant_id: UUID,
         market_id: UUID,
         command: GeoMarketCommand,
     ) -> GeoMarketRecord | None:
+        existing = self.markets.get(market_id)
+        if existing is None or not self._project_matches(tenant_id, existing.project_id):
+            return None
         return self._replace_record(
             market_id,
             command,
@@ -143,21 +362,38 @@ class GeoApiStore:
             GeoMarketRecord,
         )
 
-    async def delete_market(self, market_id: UUID) -> bool:
+    async def delete_market(self, tenant_id: UUID, market_id: UUID) -> bool:
+        existing = self.markets.get(market_id)
+        if existing is None or not self._project_matches(tenant_id, existing.project_id):
+            return False
         return self.markets.pop(market_id, None) is not None
 
-    async def list_entities(self, project_id: UUID) -> list[GeoEntityRecord]:
+    async def list_entities(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoEntityRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [item for item in self.entities.values() if item.project_id == project_id]
 
-    async def get_entity(self, entity_id: UUID) -> GeoEntityRecord | None:
-        return self.entities.get(entity_id)
+    async def get_entity(
+        self,
+        tenant_id: UUID,
+        entity_id: UUID,
+    ) -> GeoEntityRecord | None:
+        entity = self.entities.get(entity_id)
+        if entity is None or not self._project_matches(tenant_id, entity.project_id):
+            return None
+        return entity
 
     async def create_entity(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: GeoEntityCommand,
     ) -> GeoEntityRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         now = _now()
         entity = GeoEntityRecord(
@@ -172,9 +408,12 @@ class GeoApiStore:
 
     async def update_entity(
         self,
+        tenant_id: UUID,
         entity_id: UUID,
         command: GeoEntityCommand,
     ) -> GeoEntityRecord | None:
+        if await self.get_entity(tenant_id, entity_id) is None:
+            return None
         return self._replace_record(
             entity_id,
             command,
@@ -182,18 +421,27 @@ class GeoApiStore:
             GeoEntityRecord,
         )
 
-    async def delete_entity(self, entity_id: UUID) -> bool:
+    async def delete_entity(self, tenant_id: UUID, entity_id: UUID) -> bool:
+        if await self.get_entity(tenant_id, entity_id) is None:
+            return False
         return self.entities.pop(entity_id, None) is not None
 
-    async def list_aliases(self, entity_id: UUID) -> list[GeoEntityAliasRecord]:
+    async def list_aliases(
+        self,
+        tenant_id: UUID,
+        entity_id: UUID,
+    ) -> list[GeoEntityAliasRecord]:
+        if await self.get_entity(tenant_id, entity_id) is None:
+            return []
         return [item for item in self.aliases.values() if item.entity_id == entity_id]
 
     async def create_alias(
         self,
+        tenant_id: UUID,
         entity_id: UUID,
         command: GeoEntityAliasCommand,
     ) -> GeoEntityAliasRecord | None:
-        if entity_id not in self.entities:
+        if await self.get_entity(tenant_id, entity_id) is None:
             return None
         alias = GeoEntityAliasRecord(
             **command.model_dump(),
@@ -206,11 +454,12 @@ class GeoApiStore:
 
     async def update_alias(
         self,
+        tenant_id: UUID,
         alias_id: UUID,
         command: GeoEntityAliasCommand,
     ) -> GeoEntityAliasRecord | None:
         existing = self.aliases.get(alias_id)
-        if existing is None:
+        if existing is None or await self.get_entity(tenant_id, existing.entity_id) is None:
             return None
         alias = GeoEntityAliasRecord(
             **command.model_dump(),
@@ -221,18 +470,28 @@ class GeoApiStore:
         self.aliases[alias_id] = alias
         return alias
 
-    async def delete_alias(self, alias_id: UUID) -> bool:
+    async def delete_alias(self, tenant_id: UUID, alias_id: UUID) -> bool:
+        existing = self.aliases.get(alias_id)
+        if existing is None or await self.get_entity(tenant_id, existing.entity_id) is None:
+            return False
         return self.aliases.pop(alias_id, None) is not None
 
-    async def list_topics(self, project_id: UUID) -> list[GeoTopicRecord]:
+    async def list_topics(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoTopicRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [item for item in self.topics.values() if item.project_id == project_id]
 
     async def create_topic(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: GeoTopicCommand,
     ) -> GeoTopicRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         now = _now()
         topic = GeoTopicRecord(
@@ -247,26 +506,47 @@ class GeoApiStore:
 
     async def update_topic(
         self,
+        tenant_id: UUID,
         topic_id: UUID,
         command: GeoTopicCommand,
     ) -> GeoTopicRecord | None:
+        topic = self.topics.get(topic_id)
+        if topic is None or not self._project_matches(tenant_id, topic.project_id):
+            return None
         return self._replace_record(topic_id, command, self.topics, GeoTopicRecord)
 
-    async def delete_topic(self, topic_id: UUID) -> bool:
+    async def delete_topic(self, tenant_id: UUID, topic_id: UUID) -> bool:
+        topic = self.topics.get(topic_id)
+        if topic is None or not self._project_matches(tenant_id, topic.project_id):
+            return False
         return self.topics.pop(topic_id, None) is not None
 
-    async def list_queries(self, project_id: UUID) -> list[GeoQueryRecord]:
+    async def list_queries(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [item for item in self.queries.values() if item.project_id == project_id]
 
-    async def get_query(self, query_id: UUID) -> GeoQueryRecord | None:
-        return self.queries.get(query_id)
+    async def get_query(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+    ) -> GeoQueryRecord | None:
+        query = self.queries.get(query_id)
+        if query is None or not self._project_matches(tenant_id, query.project_id):
+            return None
+        return query
 
     async def create_query(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: GeoQueryCommand,
     ) -> GeoQueryRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         now = _now()
         query = GeoQueryRecord(
@@ -281,28 +561,37 @@ class GeoApiStore:
 
     async def update_query(
         self,
+        tenant_id: UUID,
         query_id: UUID,
         command: GeoQueryCommand,
     ) -> GeoQueryRecord | None:
+        if await self.get_query(tenant_id, query_id) is None:
+            return None
         return self._replace_record(query_id, command, self.queries, GeoQueryRecord)
 
-    async def delete_query(self, query_id: UUID) -> bool:
+    async def delete_query(self, tenant_id: UUID, query_id: UUID) -> bool:
+        if await self.get_query(tenant_id, query_id) is None:
+            return False
         return self.queries.pop(query_id, None) is not None
 
     async def list_query_platforms(
         self,
+        tenant_id: UUID,
         query_id: UUID,
     ) -> list[GeoQueryPlatformRecord]:
+        if await self.get_query(tenant_id, query_id) is None:
+            return []
         return [
             item for item in self.query_platforms.values() if item.query_id == query_id
         ]
 
     async def replace_query_platforms(
         self,
+        tenant_id: UUID,
         query_id: UUID,
         commands: list[GeoQueryPlatformCommand],
     ) -> list[GeoQueryPlatformRecord] | None:
-        if query_id not in self.queries:
+        if await self.get_query(tenant_id, query_id) is None:
             return None
         for item_id, item in list(self.query_platforms.items()):
             if item.query_id == query_id:
@@ -321,15 +610,22 @@ class GeoApiStore:
         self.query_platforms.update({item.id: item for item in saved})
         return saved
 
-    async def list_schedules(self, query_id: UUID) -> list[GeoQueryScheduleRecord]:
+    async def list_schedules(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+    ) -> list[GeoQueryScheduleRecord]:
+        if await self.get_query(tenant_id, query_id) is None:
+            return []
         return [item for item in self.schedules.values() if item.query_id == query_id]
 
     async def create_schedule(
         self,
+        tenant_id: UUID,
         query_id: UUID,
         command: GeoQueryScheduleCommand,
     ) -> GeoQueryScheduleRecord | None:
-        if query_id not in self.queries:
+        if await self.get_query(tenant_id, query_id) is None:
             return None
         now = _now()
         schedule = GeoQueryScheduleRecord(
@@ -345,9 +641,13 @@ class GeoApiStore:
 
     async def update_schedule(
         self,
+        tenant_id: UUID,
         schedule_id: UUID,
         command: GeoQueryScheduleCommand,
     ) -> GeoQueryScheduleRecord | None:
+        schedule = self.schedules.get(schedule_id)
+        if schedule is None or await self.get_query(tenant_id, schedule.query_id) is None:
+            return None
         return self._replace_record(
             schedule_id,
             command,
@@ -355,15 +655,19 @@ class GeoApiStore:
             GeoQueryScheduleRecord,
         )
 
-    async def delete_schedule(self, schedule_id: UUID) -> bool:
+    async def delete_schedule(self, tenant_id: UUID, schedule_id: UUID) -> bool:
+        schedule = self.schedules.get(schedule_id)
+        if schedule is None or await self.get_query(tenant_id, schedule.query_id) is None:
+            return False
         return self.schedules.pop(schedule_id, None) is not None
 
     async def create_job(
         self,
+        tenant_id: UUID,
         query_id: UUID,
         command: CreateQueryRunJobCommand,
     ) -> GeoQueryRunJob | None:
-        query = self.queries.get(query_id)
+        query = await self.get_query(tenant_id, query_id)
         if query is None:
             return None
         now = _now()
@@ -390,17 +694,33 @@ class GeoApiStore:
         self.jobs[job.id] = job
         return job
 
-    async def list_jobs(self, project_id: UUID) -> list[GeoQueryRunJob]:
+    async def list_jobs(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryRunJob]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [job for job in self.jobs.values() if job.project_id == project_id]
 
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
-        job = await self.get_job(job_id)
+        job = self.jobs.get(job_id)
         if job is None:
             raise KeyError(job_id)
         return job
 
-    async def get_job(self, job_id: UUID) -> GeoQueryRunJob | None:
-        return self.jobs.get(job_id)
+    async def get_job(self, tenant_id: UUID, job_id: UUID) -> GeoQueryRunJob | None:
+        job = self.jobs.get(job_id)
+        if job is None or not self._project_matches(tenant_id, job.project_id):
+            return None
+        return job
+
+    async def get_job_tenant_id(self, job_id: UUID) -> UUID | None:
+        job = self.jobs.get(job_id)
+        if job is None:
+            return None
+        project = self.projects.get(job.project_id)
+        return project.tenant_id if project is not None else None
 
     async def get_job_dispatch_context(
         self,
@@ -429,6 +749,7 @@ class GeoApiStore:
         )
         return GeoQueryRunJobDispatchContext(
             job_id=job.id,
+            tenant_id=project.tenant_id,
             project_id=job.project_id,
             seo_task_id=project.seo_task_id,
             query_id=job.query_id,
@@ -543,31 +864,194 @@ class GeoApiStore:
                 )
         return job
 
-    async def list_job_run_results(self, job_id: UUID) -> list[GeoRunResultRecord]:
+    async def list_job_run_results(
+        self,
+        tenant_id: UUID,
+        job_id: UUID,
+    ) -> list[GeoRunResultRecord]:
+        job = self.jobs.get(job_id)
+        if job is None or not self._project_matches(tenant_id, job.project_id):
+            return []
         return sorted(
-            [item for item in self.run_results.values() if item.job_id == job_id],
+            [
+                self._run_result_with_analysis(item)
+                for item in self.run_results.values()
+                if item.job_id == job_id
+            ],
             key=lambda item: item.run_at,
             reverse=True,
         )
 
     async def list_project_run_results(
         self,
+        tenant_id: UUID,
         project_id: UUID,
     ) -> list[GeoRunResultRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         job_ids = {
             job.id for job in self.jobs.values() if job.project_id == project_id
         }
         return sorted(
-            [item for item in self.run_results.values() if item.job_id in job_ids],
+            [
+                self._run_result_with_analysis(item)
+                for item in self.run_results.values()
+                if item.job_id in job_ids
+            ],
             key=lambda item: item.run_at,
             reverse=True,
         )
 
-    async def get_run_result(self, result_id: UUID) -> GeoRunResultRecord | None:
-        return self.run_results.get(result_id)
+    async def get_metric_formula_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoMetricFormulaQuery,
+        normalizer_version: str,
+    ) -> GeoMetricFormulaSource:
+        if not self._project_matches(tenant_id, project_id):
+            return GeoMetricFormulaSource()
+
+        source_results = [
+            (result, self.queries.get(result.query_id))
+            for result in self.run_results.values()
+            if self._metric_run_result_matches(project_id, result, query)
+        ]
+        run_result_ids = {result.id for result, _query in source_results}
+        return GeoMetricFormulaSource(
+            run_results=[
+                GeoMetricRunResultInput(
+                    run_result_id=result.id,
+                    query_id=result.query_id,
+                    topic_id=source_query.topic_id if source_query is not None else None,
+                    provider=result.provider,
+                    region=result.region,
+                    language=result.language,
+                    completed_at=_normalize_datetime(result.run_at),
+                )
+                for result, source_query in source_results
+            ],
+            entity_mentions=self._metric_entity_mentions(run_result_ids),
+            sentiments=self._metric_sentiments(run_result_ids),
+            citations=self._metric_citations(run_result_ids, normalizer_version),
+        )
+
+    async def get_run_result(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultRecord | None:
+        result = self.run_results.get(result_id)
+        if result is None:
+            return None
+        job = self.jobs.get(result.job_id)
+        if job is None or not self._project_matches(tenant_id, job.project_id):
+            return None
+        return self._run_result_with_analysis(result)
+
+    async def get_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysisRecord | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.run_result_analyses.get(result_id)
+
+    async def get_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.semantic_run_result_analyses.get(result_id)
+
+    async def save_semantic_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveSemanticRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysis | None:
+        result = await self.get_run_result(tenant_id, command.analysis.run_result_id)
+        if result is None:
+            return None
+        self.semantic_run_result_analyses[command.analysis.run_result_id] = (
+            command.analysis
+        )
+        return command.analysis
+
+    async def get_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        normalizer_version: str,
+    ) -> GeoRunResultCitationNormalization | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.run_result_citation_normalizations.get(
+            (result_id, normalizer_version)
+        )
+
+    async def save_run_result_citation_normalization(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultCitationNormalizationCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultCitationNormalization | None:
+        normalization = command.normalization
+        result = await self.get_run_result(tenant_id, normalization.run_result_id)
+        if result is None:
+            return None
+        reference_ids = {reference.id for reference in result.references}
+        for citation in normalization.citations:
+            if citation.run_result_id != normalization.run_result_id:
+                raise ValueError(
+                    "citation run_result_id must match normalization run_result_id"
+                )
+            if citation.reference_id not in reference_ids:
+                raise ValueError("citation reference_id must belong to run result")
+        self.run_result_citation_normalizations[
+            (normalization.run_result_id, normalization.normalizer_version)
+        ] = normalization
+        return normalization
+
+    async def save_run_result_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysisRecord | None:
+        result = await self.get_run_result(tenant_id, command.run_result_id)
+        if result is None:
+            return None
+        current = self.run_result_analyses.get(command.run_result_id)
+        record = GeoRunResultAnalysisRecord(
+            id=current.id if current is not None else uuid4(),
+            run_result_id=command.run_result_id,
+            task_key=command.task_key,
+            schema_version=command.schema_version,
+            status=command.status,
+            summary=command.summary,
+            overall_sentiment=command.overall_sentiment,
+            theme=command.theme,
+            kmindhub_commit_batch_id=command.kmindhub_commit_batch_id,
+            kmindhub_item_id=command.kmindhub_item_id,
+            error_code=command.error_code,
+            error_message=command.error_message,
+            created_at=current.created_at if current is not None else occurred_at,
+            updated_at=occurred_at,
+            completed_at=occurred_at if command.status in {"completed", "failed"} else None,
+        )
+        self.run_result_analyses[command.run_result_id] = record
+        return record
 
     async def create_query_research_run(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: QueryResearchCommand,
         request_payload: dict,
@@ -576,7 +1060,7 @@ class GeoApiStore:
         error_message: str | None,
         occurred_at: datetime,
     ) -> QueryResearchRunRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         record = QueryResearchRunRecord(
             id=uuid4(),
@@ -603,8 +1087,11 @@ class GeoApiStore:
 
     async def list_query_research_runs(
         self,
+        tenant_id: UUID,
         project_id: UUID,
     ) -> list[QueryResearchRunRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [
             item
             for item in self.query_research_runs.values()
@@ -613,12 +1100,17 @@ class GeoApiStore:
 
     async def get_query_research_run(
         self,
+        tenant_id: UUID,
         run_id: UUID,
     ) -> QueryResearchRunRecord | None:
-        return self.query_research_runs.get(run_id)
+        run = self.query_research_runs.get(run_id)
+        if run is None or not self._project_matches(tenant_id, run.project_id):
+            return None
+        return run
 
     async def create_query_generation_run(
         self,
+        tenant_id: UUID,
         project_id: UUID,
         command: QueryGenerationCommand,
         request_payload: dict,
@@ -627,7 +1119,7 @@ class GeoApiStore:
         error_message: str | None,
         occurred_at: datetime,
     ) -> QueryGenerationRunRecord | None:
-        if project_id not in self.projects:
+        if not self._project_matches(tenant_id, project_id):
             return None
         run_id = uuid4()
         drafts = [
@@ -652,8 +1144,11 @@ class GeoApiStore:
 
     async def list_query_generation_runs(
         self,
+        tenant_id: UUID,
         project_id: UUID,
     ) -> list[QueryGenerationRunRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
         return [
             item
             for item in self.query_generation_runs.values()
@@ -662,10 +1157,11 @@ class GeoApiStore:
 
     async def get_query_generation_run(
         self,
+        tenant_id: UUID,
         run_id: UUID,
     ) -> QueryGenerationRunRecord | None:
         record = self.query_generation_runs.get(run_id)
-        if record is None:
+        if record is None or not self._project_matches(tenant_id, record.project_id):
             return None
         drafts = [
             item for item in self.query_drafts.values() if item.generation_run_id == run_id
@@ -674,11 +1170,12 @@ class GeoApiStore:
 
     async def update_query_draft_selection(
         self,
+        tenant_id: UUID,
         draft_id: UUID,
         command: QueryDraftSelectionCommand,
     ) -> QueryDraftRecord | None:
         draft = self.query_drafts.get(draft_id)
-        if draft is None:
+        if draft is None or not self._project_matches(tenant_id, draft.project_id):
             return None
         if draft.accepted_query_id is not None:
             raise ValueError("query draft already accepted")
@@ -693,11 +1190,12 @@ class GeoApiStore:
 
     async def accept_query_draft(
         self,
+        tenant_id: UUID,
         draft_id: UUID,
         command: AcceptQueryDraftCommand,
     ) -> GeoQueryRecord | None:
         draft = self.query_drafts.get(draft_id)
-        if draft is None:
+        if draft is None or not self._project_matches(tenant_id, draft.project_id):
             return None
         if draft.accepted_query_id is not None:
             raise ValueError("query draft already accepted")
@@ -713,11 +1211,13 @@ class GeoApiStore:
             )
             if topic is None and command.create_topic_if_missing:
                 topic = await self.create_topic(
+                    tenant_id,
                     draft.project_id,
                     GeoTopicCommand(name=draft.topic_name),
                 )
             topic_id = topic.id if topic is not None else None
         query = await self.create_query(
+            tenant_id,
             draft.project_id,
             GeoQueryCommand(
                 topic_id=topic_id,
@@ -788,6 +1288,109 @@ class GeoApiStore:
             updated_at=occurred_at,
         )
 
+    def _project_matches(self, tenant_id: UUID, project_id: UUID) -> bool:
+        project = self.projects.get(project_id)
+        return project is not None and project.tenant_id == tenant_id
+
+    def _metric_run_result_matches(
+        self,
+        project_id: UUID,
+        result: GeoRunResultRecord,
+        query: GeoMetricFormulaQuery,
+    ) -> bool:
+        job = self.jobs.get(result.job_id)
+        source_query = self.queries.get(result.query_id)
+        if (
+            job is None
+            or job.project_id != project_id
+            or result.status != "completed"
+            or source_query is None
+        ):
+            return False
+        completed_at = _normalize_datetime(result.run_at)
+        comparison_start, comparison_end = _metric_comparison_period(query)
+        in_current_period = query.period_start <= completed_at < query.period_end
+        in_comparison_period = comparison_start <= completed_at < comparison_end
+        if not (in_current_period or in_comparison_period):
+            return False
+        if query.query_id is not None and result.query_id != query.query_id:
+            return False
+        if query.topic_id is not None and source_query.topic_id != query.topic_id:
+            return False
+        if query.provider is not None and result.provider != query.provider:
+            return False
+        if query.region is not None and result.region != query.region:
+            return False
+        if query.language is not None and result.language != query.language:
+            return False
+        return True
+
+    def _metric_entity_mentions(
+        self,
+        run_result_ids: set[UUID],
+    ) -> list[GeoMetricEntityMentionInput]:
+        facts: list[GeoMetricEntityMentionInput] = []
+        for result_id in run_result_ids:
+            analysis = self.semantic_run_result_analyses.get(result_id)
+            if analysis is None or analysis.status != "completed":
+                continue
+            facts.extend(
+                GeoMetricEntityMentionInput(
+                    run_result_id=result_id,
+                    **mention.model_dump(),
+                )
+                for mention in analysis.entity_mentions
+            )
+        return facts
+
+    def _metric_sentiments(
+        self,
+        run_result_ids: set[UUID],
+    ) -> list[GeoMetricSentimentInput]:
+        facts: list[GeoMetricSentimentInput] = []
+        for result_id in run_result_ids:
+            analysis = self.semantic_run_result_analyses.get(result_id)
+            if analysis is None or analysis.status != "completed":
+                continue
+            facts.extend(
+                GeoMetricSentimentInput(
+                    run_result_id=result_id,
+                    **sentiment.model_dump(),
+                )
+                for sentiment in analysis.sentiments
+            )
+        return facts
+
+    def _metric_citations(
+        self,
+        run_result_ids: set[UUID],
+        normalizer_version: str,
+    ) -> list[GeoRunResultCitationFact]:
+        citations: list[GeoRunResultCitationFact] = []
+        for result_id in run_result_ids:
+            normalization = self.run_result_citation_normalizations.get(
+                (result_id, normalizer_version)
+            )
+            if normalization is None or normalization.status != "completed":
+                continue
+            citations.extend(normalization.citations)
+        return citations
+
+    def _run_result_with_analysis(
+        self,
+        result: GeoRunResultRecord,
+    ) -> GeoRunResultRecord:
+        analysis = self.run_result_analyses.get(result.id)
+        if analysis is None:
+            return result
+        return result.model_copy(
+            update={
+                "analysis_status": analysis.status,
+                "analysis_error_code": analysis.error_code,
+                "analysis_error_message": analysis.error_message,
+            }
+        )
+
 
 def _scope_fields(record) -> dict:
     if hasattr(record, "project_id"):
@@ -808,6 +1411,15 @@ def _normalize_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).replace(microsecond=0)
+
+
+def _metric_comparison_period(
+    query: GeoMetricFormulaQuery,
+) -> tuple[datetime, datetime]:
+    if query.comparison_start is not None and query.comparison_end is not None:
+        return query.comparison_start, query.comparison_end
+    duration = query.period_end - query.period_start
+    return query.period_start - duration, query.period_start
 
 
 def _result_references(result) -> list[tuple[str, str | None]]:

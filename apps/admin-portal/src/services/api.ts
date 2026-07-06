@@ -8,6 +8,8 @@
   GeoAnalysisRunResult,
   GeoAcceptQueryDraftRequest,
   Department,
+  GeoDashboardReport,
+  GeoDashboardReportQuery,
   GeoDummyProject,
   GeoEntityAliasRequest,
   GeoEntityAliasResource,
@@ -381,6 +383,15 @@ export const api = {
       ),
     runResult: (resultId: string) =>
       request<GeoAnalysisRunResult>(`/api/geo/run-results/${resultId}`),
+    dashboardReport: (projectId: string, input: GeoDashboardReportQuery) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(input)) {
+        if (value) params.set(key, value);
+      }
+      return request<GeoDashboardReport>(
+        `/api/geo/projects/${projectId}/reports/dashboard?${params.toString()}`,
+      );
+    },
     dispatchJob: (jobId: string) =>
       request<GeoJobResource>(`/api/geo/jobs/${jobId}/dispatch`, {
         method: "POST",

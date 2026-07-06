@@ -36,6 +36,7 @@ class AuthenticationService:
         user = await self._repository.get_user_by_email(email.strip().lower())
         if user is None:
             raise InvalidCredentials
+        await self._ensure_active_tenant(user.tenant_id)
         password_hash = await self._repository.get_password_hash(user.id)
         if password_hash is None or not self._password_hasher.verify(
             password,
@@ -69,6 +70,7 @@ class AuthenticationService:
         if user is None or not user.is_active:
             await self._repository.revoke_session_family(current.family_id, now)
             raise AccountUnavailable
+        await self._ensure_active_tenant(user.tenant_id)
 
         replacement_id = self._id_generator.new_id()
         raw_refresh_token = self._token_provider.new_refresh_token()
@@ -142,3 +144,8 @@ class AuthenticationService:
             refresh_token=raw_refresh_token,
             refresh_token_expires_at=refresh_expires_at,
         )
+
+    async def _ensure_active_tenant(self, tenant_id) -> None:
+        tenant = await self._repository.get_tenant(tenant_id)
+        if tenant is None or not tenant.is_active:
+            raise AccountUnavailable

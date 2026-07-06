@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import asyncio
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
     ExternalRunCallback,
@@ -14,6 +14,10 @@ from younilab_seo.geo_analysis.application import (
     TrackingRunResultItem,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
+
+
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
 
 
 @dataclass
@@ -29,6 +33,12 @@ class FakeRepository:
     job: GeoQueryRunJob
     callbacks: list[ExternalRunCallback] = field(default_factory=list)
     save_commands: list[SaveTrackingRunResultCommand] = field(default_factory=list)
+    result_ids: list[UUID] = field(default_factory=list)
+
+    async def get_job_tenant_id(self, job_id) -> UUID | None:
+        if job_id != self.job.id:
+            return None
+        return TENANT_ID
 
     async def apply_external_callback(
         self,
@@ -61,7 +71,14 @@ class FakeRepository:
             now=occurred_at,
         )
         self.save_commands.append(command)
+        self.result_ids = [uuid4() for _ in (command.response.results if command.response else [])]
         return self.job
+
+    async def list_job_run_results(self, tenant_id: UUID, job_id: UUID):
+        return [
+            type("RunResult", (), {"id": result_id})()
+            for result_id in self.result_ids
+        ]
 
 
 @dataclass
@@ -92,6 +109,18 @@ class FakeTrackingClient:
         return self.result
 
 
+@dataclass
+class FakePipelineStep:
+    error_on_calls: set[int] = field(default_factory=set)
+    error_message: str = "pipeline unavailable"
+    calls: list[tuple[UUID, UUID]] = field(default_factory=list)
+
+    async def execute(self, tenant_id: UUID, result_id: UUID) -> None:
+        self.calls.append((tenant_id, result_id))
+        if len(self.calls) in self.error_on_calls:
+            raise RuntimeError(self.error_message)
+
+
 def test_worker_marks_completed_tracking_run_succeeded() -> None:
     async def run() -> None:
         job = make_job()
@@ -117,6 +146,92 @@ def test_worker_marks_completed_tracking_run_succeeded() -> None:
         assert saved.raw_response == "Raw answer"
         assert saved.references[0].url == "https://example.com/reference"
         assert len(tracking.messages) == 1
+
+    asyncio.run(run())
+
+
+def test_worker_runs_report_pipeline_after_completed_tracking_result() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        analyzer = FakePipelineStep()
+        normalizer = FakePipelineStep()
+
+        await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
+        ).execute(make_message(job, platform="gemini"))
+
+        assert analyzer.calls == [(TENANT_ID, repository.result_ids[0])]
+        assert normalizer.calls == [(TENANT_ID, repository.result_ids[0])]
+
+    asyncio.run(run())
+
+
+def test_worker_keeps_tracking_job_succeeded_when_semantic_analysis_crashes() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(
+            make_tracking_response(job, status="completed", result_count=2)
+        )
+        analyzer = FakePipelineStep(error_on_calls={1})
+        normalizer = FakePipelineStep()
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
+        ).execute(make_message(job, platform="gemini"))
+
+        assert result.status is JobStatus.SUCCEEDED
+        assert result.last_error_code is None
+        assert analyzer.calls == [
+            (TENANT_ID, repository.result_ids[0]),
+            (TENANT_ID, repository.result_ids[1]),
+        ]
+        assert normalizer.calls == [(TENANT_ID, repository.result_ids[1])]
+
+    asyncio.run(run())
+
+
+def test_worker_keeps_tracking_job_succeeded_when_citation_normalization_crashes() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(
+            make_tracking_response(job, status="completed", result_count=2)
+        )
+        analyzer = FakePipelineStep()
+        normalizer = FakePipelineStep(error_on_calls={1})
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
+        ).execute(make_message(job, platform="gemini"))
+
+        assert result.status is JobStatus.SUCCEEDED
+        assert result.last_error_code is None
+        assert analyzer.calls == [
+            (TENANT_ID, repository.result_ids[0]),
+            (TENANT_ID, repository.result_ids[1]),
+        ]
+        assert normalizer.calls == [
+            (TENANT_ID, repository.result_ids[0]),
+            (TENANT_ID, repository.result_ids[1]),
+        ]
 
     asyncio.run(run())
 
@@ -160,17 +275,23 @@ def test_worker_marks_tracking_failure_failed() -> None:
         tracking = FakeTrackingClient(
             make_tracking_response(job, status="failed", error="provider_error")
         )
+        analyzer = FakePipelineStep()
+        normalizer = FakePipelineStep()
 
         result = await ProcessQueryRunJobMessage(
             repository=repository,
             tracking_client=tracking,
             clock=FakeClock(),
             supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
         ).execute(make_message(job, platform="gemini"))
 
         assert result.status is JobStatus.FAILED
         assert result.last_error_code == "provider_error"
         assert result.last_error_message == "provider_error"
+        assert analyzer.calls == []
+        assert normalizer.calls == []
 
     asyncio.run(run())
 
@@ -202,17 +323,23 @@ def test_worker_marks_unsupported_provider_failed_without_tracking_call() -> Non
         job = make_job()
         repository = FakeRepository(job)
         tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        analyzer = FakePipelineStep()
+        normalizer = FakePipelineStep()
 
         result = await ProcessQueryRunJobMessage(
             repository=repository,
             tracking_client=tracking,
             clock=FakeClock(),
             supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
         ).execute(make_message(job, platform="openai"))
 
         assert result.status is JobStatus.FAILED
         assert result.last_error_code == "unsupported_provider"
         assert tracking.messages == []
+        assert analyzer.calls == []
+        assert normalizer.calls == []
         assert repository.save_commands[0].response is None
         assert repository.save_commands[0].request_payload["reason"] == (
             "unsupported_provider"
@@ -249,6 +376,37 @@ def test_worker_rejects_terminal_job_without_tracking_call() -> None:
     asyncio.run(run())
 
 
+def test_worker_marks_tenant_mismatch_failed_without_tracking_call() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job)
+        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        analyzer = FakePipelineStep()
+        normalizer = FakePipelineStep()
+
+        result = await ProcessQueryRunJobMessage(
+            repository=repository,
+            tracking_client=tracking,
+            clock=FakeClock(),
+            supported_provider="gemini",
+            analyze_run_result=analyzer,
+            normalize_run_result_citations=normalizer,
+        ).execute(
+            make_message(job, platform="gemini").model_copy(
+                update={"tenant_id": OTHER_TENANT_ID}
+            )
+        )
+
+        assert result.status is JobStatus.FAILED
+        assert result.last_error_code == "tenant_mismatch"
+        assert tracking.messages == []
+        assert analyzer.calls == []
+        assert normalizer.calls == []
+        assert repository.save_commands[0].request_payload["reason"] == "tenant_mismatch"
+
+    asyncio.run(run())
+
+
 def make_job() -> GeoQueryRunJob:
     now = datetime(2026, 6, 25, tzinfo=UTC)
     return GeoQueryRunJob(
@@ -272,6 +430,7 @@ def make_job() -> GeoQueryRunJob:
 def make_message(job: GeoQueryRunJob, *, platform: str) -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=job.id,
+        tenant_id=TENANT_ID,
         project_id=job.project_id,
         seo_task_id=uuid4(),
         query_id=job.query_id,
@@ -296,6 +455,7 @@ def make_tracking_response(
     provider: str = "gemini",
     surface: str = "Gemini",
     model: str = "gemini-2.5-flash",
+    result_count: int = 1,
 ) -> TrackingRunResponse:
     return TrackingRunResponse(
         id="tracking-run-1",
@@ -303,7 +463,7 @@ def make_tracking_response(
         timing="run_now",
         results=[
             TrackingRunResultItem(
-                id="tracking-result-1",
+                id=f"tracking-result-{index}",
                 run_request_id="tracking-run-1",
                 query_id=job.query_id,
                 provider=provider,
@@ -323,5 +483,6 @@ def make_tracking_response(
                 error=error,
                 run_at=job.scheduled_for,
             )
+            for index in range(1, result_count + 1)
         ],
     )

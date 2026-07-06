@@ -27,8 +27,9 @@ async def list_customers(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
 ) -> PageResponse:
-    await request.app.state.authorizer.require(token, "customers.read")
-    customers = await request.app.state.catalog.list_customers(
+    principal = await request.app.state.authorizer.require(token, "customers.read")
+    customers = await request.app.state.catalog.list_customers_for(
+        principal,
         search=search,
         status=resource_status,
     )
@@ -49,9 +50,12 @@ async def create_customer(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> CustomerResponse:
-    await request.app.state.authorizer.require(token, "customers.create")
+    principal = await request.app.state.authorizer.require(token, "customers.create")
     return CustomerResponse.from_domain(
-        await request.app.state.catalog.create_customer(payload.name)
+        await request.app.state.catalog.create_customer(
+            tenant_id=principal.tenant_id,
+            name=payload.name,
+        )
     )
 
 
@@ -61,9 +65,9 @@ async def get_customer(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> CustomerResponse:
-    await request.app.state.authorizer.require(token, "customers.read")
+    principal = await request.app.state.authorizer.require(token, "customers.read")
     return CustomerResponse.from_domain(
-        await request.app.state.catalog.get_customer(customer_id)
+        await request.app.state.catalog.get_customer_for(principal, customer_id)
     )
 
 
@@ -74,9 +78,13 @@ async def update_customer(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> CustomerResponse:
-    await request.app.state.authorizer.require(token, "customers.update")
+    principal = await request.app.state.authorizer.require(token, "customers.update")
     return CustomerResponse.from_domain(
-        await request.app.state.catalog.update_customer(customer_id, payload.name)
+        await request.app.state.catalog.update_customer_for(
+            principal,
+            customer_id,
+            payload.name,
+        )
     )
 
 
@@ -86,5 +94,5 @@ async def delete_customer(
     request: Request,
     token: str = Depends(bearer_token),
 ) -> None:
-    await request.app.state.authorizer.require(token, "customers.delete")
-    await request.app.state.catalog.archive_customer(customer_id)
+    principal = await request.app.state.authorizer.require(token, "customers.delete")
+    await request.app.state.catalog.archive_customer_for(principal, customer_id)

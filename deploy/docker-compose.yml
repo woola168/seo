@@ -64,10 +64,13 @@ services:
       - ${DEPLOY_ENV_FILE}
     depends_on:
       - rabbitmq
+      - access-control-api
+      - resource-catalog-api
     ports:
       - "127.0.0.1:18002:8002"
     networks:
       - web_network
+      - kmindhub
 
   geo-analysis-worker-gemini:
     container_name: geo-analysis-worker-gemini
@@ -83,6 +86,7 @@ services:
       - geo-tracking-api
     networks:
       - web_network
+      - kmindhub
 
   geo-analysis-worker-google-aio:
     container_name: geo-analysis-worker-google-aio
@@ -102,6 +106,7 @@ services:
       - geo-tracking-api
     networks:
       - web_network
+      - kmindhub
 
   geo-tracking-api:
     container_name: geo-tracking-api
@@ -128,3 +133,6 @@ volumes:
 networks:
   web_network:
     external: true
+  kmindhub:
+    external: true
+    name: kmindhub

@@ -6,7 +6,12 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import select
 
-from younilab_seo.access_control.domain import PERMISSIONS
+from younilab_seo.access_control.domain import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    PERMISSIONS,
+)
 from younilab_seo.access_control.infrastructure import (
     AccessControlSettings,
     Argon2PasswordHasher,
@@ -14,6 +19,7 @@ from younilab_seo.access_control.infrastructure import (
 )
 from younilab_seo.access_control.infrastructure.persistence import (
     RoleRow,
+    TenantRow,
     UserRoleRow,
     UserRow,
 )
@@ -57,10 +63,23 @@ async def bootstrap_admin(
     now = datetime.now(UTC)
 
     async with session_factory() as session:
+        tenant = await session.get(TenantRow, DEFAULT_TENANT_ID)
+        if tenant is None:
+            tenant = TenantRow(
+                id=DEFAULT_TENANT_ID,
+                code=DEFAULT_TENANT_CODE,
+                name=DEFAULT_TENANT_NAME,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(tenant)
+
         role = await session.get(RoleRow, ADMIN_ROLE_ID)
         if role is None:
             role = RoleRow(
                 id=ADMIN_ROLE_ID,
+                tenant_id=DEFAULT_TENANT_ID,
                 name="admin",
                 permissions=sorted(PERMISSIONS),
                 is_system=True,
@@ -74,6 +93,7 @@ async def bootstrap_admin(
         if user is None:
             user = UserRow(
                 id=uuid4(),
+                tenant_id=DEFAULT_TENANT_ID,
                 email=normalized_email,
                 display_name=display_name.strip(),
                 status="active",

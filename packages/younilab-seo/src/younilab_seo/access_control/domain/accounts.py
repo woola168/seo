@@ -3,6 +3,11 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from younilab_seo.access_control.domain.tenants import (
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+)
+
 
 class AccountStatus(StrEnum):
     INVITED = "invited"
@@ -18,6 +23,8 @@ class UserAccount:
     email: str
     display_name: str
     status: AccountStatus
+    tenant_id: UUID = DEFAULT_TENANT_ID
+    tenant_name: str | None = DEFAULT_TENANT_NAME
     role_ids: set[UUID] = field(default_factory=set)
     customer_ids: set[UUID] = field(default_factory=set)
     task_ids: set[UUID] = field(default_factory=set)

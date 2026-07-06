@@ -7,6 +7,7 @@ import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
 import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
+import GeoDashboardReportDesignPage from "./pages/GeoDashboardReportDesignPage.vue";
 import GeoFlowCheckPage from "./pages/GeoFlowCheckPage.vue";
 import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
@@ -112,6 +113,7 @@ const geoPageTitles: Partial<Record<PageId, string>> = {
   "geo-analysis-schedules": "GEO Platforms & Schedules",
   "geo-analysis-jobs": "GEO Run Jobs",
   "geo-analysis-reports": "GEO Reports",
+  "geo-analysis-report-design": "GEO Report Design",
   "geo-analysis-flow-check": "GEO Flow Check",
   "geo-analysis-query-research": "GEO Query Research",
   "geo-tracking": "GEO 跑題實驗室",
@@ -202,6 +204,12 @@ const navigation = computed<NavigationItem[]>(() => [
         label: "Reports",
         icon: "layers",
         page: "geo-analysis-reports",
+      },
+      {
+        id: "geo-analysis-report-design",
+        label: "Report Design",
+        icon: "eye",
+        page: "geo-analysis-report-design",
       },
       {
         id: "geo-analysis-flow-check",
@@ -851,6 +859,9 @@ function unavailable(label: string): void {
       v-else-if="isGeoAnalysisPage && activeGeoAnalysisTab"
       :active-tab="activeGeoAnalysisTab"
       @unavailable="unavailable"
+    />
+    <GeoDashboardReportDesignPage
+      v-else-if="activePage === 'geo-analysis-report-design'"
     />
     <GeoFlowCheckPage v-else-if="activePage === 'geo-analysis-flow-check'" />
     <GeoTrackingPage v-else-if="isGeoTrackingPage" />

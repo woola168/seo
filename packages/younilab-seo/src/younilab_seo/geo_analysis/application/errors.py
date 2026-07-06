@@ -1,6 +1,6 @@
 class GeoAnalysisApplicationError(Exception):
-    """Base error for GEO orchestration application use cases."""
+    """GEO orchestration application use case 的共同錯誤基底。"""
 
 
 class PublishFailed(GeoAnalysisApplicationError):
-    """Raised when a message broker publish operation cannot be completed."""
+    """message broker 發布操作無法完成時使用的錯誤。"""

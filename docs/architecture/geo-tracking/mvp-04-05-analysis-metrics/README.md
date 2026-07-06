@@ -13,7 +13,9 @@
    - 目的：理解文件分層、module 依賴與建議開發順序。
 3. 再讀 [`COVERAGE.md`](COVERAGE.md)。
    - 目的：確認 high level plan 的每個要求已由哪些 module 文件承接。
-4. 最後依你負責的 module 讀該 module 的 `PLAN.md`、`SPEC.md`、`SCHEMA.md`。
+4. 若要開始切實作，讀 [`PHASED-IMPLEMENTATION-PLAN.md`](PHASED-IMPLEMENTATION-PLAN.md)。
+   - 目的：依照小階段推進，避免一次同時改 contracts、schema、repository、API、worker。
+5. 最後依你負責的 module 讀該 module 的 `PLAN.md`、`SPEC.md`、`SCHEMA.md`。
    - `PLAN.md`：先看，理解責任、依賴、rollout。
    - `SPEC.md`：實作 use case、interface、API/read model、公式、錯誤行為時看。
    - `SCHEMA.md`：寫 migration、SQLModel、repository adapter 時看。

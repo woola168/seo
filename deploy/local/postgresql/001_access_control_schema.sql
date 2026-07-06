@@ -1,14 +1,27 @@
+CREATE TABLE IF NOT EXISTS tenant (
+    id uuid PRIMARY KEY,
+    code varchar(80) NOT NULL UNIQUE,
+    name varchar(200) NOT NULL,
+    status varchar(32) NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    disabled_at timestamptz NULL
+);
+
 CREATE TABLE IF NOT EXISTS department (
     id uuid PRIMARY KEY,
-    name varchar(100) NOT NULL UNIQUE,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
+    name varchar(100) NOT NULL,
     description text NOT NULL DEFAULT '',
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    archived_at timestamptz NULL
+    archived_at timestamptz NULL,
+    CONSTRAINT ux_department_tenant_name UNIQUE (tenant_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS user_account (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
     email varchar(320) NOT NULL UNIQUE,
     display_name varchar(200) NOT NULL,
     status varchar(32) NOT NULL,
@@ -24,11 +37,22 @@ CREATE TABLE IF NOT EXISTS user_account (
 
 CREATE TABLE IF NOT EXISTS role (
     id uuid PRIMARY KEY,
-    name varchar(100) NOT NULL UNIQUE,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
+    name varchar(100) NOT NULL,
     permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
     is_system boolean NOT NULL DEFAULT false,
-    has_global_resource_access boolean NOT NULL DEFAULT false
+    has_global_resource_access boolean NOT NULL DEFAULT false,
+    CONSTRAINT ux_role_tenant_name UNIQUE (tenant_id, name)
 );
+
+CREATE INDEX IF NOT EXISTS ix_department_tenant_id
+    ON department (tenant_id);
+
+CREATE INDEX IF NOT EXISTS ix_user_account_tenant_id
+    ON user_account (tenant_id);
+
+CREATE INDEX IF NOT EXISTS ix_role_tenant_id
+    ON role (tenant_id);
 
 CREATE TABLE IF NOT EXISTS user_role (
     id uuid PRIMARY KEY,
@@ -39,17 +63,25 @@ CREATE TABLE IF NOT EXISTS user_role (
 
 CREATE TABLE IF NOT EXISTS customer_access_grant (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
     user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
     customer_id uuid NOT NULL,
-    CONSTRAINT ux_user_customer_grant UNIQUE (user_id, customer_id)
+    CONSTRAINT ux_tenant_user_customer_grant UNIQUE (tenant_id, user_id, customer_id)
 );
 
 CREATE TABLE IF NOT EXISTS task_access_grant (
     id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES tenant(id),
     user_id uuid NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
     task_id uuid NOT NULL,
-    CONSTRAINT ux_user_task_grant UNIQUE (user_id, task_id)
+    CONSTRAINT ux_tenant_user_task_grant UNIQUE (tenant_id, user_id, task_id)
 );
+
+CREATE INDEX IF NOT EXISTS ix_customer_access_grant_tenant_id
+    ON customer_access_grant (tenant_id);
+
+CREATE INDEX IF NOT EXISTS ix_task_access_grant_tenant_id
+    ON task_access_grant (tenant_id);
 
 CREATE TABLE IF NOT EXISTS refresh_session (
     id uuid PRIMARY KEY,

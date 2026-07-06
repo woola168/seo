@@ -13,12 +13,22 @@ from younilab_seo.access_control.domain.resources import (
     SeoTask,
 )
 from younilab_seo.access_control.domain.roles import Role
+from younilab_seo.access_control.domain.tenants import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    Tenant,
+    TenantStatus,
+)
 
 __all__ = [
     "AccessPolicy",
     "AccountStatus",
     "AuthorizationReason",
     "Customer",
+    "DEFAULT_TENANT_CODE",
+    "DEFAULT_TENANT_ID",
+    "DEFAULT_TENANT_NAME",
     "Department",
     "PolicyDecision",
     "PERMISSIONS",
@@ -26,5 +36,7 @@ __all__ = [
     "ResourceType",
     "Role",
     "SeoTask",
+    "Tenant",
+    "TenantStatus",
     "UserAccount",
 ]

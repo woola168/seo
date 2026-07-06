@@ -43,6 +43,7 @@ class IssuedTokens:
 class Capabilities:
     """使用者目前生效中的 permissions 與 resource grants。"""
 
+    tenant_id: UUID
     permissions: frozenset[str]
     has_global_resource_access: bool
     customer_ids: frozenset[UUID]

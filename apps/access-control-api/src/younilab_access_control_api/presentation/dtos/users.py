@@ -11,6 +11,8 @@ class UserResponse(ApiModel):
     """user endpoints 回傳的帳號基本資料與 role assignment。"""
 
     id: UUID
+    tenant_id: UUID
+    tenant_name: str | None
     email: str
     display_name: str
     status: str
@@ -26,6 +28,8 @@ class UserResponse(ApiModel):
     def from_domain(cls, user: UserAccount) -> Self:
         return cls(
             id=user.id,
+            tenant_id=user.tenant_id,
+            tenant_name=user.tenant_name,
             email=user.email,
             display_name=user.display_name,
             status=user.status.value,
@@ -49,6 +53,8 @@ class UserAccessResponse(UserResponse):
     def from_domain(cls, user: UserAccount) -> Self:
         return cls(
             id=user.id,
+            tenant_id=user.tenant_id,
+            tenant_name=user.tenant_name,
             email=user.email,
             display_name=user.display_name,
             status=user.status.value,

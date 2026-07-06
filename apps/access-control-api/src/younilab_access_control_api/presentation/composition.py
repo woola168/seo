@@ -12,6 +12,7 @@ from younilab_seo.access_control.application import (
     NotificationPublisher,
     PasswordHasher,
     RecoveryTokenProvider,
+    ResourceGrantVerifier,
     TokenProvider,
 )
 from younilab_seo.access_control.infrastructure import (
@@ -21,6 +22,7 @@ from younilab_seo.access_control.infrastructure import (
     MemoryAccessControlRepository,
     MemoryNotificationPublisher,
     PostgresOutboxPublisher,
+    ResourceCatalogHttpGrantVerifier,
     SecureRecoveryTokenProvider,
     SystemClock,
     UuidGenerator,
@@ -54,6 +56,7 @@ def build_dependencies(
     id_generator: IdGenerator | None = None,
     recovery_token_provider: RecoveryTokenProvider | None = None,
     notifications: NotificationPublisher | None = None,
+    resource_grant_verifier: ResourceGrantVerifier | None = None,
 ) -> AccessControlApiDependencies:
     resolved_settings = settings if settings is not None else AccessControlSettings()
     resolved_repository = (
@@ -81,6 +84,11 @@ def build_dependencies(
         if notifications is not None
         else _notifications(resolved_settings)
     )
+    resolved_resource_grant_verifier = (
+        resource_grant_verifier
+        if resource_grant_verifier is not None
+        else ResourceCatalogHttpGrantVerifier(resolved_settings.resource_catalog_url)
+    )
 
     return AccessControlApiDependencies(
         repository=resolved_repository,
@@ -98,6 +106,7 @@ def build_dependencies(
         management=AccessManagementService(
             resolved_repository,
             clock=resolved_clock,
+            resource_grant_verifier=resolved_resource_grant_verifier,
         ),
         account_recovery=AccountRecoveryService(
             repository=resolved_repository,
@@ -116,6 +125,7 @@ def build_dependencies(
             clock=resolved_clock,
             id_generator=resolved_id_generator,
             portal_url=resolved_settings.portal_url,
+            resource_grant_verifier=resolved_resource_grant_verifier,
         ),
         notifications=resolved_notifications,
         secure_cookies=resolved_settings.is_production,
