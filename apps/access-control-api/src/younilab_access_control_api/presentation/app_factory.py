@@ -67,6 +67,7 @@ def create_app(
     app.state.clock = dependencies.clock
     app.state.id_generator = dependencies.id_generator
     app.state.secure_cookies = dependencies.secure_cookies
+    app.state.refresh_cookie_samesite = dependencies.refresh_cookie_samesite
     app.state.authentication = dependencies.authentication
     app.state.authorization = dependencies.authorization
     app.state.management = dependencies.management

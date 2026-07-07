@@ -82,6 +82,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     TrackingRunResponse,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
+    AuthenticationRequired,
     AuthorizedPrincipal,
     Clock,
     GeoAnalysisRepository,
@@ -132,6 +133,7 @@ __all__ = [
     "Clock",
     "AcceptQueryDraftCommand",
     "AnalyzeGeoRunResultCommand",
+    "AuthenticationRequired",
     "AuthorizedPrincipal",
     "AnalyzeRunResult",
     "BrandMentionRules",

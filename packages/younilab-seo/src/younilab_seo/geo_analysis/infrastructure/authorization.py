@@ -3,6 +3,7 @@ from uuid import UUID
 import httpx
 
 from younilab_seo.geo_analysis.application import (
+    AuthenticationRequired,
     AuthorizedPrincipal,
     PermissionAuthorizer,
     ResourceCatalogReferenceVerifier,
@@ -38,6 +39,8 @@ class AccessControlAuthorizer:
                 )
         except httpx.HTTPError as exc:
             raise PermissionError("authorization service unavailable") from exc
+        if response.status_code == 401:
+            raise AuthenticationRequired
         if response.status_code != 200:
             raise PermissionError("access denied")
         body = response.json()
@@ -113,7 +116,9 @@ class ResourceCatalogHttpReferenceVerifier(ResourceCatalogReferenceVerifier):
             ) from exc
         if response.status_code == 404:
             return None
-        if response.status_code in {401, 403}:
+        if response.status_code == 401:
+            raise AuthenticationRequired
+        if response.status_code == 403:
             raise ResourceCatalogVerificationDenied(
                 "resource catalog reference verification denied"
             )

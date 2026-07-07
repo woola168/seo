@@ -3,6 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from younilab_seo.geo_analysis.application import (
+    AuthenticationRequired,
     GeoProjectReferenceError,
     KMindHubWorkspaceMappingAlreadyExists,
     KMindHubWorkspaceMappingNotFound,
@@ -80,6 +81,13 @@ def register_error_handlers(app: FastAPI) -> None:
         exc: KMindHubWorkspaceProvisionUnavailable,
     ) -> JSONResponse:
         return _problem(request, 503, str(exc))
+
+    @app.exception_handler(AuthenticationRequired)
+    async def authentication_required(
+        request: Request,
+        exc: AuthenticationRequired,
+    ) -> JSONResponse:
+        return _problem(request, 401, "Authentication required")
 
     @app.exception_handler(PermissionError)
     async def permission_error(

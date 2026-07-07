@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from younilab_seo.resource_catalog.application import (
     AccessDenied,
+    AuthenticationRequired,
     Conflict,
     ResourceCatalogError,
     ResourceNotFound,
@@ -22,6 +23,13 @@ def register_error_handlers(app: FastAPI) -> None:
             "Request validation failed",
             invalid_params=_invalid_params(exc),
         )
+
+    @app.exception_handler(AuthenticationRequired)
+    async def authentication_required(
+        request: Request,
+        exc: AuthenticationRequired,
+    ) -> JSONResponse:
+        return _problem(request, 401, "Authentication required")
 
     @app.exception_handler(AccessDenied)
     async def access_denied(request: Request, exc: AccessDenied) -> JSONResponse:
