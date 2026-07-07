@@ -86,6 +86,13 @@ class TrackingRunClient(Protocol):
         raise NotImplementedError
 
 
+class CitationUrlResolver(Protocol):
+    """Resolves provider citation redirect URLs to their canonical destination."""
+
+    async def resolve(self, url: str) -> str | None:
+        raise NotImplementedError
+
+
 class QueryPlanningClient(Protocol):
     """Query Research / Generation provider 的 application port。"""
 

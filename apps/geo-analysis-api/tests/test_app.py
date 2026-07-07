@@ -1136,7 +1136,7 @@ def test_store_saves_and_loads_citation_normalization() -> None:
         loaded = await store.get_run_result_citation_normalization(
             TENANT_ID,
             result_id,
-            "url_domain:v1",
+            "url_domain:v2",
         )
 
         client.close()

@@ -83,7 +83,7 @@ def test_build_metric_formula_source_normalizes_implicit_comparison_period() -> 
             1,
             tzinfo=UTC,
         )
-        assert repository.captured_normalizer_version == "url_domain:v1"
+        assert repository.captured_normalizer_version == "url_domain:v2"
 
     asyncio.run(run())
 

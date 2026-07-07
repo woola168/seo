@@ -83,6 +83,7 @@ from younilab_seo.geo_analysis.application.contracts import (
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
+    CitationUrlResolver,
     Clock,
     GeoAnalysisRepository,
     GeoQueryRunJobRepository,
@@ -130,6 +131,7 @@ from younilab_seo.geo_analysis.application.use_cases import (
 
 __all__ = [
     "Clock",
+    "CitationUrlResolver",
     "AcceptQueryDraftCommand",
     "AnalyzeGeoRunResultCommand",
     "AuthorizedPrincipal",

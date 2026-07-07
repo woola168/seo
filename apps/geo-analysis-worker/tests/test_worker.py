@@ -21,6 +21,9 @@ from younilab_seo.geo_analysis.application import (
     QueryRunJobMessage,
 )
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
+from younilab_seo.geo_analysis.infrastructure.citation_resolver import (
+    HttpCitationUrlResolver,
+)
 
 
 @dataclass
@@ -75,6 +78,11 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     assert isinstance(
         dependencies.analyze_run_result.analyzer,
         KMindHubGeoRunResultAnalyzer,
+    )
+    assert isinstance(dependencies.citation_url_resolver, HttpCitationUrlResolver)
+    assert (
+        dependencies.normalize_run_result_citations.url_resolver
+        is dependencies.citation_url_resolver
     )
     assert dependencies.processor.analyze_run_result is dependencies.analyze_run_result
     assert (

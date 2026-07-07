@@ -13,7 +13,10 @@ from younilab_seo.geo_analysis.application import (
     ProcessQueryRunJobMessage,
     TrackingRunClient,
 )
-from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
+from younilab_seo.geo_analysis.infrastructure import (
+    HttpCitationUrlResolver,
+    KMindHubGeoRunResultAnalyzer,
+)
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
@@ -25,6 +28,7 @@ class GeoAnalysisWorkerDependencies:
     consumer: Any
     analyze_run_result: AnalyzeRunResult
     normalize_run_result_citations: NormalizeRunResultCitations
+    citation_url_resolver: HttpCitationUrlResolver
     kmindhub_workspace_resolver: ManageKMindHubWorkspaceMapping
     kmindhub_workspace_client: KMindHubWorkspaceClient
     closeables: tuple[object, ...] = ()
@@ -49,6 +53,7 @@ def build_dependencies(
     active_repository = repository or _build_repository()
     active_tracking_client = tracking_client or _build_tracking_client()
     active_kmindhub_client = kmindhub_client or _build_kmindhub_client()
+    citation_url_resolver = _build_citation_url_resolver()
     active_consumer = consumer or _build_consumer(active_provider)
     active_clock = clock or SystemClock()
     kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
@@ -68,6 +73,7 @@ def build_dependencies(
     normalize_run_result_citations = NormalizeRunResultCitations(
         active_repository,
         active_clock,
+        url_resolver=citation_url_resolver,
     )
     return GeoAnalysisWorkerDependencies(
         processor=ProcessQueryRunJobMessage(
@@ -81,9 +87,14 @@ def build_dependencies(
         consumer=active_consumer,
         analyze_run_result=analyze_run_result,
         normalize_run_result_citations=normalize_run_result_citations,
+        citation_url_resolver=citation_url_resolver,
         kmindhub_workspace_resolver=kmindhub_workspace_resolver,
         kmindhub_workspace_client=active_kmindhub_client,
-        closeables=(active_tracking_client, active_kmindhub_client),
+        closeables=(
+            active_tracking_client,
+            active_kmindhub_client,
+            citation_url_resolver,
+        ),
     )
 
 
@@ -111,6 +122,15 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
     return HttpKMindHubWorkspaceClient(
         base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
         timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
+    )
+
+
+def _build_citation_url_resolver() -> HttpCitationUrlResolver:
+    return HttpCitationUrlResolver(
+        timeout_seconds=float(
+            os.getenv("GEO_CITATION_URL_RESOLVE_TIMEOUT_SECONDS", "5")
+        ),
+        max_redirects=int(os.getenv("GEO_CITATION_URL_RESOLVE_MAX_REDIRECTS", "5")),
     )
 
 
