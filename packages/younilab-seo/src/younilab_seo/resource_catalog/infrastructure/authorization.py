@@ -4,6 +4,7 @@ import httpx
 
 from younilab_seo.resource_catalog.application import (
     AccessDenied,
+    AuthenticationRequired,
     AuthorizedPrincipal,
 )
 
@@ -36,6 +37,8 @@ class AccessControlAuthorizer:
                 )
         except httpx.HTTPError as exc:
             raise AccessDenied("authorization service unavailable") from exc
+        if response.status_code == 401:
+            raise AuthenticationRequired
         if response.status_code != 200:
             raise AccessDenied
         body = response.json()

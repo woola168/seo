@@ -119,4 +119,146 @@ describe("api.geoAnalysis.dashboardReport", () => {
 
     expect(requestedPath).toBe("https://titan.younilab.com/api/geo/projects");
   });
+
+  it("refreshes the access token once and retries a 401 request", async () => {
+    sessionStorage.setItem("accessToken", "expired-token");
+    const authorizationHeaders: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        const pathname = String(path);
+        const headers = new Headers(init?.headers);
+        if (pathname === "/api/me") {
+          authorizationHeaders.push(headers.get("Authorization") ?? "");
+          if (authorizationHeaders.length === 1) {
+            return {
+              ok: false,
+              status: 401,
+              json: async () => ({ detail: "Authentication required" }),
+            } as Response;
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ id: "user-1", email: "admin@example.com" }),
+          } as Response;
+        }
+        if (pathname === "/api/auth/refresh") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ accessToken: "fresh-token" }),
+          } as Response;
+        }
+        throw new Error(`unexpected request: ${pathname}`);
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.me();
+
+    expect(authorizationHeaders).toEqual([
+      "Bearer expired-token",
+      "Bearer fresh-token",
+    ]);
+    expect(sessionStorage.getItem("accessToken")).toBe("fresh-token");
+  });
+
+  it("shares one refresh request across concurrent 401 responses", async () => {
+    sessionStorage.setItem("accessToken", "expired-token");
+    let refreshCalls = 0;
+    let meCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        const pathname = String(path);
+        if (pathname === "/api/me") {
+          meCalls += 1;
+          if (meCalls <= 2) {
+            return {
+              ok: false,
+              status: 401,
+              json: async () => ({ detail: "Authentication required" }),
+            } as Response;
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ id: "user-1", email: "admin@example.com" }),
+          } as Response;
+        }
+        if (pathname === "/api/auth/refresh") {
+          refreshCalls += 1;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ accessToken: "fresh-token" }),
+          } as Response;
+        }
+        throw new Error(`unexpected request: ${pathname}`);
+      }),
+    );
+    const { api } = await import("./api");
+
+    await Promise.all([api.me(), api.me()]);
+
+    expect(refreshCalls).toBe(1);
+    expect(meCalls).toBe(4);
+  });
+
+  it("clears the access token when refresh fails", async () => {
+    sessionStorage.setItem("accessToken", "expired-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        const pathname = String(path);
+        if (pathname === "/api/me" || pathname === "/api/auth/refresh") {
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ detail: "Authentication required" }),
+          } as Response;
+        }
+        throw new Error(`unexpected request: ${pathname}`);
+      }),
+    );
+    const { api } = await import("./api");
+
+    await expect(api.me()).rejects.toMatchObject({ status: 401 });
+
+    expect(sessionStorage.getItem("accessToken")).toBeNull();
+  });
+
+  it("does not refresh a forbidden response", async () => {
+    sessionStorage.setItem("accessToken", "valid-token");
+    let refreshCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        const pathname = String(path);
+        if (pathname === "/api/me") {
+          return {
+            ok: false,
+            status: 403,
+            json: async () => ({ detail: "Access denied" }),
+          } as Response;
+        }
+        if (pathname === "/api/auth/refresh") {
+          refreshCalls += 1;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ accessToken: "fresh-token" }),
+          } as Response;
+        }
+        throw new Error(`unexpected request: ${pathname}`);
+      }),
+    );
+    const { api } = await import("./api");
+
+    await expect(api.me()).rejects.toMatchObject({ status: 403 });
+
+    expect(refreshCalls).toBe(0);
+    expect(sessionStorage.getItem("accessToken")).toBe("valid-token");
+  });
 });

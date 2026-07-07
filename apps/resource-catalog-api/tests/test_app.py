@@ -3,7 +3,11 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from younilab_resource_catalog_api import create_app
-from younilab_seo.resource_catalog.application import AuthorizedPrincipal
+from younilab_seo.resource_catalog.application import (
+    AccessDenied,
+    AuthenticationRequired,
+    AuthorizedPrincipal,
+)
 from younilab_seo.resource_catalog.infrastructure import (
     AllowAllAuthorizer,
     MemoryResourceCatalogRepository,
@@ -37,6 +41,44 @@ def test_local_admin_portal_preflight_is_allowed() -> None:
     assert response.headers["access-control-allow-credentials"] == "true"
     assert "GET" in response.headers["access-control-allow-methods"]
     assert "Authorization" in response.headers["access-control-allow-headers"]
+
+
+def test_missing_bearer_token_returns_unauthorized() -> None:
+    response = create_test_client().get("/api/customers")
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Authentication required"
+
+
+def test_expired_access_token_returns_unauthorized() -> None:
+    client = TestClient(
+        create_app(
+            repository=MemoryResourceCatalogRepository(),
+            authorizer=RaisingAuthorizer(AuthenticationRequired()),
+        )
+    )
+
+    response = client.get("/api/customers", headers={"Authorization": "Bearer expired"})
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Authentication required"
+
+
+def test_permission_denial_returns_forbidden() -> None:
+    client = TestClient(
+        create_app(
+            repository=MemoryResourceCatalogRepository(),
+            authorizer=RaisingAuthorizer(AccessDenied()),
+        )
+    )
+
+    response = client.get("/api/customers", headers={"Authorization": "Bearer denied"})
+
+    assert response.status_code == 403
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Access denied"
 
 
 def test_customer_and_task_endpoints() -> None:
@@ -249,3 +291,15 @@ class TokenTenantAuthorizer:
         permission: str,
     ) -> AuthorizedPrincipal:
         return self.principals_by_token[access_token]
+
+
+class RaisingAuthorizer:
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+
+    async def require(
+        self,
+        access_token: str,
+        permission: str,
+    ) -> AuthorizedPrincipal:
+        raise self.exc

@@ -44,6 +44,7 @@ class AccessControlApiDependencies:
     invitations: InvitationService
     notifications: NotificationPublisher
     secure_cookies: bool
+    refresh_cookie_samesite: str
 
 
 def build_dependencies(
@@ -129,6 +130,7 @@ def build_dependencies(
         ),
         notifications=resolved_notifications,
         secure_cookies=resolved_settings.is_production,
+        refresh_cookie_samesite=resolved_settings.refresh_cookie_samesite,
     )
 
 

@@ -52,6 +52,7 @@
 import { problemMessage } from "./problem-details";
 
 let accessToken = sessionStorage.getItem("accessToken") ?? "";
+let refreshPromise: Promise<boolean> | null = null;
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 export class ApiError extends Error {
@@ -89,6 +90,14 @@ async function request<T>(
 }
 
 async function refresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = refreshAccessToken().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
   const response = await fetch(apiUrl("/api/auth/refresh"), {
     method: "POST",
     credentials: "include",

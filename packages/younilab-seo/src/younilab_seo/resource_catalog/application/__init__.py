@@ -1,5 +1,6 @@
 from younilab_seo.resource_catalog.application.errors import (
     AccessDenied,
+    AuthenticationRequired,
     Conflict,
     ResourceCatalogError,
     ResourceNotFound,
@@ -20,6 +21,7 @@ from younilab_seo.resource_catalog.application.service import (
 
 __all__ = [
     "AccessDenied",
+    "AuthenticationRequired",
     "AuthorizedPrincipal",
     "Clock",
     "Conflict",

@@ -67,6 +67,7 @@ async def login(
         tokens.refresh_token,
         tokens.refresh_token_expires_at,
         secure=request.app.state.secure_cookies,
+        samesite=request.app.state.refresh_cookie_samesite,
     )
     return TokenResponse.from_tokens(tokens)
 
@@ -85,6 +86,7 @@ async def refresh(
         tokens.refresh_token,
         tokens.refresh_token_expires_at,
         secure=request.app.state.secure_cookies,
+        samesite=request.app.state.refresh_cookie_samesite,
     )
     return TokenResponse.from_tokens(tokens)
 
@@ -121,6 +123,7 @@ def _set_refresh_cookie(
     expires_at,
     *,
     secure: bool,
+    samesite: str,
 ) -> None:
     response.set_cookie(
         key="refreshToken",
@@ -128,6 +131,6 @@ def _set_refresh_cookie(
         expires=expires_at,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite=samesite,
         path="/api/auth",
     )

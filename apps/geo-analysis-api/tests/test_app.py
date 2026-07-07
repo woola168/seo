@@ -11,6 +11,7 @@ from younilab_geo_analysis_api.presentation.http.composition import build_depend
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
+    AuthenticationRequired,
     AuthorizedPrincipal,
     CalculateGeoReportMetrics,
     GetGeoDashboardReport,
@@ -55,6 +56,41 @@ def test_local_admin_portal_preflight_is_allowed() -> None:
     assert response.headers["access-control-allow-credentials"] == "true"
     assert "GET" in response.headers["access-control-allow-methods"]
     assert "Authorization" in response.headers["access-control-allow-headers"]
+
+
+def test_missing_bearer_token_returns_unauthorized() -> None:
+    client = TestClient(
+        create_app(
+            authorizer=FakeAuthorizer(),
+            reference_verifier=FakeReferenceVerifier(),
+        )
+    )
+
+    response = client.get("/api/geo/projects")
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Authentication required"
+
+
+def test_expired_access_token_returns_unauthorized() -> None:
+    client = _client(authorizer=FakeAuthorizer(authentication_required=True))
+
+    response = client.get("/api/geo/projects")
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Authentication required"
+
+
+def test_permission_denial_returns_forbidden() -> None:
+    client = _client(authorizer=FakeAuthorizer(access_denied=True))
+
+    response = client.get("/api/geo/projects")
+
+    assert response.status_code == 403
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "access denied"
 
 
 def test_project_topic_query_and_job_crud_flow() -> None:
@@ -389,6 +425,19 @@ def test_project_reference_verification_denied_returns_forbidden() -> None:
     assert response.status_code == 403
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["detail"] == "resource catalog reference verification denied"
+
+
+def test_project_reference_authentication_failure_returns_unauthorized() -> None:
+    client = _client(reference_verifier=FakeReferenceVerifier(authentication_required=True))
+
+    response = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(uuid4()), "name": "Denied GEO"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == "Authentication required"
 
 
 def test_project_reference_verification_unavailable_returns_service_unavailable() -> None:
@@ -1452,9 +1501,15 @@ class FakeAuthorizer:
     has_global_resource_access: bool = True
     customer_ids: frozenset[UUID] = frozenset()
     task_ids: frozenset[UUID] = frozenset()
+    authentication_required: bool = False
+    access_denied: bool = False
 
     async def require(self, access_token: str, permission: str) -> AuthorizedPrincipal:
         assert access_token == "test-token"
+        if self.authentication_required:
+            raise AuthenticationRequired
+        if self.access_denied:
+            raise PermissionError("access denied")
         return AuthorizedPrincipal(
             tenant_id=self.tenant_id,
             permissions=frozenset({permission}),
@@ -1470,6 +1525,7 @@ class FakeReferenceVerifier:
     fixed_task_customer_id: UUID | None = None
     denied: bool = False
     unavailable: bool = False
+    authentication_required: bool = False
 
     async def customer_exists(
         self,
@@ -1495,6 +1551,8 @@ class FakeReferenceVerifier:
         )
 
     def _raise_if_configured(self) -> None:
+        if self.authentication_required:
+            raise AuthenticationRequired
         if self.denied:
             raise ResourceCatalogVerificationDenied(
                 "resource catalog reference verification denied"

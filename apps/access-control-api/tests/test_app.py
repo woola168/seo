@@ -14,6 +14,7 @@ from younilab_seo.access_control.domain import (
     UserAccount,
 )
 from younilab_seo.access_control.infrastructure import (
+    AccessControlSettings,
     Argon2PasswordHasher,
     MemoryAccessControlRepository,
     MemoryNotificationPublisher,
@@ -123,6 +124,52 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     refresh_response = client.post("/api/auth/refresh")
     assert refresh_response.status_code == 200
     assert refresh_response.json()["accessToken"] != access_token
+
+
+def test_refresh_cookie_samesite_can_support_cross_site_requests() -> None:
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    role_id = UUID("22222222-2222-4222-8222-222222222222")
+    hasher = Argon2PasswordHasher()
+    repository = MemoryAccessControlRepository(
+        users=[
+            UserAccount(
+                id=user_id,
+                email="admin@example.com",
+                display_name="SEO Admin",
+                status=AccountStatus.ACTIVE,
+                role_ids={role_id},
+            )
+        ],
+        roles=[
+            Role(
+                id=role_id,
+                name="admin",
+                permissions=PERMISSIONS,
+                is_system=True,
+                has_global_resource_access=True,
+            )
+        ],
+        password_hashes={user_id: hasher.hash("LongPassword123!")},
+    )
+    app = create_app(
+        settings=AccessControlSettings(refresh_cookie_samesite="none"),
+        repository=repository,
+        password_hasher=hasher,
+    )
+    app.state.secure_cookies = True
+    client = TestClient(app, base_url="https://testserver")
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "LongPassword123!"},
+    )
+
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"]
+    assert "refreshToken=" in cookie
+    assert "HttpOnly" in cookie
+    assert "Secure" in cookie
+    assert "SameSite=none" in cookie
 
 
 def test_login_rejects_user_when_tenant_is_disabled() -> None:

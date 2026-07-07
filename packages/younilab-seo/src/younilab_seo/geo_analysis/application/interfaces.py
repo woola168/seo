@@ -170,6 +170,12 @@ class KMindHubExtractionValidationError(ValueError):
     pass
 
 
+class AuthenticationRequired(PermissionError):
+    """The caller must provide a valid access token before GEO authorization."""
+
+    pass
+
+
 class ResourceCatalogVerificationDenied(PermissionError):
     """Resource Catalog 拒絕目前 token 驗證 reference ownership。"""
 
