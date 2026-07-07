@@ -18,6 +18,10 @@ import {
   formatGeoDashboardDelta,
   formatGeoDashboardMetric,
   geoDashboardDeltaTone,
+  geoDashboardEnumLabel,
+  geoDashboardMetricLabel,
+  geoDashboardMetricTooltip,
+  geoDashboardReportTooltips,
   geoDashboardSentimentDeltaTone,
   isGeoDashboardReportEmpty,
 } from "../utils/geo-dashboard-report";
@@ -116,9 +120,7 @@ async function loadProjects(): Promise<void> {
     }
   } catch (caught) {
     projectError.value =
-      caught instanceof ApiError
-        ? caught.message
-        : "無法載入 GEO project 清單。";
+      caught instanceof ApiError ? caught.message : "無法載入 GEO 專案清單。";
   } finally {
     projectsLoading.value = false;
   }
@@ -130,7 +132,7 @@ async function loadLiveReport(): Promise<void> {
   const query = dashboardQuery();
   if (query === null) {
     liveReport.value = null;
-    liveError.value = "請先填完整 period 與 comparison 日期區間。";
+    liveError.value = "請填寫完整的統計區間與比較區間。";
     return;
   }
   liveLoading.value = true;
@@ -143,9 +145,7 @@ async function loadLiveReport(): Promise<void> {
   } catch (caught) {
     liveReport.value = null;
     liveError.value =
-      caught instanceof ApiError
-        ? caught.message
-        : "無法載入 dashboard report。";
+      caught instanceof ApiError ? caught.message : "無法載入 dashboard report。";
   } finally {
     liveLoading.value = false;
   }
@@ -190,7 +190,7 @@ function formatDateTime(value: string | null): string {
 }
 
 function citationMetric(row: GeoDashboardCitationRow): string {
-  return `${metricValue(row.citationCount)} / ${metricValue(row.usedPercent)} used / ${metricValue(row.sharePercent)} share`;
+  return `引用次數 ${metricValue(row.citationCount)} / 使用率 ${metricValue(row.usedPercent)} / 佔比 ${metricValue(row.sharePercent)}`;
 }
 
 function badgeClass(value: string): string {
@@ -204,14 +204,14 @@ function badgeClass(value: string): string {
   <section class="page geo-dashboard-report-page">
     <header class="page-header geo-dashboard-report-header">
       <div>
-        <p class="page-kicker">GEO Report Design</p>
-        <h1>Dashboard Report Sandbox</h1>
+        <p class="page-kicker">GEO 報表設計</p>
+        <h1>Dashboard Report 設計沙盒</h1>
         <p>
-          用完整 mock data、live API 與無資料狀態檢視 GEO dashboard report 的資料型態與版面需求。
+          使用完整 mock data 或實際 Live API 檢視 GEO dashboard report 的資料型態、空狀態與報表呈現方式。
         </p>
       </div>
       <div class="page-actions">
-        <div class="segmented-control" aria-label="Data source">
+        <div class="segmented-control" aria-label="資料來源">
           <button
             type="button"
             :class="{ active: dataSource === 'mock' }"
@@ -233,19 +233,25 @@ function badgeClass(value: string): string {
           :disabled="dataSource === 'mock' || liveLoading || !selectedProjectId"
           @click="refreshReport"
         >
-          <AppIcon name="refresh" :size="16" />Refresh
+          <AppIcon name="refresh" :size="16" />重新整理
         </button>
       </div>
     </header>
 
     <section class="report-control-band">
       <label>
-        Project
+        <span class="report-label-with-help">
+          專案
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.project }}</span>
+          </span>
+        </span>
         <select
           v-model="selectedProjectId"
           :disabled="dataSource === 'live' && projectsLoading"
         >
-          <option value="">Select a project</option>
+          <option value="">選擇專案</option>
           <option
             v-for="project in projectOptions"
             :key="project.id"
@@ -256,46 +262,89 @@ function badgeClass(value: string): string {
         </select>
       </label>
       <label>
-        Period start
+        <span class="report-label-with-help">
+          統計開始
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.periodStart }}</span>
+          </span>
+        </span>
         <input v-model="filters.periodStart" type="datetime-local" />
       </label>
       <label>
-        Period end
+        <span class="report-label-with-help">
+          統計結束
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.periodEnd }}</span>
+          </span>
+        </span>
         <input v-model="filters.periodEnd" type="datetime-local" />
       </label>
       <label>
-        Comparison start
+        <span class="report-label-with-help">
+          比較開始
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.comparisonStart }}</span>
+          </span>
+        </span>
         <input v-model="filters.comparisonStart" type="datetime-local" />
       </label>
       <label>
-        Comparison end
+        <span class="report-label-with-help">
+          比較結束
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.comparisonEnd }}</span>
+          </span>
+        </span>
         <input v-model="filters.comparisonEnd" type="datetime-local" />
       </label>
       <label>
-        Provider
+        <span class="report-label-with-help">
+          Provider
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.provider }}</span>
+          </span>
+        </span>
         <input v-model="filters.provider" type="text" placeholder="gemini" />
       </label>
       <label>
-        Region
+        <span class="report-label-with-help">
+          地區
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.region }}</span>
+          </span>
+        </span>
         <input v-model="filters.region" type="text" placeholder="TW" />
       </label>
       <label>
-        Language
+        <span class="report-label-with-help">
+          語言
+          <span class="report-tooltip-trigger" tabindex="0">
+            <AppIcon name="info" :size="14" />
+            <span class="report-tooltip">{{ geoDashboardReportTooltips.language }}</span>
+          </span>
+        </span>
         <input v-model="filters.language" type="text" placeholder="zh-TW" />
       </label>
     </section>
 
     <div class="report-status-strip">
       <span class="badge" :class="dataSource === 'mock' ? 'badge-warning' : 'badge-info'">
-        {{ sourceLabel }}
+        資料來源：{{ sourceLabel }}
       </span>
-      <span>{{ selectedProject?.name ?? "No project selected" }}</span>
+      <span>{{ selectedProject?.name ?? "尚未選擇專案" }}</span>
       <span>
+        統計區間：
         {{ currentReport ? formatDateTime(currentReport.periodStart) : "-" }}
         -
         {{ currentReport ? formatDateTime(currentReport.periodEnd) : "-" }}
       </span>
-      <span v-if="lastLoadedAt">Last loaded {{ formatDateTime(lastLoadedAt) }}</span>
+      <span v-if="lastLoadedAt">最後載入 {{ formatDateTime(lastLoadedAt) }}</span>
     </div>
 
     <div v-if="projectError" class="mock-notice subtle">
@@ -310,20 +359,20 @@ function badgeClass(value: string): string {
       class="empty-state report-empty-state"
     >
       <AppIcon name="layers" />
-      <strong>請先選擇 GEO project</strong>
-      <span>Live API 模式需要 project 才會查詢 dashboard report。</span>
+      <strong>請先選擇 GEO 專案</strong>
+      <span>Live API 模式需要專案 ID 才能載入 dashboard report。</span>
     </div>
 
     <div v-else-if="liveLoading" class="empty-state report-empty-state">
       <AppIcon name="refresh" />
       <strong>正在載入 dashboard report</strong>
-      <span>系統正在向 live API 取得目前篩選條件的報表資料。</span>
+      <span>系統正在向 Live API 取得實際報表資料。</span>
     </div>
 
     <div v-else-if="reportIsEmpty" class="empty-state report-empty-state">
       <AppIcon name="grid" />
-      <strong>此區間尚無 dashboard report 資料</strong>
-      <span>這是正式無資料版型；不會自動切回 mock data。</span>
+      <strong>此區間沒有 dashboard report 資料</strong>
+      <span>Live API 已回傳空資料，這裡呈現正式無資料版型，不會 fallback 到 mock data。</span>
     </div>
 
     <template v-else-if="currentReport">
@@ -334,15 +383,21 @@ function badgeClass(value: string): string {
           class="card report-kpi-card"
         >
           <div class="report-kpi-heading">
-            <span>{{ card.label }}</span>
+            <span class="report-label-with-help">
+              {{ geoDashboardMetricLabel(card.metricName) }}
+              <span class="report-tooltip-trigger" tabindex="0">
+                <AppIcon name="info" :size="14" />
+                <span class="report-tooltip">{{ geoDashboardMetricTooltip(card.metricName) }}</span>
+              </span>
+            </span>
             <span :class="metricTone(card.metric)">{{ metricDelta(card.metric) }}</span>
           </div>
           <strong>{{ metricValue(card.metric) }}</strong>
           <p>
-            Current {{ card.metric.numerator ?? "-" }} /
+            本期 {{ card.metric.numerator ?? "-" }} /
             {{ card.metric.denominator ?? "-" }}
             <span v-if="card.metric.comparisonValue !== null">
-              · Previous {{ card.metric.comparisonValue }}
+              ，前期 {{ card.metric.comparisonValue }}
             </span>
           </p>
         </article>
@@ -351,25 +406,53 @@ function badgeClass(value: string): string {
       <section class="card">
         <header class="card-header">
           <div>
-            <h2>Entity Comparison</h2>
-            <p>比較 own brand 與 competitors 的能見度、提及次數與平均位置。</p>
+            <h2>實體比較</h2>
+            <p>比較自有品牌與競品在回答中的能見度、提及次數與平均排名。</p>
           </div>
         </header>
         <div class="table-scroll">
           <table class="data-table report-table">
             <thead>
               <tr>
-                <th>Entity</th>
-                <th>Role</th>
-                <th>Visibility</th>
-                <th>Mentions</th>
-                <th>Average position</th>
+                <th>實體</th>
+                <th>角色</th>
+                <th>
+                  <span class="report-label-with-help">
+                    能見度
+                    <span class="report-tooltip-trigger" tabindex="0">
+                      <AppIcon name="info" :size="14" />
+                      <span class="report-tooltip">{{ geoDashboardMetricTooltip("visibility") }}</span>
+                    </span>
+                  </span>
+                </th>
+                <th>
+                  <span class="report-label-with-help">
+                    提及次數
+                    <span class="report-tooltip-trigger" tabindex="0">
+                      <AppIcon name="info" :size="14" />
+                      <span class="report-tooltip">{{ geoDashboardMetricTooltip("mentions") }}</span>
+                    </span>
+                  </span>
+                </th>
+                <th>
+                  <span class="report-label-with-help">
+                    平均排名
+                    <span class="report-tooltip-trigger" tabindex="0">
+                      <AppIcon name="info" :size="14" />
+                      <span class="report-tooltip">{{ geoDashboardMetricTooltip("average_position") }}</span>
+                    </span>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="entity in currentReport.entities" :key="entity.entityId">
                 <td><strong>{{ entity.entityName }}</strong></td>
-                <td><span :class="badgeClass(entity.entityRole)">{{ entity.entityRole }}</span></td>
+                <td>
+                  <span :class="badgeClass(entity.entityRole)">
+                    {{ geoDashboardEnumLabel(entity.entityRole) }}
+                  </span>
+                </td>
                 <td>
                   {{ metricValue(entity.visibility) }}
                   <small :class="metricTone(entity.visibility)">{{ metricDelta(entity.visibility) }}</small>
@@ -384,7 +467,7 @@ function badgeClass(value: string): string {
                 </td>
               </tr>
               <tr v-if="currentReport.entities.length === 0">
-                <td colspan="5">此區間沒有 entity comparison 資料。</td>
+                <td colspan="5">此區間沒有實體比較資料。</td>
               </tr>
             </tbody>
           </table>
@@ -395,8 +478,8 @@ function badgeClass(value: string): string {
         <article class="card">
           <header class="card-header report-card-tabs">
             <div>
-              <h2>Citations</h2>
-              <p>檢視 URL 與 domain 的引用量、使用率與 share。</p>
+              <h2>引用來源</h2>
+              <p>依 URL 或網域檢視回答引用來源的使用率與佔比。</p>
             </div>
             <div class="segmented-control">
               <button
@@ -404,14 +487,14 @@ function badgeClass(value: string): string {
                 :class="{ active: citationView === 'urls' }"
                 @click="citationView = 'urls'"
               >
-                URLs
+                URL
               </button>
               <button
                 type="button"
                 :class="{ active: citationView === 'domains' }"
                 @click="citationView = 'domains'"
               >
-                Domains
+                網域
               </button>
             </div>
           </header>
@@ -419,10 +502,22 @@ function badgeClass(value: string): string {
             <table class="data-table report-table">
               <thead>
                 <tr>
-                  <th>{{ citationView === "urls" ? "URL" : "Domain" }}</th>
-                  <th>Ownership</th>
-                  <th>Source</th>
-                  <th>Metrics</th>
+                  <th>{{ citationView === "urls" ? "URL" : "網域" }}</th>
+                  <th>歸屬</th>
+                  <th>來源類型</th>
+                  <th>
+                    <span class="report-label-with-help">
+                      指標
+                      <span class="report-tooltip-trigger" tabindex="0">
+                        <AppIcon name="info" :size="14" />
+                        <span class="report-tooltip">
+                          {{ geoDashboardReportTooltips.citationCount }}
+                          {{ geoDashboardReportTooltips.usedPercent }}
+                          {{ geoDashboardReportTooltips.sharePercent }}
+                        </span>
+                      </span>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -431,12 +526,12 @@ function badgeClass(value: string): string {
                     <strong>{{ citation.label }}</strong>
                     <small>{{ citation.value }}</small>
                   </td>
-                  <td>{{ citation.ownership ?? "-" }}</td>
-                  <td>{{ citation.sourceType ?? "-" }}</td>
+                  <td>{{ geoDashboardEnumLabel(citation.ownership) }}</td>
+                  <td>{{ geoDashboardEnumLabel(citation.sourceType) }}</td>
                   <td>{{ citationMetric(citation) }}</td>
                 </tr>
                 <tr v-if="visibleCitationRows.length === 0">
-                  <td colspan="4">此區間沒有 citation {{ citationView }} 資料。</td>
+                  <td colspan="4">此區間沒有 citation {{ citationView === "urls" ? "URL" : "網域" }} 資料。</td>
                 </tr>
               </tbody>
             </table>
@@ -446,8 +541,8 @@ function badgeClass(value: string): string {
         <article class="card">
           <header class="card-header">
             <div>
-              <h2>Sentiment Breakdown</h2>
-              <p>positive / negative statements 的數量與比較區間變化。</p>
+              <h2>情緒分布</h2>
+              <p>統計回答中正向與負向 statement facts 的數量。</p>
             </div>
           </header>
           <div class="sentiment-stack">
@@ -456,16 +551,20 @@ function badgeClass(value: string): string {
               :key="row.sentiment"
               class="sentiment-row"
             >
-              <span :class="badgeClass(row.sentiment)">{{ row.sentiment }}</span>
+              <span :class="badgeClass(row.sentiment)">{{ geoDashboardEnumLabel(row.sentiment) }}</span>
               <strong>{{ metricValue(row.statementCount) }}</strong>
               <small :class="sentimentMetricTone(row.sentiment, row.statementCount)">
                 {{ metricDelta(row.statementCount) }}
               </small>
+              <span class="report-tooltip-trigger" tabindex="0">
+                <AppIcon name="info" :size="14" />
+                <span class="report-tooltip">{{ geoDashboardReportTooltips.sentiment }}</span>
+              </span>
             </div>
             <div v-if="currentReport.sentiments.length === 0" class="empty-state">
               <AppIcon name="activity" />
-              <strong>沒有 sentiment 資料</strong>
-              <span>此區間沒有 positive 或 negative statement facts。</span>
+              <strong>沒有情緒資料</strong>
+              <span>此區間沒有 positive 或 negative sentiment facts。</span>
             </div>
           </div>
         </article>

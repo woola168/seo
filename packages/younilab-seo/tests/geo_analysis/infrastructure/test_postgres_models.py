@@ -237,7 +237,7 @@ async def test_legacy_analysis_lookup_filters_answer_analysis_task_key() -> None
 
 
 @pytest.mark.anyio
-async def test_run_result_record_uses_answer_analysis_status_only() -> None:
+async def test_run_result_record_uses_semantic_analysis_status() -> None:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     session = _CapturedSession()
     row = GeoRunResultRow(
@@ -260,7 +260,7 @@ async def test_run_result_record_uses_answer_analysis_status_only() -> None:
     await _run_result_record(session, row)
 
     params = _compiled_params(session.scalar_statements[-1])
-    assert "geo_answer_analysis" in params.values()
+    assert "geo_semantic_analysis" in params.values()
 
 
 @pytest.fixture

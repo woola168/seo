@@ -1380,7 +1380,7 @@ class GeoApiStore:
         self,
         result: GeoRunResultRecord,
     ) -> GeoRunResultRecord:
-        analysis = self.run_result_analyses.get(result.id)
+        analysis = self.semantic_run_result_analyses.get(result.id)
         if analysis is None:
             return result
         return result.model_copy(

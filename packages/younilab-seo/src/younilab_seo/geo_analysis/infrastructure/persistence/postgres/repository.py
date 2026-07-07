@@ -2285,7 +2285,7 @@ async def _run_result_record(
         select(GeoRunResultAnalysisRow)
         .where(
             GeoRunResultAnalysisRow.run_result_id == row.id,
-            GeoRunResultAnalysisRow.task_key == "geo_answer_analysis",
+            GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
         )
         .order_by(GeoRunResultAnalysisRow.updated_at.desc())
     )

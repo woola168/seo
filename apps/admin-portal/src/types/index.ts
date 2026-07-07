@@ -42,6 +42,7 @@ export type IconName =
   | "edit"
   | "eye"
   | "grid"
+  | "info"
   | "layers"
   | "list"
   | "lock"
