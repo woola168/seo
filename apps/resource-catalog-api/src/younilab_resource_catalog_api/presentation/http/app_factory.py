@@ -3,6 +3,7 @@ from time import perf_counter
 
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from younilab_resource_catalog_api.presentation.http.composition import (
     build_dependencies,
@@ -35,6 +36,7 @@ def create_app(
         authorizer=authorizer,
     )
     app = FastAPI(title="Younilab SEO Resource Catalog API", version="0.1.0")
+    _register_cors_middleware(app)
     app.state.catalog = dependencies.catalog
     app.state.authorizer = dependencies.authorizer
 
@@ -47,6 +49,19 @@ def create_app(
     register_error_handlers(app)
     _register_timing_middleware(app)
     return app
+
+
+def _register_cors_middleware(app: FastAPI) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 def _register_timing_middleware(app: FastAPI) -> None:

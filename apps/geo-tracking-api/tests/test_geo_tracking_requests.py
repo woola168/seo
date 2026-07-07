@@ -16,6 +16,24 @@ from younilab_geo_tracking_infrastructure import DummyAnswerProvider
 TOPIC_DESCRIPTION = "聚焦供應商條件、交期、認證、外銷能力與採購風險。"
 
 
+def test_local_admin_portal_preflight_is_allowed() -> None:
+    response = TestClient(create_app(answer_provider=DummyAnswerProvider())).options(
+        "/api/v1/geo-tracking/query-research",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+    assert "Content-Type" in response.headers["access-control-allow-headers"]
+
+
 class GeminiAnswerStubProvider:
     async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
         return AnswerResponse(

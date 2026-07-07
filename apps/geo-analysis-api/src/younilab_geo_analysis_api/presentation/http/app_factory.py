@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
 from younilab_geo_analysis_api.presentation.http.errors import register_error_handlers
@@ -50,6 +51,7 @@ def create_app(
         version="0.1.0",
         lifespan=lifespan,
     )
+    _register_cors_middleware(app)
     app.state.geo_repository = dependencies.repository
     app.state.geo_authorizer = dependencies.authorizer
     app.state.manage_geo_setup = dependencies.manage_geo_setup
@@ -73,3 +75,16 @@ def create_app(
 
     app.include_router(router)
     return app
+
+
+def _register_cors_middleware(app: FastAPI) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )

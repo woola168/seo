@@ -40,6 +40,23 @@ OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
+def test_local_admin_portal_preflight_is_allowed() -> None:
+    response = _client().options(
+        "/api/geo/projects",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "GET" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+
+
 def test_project_topic_query_and_job_crud_flow() -> None:
     client = _client()
 

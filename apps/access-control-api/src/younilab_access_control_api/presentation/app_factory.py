@@ -3,6 +3,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from younilab_seo.access_control.application import (
     AccessControlRepository,
@@ -60,6 +61,7 @@ def create_app(
     )
 
     app = FastAPI(title="Younilab SEO Access Control API", version="0.1.0")
+    _register_cors_middleware(app)
     app.state.repository = dependencies.repository
     app.state.token_provider = dependencies.token_provider
     app.state.clock = dependencies.clock
@@ -79,6 +81,19 @@ def create_app(
     _register_error_handlers(app)
     _register_timing_middleware(app)
     return app
+
+
+def _register_cors_middleware(app: FastAPI) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 def _register_timing_middleware(app: FastAPI) -> None:

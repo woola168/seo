@@ -22,6 +22,23 @@ def create_test_client() -> TestClient:
     )
 
 
+def test_local_admin_portal_preflight_is_allowed() -> None:
+    response = create_test_client().options(
+        "/api/customers",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "GET" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+
+
 def test_customer_and_task_endpoints() -> None:
     client = create_test_client()
     headers = {"Authorization": "Bearer test"}

@@ -28,6 +28,24 @@ def test_health_endpoint() -> None:
     assert float(response.headers["X-Process-Time-Ms"]) >= 0
 
 
+def test_local_admin_portal_preflight_is_allowed() -> None:
+    response = TestClient(create_app()).options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+    assert "Content-Type" in response.headers["access-control-allow-headers"]
+
+
 def test_me_requires_authentication() -> None:
     response = TestClient(create_app()).get("/api/me")
 

@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from younilab_geo_tracking_application import (
     AnswerProvider,
     QueryGenerationProvider,
@@ -47,6 +48,7 @@ def create_app(
         version="0.1.0",
         lifespan=lifespan,
     )
+    _register_cors_middleware(app)
     app.state.query_generation = dependencies.query_generation
     app.state.query_research = dependencies.query_research
     app.state.run_engine = dependencies.run_engine
@@ -58,3 +60,16 @@ def create_app(
 
     app.include_router(router)
     return app
+
+
+def _register_cors_middleware(app: FastAPI) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
