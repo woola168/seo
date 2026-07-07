@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { mockGeoDashboardReport } from "../mocks/geo-dashboard-report";
 import type { GeoDashboardReport } from "../types";
 import {
+  buildDefaultGeoDashboardReportFilters,
   buildGeoDashboardReportQuery,
   formatGeoDashboardDelta,
   formatGeoDashboardMetric,
@@ -206,6 +207,36 @@ describe("geo dashboard report helpers", () => {
       provider: undefined,
       region: undefined,
       language: undefined,
+    });
+  });
+
+  it("defaults report filters to the current month and previous month", () => {
+    expect(
+      buildDefaultGeoDashboardReportFilters(new Date(2026, 6, 7, 15, 30)),
+    ).toEqual({
+      periodStart: "2026-07-01T00:00",
+      periodEnd: "2026-07-31T23:59",
+      comparisonStart: "2026-06-01T00:00",
+      comparisonEnd: "2026-06-30T23:59",
+      provider: "",
+      region: "",
+      language: "",
+    });
+    expect(
+      buildDefaultGeoDashboardReportFilters(new Date(2026, 0, 10, 8, 0)),
+    ).toMatchObject({
+      periodStart: "2026-01-01T00:00",
+      periodEnd: "2026-01-31T23:59",
+      comparisonStart: "2025-12-01T00:00",
+      comparisonEnd: "2025-12-31T23:59",
+    });
+    expect(
+      buildDefaultGeoDashboardReportFilters(new Date(2024, 2, 5, 12, 0)),
+    ).toMatchObject({
+      periodStart: "2024-03-01T00:00",
+      periodEnd: "2024-03-31T23:59",
+      comparisonStart: "2024-02-01T00:00",
+      comparisonEnd: "2024-02-29T23:59",
     });
   });
 });

@@ -68,6 +68,22 @@ export interface GeoDashboardReportFilterInput {
   language?: string;
 }
 
+export function buildDefaultGeoDashboardReportFilters(
+  now = new Date(),
+): GeoDashboardReportFilterInput {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return {
+    periodStart: toDateTimeLocalMinute(new Date(year, month, 1, 0, 0)),
+    periodEnd: toDateTimeLocalMinute(new Date(year, month + 1, 0, 23, 59)),
+    comparisonStart: toDateTimeLocalMinute(new Date(year, month - 1, 1, 0, 0)),
+    comparisonEnd: toDateTimeLocalMinute(new Date(year, month, 0, 23, 59)),
+    provider: "",
+    region: "",
+    language: "",
+  };
+}
+
 export function isGeoDashboardReportEmpty(
   report: GeoDashboardReport | null,
 ): boolean {
@@ -172,4 +188,19 @@ function geoDashboardDirectionalDeltaTone(
   if (metric.delta > 0) return lowerIsBetter ? "error" : "success";
   if (metric.delta < 0) return lowerIsBetter ? "success" : "error";
   return "muted";
+}
+
+function toDateTimeLocalMinute(value: Date): string {
+  const pad = (part: number) => part.toString().padStart(2, "0");
+  return [
+    value.getFullYear(),
+    "-",
+    pad(value.getMonth() + 1),
+    "-",
+    pad(value.getDate()),
+    "T",
+    pad(value.getHours()),
+    ":",
+    pad(value.getMinutes()),
+  ].join("");
 }

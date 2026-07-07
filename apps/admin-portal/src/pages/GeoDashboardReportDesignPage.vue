@@ -14,6 +14,7 @@ import type {
   GeoProjectResource,
 } from "../types";
 import {
+  buildDefaultGeoDashboardReportFilters,
   buildGeoDashboardReportQuery,
   formatGeoDashboardDelta,
   formatGeoDashboardMetric,
@@ -42,15 +43,7 @@ const projectError = ref("");
 const lastLoadedAt = ref<string | null>(null);
 const citationView = ref<"urls" | "domains">("urls");
 
-const filters = reactive({
-  periodStart: "2026-06-01T00:00",
-  periodEnd: "2026-06-30T23:59",
-  comparisonStart: "2026-05-01T00:00",
-  comparisonEnd: "2026-05-31T23:59",
-  provider: "",
-  region: "",
-  language: "",
-});
+const filters = reactive(buildDefaultGeoDashboardReportFilters());
 
 const projectOptions = computed(() =>
   dataSource.value === "mock" ? [mockGeoDashboardReportProject] : projects.value,
