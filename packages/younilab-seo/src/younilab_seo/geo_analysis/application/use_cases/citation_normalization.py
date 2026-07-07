@@ -8,10 +8,15 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoRunResultCitationNormalization,
     SaveRunResultCitationNormalizationCommand,
 )
-from younilab_seo.geo_analysis.application.interfaces import Clock, GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces import (
+    CitationUrlResolver,
+    Clock,
+    GeoAnalysisRepository,
+)
 
 
-DEFAULT_CITATION_NORMALIZER_VERSION = "url_domain:v1"
+DEFAULT_CITATION_NORMALIZER_VERSION = "url_domain:v2"
+VERTEX_GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
 
 
 class RunResultCitationNormalizationNotFound(LookupError):
@@ -25,6 +30,7 @@ class NormalizeRunResultCitations:
     repository: GeoAnalysisRepository
     clock: Clock
     normalizer_version: str = DEFAULT_CITATION_NORMALIZER_VERSION
+    url_resolver: CitationUrlResolver | None = None
 
     async def execute(
         self,
@@ -76,7 +82,7 @@ class NormalizeRunResultCitations:
         citations: list[GeoRunResultCitationFact] = []
         skipped_reference_count = 0
         for reference in result.references:
-            normalized = _normalize_url(reference.url)
+            normalized = await self._normalize_reference_url(reference.url)
             if normalized is None:
                 skipped_reference_count += 1
                 continue
@@ -110,6 +116,19 @@ class NormalizeRunResultCitations:
                 skipped_reference_count=skipped_reference_count,
             ),
         )
+
+    async def _normalize_reference_url(self, url: str) -> tuple[str, str] | None:
+        candidate = url
+        if self.url_resolver is not None and _is_provider_redirect_url(url):
+            resolved = await self.url_resolver.resolve(url)
+            if resolved:
+                candidate = resolved
+        normalized = _normalize_url(candidate)
+        if normalized is not None:
+            return normalized
+        if candidate != url:
+            return _normalize_url(url)
+        return None
 
     def _failed(
         self,
@@ -190,6 +209,18 @@ def _normalize_url(value: str) -> tuple[str, str] | None:
         )
     )
     return normalized_url, domain
+
+
+def _is_provider_redirect_url(value: str) -> bool:
+    parsed = urlsplit(value.strip())
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+    host = parsed.hostname
+    return (
+        host is not None
+        and _normalize_domain(host) == VERTEX_GROUNDING_REDIRECT_HOST
+        and parsed.path.startswith("/grounding-api-redirect/")
+    )
 
 
 def _normalize_domain(value: str) -> str:

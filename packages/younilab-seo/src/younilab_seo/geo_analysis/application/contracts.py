@@ -263,7 +263,7 @@ class NormalizeRunResultCitationsCommand(ContractModel):
 
     tenant_id: UUID
     run_result_id: UUID
-    normalizer_version: str = "url_domain:v1"
+    normalizer_version: str = "url_domain:v2"
 
 
 class GeoRunResultCitationFact(ContractModel):
@@ -284,7 +284,7 @@ class GeoRunResultCitationNormalization(ContractModel):
 
     run_result_id: UUID
     project_id: UUID | None = None
-    normalizer_version: str = "url_domain:v1"
+    normalizer_version: str = "url_domain:v2"
     status: Literal["completed", "failed"]
     citations: list[GeoRunResultCitationFact] = Field(default_factory=list)
     skipped_reference_count: int = Field(default=0, ge=0)

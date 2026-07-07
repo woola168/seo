@@ -7,6 +7,10 @@ import {
   formatGeoDashboardDelta,
   formatGeoDashboardMetric,
   geoDashboardDeltaTone,
+  geoDashboardEnumLabel,
+  geoDashboardMetricLabel,
+  geoDashboardMetricTooltip,
+  geoDashboardReportTooltips,
   geoDashboardSentimentDeltaTone,
   isGeoDashboardReportEmpty,
   toGeoDashboardApiDateTime,
@@ -72,12 +76,41 @@ describe("geo dashboard report helpers", () => {
     const negative = mockGeoDashboardReport.overview[2].metric;
     const missing = mockGeoDashboardReport.overview[3].metric;
 
-    expect(formatGeoDashboardDelta(positive)).toBe("+13 pp");
+    expect(formatGeoDashboardDelta(positive)).toBe("+13 百分點");
     expect(geoDashboardDeltaTone(positive)).toBe("success");
-    expect(formatGeoDashboardDelta(negative)).toBe("-4 pp");
+    expect(formatGeoDashboardDelta(negative)).toBe("-4 百分點");
     expect(geoDashboardDeltaTone(negative)).toBe("error");
-    expect(formatGeoDashboardDelta(missing)).toBe("No comparison");
+    expect(formatGeoDashboardDelta(missing)).toBe("無比較資料");
     expect(geoDashboardDeltaTone(missing)).toBe("muted");
+  });
+
+  it("formats Chinese dashboard labels and enum values", () => {
+    expect(geoDashboardMetricLabel("visibility")).toBe("能見度");
+    expect(geoDashboardMetricLabel("mentions")).toBe("提及次數");
+    expect(geoDashboardMetricLabel("sov")).toBe("聲量佔比");
+    expect(geoDashboardMetricLabel("average_position")).toBe("平均排名");
+    expect(geoDashboardEnumLabel("own_brand")).toBe("自有品牌");
+    expect(geoDashboardEnumLabel("competitor")).toBe("競品");
+    expect(geoDashboardEnumLabel("owned")).toBe("自有資產");
+    expect(geoDashboardEnumLabel("other")).toBe("外部來源");
+    expect(geoDashboardEnumLabel("owned_site")).toBe("自有網站");
+    expect(geoDashboardEnumLabel("unknown")).toBe("未知來源");
+    expect(geoDashboardEnumLabel("positive")).toBe("正向");
+    expect(geoDashboardEnumLabel("negative")).toBe("負向");
+    expect(geoDashboardEnumLabel(null)).toBe("-");
+  });
+
+  it("documents every dashboard overview metric with tooltip copy", () => {
+    for (const card of mockGeoDashboardReport.overview) {
+      expect(geoDashboardMetricTooltip(card.metricName)).not.toBe("");
+      expect(geoDashboardMetricTooltip(card.metricName)).not.toContain(
+        "dashboard report API",
+      );
+    }
+    expect(geoDashboardReportTooltips.citationCount).toContain("引用次數");
+    expect(geoDashboardReportTooltips.usedPercent).toContain("使用率");
+    expect(geoDashboardReportTooltips.sharePercent).toContain("引用佔比");
+    expect(geoDashboardReportTooltips.sentiment).toContain("情緒句數");
   });
 
   it("treats lower position deltas as better", () => {

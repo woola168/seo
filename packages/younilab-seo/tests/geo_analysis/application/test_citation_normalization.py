@@ -97,6 +97,16 @@ class FakeRepository:
         return normalization
 
 
+@dataclass
+class FakeCitationUrlResolver:
+    results: dict[str, str | None] = field(default_factory=dict)
+    calls: list[str] = field(default_factory=list)
+
+    async def resolve(self, url: str) -> str | None:
+        self.calls.append(url)
+        return self.results.get(url)
+
+
 def test_citation_contracts_use_camel_case_shape() -> None:
     reference_id = uuid4()
     run_result_id = uuid4()
@@ -190,7 +200,7 @@ def test_normalize_run_result_citations_returns_existing_without_force() -> None
         existing = GeoRunResultCitationNormalization(
             run_result_id=repository.result.id,
             project_id=repository.query.project_id,
-            normalizer_version="url_domain:v1",
+            normalizer_version="url_domain:v2",
             status="completed",
         )
         repository.citation_normalizations[
@@ -214,7 +224,7 @@ def test_normalize_run_result_citations_force_rerun_saves_new_result() -> None:
         existing = GeoRunResultCitationNormalization(
             run_result_id=repository.result.id,
             project_id=repository.query.project_id,
-            normalizer_version="url_domain:v1",
+            normalizer_version="url_domain:v2",
             status="completed",
         )
         repository.citation_normalizations[
@@ -232,8 +242,103 @@ def test_normalize_run_result_citations_force_rerun_saves_new_result() -> None:
         ]
         assert repository.saved_commands[-1].normalization == result
         assert repository.citation_normalizations[
-            (repository.result.id, "url_domain:v1")
+            (repository.result.id, "url_domain:v2")
         ] == result
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_resolves_vertex_redirect_url() -> None:
+    async def run() -> None:
+        redirect_url = (
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/token"
+        )
+        resolver = FakeCitationUrlResolver(
+            results={redirect_url: "https://www.publisher.example/news/"}
+        )
+        repository = _repository(
+            references=[_reference(redirect_url)],
+            own_brand_url="https://acme.com",
+        )
+
+        result = await NormalizeRunResultCitations(
+            repository,
+            FakeClock(),
+            url_resolver=resolver,
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert resolver.calls == [redirect_url]
+        assert result.normalizer_version == "url_domain:v2"
+        assert result.citations[0].url == "https://publisher.example/news"
+        assert result.citations[0].domain == "publisher.example"
+        assert result.citations[0].ownership == "other"
+        assert result.citations[0].source_type == "unknown"
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_uses_resolved_url_for_ownership() -> None:
+    async def run() -> None:
+        redirect_url = (
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/owned"
+        )
+        resolver = FakeCitationUrlResolver(
+            results={redirect_url: "https://blog.acme.com/reference"}
+        )
+        repository = _repository(
+            references=[_reference(redirect_url)],
+            own_brand_url="https://acme.com",
+        )
+
+        result = await NormalizeRunResultCitations(
+            repository,
+            FakeClock(),
+            url_resolver=resolver,
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert result.citations[0].url == "https://blog.acme.com/reference"
+        assert result.citations[0].domain == "blog.acme.com"
+        assert result.citations[0].ownership == "owned"
+        assert result.citations[0].source_type == "owned_site"
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_falls_back_when_redirect_resolution_fails() -> None:
+    async def run() -> None:
+        redirect_url = (
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/fallback"
+        )
+        resolver = FakeCitationUrlResolver(results={redirect_url: None})
+        repository = _repository(references=[_reference(redirect_url)])
+
+        result = await NormalizeRunResultCitations(
+            repository,
+            FakeClock(),
+            url_resolver=resolver,
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert resolver.calls == [redirect_url]
+        assert result.citations[0].url == redirect_url
+        assert result.citations[0].domain == "vertexaisearch.cloud.google.com"
+        assert result.skipped_reference_count == 0
+
+    asyncio.run(run())
+
+
+def test_normalize_run_result_citations_does_not_resolve_non_provider_urls() -> None:
+    async def run() -> None:
+        resolver = FakeCitationUrlResolver()
+        repository = _repository(references=[_reference("https://example.com/page")])
+
+        result = await NormalizeRunResultCitations(
+            repository,
+            FakeClock(),
+            url_resolver=resolver,
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert resolver.calls == []
+        assert result.citations[0].url == "https://example.com/page"
 
     asyncio.run(run())
 

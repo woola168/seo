@@ -747,6 +747,12 @@ def test_create_query_accepts_market_type() -> None:
 def test_job_run_results_can_be_listed_and_loaded() -> None:
     client, store, job_id = _client_with_job()
     result_id = _add_run_result(store, job_id)
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+    )
 
     list_response = client.get(f"/api/geo/jobs/{job_id}/run-results")
     detail_response = client.get(f"/api/geo/run-results/{result_id}")
@@ -757,8 +763,10 @@ def test_job_run_results_can_be_listed_and_loaded() -> None:
     assert item["id"] == str(result_id)
     assert item["rawResponse"] == "Raw answer"
     assert item["references"][0]["url"] == "https://example.com/reference"
+    assert item["analysisStatus"] == "completed"
     assert detail_response.status_code == 200
     assert detail_response.json()["references"][0]["domain"] == "example.com"
+    assert detail_response.json()["analysisStatus"] == "completed"
 
 
 def test_project_run_results_are_scoped_to_project() -> None:
@@ -1185,7 +1193,7 @@ def test_store_saves_and_loads_citation_normalization() -> None:
         loaded = await store.get_run_result_citation_normalization(
             TENANT_ID,
             result_id,
-            "url_domain:v1",
+            "url_domain:v2",
         )
 
         client.close()
