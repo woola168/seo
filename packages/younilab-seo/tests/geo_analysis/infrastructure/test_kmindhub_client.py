@@ -5,7 +5,10 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from younilab_seo.geo_analysis.application import KMindHubWorkspaceProvisionUnavailable
+from younilab_seo.geo_analysis.application import (
+    KMindHubExtractionUnavailable,
+    KMindHubWorkspaceProvisionUnavailable,
+)
 from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     geo_answer_analysis_task_definition,
 )
@@ -129,6 +132,131 @@ def test_kmindhub_client_runs_extraction_preview_and_commit() -> None:
             ("POST", "/extractions"),
             ("POST", "/extractions/commit"),
         ]
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_parses_reference_commit_response_shape() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+        item_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions/commit":
+                return httpx.Response(
+                    200,
+                    json={
+                        "commitBatchId": str(uuid4()),
+                        "tenantId": str(workspace_id),
+                        "items": [{"itemId": str(item_id), "fields": {}}],
+                    },
+                )
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient("https://kmindhub.test")
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        commit = await client.commit_extraction_items(
+            workspace_id=workspace_id,
+            task_id=task_id,
+            items=[{"itemId": None, "fields": {"summary": {"value": "Acme"}}}],
+        )
+
+        assert commit.commit_batch_id is not None
+        assert commit.item_ids == [str(item_id)]
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_accepts_commit_items_without_top_level_batch_id() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+        item_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions/commit":
+                return httpx.Response(200, json={"items": [{"itemId": str(item_id)}]})
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient("https://kmindhub.test")
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        commit = await client.commit_extraction_items(
+            workspace_id=workspace_id,
+            task_id=task_id,
+            items=[{"itemId": None, "fields": {"summary": {"value": "Acme"}}}],
+        )
+
+        assert commit.commit_batch_id is None
+        assert commit.item_ids == [str(item_id)]
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_reports_commit_parsing_error_class() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions/commit":
+                return httpx.Response(200, content=b"not-json")
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient("https://kmindhub.test")
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with pytest.raises(KMindHubExtractionUnavailable, match="JSONDecodeError"):
+            await client.commit_extraction_items(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                items=[{"itemId": None, "fields": {"summary": {"value": "Acme"}}}],
+            )
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_reports_commit_http_error_class() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions/commit":
+                return httpx.Response(503, json={"detail": "unavailable"})
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient("https://kmindhub.test")
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with pytest.raises(KMindHubExtractionUnavailable, match="HTTPStatusError"):
+            await client.commit_extraction_items(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                items=[{"itemId": None, "fields": {"summary": {"value": "Acme"}}}],
+            )
 
         await client.close()
 
