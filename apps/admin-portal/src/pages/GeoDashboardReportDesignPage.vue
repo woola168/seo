@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
 import {
   mockGeoDashboardReport,
@@ -23,6 +24,9 @@ import {
 
 type DataSource = "mock" | "live";
 
+const route = useRoute();
+const initialLiveProjectId =
+  typeof route.query.projectId === "string" ? route.query.projectId : "";
 const dataSource = ref<DataSource>("mock");
 const projects = ref<GeoProjectResource[]>([]);
 const selectedProjectId = ref(mockGeoDashboardReportProject.id);
@@ -70,6 +74,10 @@ const sourceLabel = computed(() =>
 );
 
 onMounted(() => {
+  if (initialLiveProjectId) {
+    dataSource.value = "live";
+    selectedProjectId.value = initialLiveProjectId;
+  }
   void loadProjects();
 });
 
@@ -79,7 +87,7 @@ watch(dataSource, (source) => {
     return;
   }
   if (projects.value.length === 0) {
-    selectedProjectId.value = "";
+    selectedProjectId.value = initialLiveProjectId;
     void loadProjects();
     return;
   }
@@ -98,7 +106,12 @@ async function loadProjects(): Promise<void> {
   try {
     const response = await api.geoAnalysis.projects();
     projects.value = response.items;
-    if (dataSource.value === "live" && !selectedProjectId.value && response.items[0]) {
+    if (
+      dataSource.value === "live" &&
+      (!selectedProjectId.value ||
+        !response.items.some((project) => project.id === selectedProjectId.value)) &&
+      response.items[0]
+    ) {
       selectedProjectId.value = response.items[0].id;
     }
   } catch (caught) {

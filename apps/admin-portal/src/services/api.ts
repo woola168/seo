@@ -18,6 +18,7 @@
   GeoGeneratedQuery,
   GeoJobRequest,
   GeoJobResource,
+  GeoKMindHubWorkspaceMapping,
   GeoQueryDraftResource,
   GeoQueryDraftSelectionRequest,
   GeoQueryGenerationRunRequest,
@@ -51,6 +52,7 @@
 import { problemMessage } from "./problem-details";
 
 let accessToken = sessionStorage.getItem("accessToken") ?? "";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -69,7 +71,7 @@ async function request<T>(
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers,
     credentials: "include",
@@ -87,7 +89,7 @@ async function request<T>(
 }
 
 async function refresh(): Promise<boolean> {
-  const response = await fetch("/api/auth/refresh", {
+  const response = await fetch(apiUrl("/api/auth/refresh"), {
     method: "POST",
     credentials: "include",
   });
@@ -108,6 +110,11 @@ function setToken(token: string): void {
 function clearToken(): void {
   accessToken = "";
   sessionStorage.removeItem("accessToken");
+}
+
+function apiUrl(path: string): string {
+  if (!apiBaseUrl) return path;
+  return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export const api = {
@@ -250,6 +257,10 @@ export const api = {
     markets: (projectId: string) =>
       request<CollectionResponse<unknown>>(
         `/api/geo/projects/${projectId}/markets`,
+      ),
+    kmindhubWorkspace: () =>
+      request<GeoKMindHubWorkspaceMapping>(
+        "/api/geo/integrations/kmindhub/workspace",
       ),
     entities: (projectId: string) =>
       request<CollectionResponse<GeoEntityResource>>(

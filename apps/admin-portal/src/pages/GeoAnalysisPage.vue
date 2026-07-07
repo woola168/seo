@@ -99,7 +99,7 @@ const projectForm = reactive({
 });
 
 const entityForm = reactive({
-  entityType: "brand" as GeoEntity["entityType"],
+  entityType: "own_brand" as GeoEntity["entityType"],
   name: "",
   websiteUrl: "",
   description: "",
@@ -1108,7 +1108,8 @@ async function cancelJob(jobId: string): Promise<void> {
             <label>
               Type
               <select v-model="entityForm.entityType">
-                <option value="brand">brand</option>
+                <option value="own_brand">own_brand</option>
+                <option value="brand">brand (legacy)</option>
                 <option value="competitor">competitor</option>
                 <option value="website">website</option>
                 <option value="partner">partner</option>
