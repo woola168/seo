@@ -362,7 +362,7 @@ export interface GeoMarket {
 export interface GeoEntity {
   id: string;
   projectId: string;
-  entityType: "brand" | "competitor" | "website" | "partner";
+  entityType: "own_brand" | "brand" | "competitor" | "website" | "partner";
   name: string;
   websiteUrl: string | null;
   description: string;
@@ -504,6 +504,20 @@ export interface GeoAnalysisRunResult {
   }>;
   error: string | null;
   runAt: string;
+  analysisStatus: string | null;
+  analysisErrorCode: string | null;
+  analysisErrorMessage: string | null;
+}
+
+export interface GeoKMindHubWorkspaceMapping {
+  id: string;
+  tenantId: string;
+  workspaceId: string;
+  displayName: string;
+  provisioningMode: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GeoRecommendation {

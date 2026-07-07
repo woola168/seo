@@ -78,7 +78,7 @@ const entities: GeoEntityResource[] = [
   {
     id: "geo-entity-kinsan",
     projectId: "geo-project-kinsan",
-    entityType: "brand",
+    entityType: "own_brand",
     name: "金山旅宿",
     websiteUrl: "https://example.com",
     description: "北海岸溫泉住宿品牌，主打週末放鬆、親子旅遊與交通便利。",
@@ -289,6 +289,9 @@ const runResults: GeoAnalysisRunResult[] = [
     ],
     error: null,
     runAt: "2026-06-25T02:10:00.000Z",
+    analysisStatus: "completed",
+    analysisErrorCode: null,
+    analysisErrorMessage: null,
   },
 ];
 

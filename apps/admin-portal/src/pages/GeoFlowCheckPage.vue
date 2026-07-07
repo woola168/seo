@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import { geoPlatformCatalog } from "../mocks/geo-analysis";
 import { ApiError, api } from "../services/api";
 import type {
   GeoAnalysisRunResult,
+  GeoEntityResource,
   GeoJobResource,
   GeoMarketType,
   GeoProjectResource,
@@ -24,6 +26,10 @@ import {
   validateResearchStep,
   type GeoFlowValidationError,
 } from "../utils/geo-flow-validation";
+import {
+  buildFlowEntityRequests,
+  parseCompetitorEntityInputs,
+} from "../utils/geo-flow-entities";
 
 type StepKey = "project" | "library" | "setup" | "research" | "drafts" | "dispatch" | "results";
 type ModalState =
@@ -79,6 +85,7 @@ const intentCategoryOptions = [
 ];
 
 const activeStep = ref<StepKey>("project");
+const router = useRouter();
 const loading = ref(false);
 const polling = ref(false);
 const actionError = ref("");
@@ -88,6 +95,7 @@ const selectedProjectId = ref("");
 const savedQueries = ref<GeoQueryResource[]>([]);
 const savedJobs = ref<GeoJobResource[]>([]);
 const savedRunResults = ref<GeoAnalysisRunResult[]>([]);
+const savedEntities = ref<GeoEntityResource[]>([]);
 const selectedQueryIds = ref<string[]>([]);
 const selectedDraftIds = ref<string[]>([]);
 const acceptedQueries = ref<GeoQueryResource[]>([]);
@@ -96,6 +104,8 @@ const jobResults = ref<Record<string, GeoAnalysisRunResult[]>>({});
 const researchRun = ref<GeoQueryResearchRunResource | null>(null);
 const generationRun = ref<GeoQueryGenerationRunResource | null>(null);
 const modal = ref<ModalState>(null);
+const kmindhubStatus = ref<"unknown" | "ready" | "missing" | "error">("unknown");
+const kmindhubMessage = ref("");
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let pollAttempts = 0;
 
@@ -111,6 +121,7 @@ const queryForm = reactive({
   provider: "gemini" as GeoQueryProvider,
   runProvider: "gemini" as GeoProvider,
   brandName: "",
+  brandWebsiteUrl: "",
   competitorBrands: "",
   keywords: "",
   region: "TW" as GeoRegion,
@@ -135,7 +146,21 @@ const selectedPlatform = computed(
     platformOptions[0],
 );
 const normalizedKeywords = computed(() => splitValues(queryForm.keywords));
-const normalizedCompetitors = computed(() => splitValues(queryForm.competitorBrands));
+const normalizedCompetitors = computed(() =>
+  parseCompetitorEntityInputs(queryForm.competitorBrands).map((item) => item.name),
+);
+const reportEntitySummary = computed(() => {
+  const requests = buildFlowEntityRequests({
+    brandName: queryForm.brandName,
+    brandWebsiteUrl: queryForm.brandWebsiteUrl,
+    competitorBrands: queryForm.competitorBrands,
+    existingEntities: savedEntities.value,
+  });
+  return {
+    ownBrandName: requests.ownBrand?.request.name ?? "",
+    competitorCount: requests.competitors.length,
+  };
+});
 const normalizedTopics = computed<GeoTopicInput[]>(() =>
   queryForm.topics
     .map((topic) => ({
@@ -160,6 +185,7 @@ const allDispatchedJobsDone = computed(() =>
 
 onMounted(() => {
   void loadProjects();
+  void refreshKmindhubStatus();
 });
 
 onBeforeUnmount(() => {
@@ -210,17 +236,38 @@ async function saveProjectAndContinue(): Promise<void> {
 
 async function refreshProjectData(projectId = selectedProjectId.value): Promise<void> {
   if (!projectId) return;
-  const [queries, jobs, results] = await Promise.all([
+  const [queries, jobs, results, entities] = await Promise.all([
     api.geoAnalysis.queries(projectId),
     api.geoAnalysis.jobs(projectId),
     api.geoAnalysis.runResults(projectId),
+    api.geoAnalysis.entities(projectId),
   ]);
   savedQueries.value = queries.items;
   savedJobs.value = jobs.items;
   savedRunResults.value = results.items;
+  savedEntities.value = entities.items;
   selectedQueryIds.value = selectedQueryIds.value.filter((id) =>
     queries.items.some((query) => query.id === id),
   );
+}
+
+async function refreshKmindhubStatus(): Promise<void> {
+  kmindhubStatus.value = "unknown";
+  kmindhubMessage.value = "";
+  try {
+    const mapping = await api.geoAnalysis.kmindhubWorkspace();
+    kmindhubStatus.value = "ready";
+    kmindhubMessage.value = `${mapping.displayName} / ${shortId(mapping.workspaceId)}`;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      kmindhubStatus.value = "missing";
+      kmindhubMessage.value =
+        "KMindHub workspace 尚未綁定，新版 semantic analysis 會無法產生報表 facts。";
+      return;
+    }
+    kmindhubStatus.value = "error";
+    kmindhubMessage.value = getErrorMessage(error);
+  }
 }
 
 function startNewQueryFlow(): void {
@@ -259,6 +306,7 @@ function removeTopic(index: number): void {
 async function runResearch(): Promise<void> {
   if (!setValidation(researchValidation())) return;
   await runAction(async () => {
+    await ensureReportEntities();
     researchRun.value = await api.geoAnalysis.runQueryResearch(selectedProjectId.value, {
       provider: queryForm.provider,
       brandName: queryForm.brandName.trim(),
@@ -286,6 +334,28 @@ async function runResearch(): Promise<void> {
     selectedDraftIds.value = [];
     activeStep.value = "research";
   });
+}
+
+async function ensureReportEntities(): Promise<void> {
+  if (!selectedProjectId.value) return;
+  const requests = buildFlowEntityRequests({
+    brandName: queryForm.brandName,
+    brandWebsiteUrl: queryForm.brandWebsiteUrl,
+    competitorBrands: queryForm.competitorBrands,
+    existingEntities: savedEntities.value,
+  });
+  const upserts = [
+    ...(requests.ownBrand ? [requests.ownBrand] : []),
+    ...requests.competitors,
+  ];
+  for (const upsert of upserts) {
+    if (upsert.existing) {
+      await api.geoAnalysis.updateEntity(upsert.existing.id, upsert.request);
+    } else {
+      await api.geoAnalysis.createEntity(selectedProjectId.value, upsert.request);
+    }
+  }
+  if (upserts.length) await refreshProjectData();
 }
 
 async function runGeneration(): Promise<void> {
@@ -524,6 +594,7 @@ function resetProjectData(): void {
   savedQueries.value = [];
   savedJobs.value = [];
   savedRunResults.value = [];
+  savedEntities.value = [];
   selectedQueryIds.value = [];
   selectedDraftIds.value = [];
   acceptedQueries.value = [];
@@ -637,6 +708,24 @@ function statusBadgeClass(status: string): string {
 function resultForJob(jobId: string): GeoAnalysisRunResult[] {
   return jobResults.value[jobId] ?? savedRunResults.value.filter((result) => result.jobId === jobId);
 }
+
+function semanticStatus(result: GeoAnalysisRunResult): string {
+  return result.analysisStatus ?? "pending";
+}
+
+function semanticHint(result: GeoAnalysisRunResult): string {
+  if (result.analysisErrorCode === "own_brand_missing") {
+    return "找不到 active own_brand entity，請確認此 Project 已建立 own_brand。";
+  }
+  return result.analysisErrorMessage ?? result.analysisErrorCode ?? "";
+}
+
+function openReportDesign(): void {
+  void router.push({
+    name: "geo-analysis-report-design",
+    query: selectedProjectId.value ? { projectId: selectedProjectId.value } : undefined,
+  });
+}
 </script>
 
 <template>
@@ -674,6 +763,16 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
     <div v-if="actionError" class="flow-alert api-error">
       <strong>API 回應錯誤</strong>
       <p>{{ actionError }}</p>
+    </div>
+
+    <div class="flow-alert integration-status" :class="`integration-${kmindhubStatus}`">
+      <div>
+        <strong>KMindHub Workspace</strong>
+        <p>{{ kmindhubMessage || "尚未檢查 KMindHub workspace 綁定狀態。" }}</p>
+      </div>
+      <button class="button button-secondary" type="button" :disabled="loading" @click="refreshKmindhubStatus">
+        重新檢查
+      </button>
     </div>
 
     <article v-if="activeStep === 'project'" class="flow-card">
@@ -863,6 +962,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                   <th scope="col">Job</th>
                   <th scope="col">Provider</th>
                   <th scope="col">Status</th>
+                  <th scope="col">Semantic</th>
                   <th scope="col">References</th>
                   <th scope="col">Run At</th>
                   <th scope="col">操作</th>
@@ -875,6 +975,12 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                   <td>{{ shortId(item.jobId) }}</td>
                   <td>{{ item.provider }}</td>
                   <td><span class="badge" :class="statusBadgeClass(item.status)">{{ item.status }}</span></td>
+                  <td>
+                    <span class="badge" :class="statusBadgeClass(semanticStatus(item))">
+                      {{ semanticStatus(item) }}
+                    </span>
+                    <small v-if="semanticHint(item)">{{ semanticHint(item) }}</small>
+                  </td>
                   <td>{{ item.references.length }}</td>
                   <td>{{ formatDate(item.runAt) }}</td>
                   <td>
@@ -919,8 +1025,14 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
         <small v-if="fieldErrors.brandName">{{ fieldErrors.brandName }}</small>
       </label>
       <label>
+        Own Brand Website URL
+        <input v-model="queryForm.brandWebsiteUrl" type="url" placeholder="https://example.com" />
+        <small>Flow Check 會用品牌名稱自動建立或更新 active own_brand entity。</small>
+      </label>
+      <label>
         競品品牌
-        <textarea v-model="queryForm.competitorBrands" rows="3" placeholder="一行一個，或用逗號分隔" />
+        <textarea v-model="queryForm.competitorBrands" rows="3" placeholder="一行一個：競品名稱 | https://competitor.example；只有名稱也可以" />
+        <small>將建立或更新 {{ reportEntitySummary.competitorCount }} 個 active competitor entities。</small>
       </label>
       <div class="two-column">
         <label>
@@ -1135,6 +1247,9 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
         <button class="button button-secondary" type="button" :disabled="loading" @click="refreshResults">
           重新整理
         </button>
+        <button class="button button-primary" type="button" :disabled="!selectedProjectId" @click="openReportDesign">
+          前往 Report Design
+        </button>
         <button class="button button-primary" type="button" @click="activeStep = 'library'">回既有資料</button>
       </div>
       <p v-if="polling" class="success-text">正在等待 worker 回寫結果...</p>
@@ -1153,7 +1268,11 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
           type="button"
           @click="modal = { kind: 'result', item: result }"
         >
-          <span>{{ result.provider }} / {{ result.status }} / refs: {{ result.references.length }}</span>
+          <span>
+            {{ result.provider }} / {{ result.status }} / semantic: {{ semanticStatus(result) }} /
+            refs: {{ result.references.length }}
+          </span>
+          <small v-if="semanticHint(result)">{{ semanticHint(result) }}</small>
           <small>{{ formatDate(result.runAt) }}</small>
         </button>
       </section>
@@ -1174,6 +1293,7 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                 <th scope="col">Job</th>
                 <th scope="col">Provider</th>
                 <th scope="col">Status</th>
+                <th scope="col">Semantic</th>
                 <th scope="col">References</th>
                 <th scope="col">Run At</th>
                 <th scope="col">操作</th>
@@ -1186,6 +1306,12 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
                 <td>{{ shortId(item.jobId) }}</td>
                 <td>{{ item.provider }}</td>
                 <td><span class="badge" :class="statusBadgeClass(item.status)">{{ item.status }}</span></td>
+                <td>
+                  <span class="badge" :class="statusBadgeClass(semanticStatus(item))">
+                    {{ semanticStatus(item) }}
+                  </span>
+                  <small v-if="semanticHint(item)">{{ semanticHint(item) }}</small>
+                </td>
                 <td>{{ item.references.length }}</td>
                 <td>{{ formatDate(item.runAt) }}</td>
                 <td>
@@ -1250,6 +1376,13 @@ function resultForJob(jobId: string): GeoAnalysisRunResult[] {
               <dd>{{ modal.item.provider }}</dd>
               <dt>Status</dt>
               <dd><span class="badge" :class="statusBadgeClass(modal.item.status)">{{ modal.item.status }}</span></dd>
+              <dt>Semantic</dt>
+              <dd>
+                <span class="badge" :class="statusBadgeClass(semanticStatus(modal.item))">
+                  {{ semanticStatus(modal.item) }}
+                </span>
+                <small v-if="semanticHint(modal.item)">{{ semanticHint(modal.item) }}</small>
+              </dd>
               <dt>Model</dt>
               <dd>{{ modal.item.model }}</dd>
               <dt>References</dt>
@@ -1527,6 +1660,36 @@ textarea {
 .empty-state {
   background: var(--surface-secondary);
   border: 1px solid var(--border);
+}
+
+.integration-status {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.integration-status p {
+  margin: 4px 0 0;
+}
+
+.integration-ready {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+.integration-missing,
+.integration-unknown {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+
+.integration-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
 }
 
 .flow-alert.validation {
