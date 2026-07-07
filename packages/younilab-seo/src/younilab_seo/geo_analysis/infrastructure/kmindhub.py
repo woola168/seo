@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import logging
 import re
 import unicodedata
 from uuid import UUID
@@ -36,6 +37,7 @@ SEMANTIC_ANALYZER_NAME = "kmindhub"
 SEMANTIC_ANALYZER_VERSION = (
     f"{SEMANTIC_ANALYSIS_TASK_KEY}:v{SEMANTIC_ANALYSIS_SCHEMA_VERSION}"
 )
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,9 +59,9 @@ class KMindHubGeoRunResultAnalyzer:
         preview = await self.client.preview_text_extraction(
             workspace_id=workspace_id,
             task_id=task_id,
-            text=command.raw_response,
+            text=_semantic_extraction_text(command),
         )
-        facts = _facts_from_preview(command, preview.items)
+        facts = _facts_from_preview(command, preview.items, workspace_id, task_id)
         await self.client.commit_extraction_items(
             workspace_id=workspace_id,
             task_id=task_id,
@@ -106,14 +108,28 @@ class KMindHubGeoRunResultAnalyzer:
 def _facts_from_preview(
     command: AnalyzeGeoRunResultCommand,
     items: list[KMindHubExtractionPreviewItem],
+    workspace_id: UUID,
+    task_id: UUID,
 ) -> GeoRunResultAnalysis:
     entity_mentions: list[GeoEntityMentionFact] = []
     sentiments: list[GeoSentimentFact] = []
     semantic_facts: list[GeoResponseSemanticFact] = []
 
-    for item in items:
+    for index, item in enumerate(items):
         verification = item.verification or {}
         if verification and verification.get("passed") is False:
+            logger.warning(
+                "KMindHub semantic preview verification failed",
+                extra={
+                    "run_result_id": str(command.run_result_id),
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "item_index": index,
+                    "field_names": sorted(item.fields),
+                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
+                    "verification": _safe_dict(verification),
+                },
+            )
             raise KMindHubExtractionValidationError("KMindHub preview verification failed")
         try:
             mention = _mention_from_item(item, command.raw_response)
@@ -126,9 +142,33 @@ def _facts_from_preview(
             if fact is not None:
                 semantic_facts.append(fact)
         except ValidationError as exc:
+            logger.warning(
+                "KMindHub semantic preview pydantic validation failed",
+                extra={
+                    "run_result_id": str(command.run_result_id),
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "item_index": index,
+                    "field_names": sorted(item.fields),
+                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
+                },
+            )
             raise KMindHubExtractionValidationError(
                 "KMindHub preview validation failed"
             ) from exc
+        except KMindHubExtractionValidationError:
+            logger.warning(
+                "KMindHub semantic preview field validation failed",
+                extra={
+                    "run_result_id": str(command.run_result_id),
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "item_index": index,
+                    "field_names": sorted(item.fields),
+                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
+                },
+            )
+            raise
 
     return GeoRunResultAnalysis(
         run_result_id=command.run_result_id,
@@ -224,7 +264,9 @@ def _uuid_value(fields: dict[str, KMindHubExtractionFieldValue], name: str) -> U
     try:
         return UUID(str(value))
     except (TypeError, ValueError) as exc:
-        raise KMindHubExtractionValidationError(f"{name} must be a UUID") from exc
+        raise KMindHubExtractionValidationError(
+            f"{name} must be a UUID: {_safe_text(value)}"
+        ) from exc
 
 
 def _bool_value(fields: dict[str, KMindHubExtractionFieldValue], name: str) -> bool:
@@ -282,6 +324,73 @@ def _validated_evidence(
 def _normalize_evidence(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value)
     return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
+    entity_lines = [
+        _entity_context_line(command.entities.own_brand),
+        *(_entity_context_line(entity) for entity in command.entities.competitors),
+    ]
+    topic_lines = []
+    if command.topic_id is not None:
+        topic_lines.append(f"- topicId: {command.topic_id}")
+    if command.topic_name:
+        topic_lines.append(f"- topicName: {command.topic_name}")
+    if command.topic_description:
+        topic_lines.append(f"- topicDescription: {command.topic_description}")
+
+    topic_text = "\n".join(topic_lines) if topic_lines else "- topic: none"
+    return "\n".join(
+        [
+            "GEO semantic analysis input",
+            "",
+            "Instructions:",
+            "- Extract facts only from the AI answer section.",
+            "- For entity mention and sentiment facts, entityId must be copied exactly from the entity context below.",
+            "- Do not invent entityId values. If an entity is not listed, do not emit an entity fact for it.",
+            "- evidenceText must be copied from the AI answer section, not from this context.",
+            "",
+            "Query context:",
+            f"- projectId: {command.project_id}",
+            f"- queryId: {command.query_id}",
+            f"- queryText: {command.query_text}",
+            f"- provider: {command.provider}",
+            f"- surface: {command.surface}",
+            f"- model: {command.model}",
+            f"- region: {command.region}",
+            f"- language: {command.language}",
+            "",
+            "Topic context:",
+            topic_text,
+            "",
+            "Entity context:",
+            *entity_lines,
+            "",
+            "AI answer:",
+            command.raw_response,
+        ]
+    )
+
+
+def _entity_context_line(entity) -> str:
+    website = entity.website_url or ""
+    return (
+        f"- entityId: {entity.entity_id}; entityRole: {entity.entity_role}; "
+        f"entityName: {entity.name}; websiteUrl: {website}"
+    )
+
+
+def _safe_text(value: str | None, limit: int = 120) -> str | None:
+    if value is None:
+        return None
+    normalized = re.sub(r"\s+", " ", str(value)).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
+
+
+def _safe_dict(value: dict, limit: int = 120) -> dict:
+    return {str(key): _safe_text(str(item), limit) for key, item in value.items()}
 
 
 @dataclass
@@ -380,7 +489,17 @@ class HttpKMindHubWorkspaceClient:
         task_id: UUID,
         items: list[dict],
     ) -> KMindHubExtractionCommitResult:
+        response: httpx.Response | None = None
         try:
+            logger.info(
+                "Committing KMindHub extraction items",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "item_count": len(items),
+                    "item_field_names": _item_field_names(items),
+                },
+            )
             response = await self._get_client().post(
                 "/extractions/commit",
                 headers=self.workspace_headers(workspace_id),
@@ -388,6 +507,22 @@ class HttpKMindHubWorkspaceClient:
             )
             response.raise_for_status()
             payload = response.json()
+            logger.info(
+                "Committed KMindHub extraction items",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "status_code": response.status_code,
+                    "payload_keys": sorted(payload) if isinstance(payload, dict) else [],
+                    "has_commit_batch_id": (
+                        isinstance(payload, dict)
+                        and payload.get("commitBatchId") is not None
+                    ),
+                    "items_count": (
+                        len(payload.get("items", [])) if isinstance(payload, dict) else 0
+                    ),
+                },
+            )
             item_ids = (
                 payload.get("itemIds")
                 or payload.get("committedItemIds")
@@ -402,9 +537,20 @@ class HttpKMindHubWorkspaceClient:
                 ),
                 item_ids=_commit_item_ids(item_ids),
             )
-        except (KeyError, TypeError, httpx.HTTPError) as exc:
+        except (KeyError, TypeError, ValueError, httpx.HTTPError) as exc:
+            logger.exception(
+                "KMindHub extraction commit failed",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "task_id": str(task_id),
+                    "item_count": len(items),
+                    "status_code": response.status_code if response is not None else None,
+                    "response_body": _response_excerpt(response),
+                    "exception_type": exc.__class__.__name__,
+                },
+            )
             raise KMindHubExtractionUnavailable(
-                "KMindHub extraction commit is unavailable"
+                f"KMindHub extraction commit is unavailable: {exc.__class__.__name__}"
             ) from exc
 
     async def close(self) -> None:
@@ -431,3 +577,21 @@ def _commit_item_ids(items: list) -> list[str]:
         elif item is not None:
             ids.append(str(item))
     return ids
+
+
+def _item_field_names(items: list[dict]) -> list[list[str]]:
+    names: list[list[str]] = []
+    for item in items:
+        fields = item.get("fields") if isinstance(item, dict) else None
+        names.append(sorted(fields) if isinstance(fields, dict) else [])
+    return names
+
+
+def _response_excerpt(response: httpx.Response | None, limit: int = 500) -> str | None:
+    if response is None:
+        return None
+    try:
+        text = response.text
+    except Exception:
+        return None
+    return _safe_text(text, limit)

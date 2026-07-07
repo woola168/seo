@@ -28,6 +28,7 @@ TASK_ID = UUID("00000000-0000-4000-8000-000000000002")
 WORKSPACE_ID = UUID("00000000-0000-4000-8000-000000000003")
 RUN_RESULT_ID = UUID("00000000-0000-4000-8000-000000000004")
 OWN_BRAND_ID = UUID("00000000-0000-4000-8000-000000000005")
+COMPETITOR_ID = UUID("00000000-0000-4000-8000-000000000006")
 
 
 @dataclass
@@ -71,6 +72,7 @@ class FakeKMindHubClient:
     unavailable: bool = False
     created_tasks: int = 0
     committed_items: list[dict] | None = None
+    preview_text: str | None = None
 
     async def create_workspace(self, display_name: str):
         raise AssertionError("workspace creation should not be used")
@@ -89,7 +91,7 @@ class FakeKMindHubClient:
             raise KMindHubExtractionUnavailable("preview unavailable")
         assert workspace_id == WORKSPACE_ID
         assert task_id == TASK_ID
-        assert text == "Acme ERP 適合製造業。"
+        self.preview_text = text
         return KMindHubExtractionPreviewResult(
             task_id=task_id,
             items=self.preview_items,
@@ -123,6 +125,30 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
         assert repository.upserts[0].task_key == SEMANTIC_ANALYSIS_TASK_KEY
         assert client.created_tasks == 1
         assert client.committed_items is not None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
+    async def run() -> None:
+        client = FakeKMindHubClient(preview_items=[])
+
+        await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(_command())
+
+        assert client.preview_text is not None
+        assert "Entity context:" in client.preview_text
+        assert f"entityId: {OWN_BRAND_ID}" in client.preview_text
+        assert "entityRole: own_brand" in client.preview_text
+        assert "entityName: Acme" in client.preview_text
+        assert f"entityId: {COMPETITOR_ID}" in client.preview_text
+        assert "entityRole: competitor" in client.preview_text
+        assert "entityName: Rival" in client.preview_text
+        assert "AI answer:" in client.preview_text
+        assert "Acme ERP" in client.preview_text
 
     asyncio.run(run())
 
@@ -212,6 +238,30 @@ def test_kmindhub_semantic_analyzer_rejects_missing_evidence_text() -> None:
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_rejects_context_only_evidence_text() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value=str(COMPETITOR_ID)
+        )
+        client = FakeKMindHubClient(preview_items=[item])
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="evidenceText must exist in raw response",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+            ).analyze(_command())
+        assert client.preview_text is not None
+        assert str(COMPETITOR_ID) in client.preview_text
         assert client.committed_items is None
 
     asyncio.run(run())
@@ -321,6 +371,26 @@ def test_kmindhub_semantic_analyzer_preserves_client_unavailable_error() -> None
     asyncio.run(run())
 
 
+def test_kmindhub_semantic_analyzer_reports_invalid_entity_id_value() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["entityId"] = KMindHubExtractionFieldValue(value="Acme")
+        client = FakeKMindHubClient(preview_items=[item])
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="entityId must be a UUID: Acme",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+            ).analyze(_command())
+        assert client.committed_items is None
+
+    asyncio.run(run())
+
+
 def _command() -> AnalyzeGeoRunResultCommand:
     return AnalyzeGeoRunResultCommand(
         tenant_id=TENANT_ID,
@@ -339,7 +409,16 @@ def _command() -> AnalyzeGeoRunResultCommand:
                 entity_id=OWN_BRAND_ID,
                 entity_role="own_brand",
                 name="Acme",
-            )
+                website_url="https://acme.example",
+            ),
+            competitors=[
+                GeoAnalysisEntityInput(
+                    entity_id=COMPETITOR_ID,
+                    entity_role="competitor",
+                    name="Rival",
+                    website_url="https://rival.example",
+                )
+            ],
         ),
     )
 
