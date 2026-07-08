@@ -713,7 +713,7 @@ def test_dispatch_google_aio_job_records_provider_queue_destination() -> None:
     assert store.dispatches[0][1].destination == "geo.query-runs.google_aio"
 
 
-def test_dispatch_without_project_seo_task_id_returns_conflict() -> None:
+def test_dispatch_without_project_seo_task_id_publishes_job() -> None:
     publisher = FakePublisher()
     client, store, query_id = _client_with_query(publisher=publisher)
     query = store.queries[UUID(query_id)]
@@ -729,10 +729,10 @@ def test_dispatch_without_project_seo_task_id_returns_conflict() -> None:
 
     response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
 
-    assert response.status_code == 409
-    assert response.headers["content-type"] == "application/problem+json"
-    assert response.json()["detail"] == "project seoTaskId is required to dispatch job"
-    assert publisher.messages == []
+    assert response.status_code == 200
+    assert response.json()["status"] == "published"
+    assert len(publisher.messages) == 1
+    assert publisher.messages[0].seo_task_id is None
 
 
 def test_create_query_accepts_market_type() -> None:
@@ -1583,7 +1583,9 @@ class FakePlanningClient:
             "queries": [
                 {
                     "id": str(uuid4()),
-                    "seoTaskId": str(command.seo_task_id),
+                    "seoTaskId": str(command.seo_task_id)
+                    if command.seo_task_id is not None
+                    else None,
                     "queryText": "Acme ERP 適合哪些 B2B 採購情境?",
                     "keywords": command.keywords,
                     "topicId": None,

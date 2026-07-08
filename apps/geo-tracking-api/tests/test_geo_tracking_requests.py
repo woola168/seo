@@ -182,6 +182,20 @@ def test_query_generation_request_generates_b2b_us_queries() -> None:
     assert query["metadata"]["topicDescription"] == TOPIC_DESCRIPTION
 
 
+def test_query_generation_accepts_missing_seo_task_id() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+    payload = _generation_payload()
+    payload.pop("seoTaskId")
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-generation",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["queries"][0]["seoTaskId"] is None
+
+
 def test_query_generation_request_still_accepts_legacy_topic_names() -> None:
     client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
 
@@ -381,6 +395,35 @@ def test_run_request_returns_dummy_result_for_generated_query() -> None:
     assert body["results"][0]["referenceUrls"] == []
     assert body["results"][0]["references"] == []
     assert query["text"] in body["results"][0]["rawResponse"]
+
+
+def test_run_request_accepts_missing_seo_task_id() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+
+    response = client.post(
+        "/api/v1/geo-tracking/run-requests",
+        json={
+            "provider": "dummy",
+            "timing": "run_now",
+            "queries": [
+                {
+                    "id": "44444444-4444-4444-8444-444444444444",
+                    "text": "沒有 seoTaskId 的測試 query",
+                    "topicName": "產品型",
+                    "region": "TW",
+                    "language": "zh-TW",
+                    "marketType": "b2c",
+                    "isBranded": False,
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["seoTaskId"] is None
+    assert body["results"][0]["status"] == "completed"
 
 
 def test_run_request_uses_provider_from_request_body() -> None:

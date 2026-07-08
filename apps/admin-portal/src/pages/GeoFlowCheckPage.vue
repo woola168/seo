@@ -5,6 +5,7 @@ import { useRouter } from "vue-router";
 import { geoPlatformCatalog } from "../mocks/geo-analysis";
 import { ApiError, api } from "../services/api";
 import type {
+  CustomerSummary,
   GeoAnalysisRunResult,
   GeoEntityResource,
   GeoJobResource,
@@ -91,6 +92,9 @@ const polling = ref(false);
 const actionError = ref("");
 const validationErrors = ref<GeoFlowValidationError[]>([]);
 const projects = ref<GeoProjectResource[]>([]);
+const customers = ref<CustomerSummary[]>([]);
+const customersLoading = ref(false);
+const customerError = ref("");
 const selectedProjectId = ref("");
 const savedQueries = ref<GeoQueryResource[]>([]);
 const savedJobs = ref<GeoJobResource[]>([]);
@@ -112,7 +116,6 @@ let pollAttempts = 0;
 const projectForm = reactive({
   name: "GEO Flow Check",
   customerId: "",
-  seoTaskId: "",
   defaultRegion: "TW" as GeoRegion,
   defaultLanguage: "zh-TW",
 });
@@ -140,6 +143,22 @@ const queryForm = reactive({
 const selectedProject = computed(() =>
   projects.value.find((project) => project.id === selectedProjectId.value),
 );
+const customerOptions = computed<CustomerSummary[]>(() => {
+  if (
+    !projectForm.customerId ||
+    customers.value.some((customer) => customer.id === projectForm.customerId)
+  ) {
+    return customers.value;
+  }
+  return [
+    {
+      id: projectForm.customerId,
+      name: `Customer ${shortId(projectForm.customerId)}`,
+      status: "active",
+    },
+    ...customers.value,
+  ];
+});
 const selectedPlatform = computed(
   () =>
     platformOptions.find((option) => option.provider === queryForm.runProvider) ??
@@ -185,6 +204,7 @@ const allDispatchedJobsDone = computed(() =>
 
 onMounted(() => {
   void loadProjects();
+  void loadCustomers();
   void refreshKmindhubStatus();
 });
 
@@ -202,6 +222,22 @@ async function loadProjects(): Promise<void> {
   });
 }
 
+async function loadCustomers(): Promise<void> {
+  customersLoading.value = true;
+  customerError.value = "";
+  try {
+    const response = await api.customers();
+    customers.value = response.items;
+    if (!projectForm.customerId && response.items.length) {
+      projectForm.customerId = response.items[0].id;
+    }
+  } catch (error) {
+    customerError.value = getErrorMessage(error);
+  } finally {
+    customersLoading.value = false;
+  }
+}
+
 function selectProject(projectId: string): void {
   selectedProjectId.value = projectId;
   const project = projects.value.find((item) => item.id === projectId);
@@ -214,10 +250,8 @@ async function saveProjectAndContinue(): Promise<void> {
   const errors = validateProjectStep({
     projectId: selectedProjectId.value,
     projectName: projectForm.name,
+    customerId: projectForm.customerId,
   });
-  if (projectForm.seoTaskId.trim() && !projectForm.customerId.trim()) {
-    errors.push({ field: "customerId", message: "填寫 seoTaskId 時也請填 customerId" });
-  }
   if (!setValidation(errors)) return;
 
   await runAction(async () => {
@@ -366,7 +400,7 @@ async function runGeneration(): Promise<void> {
   if (!setValidation(errors)) return;
   await runAction(async () => {
     generationRun.value = await api.geoAnalysis.runQueryGeneration(selectedProjectId.value, {
-      seoTaskId: projectForm.seoTaskId.trim(),
+      seoTaskId: null,
       provider: queryForm.provider,
       brandName: queryForm.brandName.trim(),
       competitorBrands: normalizedCompetitors.value,
@@ -551,7 +585,6 @@ function generationValidationInput() {
     intentDescription: queryForm.intentDescription,
     audienceName: queryForm.audienceName,
     audienceDescription: queryForm.audienceDescription,
-    seoTaskId: projectForm.seoTaskId,
   };
 }
 
@@ -559,9 +592,6 @@ function validateDispatchInput(queryId: string): GeoFlowValidationError[] {
   const errors: GeoFlowValidationError[] = [];
   if (!selectedProjectId.value) {
     errors.push({ field: "project", message: "請先選擇 project" });
-  }
-  if (!projectForm.seoTaskId.trim()) {
-    errors.push({ field: "seoTaskId", message: "Dispatch 需要 seoTaskId" });
   }
   if (!queryId) {
     errors.push({ field: "acceptedQuery", message: "請先選擇 query" });
@@ -608,7 +638,6 @@ function resetProjectData(): void {
 function fillProjectForm(project: GeoProjectResource): void {
   projectForm.name = project.name;
   projectForm.customerId = project.customerId ?? "";
-  projectForm.seoTaskId = project.seoTaskId ?? "";
   projectForm.defaultRegion = project.defaultRegion as GeoRegion;
   projectForm.defaultLanguage = project.defaultLanguage;
 }
@@ -616,7 +645,7 @@ function fillProjectForm(project: GeoProjectResource): void {
 function projectRequestFromForm() {
   return {
     customerId: valueOrNull(projectForm.customerId),
-    seoTaskId: valueOrNull(projectForm.seoTaskId),
+    seoTaskId: null,
     name: projectForm.name.trim(),
     defaultRegion: projectForm.defaultRegion,
     defaultLanguage: projectForm.defaultLanguage.trim() || "zh-TW",
@@ -778,14 +807,14 @@ function openReportDesign(): void {
     <article v-if="activeStep === 'project'" class="flow-card">
       <header>
         <h2>1. 選擇或建立 Project</h2>
-        <p>既有 project 也可以在這裡補上 customerId / seoTaskId，dispatch 會用到 seoTaskId。</p>
+        <p>既有 project 可在這裡選擇 customer 綁定；demo 流程不再需要 seoTaskId。</p>
       </header>
       <label>
         既有 Project
         <select :value="selectedProjectId" @change="selectProject(($event.target as HTMLSelectElement).value)">
           <option value="">建立新 project</option>
           <option v-for="project in projects" :key="project.id" :value="project.id">
-            {{ project.name }} / seoTaskId: {{ shortId(project.seoTaskId) }}
+            {{ project.name }} / Customer: {{ shortId(project.customerId) }}
           </option>
         </select>
       </label>
@@ -796,14 +825,17 @@ function openReportDesign(): void {
       </label>
       <div class="two-column">
         <label>
-          customerId
-          <input v-model="projectForm.customerId" type="text" placeholder="可空；若填 seoTaskId 建議一併填" />
+          Customer
+          <select v-model="projectForm.customerId" :disabled="customersLoading">
+            <option value="" disabled>
+              {{ customersLoading ? "載入 customer 中" : "請選擇 customer" }}
+            </option>
+            <option v-for="customer in customerOptions" :key="customer.id" :value="customer.id">
+              {{ customer.name }} / {{ shortId(customer.id) }}
+            </option>
+          </select>
           <small v-if="fieldErrors.customerId">{{ fieldErrors.customerId }}</small>
-        </label>
-        <label>
-          seoTaskId
-          <input v-model="projectForm.seoTaskId" type="text" placeholder="dispatch 必填" />
-          <small v-if="fieldErrors.seoTaskId">{{ fieldErrors.seoTaskId }}</small>
+          <small v-if="customerError">{{ customerError }}</small>
         </label>
       </div>
       <div class="button-row">
@@ -820,7 +852,7 @@ function openReportDesign(): void {
       </header>
       <div class="context-row">
         <span>Project: {{ selectedProject?.name ?? "-" }}</span>
-        <span>seoTaskId: {{ shortId(projectForm.seoTaskId) }}</span>
+        <span>Customer: {{ shortId(projectForm.customerId) }}</span>
       </div>
       <div class="button-row">
         <button class="button button-secondary" type="button" :disabled="loading" @click="refreshProjectData()">

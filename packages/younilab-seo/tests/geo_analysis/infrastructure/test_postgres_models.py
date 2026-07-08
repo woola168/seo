@@ -147,6 +147,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
+    assert GeoRunRequestRow.__table__.columns["seo_task_id"].nullable is True
     assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
     assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
     assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["tenant_id"].foreign_keys

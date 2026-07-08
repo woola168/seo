@@ -257,7 +257,7 @@ export interface GeoTopicInput {
 
 export interface GeoGeneratedQuery {
   id: string;
-  seoTaskId: string;
+  seoTaskId: string | null;
   text: string;
   keywords: string[];
   topicId: string | null;
@@ -327,7 +327,7 @@ export interface GeoRunResult {
 
 export interface GeoRunRequestResult {
   id: string;
-  seoTaskId: string;
+  seoTaskId: string | null;
   timing: "run_now" | "next_cycle";
   results: GeoRunResult[];
 }
@@ -768,7 +768,7 @@ export interface GeoQueryResearchRunResource {
 }
 
 export interface GeoQueryGenerationRunRequest {
-  seoTaskId: string;
+  seoTaskId?: string | null;
   provider: GeoQueryProvider;
   brandName: string;
   competitorBrands: string[];

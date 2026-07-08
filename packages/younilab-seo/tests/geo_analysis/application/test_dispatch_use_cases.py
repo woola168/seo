@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
-    DispatchQueryRunJobError,
     DispatchQueryRunJob,
     ExternalRunCallback,
     GeoQueryRunJobDispatchContext,
@@ -198,7 +197,7 @@ def test_dispatch_records_successful_publish() -> None:
     asyncio.run(run())
 
 
-def test_dispatch_rejects_missing_project_seo_task_id() -> None:
+def test_dispatch_allows_missing_project_seo_task_id() -> None:
     async def run() -> None:
         job = make_job()
         context = make_context(job).model_copy(update={"seo_task_id": None})
@@ -212,19 +211,16 @@ def test_dispatch_rejects_missing_project_seo_task_id() -> None:
             )
         )
 
-        try:
-            await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
-                job.id,
-                "https://example.test",
-            )
-        except DispatchQueryRunJobError as exc:
-            assert str(exc) == "project seoTaskId is required to dispatch job"
-        else:
-            raise AssertionError("expected missing seoTaskId to reject dispatch")
+        result = await DispatchQueryRunJob(repository, publisher, FakeClock()).execute(
+            job.id,
+            "https://example.test",
+        )
 
-        assert publisher.messages == []
-        assert repository.dispatches == []
-        assert repository.job.status is JobStatus.PENDING
+        assert result.status is JobStatus.PUBLISHED
+        assert len(publisher.messages) == 1
+        assert publisher.messages[0].seo_task_id is None
+        assert len(repository.dispatches) == 1
+        assert repository.job.status is JobStatus.PUBLISHED
 
     asyncio.run(run())
 

@@ -222,7 +222,7 @@ class QueryResearchRunResponse(ApiModel):
 
 
 class QueryGenerationRunRequest(ApiModel):
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
     competitor_brands: list[str] = Field(default_factory=list)

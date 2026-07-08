@@ -1,13 +1,13 @@
 export type GeoFlowValidationInput = {
   projectId?: string;
   projectName?: string;
+  customerId?: string | null;
   brandName?: string;
   keywords?: Array<string>;
   topics?: Array<{ name: string; description?: string }>;
   intentDescription?: string;
   audienceName?: string;
   audienceDescription?: string;
-  seoTaskId?: string | null;
   draftId?: string | null;
   acceptedQueryId?: string | null;
   platformId?: string | null;
@@ -25,6 +25,9 @@ export function validateProjectStep(
   const errors: GeoFlowValidationError[] = [];
   if (!hasValue(input.projectId) && !hasValue(input.projectName)) {
     errors.push({ field: "project", message: "請選擇既有 project 或輸入新 project 名稱" });
+  }
+  if (!hasValue(input.customerId)) {
+    errors.push({ field: "customerId", message: "請選擇 customer" });
   }
   return errors;
 }
@@ -60,11 +63,7 @@ export function validateResearchStep(
 export function validateGenerationStep(
   input: GeoFlowValidationInput,
 ): GeoFlowValidationError[] {
-  const errors = validateResearchStep(input);
-  if (!hasValue(input.seoTaskId)) {
-    errors.push({ field: "seoTaskId", message: "Query generation 需要 seoTaskId" });
-  }
-  return errors;
+  return validateResearchStep(input);
 }
 
 export function validateAcceptDraftStep(
@@ -82,9 +81,6 @@ export function validateDispatchStep(
   const errors: GeoFlowValidationError[] = [];
   if (!hasValue(input.projectId)) {
     errors.push({ field: "project", message: "請先選擇或建立 GEO project" });
-  }
-  if (!hasValue(input.seoTaskId)) {
-    errors.push({ field: "seoTaskId", message: "Dispatch 需要 seoTaskId" });
   }
   if (!hasValue(input.acceptedQueryId)) {
     errors.push({ field: "acceptedQuery", message: "請先選擇至少一筆正式 query" });

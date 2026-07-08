@@ -85,19 +85,33 @@ def test_tracking_client_maps_failed_result() -> None:
     asyncio.run(run())
 
 
+def test_tracking_client_omits_missing_seo_task_id() -> None:
+    message = _message(seo_task_id=None)
+
+    client = HttpTrackingRunClient("https://tracking.test")
+    payload = client.build_request_payload(message)
+
+    assert "seoTaskId" not in payload
+    assert payload["queries"][0]["id"] == str(_QUERY_ID)
+
+
 _JOB_ID = uuid4()
 _TENANT_ID = uuid4()
 _PROJECT_ID = uuid4()
 _SEO_TASK_ID = uuid4()
 _QUERY_ID = uuid4()
+_DEFAULT_SEO_TASK_ID = object()
 
 
-def _message() -> QueryRunJobMessage:
+def _message(*, seo_task_id=_DEFAULT_SEO_TASK_ID) -> QueryRunJobMessage:
+    normalized_seo_task_id = (
+        _SEO_TASK_ID if seo_task_id is _DEFAULT_SEO_TASK_ID else seo_task_id
+    )
     return QueryRunJobMessage(
         job_id=_JOB_ID,
         tenant_id=_TENANT_ID,
         project_id=_PROJECT_ID,
-        seo_task_id=_SEO_TASK_ID,
+        seo_task_id=normalized_seo_task_id,
         query_id=_QUERY_ID,
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",

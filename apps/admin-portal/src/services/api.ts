@@ -438,7 +438,7 @@ export const api = {
       body: JSON.stringify(input),
     }),
   generateGeoQueries: (input: {
-    seoTaskId: string;
+    seoTaskId?: string | null;
     provider: GeoQueryProvider;
     brandName: string;
     competitorBrands: string[];
@@ -462,14 +462,14 @@ export const api = {
       body: JSON.stringify(input),
     }),
   runGeoQueries: (
-    seoTaskId: string,
+    seoTaskId: string | null,
     provider: GeoProvider,
     queries: GeoGeneratedQuery[],
   ) =>
     request<GeoRunRequestResult>("/api/v1/geo-tracking/run-requests", {
       method: "POST",
       body: JSON.stringify({
-        seoTaskId,
+        ...(seoTaskId ? { seoTaskId } : {}),
         provider,
         timing: "run_now",
         queries: queries.map((query) => ({
