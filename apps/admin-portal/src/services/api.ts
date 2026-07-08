@@ -37,6 +37,7 @@
   GeoQueryResearchResult,
   GeoRegion,
   GeoRunRequestResult,
+  GeoRunResultSemanticAnalysis,
   GeoScheduleRequest,
   GeoScheduleResource,
   GeoTopicRequest,
@@ -394,7 +395,7 @@ export const api = {
       ),
     job: (jobId: string) => request<GeoJobResource>(`/api/geo/jobs/${jobId}`),
     runResults: (projectId: string) =>
-      request<CollectionResponse<GeoAnalysisRunResult>>(
+      request<PageResponse<GeoAnalysisRunResult>>(
         `/api/geo/projects/${projectId}/run-results`,
       ),
     jobRunResults: (jobId: string) =>
@@ -403,6 +404,10 @@ export const api = {
       ),
     runResult: (resultId: string) =>
       request<GeoAnalysisRunResult>(`/api/geo/run-results/${resultId}`),
+    runResultSemanticAnalysis: (resultId: string) =>
+      request<GeoRunResultSemanticAnalysis>(
+        `/api/geo/run-results/${resultId}/semantic-analysis`,
+      ),
     dashboardReport: (projectId: string, input: GeoDashboardReportQuery) => {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) {

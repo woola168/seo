@@ -4,6 +4,7 @@ from uuid import UUID
 from younilab_seo.geo_analysis.application.contracts import (
     CreateQueryRunJobCommand,
     ExternalRunCallback,
+    GeoRunResultAnalysis,
     GeoRunResultRecord,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
@@ -87,6 +88,18 @@ class ManageQueryRunJobs:
         if project is None or not can_access_project(principal, project):
             return None
         return await self.repository.get_run_result(principal.tenant_id, result_id)
+
+    async def get_run_result_semantic_analysis(
+        self,
+        principal: AuthorizedPrincipal,
+        result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        if await self.get_run_result(principal, result_id) is None:
+            return None
+        return await self.repository.get_semantic_run_result_analysis(
+            principal.tenant_id,
+            result_id,
+        )
 
     async def cancel_job(
         self,

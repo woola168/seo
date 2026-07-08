@@ -99,6 +99,36 @@ describe("api.geoAnalysis.dashboardReport", () => {
     expect(requestedPath).toBe("/api/geo/integrations/kmindhub/workspace");
   });
 
+  it("requests run result semantic analysis endpoint", async () => {
+    let requestedPath = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        requestedPath = String(path);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            runResultId: "result-1",
+            analyzer: "fake",
+            analyzerVersion: "v1",
+            status: "completed",
+            entityMentions: [],
+            sentiments: [],
+            semanticFacts: [],
+            errorCode: null,
+            errorMessage: null,
+          }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.geoAnalysis.runResultSemanticAnalysis("result-1");
+
+    expect(requestedPath).toBe("/api/geo/run-results/result-1/semantic-analysis");
+  });
+
   it("prefixes API requests with VITE_API_BASE_URL when configured", async () => {
     vi.stubEnv("VITE_API_BASE_URL", "https://titan.younilab.com");
     let requestedPath = "";

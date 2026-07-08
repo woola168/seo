@@ -400,6 +400,46 @@ class RunResultResponse(ApiModel):
     analysis_error_message: str | None = None
 
 
+class RunResultEntityMentionResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    mentioned: bool
+    first_mention_order: int | None = None
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSentimentResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    sentiment: str
+    theme: str
+    statement: str
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSemanticFactResponse(ApiModel):
+    fact_type: str
+    value: str
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSemanticAnalysisResponse(ApiModel):
+    run_result_id: UUID
+    analyzer: str
+    analyzer_version: str | None = None
+    status: str
+    entity_mentions: list[RunResultEntityMentionResponse]
+    sentiments: list[RunResultSentimentResponse]
+    semantic_facts: list[RunResultSemanticFactResponse]
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class MetricValueResponse(ApiModel):
     metric_name: str
     scope_type: str

@@ -4,15 +4,32 @@ import { useRoute } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
 import {
   mockGeoDashboardReport,
+  mockGeoDashboardQueries,
+  mockGeoDashboardRunResults,
+  mockGeoDashboardSemanticAnalyses,
   mockGeoDashboardReportProject,
 } from "../mocks/geo-dashboard-report";
 import { ApiError, api } from "../services/api";
 import type {
+  GeoAnalysisRunResult,
   GeoDashboardCitationRow,
   GeoDashboardMetricValue,
   GeoDashboardReport,
   GeoProjectResource,
+  GeoQueryResource,
+  GeoRunResultSemanticAnalysis,
 } from "../types";
+import {
+  buildEvidenceHighlights,
+  buildRunResultRows,
+  filterRunResultRows,
+  highlightEvidenceInHtml,
+  paginateItems,
+  renderSafeMarkdown,
+  type EvidenceHighlight,
+  type GeoReportRunResultRow,
+  type PaginationState,
+} from "../utils/geo-dashboard-drilldown";
 import {
   buildDefaultGeoDashboardReportFilters,
   buildGeoDashboardReportQuery,
@@ -36,12 +53,22 @@ const dataSource = ref<DataSource>("mock");
 const projects = ref<GeoProjectResource[]>([]);
 const selectedProjectId = ref(mockGeoDashboardReportProject.id);
 const liveReport = ref<GeoDashboardReport | null>(null);
+const liveQueries = ref<GeoQueryResource[]>([]);
+const liveRunResults = ref<GeoAnalysisRunResult[]>([]);
 const liveLoading = ref(false);
+const drilldownLoading = ref(false);
 const projectsLoading = ref(false);
 const liveError = ref("");
+const drilldownError = ref("");
 const projectError = ref("");
 const lastLoadedAt = ref<string | null>(null);
 const citationView = ref<"urls" | "domains">("urls");
+const selectedRunResultRow = ref<GeoReportRunResultRow | null>(null);
+const semanticAnalysisCache = ref<Record<string, GeoRunResultSemanticAnalysis | null>>({});
+const semanticAnalysisErrors = ref<Record<string, string>>({});
+const semanticAnalysisLoadingIds = ref<Set<string>>(new Set());
+const citationPagination = reactive<PaginationState>({ page: 1, pageSize: 10 });
+const runResultPagination = reactive<PaginationState>({ page: 1, pageSize: 10 });
 
 const filters = reactive(buildDefaultGeoDashboardReportFilters());
 
@@ -66,6 +93,53 @@ const visibleCitationRows = computed(() =>
     ? currentReport.value?.citationUrls ?? []
     : currentReport.value?.citationDomains ?? [],
 );
+const paginatedCitationRows = computed(() =>
+  paginateItems(visibleCitationRows.value, citationPagination),
+);
+const currentQueries = computed(() =>
+  dataSource.value === "mock" ? mockGeoDashboardQueries : liveQueries.value,
+);
+const currentRunResults = computed(() =>
+  dataSource.value === "mock" ? mockGeoDashboardRunResults : liveRunResults.value,
+);
+const runResultRows = computed(() =>
+  filterRunResultRows(
+    buildRunResultRows(currentRunResults.value, currentQueries.value),
+    {
+      periodStart: dashboardQuery()?.periodStart ?? "",
+      periodEnd: dashboardQuery()?.periodEnd ?? "",
+      provider: filters.provider || undefined,
+      region: filters.region || undefined,
+      language: filters.language || undefined,
+    },
+  ),
+);
+const paginatedRunResultRows = computed(() =>
+  paginateItems(runResultRows.value, runResultPagination),
+);
+const selectedSemanticAnalysis = computed(() => {
+  if (!selectedRunResultRow.value) return null;
+  const resultId = selectedRunResultRow.value.result.id;
+  if (dataSource.value === "mock") {
+    return mockGeoDashboardSemanticAnalyses[resultId] ?? null;
+  }
+  return semanticAnalysisCache.value[resultId] ?? null;
+});
+const selectedEvidenceHighlights = computed<EvidenceHighlight[]>(() => {
+  if (!selectedRunResultRow.value || !selectedSemanticAnalysis.value) return [];
+  return buildEvidenceHighlights(
+    selectedRunResultRow.value.result.rawResponse,
+    selectedSemanticAnalysis.value.sentiments,
+  );
+});
+const selectedRawResponseHtml = computed(() => {
+  if (!selectedRunResultRow.value) return "";
+  const raw = selectedRunResultRow.value.result.rawResponse || selectedRunResultRow.value.result.error || "";
+  return highlightEvidenceInHtml(
+    renderSafeMarkdown(raw),
+    selectedEvidenceHighlights.value,
+  );
+});
 const sourceLabel = computed(() =>
   dataSource.value === "mock" ? "Mock Data" : "Live API",
 );
@@ -95,6 +169,20 @@ watch(selectedProjectId, () => {
   if (dataSource.value === "live" && selectedProjectId.value) {
     void loadLiveReport();
   }
+});
+
+watch([citationView, dataSource], () => {
+  citationPagination.page = 1;
+});
+
+watch([dataSource, selectedProjectId], () => {
+  runResultPagination.page = 1;
+  selectedRunResultRow.value = null;
+});
+
+watch(paginatedRunResultRows, (page) => {
+  if (dataSource.value !== "live") return;
+  void loadSemanticAnalysesForRows(page.items);
 });
 
 async function loadProjects(): Promise<void> {
@@ -130,13 +218,21 @@ async function loadLiveReport(): Promise<void> {
   }
   liveLoading.value = true;
   try {
-    liveReport.value = await api.geoAnalysis.dashboardReport(
-      selectedProjectId.value,
-      query,
-    );
+    const [report, queries, runResults] = await Promise.all([
+      api.geoAnalysis.dashboardReport(selectedProjectId.value, query),
+      api.geoAnalysis.queries(selectedProjectId.value),
+      api.geoAnalysis.runResults(selectedProjectId.value),
+    ]);
+    liveReport.value = report;
+    liveQueries.value = queries.items;
+    liveRunResults.value = runResults.items;
+    resetSemanticAnalysisState();
     lastLoadedAt.value = new Date().toISOString();
   } catch (caught) {
     liveReport.value = null;
+    liveQueries.value = [];
+    liveRunResults.value = [];
+    resetSemanticAnalysisState();
     liveError.value =
       caught instanceof ApiError ? caught.message : "無法載入 dashboard report。";
   } finally {
@@ -151,6 +247,139 @@ function dashboardQuery() {
 function refreshReport(): void {
   if (dataSource.value === "mock") return;
   void loadLiveReport();
+}
+
+async function openRunResult(row: GeoReportRunResultRow): Promise<void> {
+  selectedRunResultRow.value = row;
+  drilldownError.value = "";
+  if (dataSource.value === "mock" || row.result.id in semanticAnalysisCache.value) {
+    return;
+  }
+  drilldownLoading.value = true;
+  try {
+    semanticAnalysisErrors.value = omitRecordKey(
+      semanticAnalysisErrors.value,
+      row.result.id,
+    );
+    await loadSemanticAnalysis(row.result.id, "modal");
+  } catch (caught) {
+    drilldownError.value =
+      caught instanceof ApiError ? caught.message : "無法載入 semantic analysis。";
+  } finally {
+    drilldownLoading.value = false;
+  }
+}
+
+function closeRunResultModal(): void {
+  selectedRunResultRow.value = null;
+  drilldownError.value = "";
+}
+
+function nextPage(pagination: PaginationState, totalPages: number): void {
+  pagination.page = Math.min(totalPages, pagination.page + 1);
+}
+
+function previousPage(pagination: PaginationState): void {
+  pagination.page = Math.max(1, pagination.page - 1);
+}
+
+async function loadSemanticAnalysesForRows(rows: GeoReportRunResultRow[]): Promise<void> {
+  const missingRows = rows.filter((row) => {
+    return (
+      !(row.result.id in semanticAnalysisCache.value) &&
+      !semanticAnalysisLoadingIds.value.has(row.result.id)
+    );
+  });
+  if (missingRows.length === 0) return;
+  for (const row of missingRows) {
+    void loadSemanticAnalysis(row.result.id, "summary");
+  }
+}
+
+async function loadSemanticAnalysis(
+  resultId: string,
+  mode: "summary" | "modal",
+): Promise<void> {
+  semanticAnalysisLoadingIds.value = new Set([
+    ...semanticAnalysisLoadingIds.value,
+    resultId,
+  ]);
+  try {
+    const analysis = await api.geoAnalysis.runResultSemanticAnalysis(resultId);
+    semanticAnalysisCache.value = {
+      ...semanticAnalysisCache.value,
+      [resultId]: analysis,
+    };
+    semanticAnalysisErrors.value = omitRecordKey(
+      semanticAnalysisErrors.value,
+      resultId,
+    );
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.status === 404) {
+      semanticAnalysisCache.value = {
+        ...semanticAnalysisCache.value,
+        [resultId]: null,
+      };
+      semanticAnalysisErrors.value = omitRecordKey(
+        semanticAnalysisErrors.value,
+        resultId,
+      );
+      return;
+    }
+    semanticAnalysisErrors.value = {
+      ...semanticAnalysisErrors.value,
+      [resultId]:
+        caught instanceof ApiError ? caught.message : "無法載入 semantic analysis。",
+    };
+    if (mode === "modal") throw caught;
+  } finally {
+    const nextIds = new Set(semanticAnalysisLoadingIds.value);
+    nextIds.delete(resultId);
+    semanticAnalysisLoadingIds.value = nextIds;
+  }
+}
+
+function resetSemanticAnalysisState(): void {
+  semanticAnalysisLoadingIds.value = new Set();
+  semanticAnalysisCache.value = {};
+  semanticAnalysisErrors.value = {};
+}
+
+function omitRecordKey<T>(record: Record<string, T>, keyToOmit: string): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => key !== keyToOmit),
+  );
+}
+
+function rowSemanticAnalysis(
+  row: GeoReportRunResultRow,
+): GeoRunResultSemanticAnalysis | null | undefined {
+  if (dataSource.value === "mock") {
+    return mockGeoDashboardSemanticAnalyses[row.result.id] ?? null;
+  }
+  if (row.result.id in semanticAnalysisCache.value) {
+    return semanticAnalysisCache.value[row.result.id];
+  }
+  return undefined;
+}
+
+function rowSentimentSummary(row: GeoReportRunResultRow): string {
+  if (semanticAnalysisLoadingIds.value.has(row.result.id)) return "載入中";
+  if (semanticAnalysisErrors.value[row.result.id]) return "載入失敗";
+  const analysis = rowSemanticAnalysis(row);
+  if (analysis === undefined) return "待載入";
+  if (analysis === null) return "尚無分析";
+  if (analysis.status === "failed") {
+    return `分析失敗${analysis.errorCode ? `：${analysis.errorCode}` : ""}`;
+  }
+  const positiveCount = analysis.sentiments.filter(
+    (sentiment) => sentiment.sentiment === "positive",
+  ).length;
+  const negativeCount = analysis.sentiments.filter(
+    (sentiment) => sentiment.sentiment === "negative",
+  ).length;
+  if (positiveCount === 0 && negativeCount === 0) return "無正負面";
+  return `正面 ${positiveCount} / 負面 ${negativeCount}`;
 }
 
 function metricValue(metric: GeoDashboardMetricValue): string {
@@ -514,7 +743,7 @@ function badgeClass(value: string): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="citation in visibleCitationRows" :key="citation.value">
+                <tr v-for="citation in paginatedCitationRows.items" :key="citation.value">
                   <td>
                     <strong>{{ citation.label }}</strong>
                     <small>{{ citation.value }}</small>
@@ -528,6 +757,30 @@ function badgeClass(value: string): string {
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div class="report-pagination">
+            <span>
+              第 {{ paginatedCitationRows.page }} / {{ paginatedCitationRows.totalPages }} 頁，
+              共 {{ paginatedCitationRows.total }} 筆
+            </span>
+            <div>
+              <button
+                class="button button-secondary"
+                type="button"
+                :disabled="paginatedCitationRows.page <= 1"
+                @click="previousPage(citationPagination)"
+              >
+                上一頁
+              </button>
+              <button
+                class="button button-secondary"
+                type="button"
+                :disabled="paginatedCitationRows.page >= paginatedCitationRows.totalPages"
+                @click="nextPage(citationPagination, paginatedCitationRows.totalPages)"
+              >
+                下一頁
+              </button>
+            </div>
           </div>
         </article>
 
@@ -562,6 +815,160 @@ function badgeClass(value: string): string {
           </div>
         </article>
       </section>
+
+      <section class="card">
+        <header class="card-header">
+          <div>
+            <h2>Query 回答紀錄</h2>
+            <p>檢視報表區間內跑過的 query 與 provider，點擊後查看 raw response、citations 與情緒句標註。</p>
+          </div>
+        </header>
+        <div class="table-scroll">
+          <table class="data-table report-table">
+            <thead>
+              <tr>
+                <th>Query</th>
+                <th>Provider</th>
+                <th>情緒</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in paginatedRunResultRows.items"
+                :key="row.result.id"
+              >
+                <td>{{ row.queryText }}</td>
+                <td>{{ row.provider }}</td>
+                <td>
+                  <span class="report-row-sentiment">
+                    {{ rowSentimentSummary(row) }}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    class="button button-secondary button-small"
+                    type="button"
+                    @click="openRunResult(row)"
+                  >
+                    檢視
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="runResultRows.length === 0">
+                <td colspan="4">此區間沒有 query 回答紀錄。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="report-pagination">
+          <span>
+            第 {{ paginatedRunResultRows.page }} / {{ paginatedRunResultRows.totalPages }} 頁，
+            共 {{ paginatedRunResultRows.total }} 筆
+          </span>
+          <div>
+            <button
+              class="button button-secondary"
+              type="button"
+              :disabled="paginatedRunResultRows.page <= 1"
+              @click="previousPage(runResultPagination)"
+            >
+              上一頁
+            </button>
+            <button
+              class="button button-secondary"
+              type="button"
+              :disabled="paginatedRunResultRows.page >= paginatedRunResultRows.totalPages"
+              @click="nextPage(runResultPagination, paginatedRunResultRows.totalPages)"
+            >
+              下一頁
+            </button>
+          </div>
+        </div>
+      </section>
     </template>
+
+    <div
+      v-if="selectedRunResultRow"
+      class="modal-backdrop"
+      @click.self="closeRunResultModal"
+    >
+      <section class="modal report-run-result-modal" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <div>
+            <h2>{{ selectedRunResultRow.queryText }}</h2>
+          </div>
+          <button class="button button-secondary" type="button" @click="closeRunResultModal">
+            關閉
+          </button>
+        </header>
+        <div class="modal-body">
+          <dl class="report-detail-list">
+            <dt>Provider</dt>
+            <dd>{{ selectedRunResultRow.result.provider }}</dd>
+            <dt>Model</dt>
+            <dd>{{ selectedRunResultRow.result.model }}</dd>
+            <dt>Status</dt>
+            <dd>
+              <span :class="badgeClass(selectedRunResultRow.result.status)">
+                {{ selectedRunResultRow.result.status }}
+              </span>
+            </dd>
+            <dt>Run At</dt>
+            <dd>{{ formatDateTime(selectedRunResultRow.result.runAt) }}</dd>
+            <dt>Region / Language</dt>
+            <dd>{{ selectedRunResultRow.result.region }} / {{ selectedRunResultRow.result.language }}</dd>
+            <dt>Analysis</dt>
+            <dd>{{ selectedSemanticAnalysis?.status ?? selectedRunResultRow.result.analysisStatus ?? "尚無 semantic analysis" }}</dd>
+          </dl>
+
+          <section class="modal-section">
+            <h3>Raw Response</h3>
+            <div class="markdown-response" v-html="selectedRawResponseHtml"></div>
+          </section>
+
+          <section class="modal-section">
+            <h3>情緒句標註</h3>
+            <p v-if="drilldownLoading" class="empty-state compact-empty">載入 semantic analysis 中。</p>
+            <p v-else-if="drilldownError" class="empty-state compact-empty">{{ drilldownError }}</p>
+            <p v-else-if="!selectedSemanticAnalysis" class="empty-state compact-empty">尚無 semantic analysis。</p>
+            <ul v-else-if="selectedSemanticAnalysis.sentiments.length" class="sentiment-evidence-list">
+              <li
+                v-for="sentiment in selectedSemanticAnalysis.sentiments"
+                :key="`${sentiment.entityId}-${sentiment.sentiment}-${sentiment.statement}`"
+              >
+                <span :class="badgeClass(sentiment.sentiment)">
+                  {{ geoDashboardEnumLabel(sentiment.sentiment) }}
+                </span>
+                <strong>{{ sentiment.entityName }}</strong>
+                <span>{{ sentiment.statement }}</span>
+                <small>
+                  {{ sentiment.evidenceText && selectedRunResultRow.result.rawResponse.includes(sentiment.evidenceText)
+                    ? "已在原文標註"
+                    : "未在原文定位" }}
+                </small>
+              </li>
+            </ul>
+            <p v-else class="empty-state compact-empty">此 response 沒有正負面情緒句。</p>
+          </section>
+
+          <section class="modal-section">
+            <h3>Citations</h3>
+            <ol v-if="selectedRunResultRow.result.references.length" class="reference-list">
+              <li
+                v-for="reference in selectedRunResultRow.result.references"
+                :key="`${reference.position}-${reference.url}`"
+              >
+                <span>#{{ reference.position }}</span>
+                <a :href="reference.url" target="_blank" rel="noreferrer">
+                  {{ reference.title ?? reference.domain ?? reference.url }}
+                </a>
+              </li>
+            </ol>
+            <p v-else class="empty-state compact-empty">此 response 沒有 citations。</p>
+          </section>
+        </div>
+      </section>
+    </div>
   </section>
 </template>

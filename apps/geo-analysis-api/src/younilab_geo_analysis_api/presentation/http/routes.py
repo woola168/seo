@@ -35,6 +35,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     QueryResearchRunResponse,
     QueryResponse,
     RunResultResponse,
+    RunResultSemanticAnalysisResponse,
     ScheduleRequest,
     ScheduleResponse,
     TopicRequest,
@@ -896,6 +897,26 @@ async def get_run_result(request: Request, result_id: UUID) -> RunResultResponse
     if result is None:
         raise HTTPException(status_code=404, detail="run result not found")
     return RunResultResponse(**_run_result_data(result))
+
+
+@router.get(
+    "/run-results/{result_id}/semantic-analysis",
+    response_model=RunResultSemanticAnalysisResponse,
+)
+async def get_run_result_semantic_analysis(
+    request: Request,
+    result_id: UUID,
+) -> RunResultSemanticAnalysisResponse:
+    principal = await _principal(request, "geo.jobs.read")
+    analysis = await _jobs(request).get_run_result_semantic_analysis(
+        principal,
+        result_id,
+    )
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="semantic analysis not found")
+    return RunResultSemanticAnalysisResponse(
+        **analysis.model_dump(mode="json", by_alias=False)
+    )
 
 
 @router.post(

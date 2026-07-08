@@ -1,4 +1,10 @@
-import type { GeoDashboardReport, GeoProjectResource } from "../types";
+import type {
+  GeoAnalysisRunResult,
+  GeoDashboardReport,
+  GeoProjectResource,
+  GeoQueryResource,
+  GeoRunResultSemanticAnalysis,
+} from "../types";
 
 export const mockGeoDashboardReportProject: GeoProjectResource = {
   id: "11111111-2222-4333-8444-555555555555",
@@ -336,4 +342,172 @@ export const mockGeoDashboardReport: GeoDashboardReport = {
       },
     },
   ],
+};
+
+export const mockGeoDashboardQueries: GeoQueryResource[] = [
+  {
+    id: "query-family-hot-spring",
+    projectId: mockGeoDashboardReportProject.id,
+    topicId: "topic-family",
+    queryText: "北海岸親子溫泉住宿推薦有哪些？",
+    region: "TW",
+    language: "zh-TW",
+    marketType: "b2c",
+    intent: "commercial_investigation",
+    buyerStage: null,
+    isBranded: false,
+    priority: "normal",
+    status: "active",
+    metadata: {},
+    createdAt: "2026-06-01T00:00:00Z",
+    updatedAt: "2026-06-01T00:00:00Z",
+  },
+  {
+    id: "query-room-breakfast",
+    projectId: mockGeoDashboardReportProject.id,
+    topicId: "topic-room",
+    queryText: "金山溫泉飯店早餐與客房比較",
+    region: "TW",
+    language: "zh-TW",
+    marketType: "b2c",
+    intent: "commercial_investigation",
+    buyerStage: null,
+    isBranded: true,
+    priority: "normal",
+    status: "active",
+    metadata: {},
+    createdAt: "2026-06-02T00:00:00Z",
+    updatedAt: "2026-06-02T00:00:00Z",
+  },
+];
+
+export const mockGeoDashboardRunResults: GeoAnalysisRunResult[] = [
+  {
+    id: "result-family-hot-spring",
+    jobId: "job-family-hot-spring",
+    queryId: "query-family-hot-spring",
+    provider: "gemini",
+    surface: "Gemini",
+    model: "gemini-2.5-flash",
+    region: "TW",
+    language: "zh-TW",
+    status: "completed",
+    rawResponse:
+      "## 北海岸親子溫泉住宿推薦\n\n金山旅宿適合想要溫泉、早餐與親子活動一次完成的家庭。北海溫泉會館交通方便，但親子設施較少。\n\n建議優先比較：\n\n- 客房是否有獨立湯池\n- 早餐是否適合兒童\n- 是否提供停車與接駁",
+    references: [
+      {
+        url: "https://example.com/hot-spring-room",
+        title: "溫泉客房介紹",
+        domain: "example.com",
+        position: 1,
+      },
+      {
+        url: "https://travel.example.org/north-coast-family-hotel",
+        title: "北海岸親子飯店推薦",
+        domain: "travel.example.org",
+        position: 2,
+      },
+    ],
+    error: null,
+    runAt: "2026-06-15T09:30:00Z",
+    analysisStatus: "completed",
+    analysisErrorCode: null,
+    analysisErrorMessage: null,
+  },
+  {
+    id: "result-room-breakfast",
+    jobId: "job-room-breakfast",
+    queryId: "query-room-breakfast",
+    provider: "google_aio",
+    surface: "Google AI Overview",
+    model: "serpapi-google-ai-overview",
+    region: "TW",
+    language: "zh-TW",
+    status: "completed",
+    rawResponse:
+      "金山旅宿的早餐評價穩定，客房資訊完整，適合重視住宿透明度的旅客。不過尖峰時段房價偏高，預算型旅客可能會考慮其他選項。",
+    references: [
+      {
+        url: "https://example.com/breakfast",
+        title: "早餐與客房方案",
+        domain: "example.com",
+        position: 1,
+      },
+    ],
+    error: null,
+    runAt: "2026-06-20T11:00:00Z",
+    analysisStatus: "completed",
+    analysisErrorCode: null,
+    analysisErrorMessage: null,
+  },
+];
+
+export const mockGeoDashboardSemanticAnalyses: Record<
+  string,
+  GeoRunResultSemanticAnalysis
+> = {
+  "result-family-hot-spring": {
+    runResultId: "result-family-hot-spring",
+    analyzer: "mock",
+    analyzerVersion: "v1",
+    status: "completed",
+    entityMentions: [],
+    sentiments: [
+      {
+        entityId: "geo-entity-kinsan",
+        entityRole: "own_brand",
+        entityName: "金山旅宿",
+        sentiment: "positive",
+        theme: "親子住宿",
+        statement: "金山旅宿適合想要溫泉、早餐與親子活動一次完成的家庭。",
+        evidenceText: "金山旅宿適合想要溫泉、早餐與親子活動一次完成的家庭。",
+        confidence: 0.91,
+      },
+      {
+        entityId: "geo-entity-competitor-a",
+        entityRole: "competitor",
+        entityName: "北海溫泉會館",
+        sentiment: "negative",
+        theme: "親子設施",
+        statement: "北海溫泉會館親子設施較少。",
+        evidenceText: "北海溫泉會館交通方便，但親子設施較少。",
+        confidence: 0.82,
+      },
+    ],
+    semanticFacts: [],
+    errorCode: null,
+    errorMessage: null,
+  },
+  "result-room-breakfast": {
+    runResultId: "result-room-breakfast",
+    analyzer: "mock",
+    analyzerVersion: "v1",
+    status: "completed",
+    entityMentions: [],
+    sentiments: [
+      {
+        entityId: "geo-entity-kinsan",
+        entityRole: "own_brand",
+        entityName: "金山旅宿",
+        sentiment: "positive",
+        theme: "早餐評價",
+        statement: "金山旅宿的早餐評價穩定，客房資訊完整。",
+        evidenceText: "金山旅宿的早餐評價穩定，客房資訊完整",
+        confidence: 0.88,
+      },
+      {
+        entityId: "geo-entity-kinsan",
+        entityRole: "own_brand",
+        entityName: "金山旅宿",
+        sentiment: "negative",
+        theme: "房價",
+        statement: "尖峰時段房價偏高。",
+        evidenceText: "尖峰時段房價偏高",
+        confidence: 0.77,
+      },
+    ],
+    semanticFacts: [],
+    errorCode: null,
+    errorMessage: null,
+  },
 };

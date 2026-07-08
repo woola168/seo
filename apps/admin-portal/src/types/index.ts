@@ -510,6 +510,46 @@ export interface GeoAnalysisRunResult {
   analysisErrorMessage: string | null;
 }
 
+export interface GeoRunResultEntityMentionFact {
+  entityId: string;
+  entityRole: "own_brand" | "competitor";
+  entityName: string;
+  mentioned: boolean;
+  firstMentionOrder: number | null;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSentimentFact {
+  entityId: string;
+  entityRole: "own_brand" | "competitor";
+  entityName: string;
+  sentiment: "positive" | "negative";
+  theme: string;
+  statement: string;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSemanticFact {
+  factType: "product" | "service" | "topic" | "common_statement";
+  value: string;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSemanticAnalysis {
+  runResultId: string;
+  analyzer: string;
+  analyzerVersion: string | null;
+  status: "completed" | "failed";
+  entityMentions: GeoRunResultEntityMentionFact[];
+  sentiments: GeoRunResultSentimentFact[];
+  semanticFacts: GeoRunResultSemanticFact[];
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 export interface GeoKMindHubWorkspaceMapping {
   id: string;
   tenantId: string;

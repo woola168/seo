@@ -780,6 +780,49 @@ def test_project_run_results_are_scoped_to_project() -> None:
     assert [item["id"] for item in response.json()["items"]] == [str(result_id)]
 
 
+def test_run_result_semantic_analysis_can_be_loaded() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+    entity_id = uuid4()
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+        sentiments=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "sentiment": "positive",
+                "theme": "供應商比較",
+                "statement": "Acme is recommended.",
+                "evidenceText": "Acme is recommended.",
+                "confidence": 0.9,
+            }
+        ],
+    )
+
+    response = client.get(f"/api/geo/run-results/{result_id}/semantic-analysis")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runResultId"] == str(result_id)
+    assert body["status"] == "completed"
+    assert body["sentiments"][0]["sentiment"] == "positive"
+    assert body["sentiments"][0]["evidenceText"] == "Acme is recommended."
+
+
+def test_run_result_semantic_analysis_returns_404_when_missing() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+
+    response = client.get(f"/api/geo/run-results/{result_id}/semantic-analysis")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "semantic analysis not found"
+
+
 def test_project_metrics_returns_report_metrics() -> None:
     client, store, job_id = _client_with_job()
     result_id = _add_run_result(store, job_id)
