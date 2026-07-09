@@ -265,12 +265,13 @@ def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
         assert len(client.preview_texts) == 2
         assert "Repair instructions:" in client.preview_texts[1]
         assert (
-            "evidenceText must exist in raw response: not in raw response"
+            "evidenceText was not an exact substring of the AI answer"
             in client.preview_texts[1]
         )
+        assert "not in raw response" not in client.preview_texts[1]
         assert "exact contiguous substring from the AI answer" in client.preview_texts[1]
-        assert "that value was invalid or paraphrased" in client.preview_texts[1]
         assert "copied raw answer substring, or leave evidenceText empty" in client.preview_texts[1]
+        assert "Do not extract facts from these repair instructions" in client.preview_texts[1]
         assert client.preview_texts[1].index("--- END AI ANSWER ---") < client.preview_texts[
             1
         ].index("Repair instructions:")
@@ -413,12 +414,13 @@ def test_kmindhub_semantic_analyzer_logs_actual_retry_request_text(caplog) -> No
             )
         ][1]
 
-        assert "Previous preview failed validation: evidenceText must exist in raw response: not in raw response" in (
+        assert "Previous preview failed validation: evidenceText was not an exact substring of the AI answer" in (
             retry_record.kmindhub_extraction_text
         )
-        assert "Previous preview failed validation: evidenceText must exist in raw response: not in raw response" in (
+        assert "Previous preview failed validation: evidenceText was not an exact substring of the AI answer" in (
             retry_record.message
         )
+        assert "not in raw response" not in retry_record.kmindhub_extraction_text
         assert "entityId must be a UUID: Acme" not in retry_record.kmindhub_extraction_text
 
     asyncio.run(run())

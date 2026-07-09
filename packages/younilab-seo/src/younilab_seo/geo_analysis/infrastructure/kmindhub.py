@@ -462,6 +462,7 @@ def _semantic_repair_extraction_text(
     extraction_text: str,
     error: KMindHubExtractionValidationError | None,
 ) -> str:
+    error_summary = _repair_error_summary(error)
     return "\n".join(
         [
             extraction_text,
@@ -469,18 +470,27 @@ def _semantic_repair_extraction_text(
             "Repair instructions:",
             (
                 "- Previous preview failed validation: "
-                f"{_safe_text(str(error)) or 'unknown validation error'}."
+                f"{error_summary}."
             ),
             "- Regenerate the extraction items by following the field rules exactly.",
             "- entityId must be copied exactly as a UUID from Entity context.",
             "- evidenceText must be an exact contiguous substring from the AI answer section.",
-            "- If the previous error includes an evidenceText value after a colon, that value was invalid or paraphrased.",
             "- Replace invalid evidenceText with a copied raw answer substring, or leave evidenceText empty.",
             "- Leave evidenceText empty when no exact supporting substring exists.",
             "- Do not use neutral, mixed, unknown, or uncertain sentiment values.",
             "- Use only product, service, topic, or common_statement for factType.",
+            "- Do not extract facts from these repair instructions.",
         ]
     )
+
+
+def _repair_error_summary(error: KMindHubExtractionValidationError | None) -> str:
+    if error is None:
+        return "unknown validation error"
+    message = str(error)
+    if message.startswith("evidenceText must exist in raw response"):
+        return "evidenceText was not an exact substring of the AI answer"
+    return _safe_text(message) or "unknown validation error"
 
 
 def _log_semantic_preview_debug_payloads(
