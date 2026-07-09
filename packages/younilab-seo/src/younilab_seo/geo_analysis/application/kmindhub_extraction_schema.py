@@ -15,7 +15,7 @@ SEMANTIC_FACT_TYPE_VALUES = frozenset(
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
 SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
-SEMANTIC_ANALYSIS_SCHEMA_VERSION = 2
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 3
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -125,7 +125,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
     return KMindHubExtractionTaskDefinition(
         task_key=SEMANTIC_ANALYSIS_TASK_KEY,
         schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
-        name="GEO semantic analysis v2",
+        name="GEO semantic analysis v3",
         task=(
             "Extract entity mentions, statement sentiment, and semantic labels "
             "from one AI answer using the supplied entity context. Copy entity "
@@ -253,15 +253,6 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 ),
                 "Acme ERP",
                 10,
-            ),
-            _field(
-                "confidence",
-                "Confidence",
-                "Confidence score between 0 and 1.",
-                "Use a decimal number between 0 and 1.",
-                "0.9",
-                11,
-                field_type="float",
             ),
         ],
     )

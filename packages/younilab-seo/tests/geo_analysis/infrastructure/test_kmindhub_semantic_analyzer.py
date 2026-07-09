@@ -128,7 +128,7 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
 
         assert result.status == "completed"
         assert result.analyzer == "kmindhub"
-        assert result.analyzer_version == "geo_semantic_analysis:v2"
+        assert result.analyzer_version == "geo_semantic_analysis:v3"
         assert result.entity_mentions[0].entity_id == OWN_BRAND_ID
         assert result.entity_mentions[0].first_mention_order == 1
         assert result.sentiments[0].sentiment == "positive"
@@ -144,8 +144,9 @@ def test_kmindhub_semantic_task_definition_uses_strict_v2_instructions() -> None
     definition = geo_semantic_analysis_task_definition()
     fields = {field.name: field for field in definition.fields}
 
-    assert definition.schema_version == 2
-    assert definition.name == "GEO semantic analysis v2"
+    assert definition.schema_version == 3
+    assert definition.name == "GEO semantic analysis v3"
+    assert "confidence" not in fields
     assert "Copy the exact UUID from Entity context" in fields[
         "entityId"
     ].normalization["instruction"]
@@ -218,6 +219,26 @@ def test_kmindhub_semantic_analyzer_repairs_evidence_text_from_exact_excerpt() -
             client.committed_items[0]["fields"]["evidenceText"]["value"]
             == "Acme ERP"
         )
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_ignores_preview_confidence_field() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["confidence"] = KMindHubExtractionFieldValue(value="missing-evidence")
+        client = FakeKMindHubClient(preview_items=[item])
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(_command())
+
+        assert result.status == "completed"
+        assert result.entity_mentions[0].confidence is None
+        assert result.sentiments[0].confidence is None
+        assert result.semantic_facts[0].confidence is None
 
     asyncio.run(run())
 
@@ -452,7 +473,6 @@ def test_kmindhub_semantic_analyzer_rejects_failed_preview_verification() -> Non
         ("entityRole", "other"),
         ("sentiment", "neutral"),
         ("factType", "brand"),
-        ("confidence", "1.5"),
     ],
 )
 def test_kmindhub_semantic_analyzer_rejects_invalid_preview_values(
@@ -692,7 +712,6 @@ def _complete_item() -> KMindHubExtractionPreviewItem:
             "factType": KMindHubExtractionFieldValue(value="product"),
             "value": KMindHubExtractionFieldValue(value="ERP"),
             "evidenceText": KMindHubExtractionFieldValue(value="Acme ERP"),
-            "confidence": KMindHubExtractionFieldValue(value="0.9"),
         },
         verification={"passed": True},
     )

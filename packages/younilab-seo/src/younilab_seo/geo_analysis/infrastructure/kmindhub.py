@@ -262,7 +262,6 @@ def _mention_from_item(
         mentioned=_bool_value(fields, "mentioned"),
         first_mention_order=_int_value(fields, "firstMentionOrder"),
         evidence_text=_validated_evidence(fields, raw_response),
-        confidence=_float_value(fields, "confidence"),
     )
 
 
@@ -289,7 +288,6 @@ def _sentiment_from_item(
         theme=_string_value(fields, "theme"),
         statement=_string_value(fields, "statement"),
         evidence_text=_validated_evidence(fields, raw_response),
-        confidence=_float_value(fields, "confidence"),
     )
 
 
@@ -304,7 +302,6 @@ def _semantic_fact_from_item(
         fact_type=_string_value(fields, "factType"),
         value=_string_value(fields, "value"),
         evidence_text=_validated_evidence(fields, raw_response),
-        confidence=_float_value(fields, "confidence"),
     )
 
 
@@ -359,19 +356,6 @@ def _int_value(
         return int(value)
     except (TypeError, ValueError) as exc:
         raise KMindHubExtractionValidationError(f"{name} must be an integer") from exc
-
-
-def _float_value(
-    fields: dict[str, KMindHubExtractionFieldValue],
-    name: str,
-) -> float | None:
-    value = _string_value(fields, name)
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError) as exc:
-        raise KMindHubExtractionValidationError(f"{name} must be a number") from exc
 
 
 def _validated_evidence(
