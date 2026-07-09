@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import asyncio
 import logging
 import re
 import unicodedata
@@ -39,6 +40,7 @@ SEMANTIC_ANALYZER_VERSION = (
 )
 logger = logging.getLogger(__name__)
 SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT = 1
+KMINDHUB_PREVIEW_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 @dataclass(frozen=True)
@@ -476,6 +478,8 @@ class HttpKMindHubWorkspaceClient:
 
     base_url: str
     timeout_seconds: float = 30.0
+    preview_retry_attempts: int = 2
+    preview_retry_delay_seconds: float = 0.5
     _client: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
 
     async def create_workspace(self, display_name: str) -> UUID:
@@ -531,33 +535,81 @@ class HttpKMindHubWorkspaceClient:
         task_id: UUID,
         text: str,
     ) -> KMindHubExtractionPreviewResult:
-        try:
-            response = await self._get_client().post(
-                "/extractions",
-                headers=self.workspace_headers(workspace_id),
-                data={"taskId": str(task_id), "text": text},
+        response: httpx.Response | None = None
+        last_error: Exception | None = None
+        max_attempts = max(1, self.preview_retry_attempts + 1)
+        for attempt in range(max_attempts):
+            try:
+                response = await self._get_client().post(
+                    "/extractions",
+                    headers=self.workspace_headers(workspace_id),
+                    data={"taskId": str(task_id), "text": text},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                return KMindHubExtractionPreviewResult(
+                    task_id=UUID(str(payload.get("taskId", task_id))),
+                    items=[
+                        KMindHubExtractionPreviewItem(
+                            fields={
+                                name: KMindHubExtractionFieldValue(**value)
+                                for name, value in item.get("fields", {}).items()
+                            },
+                            verification=item.get("verification", {}),
+                            display_fields=item.get("displayFields", []),
+                            candidates=item.get("candidates", []),
+                        )
+                        for item in payload.get("items", [])
+                    ],
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                last_error = exc
+                break
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if isinstance(exc, httpx.HTTPStatusError):
+                    response = exc.response
+                if (
+                    not _should_retry_preview(exc)
+                    or attempt >= max_attempts - 1
+                ):
+                    break
+                logger.warning(
+                    "Retrying KMindHub extraction preview after transient failure",
+                    extra={
+                        "workspace_id": str(workspace_id),
+                        "task_id": str(task_id),
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "status_code": (
+                            response.status_code if response is not None else None
+                        ),
+                        "exception_type": exc.__class__.__name__,
+                    },
+                )
+                await asyncio.sleep(self.preview_retry_delay_seconds * (2**attempt))
+
+        logger.error(
+            "KMindHub extraction preview failed",
+            extra={
+                "workspace_id": str(workspace_id),
+                "task_id": str(task_id),
+                "status_code": response.status_code if response is not None else None,
+                "response_body": _response_excerpt(response),
+                "exception_type": (
+                    last_error.__class__.__name__ if last_error is not None else None
+                ),
+            },
+            exc_info=last_error,
+        )
+        raise KMindHubExtractionUnavailable(
+            "KMindHub extraction preview is unavailable"
+            + (
+                f": {last_error.__class__.__name__}"
+                if last_error is not None
+                else ""
             )
-            response.raise_for_status()
-            payload = response.json()
-            return KMindHubExtractionPreviewResult(
-                task_id=UUID(str(payload.get("taskId", task_id))),
-                items=[
-                    KMindHubExtractionPreviewItem(
-                        fields={
-                            name: KMindHubExtractionFieldValue(**value)
-                            for name, value in item.get("fields", {}).items()
-                        },
-                        verification=item.get("verification", {}),
-                        display_fields=item.get("displayFields", []),
-                        candidates=item.get("candidates", []),
-                    )
-                    for item in payload.get("items", [])
-                ],
-            )
-        except (KeyError, ValueError, TypeError, httpx.HTTPError) as exc:
-            raise KMindHubExtractionUnavailable(
-                "KMindHub extraction preview is unavailable"
-            ) from exc
+        ) from last_error
 
     async def commit_extraction_items(
         self,
@@ -662,6 +714,12 @@ def _item_field_names(items: list[dict]) -> list[list[str]]:
         fields = item.get("fields") if isinstance(item, dict) else None
         names.append(sorted(fields) if isinstance(fields, dict) else [])
     return names
+
+
+def _should_retry_preview(exc: httpx.HTTPError) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in KMINDHUB_PREVIEW_RETRY_STATUS_CODES
+    return isinstance(exc, (httpx.TimeoutException, httpx.NetworkError))
 
 
 def _response_excerpt(response: httpx.Response | None, limit: int = 500) -> str | None:

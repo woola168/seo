@@ -138,6 +138,127 @@ def test_kmindhub_client_runs_extraction_preview_and_commit() -> None:
     asyncio.run(run())
 
 
+def test_kmindhub_client_retries_transient_preview_http_error() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+        attempts = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            if request.url.path == "/extractions":
+                attempts += 1
+                if attempts == 1:
+                    return httpx.Response(502, json={"detail": "bad gateway"})
+                return httpx.Response(
+                    200,
+                    json={
+                        "taskId": str(task_id),
+                        "items": [
+                            {
+                                "fields": {"summary": {"value": "Acme is good"}},
+                                "verification": {"passed": True},
+                            }
+                        ],
+                    },
+                )
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient(
+            "https://kmindhub.test",
+            preview_retry_delay_seconds=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        preview = await client.preview_text_extraction(
+            workspace_id=workspace_id,
+            task_id=task_id,
+            text="Acme is good",
+        )
+
+        assert attempts == 2
+        assert preview.items[0].fields["summary"].value == "Acme is good"
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_does_not_retry_non_transient_preview_http_error() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+        attempts = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            if request.url.path == "/extractions":
+                attempts += 1
+                return httpx.Response(400, json={"detail": "bad request"})
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient(
+            "https://kmindhub.test",
+            preview_retry_delay_seconds=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with pytest.raises(KMindHubExtractionUnavailable, match="HTTPStatusError"):
+            await client.preview_text_extraction(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                text="Acme is good",
+            )
+
+        assert attempts == 1
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_does_not_retry_preview_parsing_error() -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+        attempts = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            if request.url.path == "/extractions":
+                attempts += 1
+                return httpx.Response(200, content=b"not-json")
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient(
+            "https://kmindhub.test",
+            preview_retry_delay_seconds=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with pytest.raises(KMindHubExtractionUnavailable, match="JSONDecodeError"):
+            await client.preview_text_extraction(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                text="Acme is good",
+            )
+
+        assert attempts == 1
+
+        await client.close()
+
+    asyncio.run(run())
+
+
 def test_kmindhub_client_parses_reference_commit_response_shape() -> None:
     async def run() -> None:
         workspace_id = uuid4()
