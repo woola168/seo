@@ -228,20 +228,28 @@ def test_kmindhub_client_logs_full_preview_payloads_when_debug_enabled(caplog) -
         request_record = next(
             record
             for record in caplog.records
-            if record.message == "KMindHub extraction preview request payload"
+            if record.message.startswith(
+                "KMindHub extraction preview request payload: "
+            )
         )
         response_record = next(
             record
             for record in caplog.records
-            if record.message == "KMindHub extraction preview response payload"
+            if record.message.startswith(
+                "KMindHub extraction preview response payload: "
+            )
         )
 
         assert request_record.kmindhub_request_data == {
             "taskId": str(task_id),
             "text": "Acme is good",
         }
+        assert '"requestData":' in request_record.message
+        assert '"text": "Acme is good"' in request_record.message
         assert '"summary"' in response_record.kmindhub_response_body
         assert "Acme is good" in response_record.kmindhub_response_body
+        assert '"responseBody":' in response_record.message
+        assert "Acme is good" in response_record.message
 
         await client.close()
 
@@ -282,11 +290,22 @@ def test_kmindhub_client_logs_full_preview_http_error_payload_when_debug_enabled
         response_record = next(
             record
             for record in caplog.records
-            if record.message == "KMindHub extraction preview response payload"
+            if record.message.startswith(
+                "KMindHub extraction preview response payload: "
+            )
         )
 
         assert response_record.status_code == 502
         assert "preview upstream failed" in response_record.kmindhub_response_body
+        assert '"statusCode": 502' in response_record.message
+        assert "preview upstream failed" in response_record.message
+        failure_record = next(
+            record
+            for record in caplog.records
+            if record.message.startswith("KMindHub extraction preview failed: ")
+        )
+        assert '"statusCode": 502' in failure_record.message
+        assert "preview upstream failed" in failure_record.message
 
         await client.close()
 

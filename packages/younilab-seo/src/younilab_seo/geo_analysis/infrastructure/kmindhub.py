@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import asyncio
+import json
 import logging
 import re
 import unicodedata
@@ -473,8 +474,20 @@ def _log_semantic_preview_debug_payloads(
     preview: KMindHubExtractionPreviewResult,
     error: KMindHubExtractionValidationError,
 ) -> None:
+    payload = {
+        "runResultId": str(command.run_result_id),
+        "workspaceId": str(workspace_id),
+        "taskId": str(task_id),
+        "attempt": attempt,
+        "error": str(error),
+        "kmindhubExtractionText": extraction_text,
+        "kmindhubPreviewItems": [
+            item.model_dump(mode="json", by_alias=True) for item in preview.items
+        ],
+    }
     logger.warning(
-        "KMindHub semantic preview validation debug payloads",
+        "KMindHub semantic preview validation debug payloads: %s",
+        _debug_payload(payload),
         extra={
             "run_result_id": str(command.run_result_id),
             "workspace_id": str(workspace_id),
@@ -482,9 +495,7 @@ def _log_semantic_preview_debug_payloads(
             "attempt": attempt,
             "error": str(error),
             "kmindhub_extraction_text": extraction_text,
-            "kmindhub_preview_items": [
-                item.model_dump(mode="json", by_alias=True) for item in preview.items
-            ],
+            "kmindhub_preview_items": payload["kmindhubPreviewItems"],
         },
     )
 
@@ -508,6 +519,10 @@ def _safe_text(value: str | None, limit: int = 120) -> str | None:
 
 def _safe_dict(value: dict, limit: int = 120) -> dict:
     return {str(key): _safe_text(str(item), limit) for key, item in value.items()}
+
+
+def _debug_payload(payload: object) -> str:
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 @dataclass
@@ -581,8 +596,15 @@ class HttpKMindHubWorkspaceClient:
             try:
                 request_data = {"taskId": str(task_id), "text": text}
                 if self.debug_payloads:
+                    log_payload = {
+                        "workspaceId": str(workspace_id),
+                        "taskId": str(task_id),
+                        "attempt": attempt + 1,
+                        "requestData": request_data,
+                    }
                     logger.info(
-                        "KMindHub extraction preview request payload",
+                        "KMindHub extraction preview request payload: %s",
+                        _debug_payload(log_payload),
                         extra={
                             "workspace_id": str(workspace_id),
                             "task_id": str(task_id),
@@ -596,8 +618,16 @@ class HttpKMindHubWorkspaceClient:
                     data=request_data,
                 )
                 if self.debug_payloads:
+                    log_payload = {
+                        "workspaceId": str(workspace_id),
+                        "taskId": str(task_id),
+                        "attempt": attempt + 1,
+                        "statusCode": response.status_code,
+                        "responseBody": response.text,
+                    }
                     logger.info(
-                        "KMindHub extraction preview response payload",
+                        "KMindHub extraction preview response payload: %s",
+                        _debug_payload(log_payload),
                         extra={
                             "workspace_id": str(workspace_id),
                             "task_id": str(task_id),
@@ -650,16 +680,24 @@ class HttpKMindHubWorkspaceClient:
                 )
                 await asyncio.sleep(self.preview_retry_delay_seconds * (2**attempt))
 
+        failure_payload = {
+            "workspaceId": str(workspace_id),
+            "taskId": str(task_id),
+            "statusCode": response.status_code if response is not None else None,
+            "responseBody": _response_excerpt(response),
+            "exceptionType": (
+                last_error.__class__.__name__ if last_error is not None else None
+            ),
+        }
         logger.error(
-            "KMindHub extraction preview failed",
+            "KMindHub extraction preview failed: %s",
+            _debug_payload(failure_payload),
             extra={
                 "workspace_id": str(workspace_id),
                 "task_id": str(task_id),
-                "status_code": response.status_code if response is not None else None,
-                "response_body": _response_excerpt(response),
-                "exception_type": (
-                    last_error.__class__.__name__ if last_error is not None else None
-                ),
+                "status_code": failure_payload["statusCode"],
+                "response_body": failure_payload["responseBody"],
+                "exception_type": failure_payload["exceptionType"],
             },
             exc_info=last_error,
         )

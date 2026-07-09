@@ -294,13 +294,20 @@ def test_kmindhub_semantic_analyzer_logs_validation_debug_payloads(caplog) -> No
         record = next(
             item
             for item in caplog.records
-            if item.message == "KMindHub semantic preview validation debug payloads"
+            if item.message.startswith(
+                "KMindHub semantic preview validation debug payloads: "
+            )
         )
 
         assert record.run_result_id == str(RUN_RESULT_ID)
         assert record.error == "evidenceText must exist in raw response"
         assert "AI answer:" in record.kmindhub_extraction_text
         assert "Acme ERP" in record.kmindhub_extraction_text
+        assert '"kmindhubExtractionText":' in record.message
+        assert "AI answer:" in record.message
+        assert "Acme ERP" in record.message
+        assert '"kmindhubPreviewItems":' in record.message
+        assert "not in raw response" in record.message
         assert (
             record.kmindhub_preview_items[0]["fields"]["evidenceText"]["value"]
             == "not in raw response"
@@ -336,11 +343,16 @@ def test_kmindhub_semantic_analyzer_logs_actual_retry_request_text(caplog) -> No
         retry_record = [
             item
             for item in caplog.records
-            if item.message == "KMindHub semantic preview validation debug payloads"
+            if item.message.startswith(
+                "KMindHub semantic preview validation debug payloads: "
+            )
         ][1]
 
         assert "Previous preview failed validation: evidenceText must exist in raw response" in (
             retry_record.kmindhub_extraction_text
+        )
+        assert "Previous preview failed validation: evidenceText must exist in raw response" in (
+            retry_record.message
         )
         assert "entityId must be a UUID: Acme" not in retry_record.kmindhub_extraction_text
 
