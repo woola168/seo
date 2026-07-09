@@ -38,6 +38,7 @@ SEMANTIC_ANALYZER_VERSION = (
     f"{SEMANTIC_ANALYSIS_TASK_KEY}:v{SEMANTIC_ANALYSIS_SCHEMA_VERSION}"
 )
 logger = logging.getLogger(__name__)
+SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT = 1
 
 
 @dataclass(frozen=True)
@@ -56,12 +57,11 @@ class KMindHubGeoRunResultAnalyzer:
             command.tenant_id
         )
         task_id = await self._ensure_task(command.tenant_id, workspace_id)
-        preview = await self.client.preview_text_extraction(
+        preview, facts = await self._preview_validated_facts(
+            command=command,
             workspace_id=workspace_id,
             task_id=task_id,
-            text=_semantic_extraction_text(command),
         )
-        facts = _facts_from_preview(command, preview.items, workspace_id, task_id)
         await self.client.commit_extraction_items(
             workspace_id=workspace_id,
             task_id=task_id,
@@ -77,6 +77,58 @@ class KMindHubGeoRunResultAnalyzer:
             ],
         )
         return facts
+
+    async def _preview_validated_facts(
+        self,
+        *,
+        command: AnalyzeGeoRunResultCommand,
+        workspace_id: UUID,
+        task_id: UUID,
+    ) -> tuple[KMindHubExtractionPreviewResult, GeoRunResultAnalysis]:
+        extraction_text = _semantic_extraction_text(command)
+        last_error: KMindHubExtractionValidationError | None = None
+
+        for attempt in range(SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT + 1):
+            preview = await self.client.preview_text_extraction(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                text=(
+                    extraction_text
+                    if attempt == 0
+                    else _semantic_repair_extraction_text(
+                        extraction_text,
+                        last_error,
+                    )
+                ),
+            )
+            try:
+                facts = _facts_from_preview(
+                    command,
+                    preview.items,
+                    workspace_id,
+                    task_id,
+                )
+            except KMindHubExtractionValidationError as exc:
+                last_error = exc
+                if attempt >= SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT:
+                    raise
+                logger.info(
+                    "Retrying KMindHub semantic preview after validation failure",
+                    extra={
+                        "run_result_id": str(command.run_result_id),
+                        "workspace_id": str(workspace_id),
+                        "task_id": str(task_id),
+                        "attempt": attempt + 1,
+                        "max_attempts": SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT + 1,
+                        "error": _safe_text(str(exc)),
+                    },
+                )
+                continue
+            return preview, facts
+
+        raise last_error or KMindHubExtractionValidationError(
+            "KMindHub preview validation failed"
+        )
 
     async def _ensure_task(self, tenant_id: UUID, workspace_id: UUID) -> UUID:
         current = await self.repository.get_kmindhub_extraction_task_mapping(
@@ -367,7 +419,32 @@ def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
             *entity_lines,
             "",
             "AI answer:",
+            "--- BEGIN AI ANSWER ---",
             command.raw_response,
+            "--- END AI ANSWER ---",
+        ]
+    )
+
+
+def _semantic_repair_extraction_text(
+    extraction_text: str,
+    error: KMindHubExtractionValidationError | None,
+) -> str:
+    return "\n".join(
+        [
+            extraction_text,
+            "",
+            "Repair instructions:",
+            (
+                "- Previous preview failed validation: "
+                f"{_safe_text(str(error)) or 'unknown validation error'}."
+            ),
+            "- Regenerate the extraction items by following the field rules exactly.",
+            "- entityId must be copied exactly as a UUID from Entity context.",
+            "- evidenceText must be an exact contiguous substring from the AI answer section.",
+            "- Leave evidenceText empty when no exact supporting substring exists.",
+            "- Do not use neutral, mixed, unknown, or uncertain sentiment values.",
+            "- Use only product, service, topic, or common_statement for factType.",
         ]
     )
 

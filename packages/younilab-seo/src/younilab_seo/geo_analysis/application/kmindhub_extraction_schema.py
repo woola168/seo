@@ -15,7 +15,7 @@ SEMANTIC_FACT_TYPE_VALUES = frozenset(
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
 SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
-SEMANTIC_ANALYSIS_SCHEMA_VERSION = 1
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 2
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -125,10 +125,12 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
     return KMindHubExtractionTaskDefinition(
         task_key=SEMANTIC_ANALYSIS_TASK_KEY,
         schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
-        name="GEO semantic analysis v1",
+        name="GEO semantic analysis v2",
         task=(
             "Extract entity mentions, statement sentiment, and semantic labels "
-            "from one AI answer using the supplied entity context."
+            "from one AI answer using the supplied entity context. Copy entity "
+            "UUIDs exactly from Entity context and copy evidenceText only from "
+            "exact text in the AI answer."
         ),
         description=(
             "只輸出 GEO semantic facts，不處理 citations、dashboard metrics 或 URL normalization。"
@@ -138,7 +140,12 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "entityId",
                 "Entity ID",
                 "Tracked entity UUID for mention or sentiment facts.",
-                "Use the entity id from the provided own brand or competitor context.",
+                (
+                    "Copy the exact UUID from Entity context for the matching own "
+                    "brand or competitor. Do not use the entity name, website, or "
+                    "an invented id. If no listed entity matches, do not emit an "
+                    "entity fact."
+                ),
                 "00000000-0000-4000-8000-000000000001",
                 0,
             ),
@@ -180,7 +187,11 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "sentiment",
                 "Sentiment",
                 "Statement-level sentiment for the tracked entity.",
-                _enum_instruction(SEMANTIC_SENTIMENT_VALUES),
+                (
+                    _enum_instruction(SEMANTIC_SENTIMENT_VALUES)
+                    + " Do not emit a sentiment fact for neutral, mixed, unknown, "
+                    "or uncertain statements."
+                ),
                 "positive",
                 5,
             ),
@@ -196,7 +207,11 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "statement",
                 "Statement",
                 "A sentiment-bearing statement from the answer.",
-                "Copy the statement from the answer or summarize only when needed.",
+                (
+                    "Prefer copying one complete sentence from the AI answer. If "
+                    "you summarize only when needed, evidenceText must still be "
+                    "an exact substring copied from the AI answer."
+                ),
                 "Acme ERP is suitable for manufacturers.",
                 7,
             ),
@@ -204,7 +219,11 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "factType",
                 "Semantic fact type",
                 "Semantic label category.",
-                _enum_instruction(SEMANTIC_FACT_TYPE_VALUES),
+                (
+                    _enum_instruction(SEMANTIC_FACT_TYPE_VALUES)
+                    + " Do not use brand, company, sentiment, citation, or other "
+                    "unsupported categories."
+                ),
                 "product",
                 8,
             ),
@@ -220,7 +239,14 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "evidenceText",
                 "Evidence text",
                 "Exact supporting text from the raw answer.",
-                "Use text that exists in the raw answer.",
+                (
+                    "Use an exact contiguous substring copied from the AI answer "
+                    "section only. Do not paraphrase, summarize, translate, "
+                    "normalize, or combine multiple spans. Do not copy text from "
+                    "Instructions, Query context, Topic context, or Entity context. "
+                    "If no exact supporting substring exists in the AI answer, "
+                    "leave evidenceText empty."
+                ),
                 "Acme ERP",
                 10,
             ),
