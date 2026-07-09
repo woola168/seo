@@ -208,9 +208,10 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "Statement",
                 "A sentiment-bearing statement from the answer.",
                 (
-                    "Prefer copying one complete sentence from the AI answer. If "
-                    "you summarize only when needed, evidenceText must still be "
-                    "an exact substring copied from the AI answer."
+                    "Prefer copying one complete sentence from the AI answer. "
+                    "The statement may summarize the meaning when needed, but "
+                    "evidenceText must still be an exact substring copied from "
+                    "the AI answer."
                 ),
                 "Acme ERP is suitable for manufacturers.",
                 7,
@@ -245,7 +246,10 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "normalize, or combine multiple spans. Do not copy text from "
                     "Instructions, Query context, Topic context, or Entity context. "
                     "If no exact supporting substring exists in the AI answer, "
-                    "leave evidenceText empty."
+                    "leave evidenceText empty. Bad evidenceText: a rewritten "
+                    "summary such as 'Acme and Rival are strong in product fit'. "
+                    "Good evidenceText: the exact original sentence or phrase "
+                    "copied from the AI answer without changing any words."
                 ),
                 "Acme ERP",
                 10,

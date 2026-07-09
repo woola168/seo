@@ -378,14 +378,47 @@ def _validated_evidence(
     fields: dict[str, KMindHubExtractionFieldValue],
     raw_response: str,
 ) -> str | None:
+    field = fields.get("evidenceText")
     evidence = _string_value(fields, "evidenceText")
     if evidence is None:
         return None
-    if _normalize_evidence(evidence) not in _normalize_evidence(raw_response):
-        raise KMindHubExtractionValidationError(
-            "evidenceText must exist in raw response"
-        )
-    return evidence
+    if _evidence_exists_in_raw_response(evidence, raw_response):
+        return evidence
+
+    repaired = _repair_evidence_from_excerpts(field, raw_response)
+    if repaired is not None and field is not None:
+        fields["evidenceText"] = field.model_copy(update={"value": repaired})
+        return repaired
+
+    raise KMindHubExtractionValidationError(
+        f"evidenceText must exist in raw response: {_safe_text(evidence)}"
+    )
+
+
+def _repair_evidence_from_excerpts(
+    field: KMindHubExtractionFieldValue | None,
+    raw_response: str,
+) -> str | None:
+    if field is None:
+        return None
+    for evidence_item in field.evidence:
+        if not isinstance(evidence_item, dict):
+            continue
+        excerpt = evidence_item.get("excerpt")
+        if not isinstance(excerpt, str):
+            continue
+        excerpt = excerpt.strip()
+        if not excerpt:
+            continue
+        if _evidence_exists_in_raw_response(excerpt, raw_response):
+            return excerpt
+    return None
+
+
+def _evidence_exists_in_raw_response(evidence: str, raw_response: str) -> bool:
+    if not evidence:
+        return False
+    return _normalize_evidence(evidence) in _normalize_evidence(raw_response)
 
 
 def _normalize_evidence(value: str) -> str:
@@ -457,6 +490,8 @@ def _semantic_repair_extraction_text(
             "- Regenerate the extraction items by following the field rules exactly.",
             "- entityId must be copied exactly as a UUID from Entity context.",
             "- evidenceText must be an exact contiguous substring from the AI answer section.",
+            "- If the previous error includes an evidenceText value after a colon, that value was invalid or paraphrased.",
+            "- Replace invalid evidenceText with a copied raw answer substring, or leave evidenceText empty.",
             "- Leave evidenceText empty when no exact supporting substring exists.",
             "- Do not use neutral, mixed, unknown, or uncertain sentiment values.",
             "- Use only product, service, topic, or common_statement for factType.",

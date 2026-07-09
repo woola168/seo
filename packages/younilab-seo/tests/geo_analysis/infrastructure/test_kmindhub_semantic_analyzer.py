@@ -152,6 +152,11 @@ def test_kmindhub_semantic_task_definition_uses_strict_v2_instructions() -> None
     assert "exact contiguous substring copied from the AI answer" in fields[
         "evidenceText"
     ].normalization["instruction"]
+    assert "Do not paraphrase" in fields["evidenceText"].normalization[
+        "instruction"
+    ]
+    assert "Bad evidenceText" in fields["evidenceText"].normalization["instruction"]
+    assert "Good evidenceText" in fields["evidenceText"].normalization["instruction"]
     assert "leave evidenceText empty" in fields["evidenceText"].normalization[
         "instruction"
     ]
@@ -183,6 +188,40 @@ def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
     asyncio.run(run())
 
 
+def test_kmindhub_semantic_analyzer_repairs_evidence_text_from_exact_excerpt() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme is a strong ERP option.",
+            evidence=[
+                {
+                    "excerpt": "Acme ERP",
+                    "source": {"sourceId": "inline-text", "mediaType": "text"},
+                }
+            ],
+        )
+        client = FakeKMindHubClient(preview_items=[item])
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(_command())
+
+        assert result.status == "completed"
+        assert len(client.preview_texts) == 1
+        assert result.entity_mentions[0].evidence_text == "Acme ERP"
+        assert result.sentiments[0].evidence_text == "Acme ERP"
+        assert result.semantic_facts[0].evidence_text == "Acme ERP"
+        assert client.committed_items is not None
+        assert (
+            client.committed_items[0]["fields"]["evidenceText"]["value"]
+            == "Acme ERP"
+        )
+
+    asyncio.run(run())
+
+
 def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
     async def run() -> None:
         invalid_item = _complete_item()
@@ -204,8 +243,13 @@ def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
         assert result.status == "completed"
         assert len(client.preview_texts) == 2
         assert "Repair instructions:" in client.preview_texts[1]
-        assert "evidenceText must exist in raw response" in client.preview_texts[1]
+        assert (
+            "evidenceText must exist in raw response: not in raw response"
+            in client.preview_texts[1]
+        )
         assert "exact contiguous substring from the AI answer" in client.preview_texts[1]
+        assert "that value was invalid or paraphrased" in client.preview_texts[1]
+        assert "copied raw answer substring, or leave evidenceText empty" in client.preview_texts[1]
         assert client.preview_texts[1].index("--- END AI ANSWER ---") < client.preview_texts[
             1
         ].index("Repair instructions:")
@@ -300,7 +344,7 @@ def test_kmindhub_semantic_analyzer_logs_validation_debug_payloads(caplog) -> No
         )
 
         assert record.run_result_id == str(RUN_RESULT_ID)
-        assert record.error == "evidenceText must exist in raw response"
+        assert record.error == "evidenceText must exist in raw response: not in raw response"
         assert "AI answer:" in record.kmindhub_extraction_text
         assert "Acme ERP" in record.kmindhub_extraction_text
         assert '"kmindhubExtractionText":' in record.message
@@ -348,10 +392,10 @@ def test_kmindhub_semantic_analyzer_logs_actual_retry_request_text(caplog) -> No
             )
         ][1]
 
-        assert "Previous preview failed validation: evidenceText must exist in raw response" in (
+        assert "Previous preview failed validation: evidenceText must exist in raw response: not in raw response" in (
             retry_record.kmindhub_extraction_text
         )
-        assert "Previous preview failed validation: evidenceText must exist in raw response" in (
+        assert "Previous preview failed validation: evidenceText must exist in raw response: not in raw response" in (
             retry_record.message
         )
         assert "entityId must be a UUID: Acme" not in retry_record.kmindhub_extraction_text
