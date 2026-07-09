@@ -88,8 +88,7 @@ class FakeTrackingClient:
     messages: list[QueryRunJobMessage] = field(default_factory=list)
 
     def build_request_payload(self, message: QueryRunJobMessage) -> dict:
-        return {
-            "seoTaskId": str(message.seo_task_id),
+        payload = {
             "provider": message.platform,
             "timing": "run_now",
             "queries": [
@@ -100,6 +99,9 @@ class FakeTrackingClient:
                 }
             ],
         }
+        if message.seo_task_id is not None:
+            payload["seoTaskId"] = str(message.seo_task_id)
+        return payload
 
     async def run(self, message: QueryRunJobMessage) -> TrackingRunResponse:
         self.messages.append(message)

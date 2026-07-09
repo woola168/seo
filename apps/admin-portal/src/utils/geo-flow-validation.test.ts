@@ -12,7 +12,23 @@ describe("geo flow validation", () => {
   it("requires either an existing project or a new project name", () => {
     expect(validateProjectStep({})).toEqual([
       { field: "project", message: "請選擇既有 project 或輸入新 project 名稱" },
+      { field: "customerId", message: "請選擇 customer" },
     ]);
+  });
+
+  it("requires a customer for the flow-check project binding", () => {
+    expect(validateProjectStep({ projectName: "GEO Flow Check" })).toEqual([
+      { field: "customerId", message: "請選擇 customer" },
+    ]);
+  });
+
+  it("accepts a project with a customer binding", () => {
+    expect(
+      validateProjectStep({
+        projectName: "GEO Flow Check",
+        customerId: "customer-1",
+      }),
+    ).toEqual([]);
   });
 
   it("reports all required query planning fields before API calls", () => {
@@ -26,7 +42,7 @@ describe("geo flow validation", () => {
     ]);
   });
 
-  it("requires seoTaskId before query generation", () => {
+  it("does not require seoTaskId before query generation", () => {
     const errors = validateGenerationStep({
       projectId: "project-1",
       brandName: "Acme",
@@ -37,10 +53,7 @@ describe("geo flow validation", () => {
       audienceDescription: "B2B 採購決策者",
     });
 
-    expect(errors).toContainEqual({
-      field: "seoTaskId",
-      message: "Query generation 需要 seoTaskId",
-    });
+    expect(errors).toEqual([]);
   });
 
   it("requires a selected draft before accept", () => {
@@ -51,7 +64,6 @@ describe("geo flow validation", () => {
 
   it("requires dispatch prerequisites without requiring a pre-created job", () => {
     expect(validateDispatchStep({ projectId: "project-1" })).toEqual([
-      { field: "seoTaskId", message: "Dispatch 需要 seoTaskId" },
       { field: "acceptedQuery", message: "請先選擇至少一筆正式 query" },
       { field: "platform", message: "請選擇 run provider" },
     ]);

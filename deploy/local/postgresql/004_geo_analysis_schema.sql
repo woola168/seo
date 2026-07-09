@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS geo_run_request (
     id uuid PRIMARY KEY,
     job_id uuid NOT NULL REFERENCES geo_query_run_job(id) ON DELETE CASCADE,
     tracking_run_request_id varchar(200) NOT NULL,
-    seo_task_id uuid NOT NULL,
+    seo_task_id uuid,
     provider varchar(64) NOT NULL,
     timing varchar(32) NOT NULL,
     status varchar(32) NOT NULL,

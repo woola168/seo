@@ -50,8 +50,6 @@ class DispatchQueryRunJob:
         context = await self.repository.get_job_dispatch_context(job_id)
         if context is None:
             raise KeyError(job_id)
-        if context.seo_task_id is None:
-            raise DispatchQueryRunJobError("project seoTaskId is required to dispatch job")
         message = QueryRunJobMessage(
             job_id=context.job_id,
             tenant_id=context.tenant_id,

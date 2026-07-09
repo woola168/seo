@@ -257,7 +257,7 @@ export interface GeoTopicInput {
 
 export interface GeoGeneratedQuery {
   id: string;
-  seoTaskId: string;
+  seoTaskId: string | null;
   text: string;
   keywords: string[];
   topicId: string | null;
@@ -327,7 +327,7 @@ export interface GeoRunResult {
 
 export interface GeoRunRequestResult {
   id: string;
-  seoTaskId: string;
+  seoTaskId: string | null;
   timing: "run_now" | "next_cycle";
   results: GeoRunResult[];
 }
@@ -508,6 +508,46 @@ export interface GeoAnalysisRunResult {
   analysisStatus: string | null;
   analysisErrorCode: string | null;
   analysisErrorMessage: string | null;
+}
+
+export interface GeoRunResultEntityMentionFact {
+  entityId: string;
+  entityRole: "own_brand" | "competitor";
+  entityName: string;
+  mentioned: boolean;
+  firstMentionOrder: number | null;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSentimentFact {
+  entityId: string;
+  entityRole: "own_brand" | "competitor";
+  entityName: string;
+  sentiment: "positive" | "negative";
+  theme: string;
+  statement: string;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSemanticFact {
+  factType: "product" | "service" | "topic" | "common_statement";
+  value: string;
+  evidenceText: string | null;
+  confidence: number | null;
+}
+
+export interface GeoRunResultSemanticAnalysis {
+  runResultId: string;
+  analyzer: string;
+  analyzerVersion: string | null;
+  status: "completed" | "failed";
+  entityMentions: GeoRunResultEntityMentionFact[];
+  sentiments: GeoRunResultSentimentFact[];
+  semanticFacts: GeoRunResultSemanticFact[];
+  errorCode: string | null;
+  errorMessage: string | null;
 }
 
 export interface GeoKMindHubWorkspaceMapping {
@@ -768,7 +808,7 @@ export interface GeoQueryResearchRunResource {
 }
 
 export interface GeoQueryGenerationRunRequest {
-  seoTaskId: string;
+  seoTaskId?: string | null;
   provider: GeoQueryProvider;
   brandName: string;
   competitorBrands: string[];

@@ -26,7 +26,7 @@ class QueryRunJobMessage(ContractModel):
     job_id: UUID
     tenant_id: UUID
     project_id: UUID
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     query_id: UUID
     query_text: str
     topic_name: str
@@ -98,7 +98,7 @@ class TrackingRunResponse(ContractModel):
     """geo-tracking /run-requests 的完整 response。"""
 
     id: str
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     timing: str
     results: list[TrackingRunResultItem] = Field(default_factory=list)
 
@@ -639,7 +639,7 @@ class GeoRunRequestRecord(ContractModel):
     id: UUID
     job_id: UUID
     tracking_run_request_id: str
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     provider: str
     timing: str
     status: str
@@ -863,7 +863,7 @@ class QueryResearchRunRecord(ContractModel):
 
 
 class QueryGenerationCommand(ContractModel):
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     provider: str = "dummy"
     brand_name: str
     competitor_brands: list[str] = Field(default_factory=list)

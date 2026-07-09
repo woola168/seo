@@ -65,8 +65,7 @@ def _run_request_payload(message: QueryRunJobMessage) -> dict[str, Any]:
     metadata = {"geoJobId": str(message.job_id)}
     if message.model:
         metadata["model"] = message.model
-    return {
-        "seoTaskId": str(message.seo_task_id),
+    payload: dict[str, Any] = {
         "provider": message.platform,
         "timing": "run_now",
         "queries": [
@@ -82,6 +81,9 @@ def _run_request_payload(message: QueryRunJobMessage) -> dict[str, Any]:
             }
         ],
     }
+    if message.seo_task_id is not None:
+        payload["seoTaskId"] = str(message.seo_task_id)
+    return payload
 
 
 def run_request_payload(message: QueryRunJobMessage) -> dict[str, Any]:

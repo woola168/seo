@@ -222,7 +222,7 @@ class QueryResearchRunResponse(ApiModel):
 
 
 class QueryGenerationRunRequest(ApiModel):
-    seo_task_id: UUID
+    seo_task_id: UUID | None = None
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
     competitor_brands: list[str] = Field(default_factory=list)
@@ -398,6 +398,46 @@ class RunResultResponse(ApiModel):
     analysis_status: str | None = None
     analysis_error_code: str | None = None
     analysis_error_message: str | None = None
+
+
+class RunResultEntityMentionResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    mentioned: bool
+    first_mention_order: int | None = None
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSentimentResponse(ApiModel):
+    entity_id: UUID
+    entity_role: str
+    entity_name: str
+    sentiment: str
+    theme: str
+    statement: str
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSemanticFactResponse(ApiModel):
+    fact_type: str
+    value: str
+    evidence_text: str | None = None
+    confidence: float | None = None
+
+
+class RunResultSemanticAnalysisResponse(ApiModel):
+    run_result_id: UUID
+    analyzer: str
+    analyzer_version: str | None = None
+    status: str
+    entity_mentions: list[RunResultEntityMentionResponse]
+    sentiments: list[RunResultSentimentResponse]
+    semantic_facts: list[RunResultSemanticFactResponse]
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class MetricValueResponse(ApiModel):

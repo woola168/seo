@@ -454,7 +454,7 @@ class GeoRunRequestRow(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     job_id: UUID = Field(foreign_key="geo_query_run_job.id", nullable=False)
     tracking_run_request_id: str = Field(sa_column=Column(String(200), nullable=False))
-    seo_task_id: UUID = Field(nullable=False)
+    seo_task_id: UUID | None = Field(default=None)
     provider: str = Field(sa_column=Column(String(64), nullable=False))
     timing: str = Field(sa_column=Column(String(32), nullable=False))
     status: str = Field(sa_column=Column(String(32), nullable=False))

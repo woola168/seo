@@ -713,7 +713,7 @@ def test_dispatch_google_aio_job_records_provider_queue_destination() -> None:
     assert store.dispatches[0][1].destination == "geo.query-runs.google_aio"
 
 
-def test_dispatch_without_project_seo_task_id_returns_conflict() -> None:
+def test_dispatch_without_project_seo_task_id_publishes_job() -> None:
     publisher = FakePublisher()
     client, store, query_id = _client_with_query(publisher=publisher)
     query = store.queries[UUID(query_id)]
@@ -729,10 +729,10 @@ def test_dispatch_without_project_seo_task_id_returns_conflict() -> None:
 
     response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
 
-    assert response.status_code == 409
-    assert response.headers["content-type"] == "application/problem+json"
-    assert response.json()["detail"] == "project seoTaskId is required to dispatch job"
-    assert publisher.messages == []
+    assert response.status_code == 200
+    assert response.json()["status"] == "published"
+    assert len(publisher.messages) == 1
+    assert publisher.messages[0].seo_task_id is None
 
 
 def test_create_query_accepts_market_type() -> None:
@@ -778,6 +778,49 @@ def test_project_run_results_are_scoped_to_project() -> None:
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()["items"]] == [str(result_id)]
+
+
+def test_run_result_semantic_analysis_can_be_loaded() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+    entity_id = uuid4()
+    store.semantic_run_result_analyses[result_id] = GeoRunResultAnalysis(
+        runResultId=result_id,
+        analyzer="fake",
+        analyzerVersion="v1",
+        status="completed",
+        sentiments=[
+            {
+                "entityId": str(entity_id),
+                "entityRole": "own_brand",
+                "entityName": "Acme",
+                "sentiment": "positive",
+                "theme": "供應商比較",
+                "statement": "Acme is recommended.",
+                "evidenceText": "Acme is recommended.",
+                "confidence": 0.9,
+            }
+        ],
+    )
+
+    response = client.get(f"/api/geo/run-results/{result_id}/semantic-analysis")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runResultId"] == str(result_id)
+    assert body["status"] == "completed"
+    assert body["sentiments"][0]["sentiment"] == "positive"
+    assert body["sentiments"][0]["evidenceText"] == "Acme is recommended."
+
+
+def test_run_result_semantic_analysis_returns_404_when_missing() -> None:
+    client, store, job_id = _client_with_job()
+    result_id = _add_run_result(store, job_id)
+
+    response = client.get(f"/api/geo/run-results/{result_id}/semantic-analysis")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "semantic analysis not found"
 
 
 def test_project_metrics_returns_report_metrics() -> None:
@@ -1583,7 +1626,9 @@ class FakePlanningClient:
             "queries": [
                 {
                     "id": str(uuid4()),
-                    "seoTaskId": str(command.seo_task_id),
+                    "seoTaskId": str(command.seo_task_id)
+                    if command.seo_task_id is not None
+                    else None,
                     "queryText": "Acme ERP 適合哪些 B2B 採購情境?",
                     "keywords": command.keywords,
                     "topicId": None,

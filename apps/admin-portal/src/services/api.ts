@@ -37,6 +37,7 @@
   GeoQueryResearchResult,
   GeoRegion,
   GeoRunRequestResult,
+  GeoRunResultSemanticAnalysis,
   GeoScheduleRequest,
   GeoScheduleResource,
   GeoTopicRequest,
@@ -394,7 +395,7 @@ export const api = {
       ),
     job: (jobId: string) => request<GeoJobResource>(`/api/geo/jobs/${jobId}`),
     runResults: (projectId: string) =>
-      request<CollectionResponse<GeoAnalysisRunResult>>(
+      request<PageResponse<GeoAnalysisRunResult>>(
         `/api/geo/projects/${projectId}/run-results`,
       ),
     jobRunResults: (jobId: string) =>
@@ -403,6 +404,10 @@ export const api = {
       ),
     runResult: (resultId: string) =>
       request<GeoAnalysisRunResult>(`/api/geo/run-results/${resultId}`),
+    runResultSemanticAnalysis: (resultId: string) =>
+      request<GeoRunResultSemanticAnalysis>(
+        `/api/geo/run-results/${resultId}/semantic-analysis`,
+      ),
     dashboardReport: (projectId: string, input: GeoDashboardReportQuery) => {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) {
@@ -438,7 +443,7 @@ export const api = {
       body: JSON.stringify(input),
     }),
   generateGeoQueries: (input: {
-    seoTaskId: string;
+    seoTaskId?: string | null;
     provider: GeoQueryProvider;
     brandName: string;
     competitorBrands: string[];
@@ -462,14 +467,14 @@ export const api = {
       body: JSON.stringify(input),
     }),
   runGeoQueries: (
-    seoTaskId: string,
+    seoTaskId: string | null,
     provider: GeoProvider,
     queries: GeoGeneratedQuery[],
   ) =>
     request<GeoRunRequestResult>("/api/v1/geo-tracking/run-requests", {
       method: "POST",
       body: JSON.stringify({
-        seoTaskId,
+        ...(seoTaskId ? { seoTaskId } : {}),
         provider,
         timing: "run_now",
         queries: queries.map((query) => ({

@@ -19,6 +19,7 @@ from younilab_seo.geo_analysis.application import (
 from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     SEMANTIC_ANALYSIS_SCHEMA_VERSION,
     SEMANTIC_ANALYSIS_TASK_KEY,
+    geo_semantic_analysis_task_definition,
 )
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 
@@ -69,10 +70,12 @@ class FakeWorkspaceResolver:
 @dataclass
 class FakeKMindHubClient:
     preview_items: list[KMindHubExtractionPreviewItem]
+    preview_item_batches: list[list[KMindHubExtractionPreviewItem]] | None = None
     unavailable: bool = False
     created_tasks: int = 0
     committed_items: list[dict] | None = None
     preview_text: str | None = None
+    preview_texts: list[str] = field(default_factory=list)
 
     async def create_workspace(self, display_name: str):
         raise AssertionError("workspace creation should not be used")
@@ -92,9 +95,16 @@ class FakeKMindHubClient:
         assert workspace_id == WORKSPACE_ID
         assert task_id == TASK_ID
         self.preview_text = text
+        self.preview_texts.append(text)
+        items = self.preview_items
+        if self.preview_item_batches is not None:
+            batch_index = len(self.preview_texts) - 1
+            items = self.preview_item_batches[
+                min(batch_index, len(self.preview_item_batches) - 1)
+            ]
         return KMindHubExtractionPreviewResult(
             task_id=task_id,
-            items=self.preview_items,
+            items=items,
         )
 
     async def commit_extraction_items(self, *, workspace_id, task_id, items):
@@ -117,7 +127,7 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
 
         assert result.status == "completed"
         assert result.analyzer == "kmindhub"
-        assert result.analyzer_version == "geo_semantic_analysis:v1"
+        assert result.analyzer_version == "geo_semantic_analysis:v2"
         assert result.entity_mentions[0].entity_id == OWN_BRAND_ID
         assert result.entity_mentions[0].first_mention_order == 1
         assert result.sentiments[0].sentiment == "positive"
@@ -127,6 +137,23 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
         assert client.committed_items is not None
 
     asyncio.run(run())
+
+
+def test_kmindhub_semantic_task_definition_uses_strict_v2_instructions() -> None:
+    definition = geo_semantic_analysis_task_definition()
+    fields = {field.name: field for field in definition.fields}
+
+    assert definition.schema_version == 2
+    assert definition.name == "GEO semantic analysis v2"
+    assert "Copy the exact UUID from Entity context" in fields[
+        "entityId"
+    ].normalization["instruction"]
+    assert "exact contiguous substring copied from the AI answer" in fields[
+        "evidenceText"
+    ].normalization["instruction"]
+    assert "leave evidenceText empty" in fields["evidenceText"].normalization[
+        "instruction"
+    ]
 
 
 def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
@@ -148,7 +175,97 @@ def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
         assert "entityRole: competitor" in client.preview_text
         assert "entityName: Rival" in client.preview_text
         assert "AI answer:" in client.preview_text
+        assert "--- BEGIN AI ANSWER ---" in client.preview_text
         assert "Acme ERP" in client.preview_text
+        assert "--- END AI ANSWER ---" in client.preview_text
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
+    async def run() -> None:
+        invalid_item = _complete_item()
+        invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="not in raw response"
+        )
+        valid_item = _complete_item()
+        client = FakeKMindHubClient(
+            preview_items=[],
+            preview_item_batches=[[invalid_item], [valid_item]],
+        )
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(_command())
+
+        assert result.status == "completed"
+        assert len(client.preview_texts) == 2
+        assert "Repair instructions:" in client.preview_texts[1]
+        assert "evidenceText must exist in raw response" in client.preview_texts[1]
+        assert "exact contiguous substring from the AI answer" in client.preview_texts[1]
+        assert client.preview_texts[1].index("--- END AI ANSWER ---") < client.preview_texts[
+            1
+        ].index("Repair instructions:")
+        assert client.committed_items is not None
+        assert (
+            client.committed_items[0]["fields"]["evidenceText"]["value"]
+            == "Acme ERP"
+        )
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_repairs_invalid_entity_id_once() -> None:
+    async def run() -> None:
+        invalid_item = _complete_item()
+        invalid_item.fields["entityId"] = KMindHubExtractionFieldValue(value="Acme")
+        valid_item = _complete_item()
+        client = FakeKMindHubClient(
+            preview_items=[],
+            preview_item_batches=[[invalid_item], [valid_item]],
+        )
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(_command())
+
+        assert result.status == "completed"
+        assert len(client.preview_texts) == 2
+        assert "Repair instructions:" in client.preview_texts[1]
+        assert "entityId must be a UUID: Acme" in client.preview_texts[1]
+        assert "entityId must be copied exactly as a UUID" in client.preview_texts[1]
+        assert client.committed_items is not None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_fails_after_one_repair_attempt() -> None:
+    async def run() -> None:
+        invalid_item = _complete_item()
+        invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="not in raw response"
+        )
+        client = FakeKMindHubClient(
+            preview_items=[],
+            preview_item_batches=[[invalid_item], [invalid_item]],
+        )
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="evidenceText must exist in raw response",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+            ).analyze(_command())
+
+        assert len(client.preview_texts) == 2
+        assert client.committed_items is None
 
     asyncio.run(run())
 
@@ -189,6 +306,7 @@ def test_kmindhub_semantic_analyzer_rejects_failed_preview_verification() -> Non
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert len(client.preview_texts) == 2
         assert client.committed_items is None
 
     asyncio.run(run())
@@ -219,6 +337,7 @@ def test_kmindhub_semantic_analyzer_rejects_invalid_preview_values(
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert len(client.preview_texts) == 2
         assert client.committed_items is None
 
     asyncio.run(run())
@@ -260,6 +379,7 @@ def test_kmindhub_semantic_analyzer_rejects_context_only_evidence_text() -> None
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert len(client.preview_texts) == 2
         assert client.preview_text is not None
         assert str(COMPETITOR_ID) in client.preview_text
         assert client.committed_items is None
@@ -367,6 +487,7 @@ def test_kmindhub_semantic_analyzer_preserves_client_unavailable_error() -> None
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert len(client.preview_texts) == 0
 
     asyncio.run(run())
 
@@ -386,6 +507,7 @@ def test_kmindhub_semantic_analyzer_reports_invalid_entity_id_value() -> None:
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
+        assert len(client.preview_texts) == 2
         assert client.committed_items is None
 
     asyncio.run(run())
