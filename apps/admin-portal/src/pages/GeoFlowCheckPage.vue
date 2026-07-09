@@ -19,6 +19,7 @@ import type {
   GeoQueryResource,
   GeoRegion,
   GeoTopicInput,
+  GeoTopicResource,
 } from "../types";
 import {
   toFieldErrorMap,
@@ -100,8 +101,11 @@ const savedQueries = ref<GeoQueryResource[]>([]);
 const savedJobs = ref<GeoJobResource[]>([]);
 const savedRunResults = ref<GeoAnalysisRunResult[]>([]);
 const savedEntities = ref<GeoEntityResource[]>([]);
+const savedTopics = ref<GeoTopicResource[]>([]);
 const selectedQueryIds = ref<string[]>([]);
 const selectedDraftIds = ref<string[]>([]);
+const selectedCompetitorEntityIds = ref<string[]>([]);
+const selectedTopicIds = ref<string[]>([]);
 const acceptedQueries = ref<GeoQueryResource[]>([]);
 const dispatchedJobs = ref<GeoJobResource[]>([]);
 const jobResults = ref<Record<string, GeoAnalysisRunResult[]>>({});
@@ -193,6 +197,19 @@ const validationSummary = computed(() => validationErrors.value.map((error) => e
 const selectedQueries = computed(() =>
   savedQueries.value.filter((query) => selectedQueryIds.value.includes(query.id)),
 );
+const activeOwnBrandEntities = computed(() =>
+  savedEntities.value.filter(
+    (entity) => entity.status === "active" && entity.entityType === "own_brand",
+  ),
+);
+const activeCompetitorEntities = computed(() =>
+  savedEntities.value.filter(
+    (entity) => entity.status === "active" && entity.entityType === "competitor",
+  ),
+);
+const activeTopics = computed(() =>
+  savedTopics.value.filter((topic) => topic.status === "active"),
+);
 const acceptedOrSelectedQueries = computed(() =>
   acceptedQueries.value.length ? acceptedQueries.value : selectedQueries.value,
 );
@@ -270,16 +287,24 @@ async function saveProjectAndContinue(): Promise<void> {
 
 async function refreshProjectData(projectId = selectedProjectId.value): Promise<void> {
   if (!projectId) return;
-  const [queries, jobs, results, entities] = await Promise.all([
+  const [queries, jobs, results, entities, topics] = await Promise.all([
     api.geoAnalysis.queries(projectId),
     api.geoAnalysis.jobs(projectId),
     api.geoAnalysis.runResults(projectId),
     api.geoAnalysis.entities(projectId),
+    api.geoAnalysis.topics(projectId),
   ]);
   savedQueries.value = queries.items;
   savedJobs.value = jobs.items;
   savedRunResults.value = results.items;
   savedEntities.value = entities.items;
+  savedTopics.value = topics.items;
+  selectedCompetitorEntityIds.value = selectedCompetitorEntityIds.value.filter((id) =>
+    entities.items.some((entity) => entity.id === id && entity.status === "active"),
+  );
+  selectedTopicIds.value = selectedTopicIds.value.filter((id) =>
+    topics.items.some((topic) => topic.id === id && topic.status === "active"),
+  );
   selectedQueryIds.value = selectedQueryIds.value.filter((id) =>
     queries.items.some((query) => query.id === id),
   );
@@ -335,6 +360,42 @@ function addTopic(): void {
 function removeTopic(index: number): void {
   if (queryForm.topics.length <= 1) return;
   queryForm.topics.splice(index, 1);
+}
+
+function applyOwnBrandEntity(entity: GeoEntityResource): void {
+  queryForm.brandName = entity.name;
+  queryForm.brandWebsiteUrl = entity.websiteUrl ?? "";
+}
+
+function toggleCompetitorEntity(entityId: string): void {
+  selectedCompetitorEntityIds.value = selectedCompetitorEntityIds.value.includes(entityId)
+    ? selectedCompetitorEntityIds.value.filter((id) => id !== entityId)
+    : [...selectedCompetitorEntityIds.value, entityId];
+}
+
+function applySelectedCompetitorEntities(): void {
+  const selected = activeCompetitorEntities.value.filter((entity) =>
+    selectedCompetitorEntityIds.value.includes(entity.id),
+  );
+  queryForm.competitorBrands = selected.map(flowEntityInputLine).join("\n");
+}
+
+function toggleTopicPreset(topicId: string): void {
+  selectedTopicIds.value = selectedTopicIds.value.includes(topicId)
+    ? selectedTopicIds.value.filter((id) => id !== topicId)
+    : [...selectedTopicIds.value, topicId];
+}
+
+function applySelectedTopics(): void {
+  const selected = activeTopics.value.filter((topic) =>
+    selectedTopicIds.value.includes(topic.id),
+  );
+  queryForm.topics = selected.length
+    ? selected.map((topic) => ({
+        name: topic.name,
+        description: topic.description,
+      }))
+    : [{ name: "", description: "" }];
 }
 
 async function runResearch(): Promise<void> {
@@ -625,8 +686,11 @@ function resetProjectData(): void {
   savedJobs.value = [];
   savedRunResults.value = [];
   savedEntities.value = [];
+  savedTopics.value = [];
   selectedQueryIds.value = [];
   selectedDraftIds.value = [];
+  selectedCompetitorEntityIds.value = [];
+  selectedTopicIds.value = [];
   acceptedQueries.value = [];
   dispatchedJobs.value = [];
   jobResults.value = {};
@@ -664,6 +728,10 @@ function splitValues(value: string): string[] {
 function valueOrNull(value: string): string | null {
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function flowEntityInputLine(entity: GeoEntityResource): string {
+  return entity.websiteUrl ? `${entity.name} | ${entity.websiteUrl}` : entity.name;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1035,120 +1103,234 @@ function openReportDesign(): void {
         <h2>3. Query 設定</h2>
         <p>先填入 research/generation 需要的品牌、競品、keyword、topic 與受眾。</p>
       </header>
-      <div class="two-column">
-        <label>
-          Research / Generation Provider
-          <select v-model="queryForm.provider">
-            <option value="gemini">Gemini</option>
-            <option value="dummy">Dummy</option>
-          </select>
-        </label>
-        <label>
-          Run Provider
-          <select v-model="queryForm.runProvider">
-            <option value="gemini">Gemini</option>
-            <option value="google_aio">Google AIO</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        品牌名稱
-        <input v-model="queryForm.brandName" type="text" placeholder="例如 港香蘭應用生技股份有限公司" />
-        <small v-if="fieldErrors.brandName">{{ fieldErrors.brandName }}</small>
-      </label>
-      <label>
-        Own Brand Website URL
-        <input v-model="queryForm.brandWebsiteUrl" type="url" placeholder="https://example.com" />
-        <small>Flow Check 會用品牌名稱自動建立或更新 active own_brand entity。</small>
-      </label>
-      <label>
-        競品品牌
-        <textarea v-model="queryForm.competitorBrands" rows="3" placeholder="一行一個：競品名稱 | https://competitor.example；只有名稱也可以" />
-        <small>將建立或更新 {{ reportEntitySummary.competitorCount }} 個 active competitor entities。</small>
-      </label>
-      <div class="two-column">
-        <label>
-          Keywords
-          <textarea v-model="queryForm.keywords" rows="4" placeholder="一行一個 keyword" />
-          <small v-if="fieldErrors.keywords">{{ fieldErrors.keywords }}</small>
-        </label>
-        <div class="topic-editor">
-          <div class="topic-editor-header">
-            <span>Topics</span>
-            <button class="button button-secondary" type="button" @click="addTopic">
-              新增 Topic
-            </button>
+      <details class="preset-drawer">
+        <summary>
+          <span>
+            <strong>快速帶入既有資料</strong>
+            <small>從 active entities / topics 套用到下方表單</small>
+          </span>
+        </summary>
+        <div class="preset-drawer-body">
+          <div class="preset-block">
+            <strong>自身品牌</strong>
+            <p v-if="!activeOwnBrandEntities.length" class="empty-state compact-empty">
+              目前沒有 active own_brand entity。
+            </p>
+            <div v-else class="preset-list">
+              <button
+                v-for="entity in activeOwnBrandEntities"
+                :key="entity.id"
+                class="preset-option"
+                type="button"
+                @click="applyOwnBrandEntity(entity)"
+              >
+                <span>
+                  <strong>{{ entity.name }}</strong>
+                  <small>{{ entity.websiteUrl ?? "未設定網站" }}</small>
+                </span>
+                <span class="badge badge-info">套用</span>
+              </button>
+            </div>
           </div>
-          <small v-if="fieldErrors.topics">{{ fieldErrors.topics }}</small>
-          <div v-for="(topic, index) in queryForm.topics" :key="index" class="topic-row">
-            <label>
-              Topic 名稱
-              <input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商比較" />
-            </label>
-            <label>
-              Topic 描述
-              <textarea v-model="topic.description" rows="3" />
-            </label>
-            <button
-              class="button button-secondary"
-              type="button"
-              :disabled="queryForm.topics.length <= 1"
-              @click="removeTopic(index)"
-            >
-              移除
-            </button>
+          <div class="preset-block">
+            <div class="preset-block-header">
+              <strong>競品</strong>
+              <button
+                class="button button-secondary"
+                type="button"
+                :disabled="!selectedCompetitorEntityIds.length"
+                @click="applySelectedCompetitorEntities"
+              >
+                套用已選
+              </button>
+            </div>
+            <p v-if="!activeCompetitorEntities.length" class="empty-state compact-empty">
+              目前沒有 active competitor entities。
+            </p>
+            <div v-else class="preset-list drawer-preset-list">
+              <label
+                v-for="entity in activeCompetitorEntities"
+                :key="entity.id"
+                class="preset-check"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedCompetitorEntityIds.includes(entity.id)"
+                  @change="toggleCompetitorEntity(entity.id)"
+                />
+                <span>
+                  <strong>{{ entity.name }}</strong>
+                  <small>{{ entity.websiteUrl ?? "未設定網站" }}</small>
+                </span>
+              </label>
+            </div>
+          </div>
+          <div class="preset-block">
+            <div class="preset-block-header">
+              <strong>Topics</strong>
+              <button
+                class="button button-secondary"
+                type="button"
+                :disabled="!selectedTopicIds.length"
+                @click="applySelectedTopics"
+              >
+                套用已選
+              </button>
+            </div>
+            <p v-if="!activeTopics.length" class="empty-state compact-empty">
+              目前沒有 active topics。
+            </p>
+            <div v-else class="preset-list drawer-preset-list">
+              <label
+                v-for="topic in activeTopics"
+                :key="topic.id"
+                class="preset-check"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedTopicIds.includes(topic.id)"
+                  @change="toggleTopicPreset(topic.id)"
+                />
+                <span>
+                  <strong>{{ topic.name }}</strong>
+                  <small>{{ topic.description || "未設定描述" }}</small>
+                </span>
+              </label>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="two-column">
-        <label>
-          Market Type
-          <select v-model="queryForm.marketType">
-            <option value="b2b_procurement">B2B 採購</option>
-            <option value="b2c">B2C 消費</option>
-          </select>
-        </label>
-        <label>
-          Max Queries
-          <input v-model.number="queryForm.maxQueries" type="number" min="1" max="20" />
-        </label>
-      </div>
-      <div class="two-column">
-        <label>
-          Audience
-          <input v-model="queryForm.audienceName" type="text" />
-          <small v-if="fieldErrors.audienceName">{{ fieldErrors.audienceName }}</small>
-        </label>
-        <label>
-          Audience Description
-          <input v-model="queryForm.audienceDescription" type="text" />
-          <small v-if="fieldErrors.audienceDescription">{{ fieldErrors.audienceDescription }}</small>
-        </label>
-      </div>
-      <div class="two-column">
-        <label>
-          Intent 分類
-          <select v-model="queryForm.intentCategory" @change="applyIntentDefaultDescription">
-            <option v-for="option in intentCategoryOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-        <label>
-          Intent 描述
-          <textarea v-model="queryForm.intentDescription" rows="3" />
-          <small v-if="fieldErrors.intentDescription">{{ fieldErrors.intentDescription }}</small>
-        </label>
-      </div>
-      <div class="toggle-grid">
-        <label class="check-row">
-          <input v-model="queryForm.shouldMentionOwnBrand" type="checkbox" />
-          <span>query 需提及自身品牌</span>
-        </label>
-        <label class="check-row">
-          <input v-model="queryForm.shouldMentionCompetitor" type="checkbox" />
-          <span>query 需提及競品</span>
-        </label>
+      </details>
+      <div class="setup-main">
+        <section class="setup-section">
+            <h3>Provider</h3>
+            <div class="two-column">
+              <label>
+                Research / Generation Provider
+                <select v-model="queryForm.provider">
+                  <option value="gemini">Gemini</option>
+                  <option value="dummy">Dummy</option>
+                </select>
+              </label>
+              <label>
+                Run Provider
+                <select v-model="queryForm.runProvider">
+                  <option value="gemini">Gemini</option>
+                  <option value="google_aio">Google AIO</option>
+                </select>
+              </label>
+            </div>
+          </section>
+          <section class="setup-section">
+            <h3>品牌與競品</h3>
+            <label>
+              品牌名稱
+              <input v-model="queryForm.brandName" type="text" placeholder="例如 港香蘭應用生技股份有限公司" />
+              <small v-if="fieldErrors.brandName">{{ fieldErrors.brandName }}</small>
+            </label>
+            <label>
+              Own Brand Website URL
+              <input v-model="queryForm.brandWebsiteUrl" type="url" placeholder="https://example.com" />
+              <small>Flow Check 會用品牌名稱自動建立或更新 active own_brand entity。</small>
+            </label>
+            <label>
+              競品品牌
+              <textarea v-model="queryForm.competitorBrands" rows="3" placeholder="一行一個：競品名稱 | https://competitor.example；只有名稱也可以" />
+              <small>將建立或更新 {{ reportEntitySummary.competitorCount }} 個 active competitor entities。</small>
+            </label>
+          </section>
+          <section class="setup-section">
+            <h3>Keywords 與 Topics</h3>
+            <div class="two-column">
+              <label>
+                Keywords
+                <textarea v-model="queryForm.keywords" rows="4" placeholder="一行一個 keyword" />
+                <small v-if="fieldErrors.keywords">{{ fieldErrors.keywords }}</small>
+              </label>
+              <div class="topic-editor">
+                <div class="topic-editor-header">
+                  <span>Topics</span>
+                  <button class="button button-secondary" type="button" @click="addTopic">
+                    新增 Topic
+                  </button>
+                </div>
+                <small v-if="fieldErrors.topics">{{ fieldErrors.topics }}</small>
+                <div v-for="(topic, index) in queryForm.topics" :key="index" class="topic-row">
+                  <label>
+                    Topic 名稱
+                    <input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商比較" />
+                  </label>
+                  <label>
+                    Topic 描述
+                    <textarea v-model="topic.description" rows="3" />
+                  </label>
+                  <button
+                    class="button button-secondary"
+                    type="button"
+                    :disabled="queryForm.topics.length <= 1"
+                    @click="removeTopic(index)"
+                  >
+                    移除
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="setup-section">
+            <h3>市場與受眾</h3>
+            <div class="two-column">
+              <label>
+                Market Type
+                <select v-model="queryForm.marketType">
+                  <option value="b2b_procurement">B2B 採購</option>
+                  <option value="b2c">B2C 消費</option>
+                </select>
+              </label>
+              <label>
+                Max Queries
+                <input v-model.number="queryForm.maxQueries" type="number" min="1" max="20" />
+              </label>
+            </div>
+            <div class="two-column">
+              <label>
+                Audience
+                <input v-model="queryForm.audienceName" type="text" />
+                <small v-if="fieldErrors.audienceName">{{ fieldErrors.audienceName }}</small>
+              </label>
+              <label>
+                Audience Description
+                <input v-model="queryForm.audienceDescription" type="text" />
+                <small v-if="fieldErrors.audienceDescription">{{ fieldErrors.audienceDescription }}</small>
+              </label>
+            </div>
+          </section>
+          <section class="setup-section">
+            <h3>Intent 與提及規則</h3>
+            <div class="two-column">
+              <label>
+                Intent 分類
+                <select v-model="queryForm.intentCategory" @change="applyIntentDefaultDescription">
+                  <option v-for="option in intentCategoryOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                Intent 描述
+                <textarea v-model="queryForm.intentDescription" rows="3" />
+                <small v-if="fieldErrors.intentDescription">{{ fieldErrors.intentDescription }}</small>
+              </label>
+            </div>
+            <div class="toggle-grid">
+              <label class="check-row">
+                <input v-model="queryForm.shouldMentionOwnBrand" type="checkbox" />
+                <span>query 需提及自身品牌</span>
+              </label>
+              <label class="check-row">
+                <input v-model="queryForm.shouldMentionCompetitor" type="checkbox" />
+                <span>query 需提及競品</span>
+              </label>
+            </div>
+          </section>
       </div>
       <div class="button-row">
         <button class="button button-secondary" type="button" @click="activeStep = 'library'">返回既有資料</button>
@@ -1532,6 +1714,25 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.setup-main {
+  display: grid;
+  gap: 14px;
+}
+
+.setup-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.setup-section h3 {
+  color: var(--text-primary);
+  font-size: 15px;
+  margin: 0;
+}
+
 .topic-editor {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1551,6 +1752,135 @@ textarea {
 .topic-editor-header span {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.preset-drawer {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+}
+
+.preset-drawer summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  list-style: none;
+  padding: 12px 14px;
+}
+
+.preset-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.preset-drawer summary::before {
+  color: var(--text-muted);
+  content: "▸";
+  font-size: 14px;
+}
+
+.preset-drawer[open] summary::before {
+  content: "▾";
+}
+
+.preset-drawer summary span {
+  display: grid;
+  gap: 2px;
+}
+
+.preset-drawer summary strong {
+  color: var(--text-primary);
+}
+
+.preset-drawer summary small {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.preset-drawer-body {
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.preset-block {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.preset-block-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preset-list {
+  display: grid;
+  gap: 8px;
+}
+
+.drawer-preset-list {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.preset-option,
+.preset-check {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.preset-option {
+  background: var(--surface-secondary);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.preset-option:hover {
+  border-color: var(--primary);
+}
+
+.preset-check {
+  background: var(--surface-secondary);
+}
+
+.preset-check input {
+  min-height: auto;
+  width: auto;
+}
+
+.preset-option span,
+.preset-check span {
+  min-width: 0;
+}
+
+.preset-option strong,
+.preset-check strong {
+  display: block;
+}
+
+.preset-option small,
+.preset-check small {
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
 }
 
 .topic-row {
@@ -1797,6 +2127,7 @@ dt {
   .flow-header,
   .two-column,
   .toggle-grid,
+  .preset-drawer-body,
   .topic-row,
   .library-grid {
     grid-template-columns: 1fr;
