@@ -81,6 +81,7 @@ def build_dependencies(
         active_repository,
         kmindhub_workspace_resolver,
         active_kmindhub_client,
+        debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
     )
     metric_source_builder = BuildGeoMetricFormulaSource(active_repository)
     closeables = tuple(
@@ -182,6 +183,7 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
     return HttpKMindHubWorkspaceClient(
         base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
         timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
+        debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
     )
 
 
@@ -198,3 +200,10 @@ def _build_reference_verifier() -> ResourceCatalogReferenceVerifier:
             "http://resource-catalog-api:8001",
         )
     )
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}

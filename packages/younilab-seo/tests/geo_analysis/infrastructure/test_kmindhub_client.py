@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from uuid import uuid4
 
 import httpx
@@ -181,6 +182,111 @@ def test_kmindhub_client_retries_transient_preview_http_error() -> None:
 
         assert attempts == 2
         assert preview.items[0].fields["summary"].value == "Acme is good"
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_logs_full_preview_payloads_when_debug_enabled(caplog) -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions":
+                return httpx.Response(
+                    200,
+                    json={
+                        "taskId": str(task_id),
+                        "items": [
+                            {
+                                "fields": {"summary": {"value": "Acme is good"}},
+                                "verification": {"passed": True},
+                            }
+                        ],
+                    },
+                )
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient(
+            "https://kmindhub.test",
+            debug_payloads=True,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with caplog.at_level(logging.INFO):
+            await client.preview_text_extraction(
+                workspace_id=workspace_id,
+                task_id=task_id,
+                text="Acme is good",
+            )
+
+        request_record = next(
+            record
+            for record in caplog.records
+            if record.message == "KMindHub extraction preview request payload"
+        )
+        response_record = next(
+            record
+            for record in caplog.records
+            if record.message == "KMindHub extraction preview response payload"
+        )
+
+        assert request_record.kmindhub_request_data == {
+            "taskId": str(task_id),
+            "text": "Acme is good",
+        }
+        assert '"summary"' in response_record.kmindhub_response_body
+        assert "Acme is good" in response_record.kmindhub_response_body
+
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_kmindhub_client_logs_full_preview_http_error_payload_when_debug_enabled(caplog) -> None:
+    async def run() -> None:
+        workspace_id = uuid4()
+        task_id = uuid4()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/extractions":
+                return httpx.Response(
+                    502,
+                    json={"detail": "preview upstream failed"},
+                )
+            return httpx.Response(404)
+
+        client = HttpKMindHubWorkspaceClient(
+            "https://kmindhub.test",
+            debug_payloads=True,
+            preview_retry_attempts=0,
+        )
+        client._client = httpx.AsyncClient(
+            base_url="https://kmindhub.test",
+            transport=httpx.MockTransport(handler),
+        )
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(KMindHubExtractionUnavailable):
+                await client.preview_text_extraction(
+                    workspace_id=workspace_id,
+                    task_id=task_id,
+                    text="Acme is good",
+                )
+
+        response_record = next(
+            record
+            for record in caplog.records
+            if record.message == "KMindHub extraction preview response payload"
+        )
+
+        assert response_record.status_code == 502
+        assert "preview upstream failed" in response_record.kmindhub_response_body
 
         await client.close()
 

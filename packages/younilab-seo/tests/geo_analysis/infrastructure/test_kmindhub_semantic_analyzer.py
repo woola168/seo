@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
+import logging
 from uuid import UUID, uuid4
 
 import pytest
@@ -266,6 +267,82 @@ def test_kmindhub_semantic_analyzer_fails_after_one_repair_attempt() -> None:
 
         assert len(client.preview_texts) == 2
         assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_logs_validation_debug_payloads(caplog) -> None:
+    async def run() -> None:
+        invalid_item = _complete_item()
+        invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="not in raw response"
+        )
+        client = FakeKMindHubClient(
+            preview_items=[],
+            preview_item_batches=[[invalid_item], [invalid_item]],
+        )
+
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(KMindHubExtractionValidationError):
+                await KMindHubGeoRunResultAnalyzer(
+                    FakeRepository(),
+                    FakeWorkspaceResolver(),
+                    client,
+                    debug_payloads=True,
+                ).analyze(_command())
+
+        record = next(
+            item
+            for item in caplog.records
+            if item.message == "KMindHub semantic preview validation debug payloads"
+        )
+
+        assert record.run_result_id == str(RUN_RESULT_ID)
+        assert record.error == "evidenceText must exist in raw response"
+        assert "AI answer:" in record.kmindhub_extraction_text
+        assert "Acme ERP" in record.kmindhub_extraction_text
+        assert (
+            record.kmindhub_preview_items[0]["fields"]["evidenceText"]["value"]
+            == "not in raw response"
+        )
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_logs_actual_retry_request_text(caplog) -> None:
+    async def run() -> None:
+        invalid_evidence_item = _complete_item()
+        invalid_evidence_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="not in raw response"
+        )
+        invalid_entity_item = _complete_item()
+        invalid_entity_item.fields["entityId"] = KMindHubExtractionFieldValue(
+            value="Acme"
+        )
+        client = FakeKMindHubClient(
+            preview_items=[],
+            preview_item_batches=[[invalid_evidence_item], [invalid_entity_item]],
+        )
+
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(KMindHubExtractionValidationError):
+                await KMindHubGeoRunResultAnalyzer(
+                    FakeRepository(),
+                    FakeWorkspaceResolver(),
+                    client,
+                    debug_payloads=True,
+                ).analyze(_command())
+
+        retry_record = [
+            item
+            for item in caplog.records
+            if item.message == "KMindHub semantic preview validation debug payloads"
+        ][1]
+
+        assert "Previous preview failed validation: evidenceText must exist in raw response" in (
+            retry_record.kmindhub_extraction_text
+        )
+        assert "entityId must be a UUID: Acme" not in retry_record.kmindhub_extraction_text
 
     asyncio.run(run())
 

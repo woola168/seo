@@ -50,6 +50,7 @@ class KMindHubGeoRunResultAnalyzer:
     repository: GeoAnalysisRepository
     workspace_resolver: KMindHubWorkspaceResolver
     client: KMindHubWorkspaceClient
+    debug_payloads: bool = False
 
     async def analyze(
         self,
@@ -91,17 +92,18 @@ class KMindHubGeoRunResultAnalyzer:
         last_error: KMindHubExtractionValidationError | None = None
 
         for attempt in range(SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT + 1):
+            request_text = (
+                extraction_text
+                if attempt == 0
+                else _semantic_repair_extraction_text(
+                    extraction_text,
+                    last_error,
+                )
+            )
             preview = await self.client.preview_text_extraction(
                 workspace_id=workspace_id,
                 task_id=task_id,
-                text=(
-                    extraction_text
-                    if attempt == 0
-                    else _semantic_repair_extraction_text(
-                        extraction_text,
-                        last_error,
-                    )
-                ),
+                text=request_text,
             )
             try:
                 facts = _facts_from_preview(
@@ -112,6 +114,16 @@ class KMindHubGeoRunResultAnalyzer:
                 )
             except KMindHubExtractionValidationError as exc:
                 last_error = exc
+                if self.debug_payloads:
+                    _log_semantic_preview_debug_payloads(
+                        command=command,
+                        workspace_id=workspace_id,
+                        task_id=task_id,
+                        attempt=attempt + 1,
+                        extraction_text=request_text,
+                        preview=preview,
+                        error=exc,
+                    )
                 if attempt >= SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT:
                     raise
                 logger.info(
@@ -451,6 +463,32 @@ def _semantic_repair_extraction_text(
     )
 
 
+def _log_semantic_preview_debug_payloads(
+    *,
+    command: AnalyzeGeoRunResultCommand,
+    workspace_id: UUID,
+    task_id: UUID,
+    attempt: int,
+    extraction_text: str,
+    preview: KMindHubExtractionPreviewResult,
+    error: KMindHubExtractionValidationError,
+) -> None:
+    logger.warning(
+        "KMindHub semantic preview validation debug payloads",
+        extra={
+            "run_result_id": str(command.run_result_id),
+            "workspace_id": str(workspace_id),
+            "task_id": str(task_id),
+            "attempt": attempt,
+            "error": str(error),
+            "kmindhub_extraction_text": extraction_text,
+            "kmindhub_preview_items": [
+                item.model_dump(mode="json", by_alias=True) for item in preview.items
+            ],
+        },
+    )
+
+
 def _entity_context_line(entity) -> str:
     website = entity.website_url or ""
     return (
@@ -480,6 +518,7 @@ class HttpKMindHubWorkspaceClient:
     timeout_seconds: float = 30.0
     preview_retry_attempts: int = 2
     preview_retry_delay_seconds: float = 0.5
+    debug_payloads: bool = False
     _client: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
 
     async def create_workspace(self, display_name: str) -> UUID:
@@ -540,11 +579,33 @@ class HttpKMindHubWorkspaceClient:
         max_attempts = max(1, self.preview_retry_attempts + 1)
         for attempt in range(max_attempts):
             try:
+                request_data = {"taskId": str(task_id), "text": text}
+                if self.debug_payloads:
+                    logger.info(
+                        "KMindHub extraction preview request payload",
+                        extra={
+                            "workspace_id": str(workspace_id),
+                            "task_id": str(task_id),
+                            "attempt": attempt + 1,
+                            "kmindhub_request_data": request_data,
+                        },
+                    )
                 response = await self._get_client().post(
                     "/extractions",
                     headers=self.workspace_headers(workspace_id),
-                    data={"taskId": str(task_id), "text": text},
+                    data=request_data,
                 )
+                if self.debug_payloads:
+                    logger.info(
+                        "KMindHub extraction preview response payload",
+                        extra={
+                            "workspace_id": str(workspace_id),
+                            "task_id": str(task_id),
+                            "attempt": attempt + 1,
+                            "status_code": response.status_code,
+                            "kmindhub_response_body": response.text,
+                        },
+                    )
                 response.raise_for_status()
                 payload = response.json()
                 return KMindHubExtractionPreviewResult(

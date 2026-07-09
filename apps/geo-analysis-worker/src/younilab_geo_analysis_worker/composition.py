@@ -64,6 +64,7 @@ def build_dependencies(
         active_repository,
         kmindhub_workspace_resolver,
         active_kmindhub_client,
+        debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
     )
     analyze_run_result = AnalyzeRunResult(
         active_repository,
@@ -122,6 +123,7 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
     return HttpKMindHubWorkspaceClient(
         base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
         timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
+        debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
     )
 
 
@@ -154,3 +156,10 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
