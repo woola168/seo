@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import AppIcon from "../components/ui/AppIcon.vue";
 import { ApiError, api } from "../services/api";
 import type {
@@ -74,6 +74,7 @@ const error = ref("");
 const queries = ref<GeoGeneratedQuery[]>([]);
 const shortlistedQueryIds = ref<Set<string>>(new Set());
 const runResults = ref<GeoRunResult[]>([]);
+const querySection = ref<HTMLElement | null>(null);
 
 const selectedQueries = computed(() =>
   queries.value.filter((query) => shortlistedQueryIds.value.has(query.id)),
@@ -149,6 +150,8 @@ async function generateQueries(): Promise<void> {
     queries.value = result.queries;
     shortlistedQueryIds.value = new Set();
     runResults.value = [];
+    await nextTick();
+    querySection.value?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
@@ -357,12 +360,32 @@ async function run(action: () => Promise<void>): Promise<void> {
 
     <div class="geo-workbench">
       <form class="card geo-form" @submit.prevent>
-        <header class="card-header">
+        <header class="card-header geo-step-header">
           <div>
-            <h2>Input & Settings</h2>
-            <p>輸入品牌、競品、keywords、地區、語言、intent 與 audience。</p>
+            <h2><span class="geo-step-number">1</span>設定與生成</h2>
+            <p>設定品牌、市場、Topic、Intent 與 Audience。</p>
           </div>
         </header>
+        <div class="geo-form-footer">
+          <label class="geo-provider-control">
+            <span>生成模型</span>
+            <select
+              v-model="queryGenerationProvider"
+              aria-label="生成模型"
+            >
+              <option value="dummy">Dummy</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </label>
+          <button
+            class="button button-primary"
+            type="button"
+            :disabled="loading"
+            @click="generateQueries"
+          >
+            <AppIcon name="sparkles" :size="16" />生成 Query
+          </button>
+        </div>
         <div class="geo-form-body">
           <fieldset class="geo-fieldset">
             <legend>專案與品牌</legend>
@@ -415,9 +438,12 @@ async function run(action: () => Promise<void>): Promise<void> {
             </div>
             <div class="geo-topic-editor">
               <div class="geo-topic-editor-header">
-                <span>Topic 約束</span>
+                <div>
+                  <span>Topic 約束</span>
+                  <small>{{ form.topics.length }} 個 Topic</small>
+                </div>
                 <button class="button button-secondary" type="button" @click="addTopic">
-                  新增 Topic
+                  <AppIcon name="plus" :size="15" />新增 Topic
                 </button>
               </div>
               <div
@@ -425,6 +451,19 @@ async function run(action: () => Promise<void>): Promise<void> {
                 :key="index"
                 class="geo-topic-row"
               >
+                <div class="geo-topic-row-header">
+                  <strong>Topic {{ index + 1 }}</strong>
+                  <button
+                    class="geo-icon-button geo-topic-remove"
+                    type="button"
+                    :disabled="form.topics.length <= 1"
+                    :title="form.topics.length <= 1 ? '至少保留一個 Topic' : `移除 Topic ${index + 1}`"
+                    :aria-label="`移除 Topic ${index + 1}`"
+                    @click="removeTopic(index)"
+                  >
+                    <AppIcon name="trash" :size="16" />
+                  </button>
+                </div>
                 <label>
                   <span>Topic 名稱</span>
                   <input v-model="topic.name" type="text" />
@@ -437,14 +476,6 @@ async function run(action: () => Promise<void>): Promise<void> {
                     rows="3"
                   ></textarea>
                 </label>
-                <button
-                  class="button button-secondary"
-                  type="button"
-                  :disabled="form.topics.length <= 1"
-                  @click="removeTopic(index)"
-                >
-                  移除
-                </button>
               </div>
             </div>
           </fieldset>
@@ -496,7 +527,7 @@ async function run(action: () => Promise<void>): Promise<void> {
               </label>
             </div>
             <label>
-              <span>最大 Query 數</span>
+              <span>最大題數</span>
               <input v-model.number="form.maxQueries" min="1" max="40" type="number" />
             </label>
           </fieldset>
@@ -504,77 +535,44 @@ async function run(action: () => Promise<void>): Promise<void> {
       </form>
 
       <div class="geo-main-column">
-        <section class="card geo-research geo-step-card">
+        <section ref="querySection" class="card geo-queries geo-step-card">
           <header class="card-header geo-step-header">
             <div>
-              <h2><span class="geo-step-number">1</span>Query Research 工具</h2>
-              <p>拿左側的關鍵字、品牌、競品、地區、語言、Topic、Intent 與 Audience 生成 query draft。</p>
-            </div>
-            <div class="geo-run-actions">
-              <label class="geo-provider-control">
-                <span>Generation Provider</span>
-                <select
-                  v-model="queryGenerationProvider"
-                  aria-label="Generation Provider"
-                >
-                  <option value="dummy">Dummy</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-              </label>
-              <button
-                class="button button-primary"
-                type="button"
-                :disabled="loading"
-                @click="generateQueries"
-              >
-                <AppIcon name="sparkles" :size="16" />生成 Query
-              </button>
-            </div>
-          </header>
-          <div class="geo-process-note">
-            <AppIcon name="sparkles" :size="17" />
-            <div>
-              <strong>Query Research 不是已保存紀錄。</strong>
-              <p>這一步只負責生成候選 query；生成後才會進入下方 Query / Topic 管理預覽。</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="card geo-queries geo-step-card">
-          <header class="card-header geo-step-header">
-            <div>
-              <h2><span class="geo-step-number">2</span>Query / Topic 管理預覽</h2>
-              <p>呈現已生成的 topic 與 query 暫存紀錄，正式保存待 DB/CRUD。</p>
+              <h2><span class="geo-step-number">2</span>候選 Query</h2>
+              <p>檢視生成結果並選取要執行的題目。</p>
             </div>
             <span class="geo-record-count">
-              {{ queries.length }} 筆紀錄，Shortlist {{ selectedQueries.length }} 筆
+              {{ queries.length }} 筆 · 已選 {{ selectedQueries.length }} 筆
             </span>
           </header>
           <div v-if="!queries.length" class="empty-state">
             <AppIcon name="list" />
-            <strong>尚未有 Query / Topic 管理紀錄</strong>
-            <p>使用 Query Research 工具生成 query 後，這裡只負責預覽與選取紀錄。</p>
+            <strong>尚未生成候選 Query</strong>
+            <p>完成左側設定後即可生成。</p>
           </div>
-          <div v-else class="table-scroll">
-            <table class="data-table geo-query-table">
-              <thead>
-                <tr>
-                  <th>Prompt</th>
-                  <th>Keywords</th>
-                  <th>Intent</th>
-                  <th>動作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="query in queries" :key="query.id">
-                  <td class="geo-prompt-cell">
-                    <strong>{{ query.text }}</strong>
-                    <small>
-                      {{ query.topicName }} · {{ query.attributes.audience.name }}
-                      · {{ query.region }} · {{ query.language }}
-                    </small>
-                  </td>
-                  <td class="geo-keyword-tags">
+          <div v-else class="geo-query-list">
+            <div class="geo-query-list-head" aria-hidden="true">
+              <span>Prompt</span>
+              <span>Keywords</span>
+              <span>Intent</span>
+              <span>動作</span>
+            </div>
+            <article
+              v-for="query in queries"
+              :key="query.id"
+              class="geo-query-row"
+              :class="{ selected: shortlistedQueryIds.has(query.id) }"
+            >
+              <div class="geo-prompt-cell">
+                <strong>{{ query.text }}</strong>
+                <small>
+                  {{ query.topicName }} · {{ query.attributes.audience.name }}
+                  · {{ query.region }} · {{ query.language }}
+                </small>
+              </div>
+              <div class="geo-keyword-tags">
+                <span class="geo-mobile-label">Keywords</span>
+                <div>
                     <span
                       v-for="keyword in queryKeywords(query)"
                       :key="`${query.id}-${keyword}`"
@@ -582,42 +580,53 @@ async function run(action: () => Promise<void>): Promise<void> {
                     >
                       {{ keyword }}
                     </span>
-                  </td>
-                  <td>
+                </div>
+              </div>
+              <div class="geo-intent-cell">
+                <span class="geo-mobile-label">Intent</span>
+                <span
+                  class="geo-intent-label"
+                  :title="query.attributes.intent.description"
+                >
                     <span
                       class="geo-intent-pill"
                       :class="intentCodeTone(query.attributes.intent.category)"
-                      :title="`${intentCategoryLabel(query.attributes.intent.category)}：${query.attributes.intent.description}`"
                     >
                       {{ intentCategoryCode(query.attributes.intent.category) }}
                     </span>
-                  </td>
-                  <td class="geo-actions-cell">
-                    <button
-                      class="button button-secondary geo-shortlist-button"
-                      type="button"
-                      :class="{ active: shortlistedQueryIds.has(query.id) }"
-                      @click="toggleShortlist(query.id)"
-                    >
-                      {{ shortlistedQueryIds.has(query.id) ? "Shortlisted" : "+ Shortlist" }}
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                    {{ intentCategoryLabel(query.attributes.intent.category) }}
+                </span>
+              </div>
+              <div class="geo-actions-cell">
+                <button
+                  class="button button-secondary geo-shortlist-button"
+                  type="button"
+                  :class="{ active: shortlistedQueryIds.has(query.id) }"
+                  @click="toggleShortlist(query.id)"
+                >
+                  {{ shortlistedQueryIds.has(query.id) ? "已加入" : "加入 Shortlist" }}
+                </button>
+              </div>
+            </article>
           </div>
         </section>
 
-        <section class="card geo-results geo-step-card">
+        <section
+          class="card geo-results geo-step-card"
+          :class="{ 'geo-results-inactive': !selectedQueries.length }"
+        >
           <header class="card-header geo-step-header">
             <div>
               <h2><span class="geo-step-number">3</span>Runner 跑題引擎</h2>
-              <p>把 Query / Topic 管理預覽中已加入 Shortlist 的 prompt 送到指定 AI adapter，取得 response 與 references。</p>
+              <p v-if="selectedQueries.length">
+                已選 {{ selectedQueries.length }} 筆 Query，選擇模型後即可執行。
+              </p>
+              <p v-else>加入至少一筆 Shortlist 後即可執行。</p>
             </div>
-            <div class="geo-run-actions">
+            <div v-if="selectedQueries.length" class="geo-run-actions">
               <label class="geo-provider-control">
-                <span>Run Provider</span>
-                <select v-model="provider" aria-label="Run Provider">
+                <span>執行模型</span>
+                <select v-model="provider" aria-label="執行模型">
                   <option value="dummy">Dummy</option>
                   <option value="gemini">Gemini Vertex AI</option>
                   <option value="google_aio">Google AIO (SerpApi)</option>
@@ -626,19 +635,18 @@ async function run(action: () => Promise<void>): Promise<void> {
               <button
                 class="button button-primary"
                 type="button"
-                :disabled="loading || !selectedQueries.length"
+                :disabled="loading"
                 @click="runSelectedQueries"
               >
-                <AppIcon name="activity" :size="16" />跑 Shortlist
+                <AppIcon name="activity" :size="16" />執行 Shortlist
               </button>
             </div>
           </header>
-          <div v-if="!runResults.length" class="empty-state">
-            <AppIcon name="activity" />
-            <strong>尚未執行 Runner</strong>
-            <p>先把 prompt 加入 Shortlist，再使用 provider 建立 run request。</p>
+          <div v-if="selectedQueries.length && !runResults.length" class="geo-run-ready">
+            <AppIcon name="activity" :size="18" />
+            <span>Runner 已準備完成</span>
           </div>
-          <div v-else class="geo-result-list">
+          <div v-else-if="runResults.length" class="geo-result-list">
             <article v-for="result in runResults" :key="result.id" class="geo-result-item">
               <header>
                 <span class="badge badge-info">{{ result.provider }}</span>
