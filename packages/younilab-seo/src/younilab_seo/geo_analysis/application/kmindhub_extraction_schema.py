@@ -15,7 +15,7 @@ SEMANTIC_FACT_TYPE_VALUES = frozenset(
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
 SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
-SEMANTIC_ANALYSIS_SCHEMA_VERSION = 3
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 4
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -125,15 +125,17 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
     return KMindHubExtractionTaskDefinition(
         task_key=SEMANTIC_ANALYSIS_TASK_KEY,
         schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
-        name="GEO semantic analysis v3",
+        name="GEO semantic analysis v4",
         task=(
             "Extract entity mentions, statement sentiment, and semantic labels "
             "from one AI answer using the supplied entity context. Copy entity "
-            "UUIDs exactly from Entity context and copy evidenceText only from "
-            "exact text in the AI answer."
+            "UUIDs exactly from Entity context. Copy evidenceText character-for-"
+            "character from the AI answer and preserve all Markdown delimiters."
         ),
         description=(
-            "只輸出 GEO semantic facts，不處理 citations、dashboard metrics 或 URL normalization。"
+            "只輸出 GEO semantic facts，不處理 citations、dashboard metrics 或 URL "
+            "normalization。evidenceText must preserve the raw answer exactly, "
+            "including Markdown formatting syntax."
         ),
         fields=[
             _field(
@@ -239,19 +241,28 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
             _field(
                 "evidenceText",
                 "Evidence text",
-                "Exact supporting text from the raw answer.",
+                (
+                    "One exact contiguous supporting sentence or phrase copied "
+                    "character-for-character from the raw AI answer, including all "
+                    "Markdown formatting delimiters."
+                ),
                 (
                     "Use an exact contiguous substring copied from the AI answer "
-                    "section only. Do not paraphrase, summarize, translate, "
-                    "normalize, or combine multiple spans. Do not copy text from "
-                    "Instructions, Query context, Topic context, or Entity context. "
+                    "section only. Preserve every original character, including "
+                    "Markdown delimiters such as **, *, _, backticks, brackets, "
+                    "parentheses, punctuation, and spacing. For example, if the "
+                    "answer contains **Acme**, evidenceText must contain **Acme**, "
+                    "not Acme. Do not paraphrase, summarize, translate, normalize, "
+                    "remove formatting syntax, or combine multiple spans. Do not "
+                    "copy text from Instructions, Query context, Topic context, or "
+                    "Entity context. "
                     "If no exact supporting substring exists in the AI answer, "
                     "leave evidenceText empty. Bad evidenceText: a rewritten "
                     "summary such as 'Acme and Rival are strong in product fit'. "
                     "Good evidenceText: the exact original sentence or phrase "
                     "copied from the AI answer without changing any words."
                 ),
-                "Acme ERP",
+                "**Acme** ERP",
                 10,
             ),
         ],

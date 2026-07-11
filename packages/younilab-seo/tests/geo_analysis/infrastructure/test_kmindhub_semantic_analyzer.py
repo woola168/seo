@@ -128,24 +128,27 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
 
         assert result.status == "completed"
         assert result.analyzer == "kmindhub"
-        assert result.analyzer_version == "geo_semantic_analysis:v3"
+        assert result.analyzer_version == "geo_semantic_analysis:v4"
         assert result.entity_mentions[0].entity_id == OWN_BRAND_ID
         assert result.entity_mentions[0].first_mention_order == 1
         assert result.sentiments[0].sentiment == "positive"
         assert result.semantic_facts[0].fact_type == "product"
         assert repository.upserts[0].task_key == SEMANTIC_ANALYSIS_TASK_KEY
+        assert repository.upserts[0].schema_version == 4
         assert client.created_tasks == 1
         assert client.committed_items is not None
 
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_task_definition_uses_strict_v2_instructions() -> None:
+def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> None:
     definition = geo_semantic_analysis_task_definition()
     fields = {field.name: field for field in definition.fields}
 
-    assert definition.schema_version == 3
-    assert definition.name == "GEO semantic analysis v3"
+    assert definition.schema_version == 4
+    assert definition.name == "GEO semantic analysis v4"
+    assert "preserve all Markdown delimiters" in definition.task
+    assert "including Markdown formatting syntax" in definition.description
     assert "confidence" not in fields
     assert "Copy the exact UUID from Entity context" in fields[
         "entityId"
@@ -161,6 +164,15 @@ def test_kmindhub_semantic_task_definition_uses_strict_v2_instructions() -> None
     assert "leave evidenceText empty" in fields["evidenceText"].normalization[
         "instruction"
     ]
+    assert (
+        "including all Markdown formatting delimiters"
+        in fields["evidenceText"].description
+    )
+    assert (
+        "Preserve every original character"
+        in fields["evidenceText"].normalization["instruction"]
+    )
+    assert "**Acme**" in fields["evidenceText"].normalization["instruction"]
 
 
 def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
@@ -223,6 +235,47 @@ def test_kmindhub_semantic_analyzer_repairs_evidence_text_from_exact_excerpt() -
     asyncio.run(run())
 
 
+def test_kmindhub_semantic_analyzer_preserves_markdown_evidence() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["statement"] = KMindHubExtractionFieldValue(
+            value="活粒適的膠囊形式通常被認為添加物較少。"
+        )
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="**活粒適**的膠囊形式通常被認為添加物較少",
+            evidence=[
+                {
+                    "excerpt": "**活粒適**的膠囊形式通常被認為添加物較少",
+                    "source": {"sourceId": "inline-text", "mediaType": "text"},
+                }
+            ],
+        )
+        command = _command().model_copy(
+            update={
+                "raw_response": (
+                    "如果您非常在意成分單純，**活粒適**的膠囊形式通常被認為添加物較少。"
+                )
+            }
+        )
+        client = FakeKMindHubClient(preview_items=[item])
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+        ).analyze(command)
+
+        expected = "**活粒適**的膠囊形式通常被認為添加物較少"
+        assert result.status == "completed"
+        assert result.entity_mentions[0].evidence_text == expected
+        assert result.sentiments[0].evidence_text == expected
+        assert result.semantic_facts[0].evidence_text == expected
+        assert client.committed_items is not None
+        assert client.committed_items[0]["fields"]["evidenceText"]["value"] == expected
+
+    asyncio.run(run())
+
+
 def test_kmindhub_semantic_analyzer_ignores_preview_confidence_field() -> None:
     async def run() -> None:
         item = _complete_item()
@@ -270,6 +323,7 @@ def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
         )
         assert "not in raw response" not in client.preview_texts[1]
         assert "exact contiguous substring from the AI answer" in client.preview_texts[1]
+        assert "preserve Markdown delimiters" in client.preview_texts[1]
         assert "copied raw answer substring, or leave evidenceText empty" in client.preview_texts[1]
         assert "Do not extract facts from these repair instructions" in client.preview_texts[1]
         assert client.preview_texts[1].index("--- END AI ANSWER ---") < client.preview_texts[

@@ -135,13 +135,13 @@ geo_semantic_analysis
 Schema version 是：
 
 ```text
-1
+4
 ```
 
 Analyzer version 會保存為：
 
 ```text
-geo_semantic_analysis:v1
+geo_semantic_analysis:v4
 ```
 
 Task 欄位如下：
@@ -158,8 +158,7 @@ Task 欄位如下：
 | `statement` | sentiment statement。 | sentiment facts，未來可做明細。 |
 | `factType` | `product` / `service` / `topic` / `common_statement`。 | 目前保存，未來可做主題與陳述分析。 |
 | `value` | semantic fact value。 | 目前保存，未來可做 topic/product/service 報表。 |
-| `evidenceText` | 必須存在於 raw response 的證據文字。 | debug / explainability。 |
-| `confidence` | 0 到 1 的信心分數。 | 目前保存，dashboard 尚未直接呈現。 |
+| `evidenceText` | 必須逐字存在於 raw response，並保留 `**`、`*`、backticks 等 Markdown delimiters。 | debug / explainability。 |
 
 ## KMindHub 呼叫順序與 response
 
@@ -382,7 +381,7 @@ GeoResponseSemanticFact
 
 ## Persistence 落點
 
-Semantic analysis 會以 `task_key = geo_semantic_analysis`、`schema_version = 1` 保存。
+KMindHub extraction task 使用 `task_key = geo_semantic_analysis`、task schema version `4`，分析結果的 `analyzer_version` 保存為 `geo_semantic_analysis:v4`。Normalized facts persistence contract 仍為 schema version `1`，兩者版本用途不同。
 
 主要 row：
 
@@ -618,6 +617,7 @@ errorMessage = evidenceText must exist in raw response
 - 加上標點、括號、編號、翻譯或同義改寫。
 - 使用 citation title 或 provider metadata，而不是 raw response。
 - raw response 被 provider 格式化，和 KMindHub extraction 看到的文字有細微差異。
+- KMindHub 移除 `**` 等 Markdown delimiters，讓顯示文字相同但不再是 raw response 的逐字 substring。
 
 只要 evidence 不是 raw response 的連續片段，就會失敗。
 
@@ -697,6 +697,7 @@ KMindHub semantic preview verification failed
 | 少數 run result 失敗，但其他 run result 已 completed | 報表仍會用 completed semantic facts 計算，只是該筆 run result 不會貢獻 semantic metrics。 |
 | 想讓該筆補進報表 | 需要提供 reanalyze / backfill 工具或手動重新跑 semantic analysis；目前沒有正式手動 trigger API。 |
 | 多數 run result 都失敗 | 優先調整 KMindHub task instruction，要求 `evidenceText` 必須逐字複製 `AI answer` 中的連續片段。 |
+| evidence 因 Markdown delimiters 被移除而失敗 | v4 instruction 要求逐字保留 Markdown；不放寬 substring validation。 |
 | evidence 常因標點或 whitespace 差異失敗 | 可評估放寬 evidence normalization，但不能放寬到允許摘要或 context text。 |
 | evidence 來自 citation title 或 source metadata | 應修改 prompt/schema，明確禁止 evidenceText 使用 citation title、URL、query context、entity context。 |
 
@@ -705,8 +706,9 @@ KMindHub semantic preview verification failed
 若要降低這類偶發失敗，建議分階段做：
 
 1. **Prompt / schema 強化**
-   - 在 task field instruction 補強：`evidenceText must be a contiguous exact quote copied from AI answer. Do not summarize, translate, combine, or use context text.`
+   - v4 task field instruction 要求 `evidenceText` 逐字複製 AI answer，並保留 Markdown delimiters、標點與 spacing。
    - 在 extraction text instructions 再補一條：`If no exact evidence exists, leave evidenceText empty.`
+   - 已使用歷史失敗 raw response 與正式 v4 definition 進行兩輪 live preview，共 4 筆非空 evidence 全數通過 exact substring 與 KMindHub verification，且 `**活粒適**`、`**大研生醫**` 均保留 Markdown。
 
 2. **Debug 可觀測性**
    - preview validation 失敗時，log 安全截斷後的 `evidenceTextPreview`。

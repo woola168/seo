@@ -45,13 +45,14 @@ GEO Analysis 的 KMindHub task schema 由程式碼定義，不由使用者在前
 - `schema_version`
 - `kmindhub_task_id`
 
-目前第一版使用：
+目前使用的 task 版本：
 
 | task_key | schema_version | 用途 |
 | --- | ---: | --- |
 | `geo_answer_analysis` | `1` | 擷取單筆 AI answer 的摘要、情緒、主題、entity mention 與 statement。 |
+| `geo_semantic_analysis` | `4` | 擷取 tracked entity mention、排名、正負面情緒與 semantic facts；evidence 必須保留 raw answer 的 Markdown delimiters。 |
 
-若未來需要新增、刪除或改變欄位語意，請新增新的 `schema_version`。不要直接破壞舊 task，避免歷史 analysis rows 無法解讀。
+若未來需要新增、刪除、改變欄位語意或改變會影響 extraction 結果的 instruction，請新增新的 `schema_version`。不要直接破壞舊 task，避免歷史 analysis rows 無法解讀。
 
 ## Field 定義
 

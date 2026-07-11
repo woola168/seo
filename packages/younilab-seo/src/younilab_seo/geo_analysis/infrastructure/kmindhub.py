@@ -475,6 +475,7 @@ def _semantic_repair_extraction_text(
             "- Regenerate the extraction items by following the field rules exactly.",
             "- entityId must be copied exactly as a UUID from Entity context.",
             "- evidenceText must be an exact contiguous substring from the AI answer section.",
+            "- When copying evidenceText, preserve Markdown delimiters such as **, *, _, and backticks exactly.",
             "- Replace invalid evidenceText with a copied raw answer substring, or leave evidenceText empty.",
             "- Leave evidenceText empty when no exact supporting substring exists.",
             "- Do not use neutral, mixed, unknown, or uncertain sentiment values.",
