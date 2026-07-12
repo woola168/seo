@@ -1,9 +1,9 @@
-from dataclasses import dataclass, field
 import asyncio
 import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import httpx
@@ -11,22 +11,25 @@ from pydantic import ValidationError
 
 from younilab_seo.geo_analysis.application import (
     AnalyzeGeoRunResultCommand,
+    EvidenceTextRepairCommand,
+    EvidenceTextRepairer,
+    EvidenceTextRepairFailure,
+    GeoAnalysisRepository,
     GeoEntityMentionFact,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoSentimentFact,
-    KMindHubExtractionTaskMappingCommand,
     KMindHubExtractionCommitResult,
     KMindHubExtractionFieldValue,
     KMindHubExtractionPreviewItem,
     KMindHubExtractionPreviewResult,
     KMindHubExtractionTaskDefinition,
+    KMindHubExtractionTaskMappingCommand,
     KMindHubExtractionUnavailable,
     KMindHubExtractionValidationError,
     KMindHubWorkspaceClient,
     KMindHubWorkspaceProvisionUnavailable,
     KMindHubWorkspaceResolver,
-    GeoAnalysisRepository,
 )
 from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     SEMANTIC_ANALYSIS_SCHEMA_VERSION,
@@ -34,13 +37,11 @@ from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     geo_semantic_analysis_task_definition,
 )
 
-
 SEMANTIC_ANALYZER_NAME = "kmindhub"
 SEMANTIC_ANALYZER_VERSION = (
     f"{SEMANTIC_ANALYSIS_TASK_KEY}:v{SEMANTIC_ANALYSIS_SCHEMA_VERSION}"
 )
 logger = logging.getLogger(__name__)
-SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT = 1
 KMINDHUB_PREVIEW_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
@@ -52,6 +53,7 @@ class KMindHubGeoRunResultAnalyzer:
     workspace_resolver: KMindHubWorkspaceResolver
     client: KMindHubWorkspaceClient
     debug_payloads: bool = False
+    evidence_text_repairer: EvidenceTextRepairer | None = None
 
     async def analyze(
         self,
@@ -90,60 +92,48 @@ class KMindHubGeoRunResultAnalyzer:
         task_id: UUID,
     ) -> tuple[KMindHubExtractionPreviewResult, GeoRunResultAnalysis]:
         extraction_text = _semantic_extraction_text(command)
-        last_error: KMindHubExtractionValidationError | None = None
-
-        for attempt in range(SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT + 1):
-            request_text = (
-                extraction_text
-                if attempt == 0
-                else _semantic_repair_extraction_text(
-                    extraction_text,
-                    last_error,
-                )
-            )
-            preview = await self.client.preview_text_extraction(
-                workspace_id=workspace_id,
-                task_id=task_id,
-                text=request_text,
-            )
-            try:
-                facts = _facts_from_preview(
-                    command,
-                    preview.items,
-                    workspace_id,
-                    task_id,
-                )
-            except KMindHubExtractionValidationError as exc:
-                last_error = exc
-                if self.debug_payloads:
-                    _log_semantic_preview_debug_payloads(
-                        command=command,
-                        workspace_id=workspace_id,
-                        task_id=task_id,
-                        attempt=attempt + 1,
-                        extraction_text=request_text,
-                        preview=preview,
-                        error=exc,
-                    )
-                if attempt >= SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT:
-                    raise
-                logger.info(
-                    "Retrying KMindHub semantic preview after validation failure",
-                    extra={
-                        "run_result_id": str(command.run_result_id),
-                        "workspace_id": str(workspace_id),
-                        "task_id": str(task_id),
-                        "attempt": attempt + 1,
-                        "max_attempts": SEMANTIC_PREVIEW_REPAIR_RETRY_LIMIT + 1,
-                        "error": _safe_text(str(exc)),
-                    },
-                )
-                continue
-            return preview, facts
-
-        raise last_error or KMindHubExtractionValidationError(
-            "KMindHub preview validation failed"
+        preview = await self.client.preview_text_extraction(
+            workspace_id=workspace_id,
+            task_id=task_id,
+            text=extraction_text,
         )
+        try:
+            _validate_preview_verification(
+                preview.items,
+                command,
+                workspace_id,
+                task_id,
+            )
+            _facts_from_preview(
+                command,
+                preview.items,
+                workspace_id,
+                task_id,
+                require_exact_evidence=False,
+            )
+            await _repair_invalid_evidence(
+                preview.items,
+                command.raw_response,
+                self.evidence_text_repairer,
+            )
+            facts = _facts_from_preview(
+                command,
+                preview.items,
+                workspace_id,
+                task_id,
+            )
+        except KMindHubExtractionValidationError as exc:
+            if self.debug_payloads:
+                _log_semantic_preview_debug_payloads(
+                    command=command,
+                    workspace_id=workspace_id,
+                    task_id=task_id,
+                    attempt=1,
+                    preview=preview,
+                    error=exc,
+                )
+            raise
+        return preview, facts
 
     async def _ensure_task(self, tenant_id: UUID, workspace_id: UUID) -> UUID:
         current = await self.repository.get_kmindhub_extraction_task_mapping(
@@ -177,35 +167,34 @@ def _facts_from_preview(
     items: list[KMindHubExtractionPreviewItem],
     workspace_id: UUID,
     task_id: UUID,
+    *,
+    require_exact_evidence: bool = True,
 ) -> GeoRunResultAnalysis:
     entity_mentions: list[GeoEntityMentionFact] = []
     sentiments: list[GeoSentimentFact] = []
     semantic_facts: list[GeoResponseSemanticFact] = []
 
     for index, item in enumerate(items):
-        verification = item.verification or {}
-        if verification and verification.get("passed") is False:
-            logger.warning(
-                "KMindHub semantic preview verification failed",
-                extra={
-                    "run_result_id": str(command.run_result_id),
-                    "workspace_id": str(workspace_id),
-                    "task_id": str(task_id),
-                    "item_index": index,
-                    "field_names": sorted(item.fields),
-                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
-                    "verification": _safe_dict(verification),
-                },
-            )
-            raise KMindHubExtractionValidationError("KMindHub preview verification failed")
         try:
-            mention = _mention_from_item(item, command.raw_response)
+            mention = _mention_from_item(
+                item,
+                command.raw_response,
+                require_exact_evidence=require_exact_evidence,
+            )
             if mention is not None:
                 entity_mentions.append(mention)
-            sentiment = _sentiment_from_item(item, command.raw_response)
+            sentiment = _sentiment_from_item(
+                item,
+                command.raw_response,
+                require_exact_evidence=require_exact_evidence,
+            )
             if sentiment is not None:
                 sentiments.append(sentiment)
-            fact = _semantic_fact_from_item(item, command.raw_response)
+            fact = _semantic_fact_from_item(
+                item,
+                command.raw_response,
+                require_exact_evidence=require_exact_evidence,
+            )
             if fact is not None:
                 semantic_facts.append(fact)
         except ValidationError as exc:
@@ -217,7 +206,9 @@ def _facts_from_preview(
                     "task_id": str(task_id),
                     "item_index": index,
                     "field_names": sorted(item.fields),
-                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
+                    "entity_id_preview": _safe_text(
+                        _string_value(item.fields, "entityId")
+                    ),
                 },
             )
             raise KMindHubExtractionValidationError(
@@ -232,7 +223,9 @@ def _facts_from_preview(
                     "task_id": str(task_id),
                     "item_index": index,
                     "field_names": sorted(item.fields),
-                    "entity_id_preview": _safe_text(_string_value(item.fields, "entityId")),
+                    "entity_id_preview": _safe_text(
+                        _string_value(item.fields, "entityId")
+                    ),
                 },
             )
             raise
@@ -251,6 +244,8 @@ def _facts_from_preview(
 def _mention_from_item(
     item: KMindHubExtractionPreviewItem,
     raw_response: str,
+    *,
+    require_exact_evidence: bool = True,
 ) -> GeoEntityMentionFact | None:
     fields = item.fields
     if not _has_fields(fields, "entityId", "entityRole", "entityName", "mentioned"):
@@ -261,13 +256,19 @@ def _mention_from_item(
         entity_name=_string_value(fields, "entityName"),
         mentioned=_bool_value(fields, "mentioned"),
         first_mention_order=_int_value(fields, "firstMentionOrder"),
-        evidence_text=_validated_evidence(fields, raw_response),
+        evidence_text=_evidence_value(
+            fields,
+            raw_response,
+            require_exact=require_exact_evidence,
+        ),
     )
 
 
 def _sentiment_from_item(
     item: KMindHubExtractionPreviewItem,
     raw_response: str,
+    *,
+    require_exact_evidence: bool = True,
 ) -> GeoSentimentFact | None:
     fields = item.fields
     if not _has_fields(
@@ -287,13 +288,19 @@ def _sentiment_from_item(
         sentiment=_string_value(fields, "sentiment"),
         theme=_string_value(fields, "theme"),
         statement=_string_value(fields, "statement"),
-        evidence_text=_validated_evidence(fields, raw_response),
+        evidence_text=_evidence_value(
+            fields,
+            raw_response,
+            require_exact=require_exact_evidence,
+        ),
     )
 
 
 def _semantic_fact_from_item(
     item: KMindHubExtractionPreviewItem,
     raw_response: str,
+    *,
+    require_exact_evidence: bool = True,
 ) -> GeoResponseSemanticFact | None:
     fields = item.fields
     if not _has_fields(fields, "factType", "value"):
@@ -301,7 +308,11 @@ def _semantic_fact_from_item(
     return GeoResponseSemanticFact(
         fact_type=_string_value(fields, "factType"),
         value=_string_value(fields, "value"),
-        evidence_text=_validated_evidence(fields, raw_response),
+        evidence_text=_evidence_value(
+            fields,
+            raw_response,
+            require_exact=require_exact_evidence,
+        ),
     )
 
 
@@ -374,8 +385,118 @@ def _validated_evidence(
         fields["evidenceText"] = field.model_copy(update={"value": repaired})
         return repaired
 
-    raise KMindHubExtractionValidationError(
-        f"evidenceText must exist in raw response: {_safe_text(evidence)}"
+    raise KMindHubExtractionValidationError("evidenceText must exist in raw response")
+
+
+def _evidence_value(
+    fields: dict[str, KMindHubExtractionFieldValue],
+    raw_response: str,
+    *,
+    require_exact: bool,
+) -> str | None:
+    if not require_exact:
+        return _string_value(fields, "evidenceText")
+    return _validated_evidence(fields, raw_response)
+
+
+def _validate_preview_verification(
+    items: list[KMindHubExtractionPreviewItem],
+    command: AnalyzeGeoRunResultCommand,
+    workspace_id: UUID,
+    task_id: UUID,
+) -> None:
+    for index, item in enumerate(items):
+        verification = item.verification or {}
+        if not verification or verification.get("passed") is not False:
+            continue
+        logger.warning(
+            "KMindHub semantic preview verification failed",
+            extra={
+                "run_result_id": str(command.run_result_id),
+                "workspace_id": str(workspace_id),
+                "task_id": str(task_id),
+                "item_index": index,
+                "field_names": sorted(item.fields),
+                "verification_keys": sorted(verification),
+            },
+        )
+        raise KMindHubExtractionValidationError("KMindHub preview verification failed")
+
+
+async def _repair_invalid_evidence(
+    items: list[KMindHubExtractionPreviewItem],
+    raw_response: str,
+    repairer: EvidenceTextRepairer | None,
+) -> None:
+    failures: list[EvidenceTextRepairFailure] = []
+    replacements: list[tuple[int, str]] = []
+    for item_index, item in enumerate(items):
+        field = item.fields.get("evidenceText")
+        evidence = _string_value(item.fields, "evidenceText")
+        if evidence is None or _evidence_exists_in_raw_response(evidence, raw_response):
+            continue
+        excerpt = _repair_evidence_from_excerpts(field, raw_response)
+        if excerpt is not None:
+            replacements.append((item_index, excerpt))
+            continue
+        failures.append(
+            EvidenceTextRepairFailure(
+                item_index=item_index,
+                wrong_evidence_text=evidence,
+            )
+        )
+
+    if failures:
+        if repairer is None:
+            raise KMindHubExtractionValidationError(
+                "evidenceText must exist in raw response"
+            )
+
+        result = await repairer.repair(
+            EvidenceTextRepairCommand(
+                raw_response=raw_response,
+                failures=failures,
+            )
+        )
+        expected_indexes = [failure.item_index for failure in failures]
+        actual_indexes = [repair.item_index for repair in result.repairs]
+        if actual_indexes != expected_indexes:
+            raise KMindHubExtractionValidationError(
+                "evidenceText repair result does not match failures"
+            )
+
+        for repair in result.repairs:
+            if repair.evidence_text is None or not _evidence_exists_in_raw_response(
+                repair.evidence_text,
+                raw_response,
+            ):
+                raise KMindHubExtractionValidationError(
+                    "evidenceText repair must exist in raw response"
+                )
+            replacements.append((repair.item_index, repair.evidence_text))
+
+    for item_index, evidence_text in replacements:
+        _replace_evidence_text(items[item_index], evidence_text)
+
+
+def _replace_evidence_text(
+    item: KMindHubExtractionPreviewItem,
+    evidence_text: str,
+) -> None:
+    field = item.fields.get("evidenceText")
+    evidence = list(field.evidence) if field is not None else []
+    if evidence and isinstance(evidence[0], dict):
+        evidence[0] = {**evidence[0], "excerpt": evidence_text}
+    elif not evidence:
+        evidence = [
+            {
+                "source": {"sourceId": "inline-text", "mediaType": "text"},
+                "excerpt": evidence_text,
+            }
+        ]
+    item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+        value=evidence_text,
+        evidence=evidence,
     )
 
 
@@ -430,9 +551,18 @@ def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
             "",
             "Instructions:",
             "- Extract facts only from the AI answer section.",
-            "- For entity mention and sentiment facts, entityId must be copied exactly from the entity context below.",
-            "- Do not invent entityId values. If an entity is not listed, do not emit an entity fact for it.",
-            "- evidenceText must be copied from the AI answer section, not from this context.",
+            (
+                "- For entity mention and sentiment facts, entityId must be "
+                "copied exactly from the entity context below."
+            ),
+            (
+                "- Do not invent entityId values. If an entity is not listed, "
+                "do not emit an entity fact for it."
+            ),
+            (
+                "- evidenceText must be copied from the AI answer section, "
+                "not from this context."
+            ),
             "",
             "Query context:",
             f"- projectId: {command.project_id}",
@@ -458,49 +588,12 @@ def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
     )
 
 
-def _semantic_repair_extraction_text(
-    extraction_text: str,
-    error: KMindHubExtractionValidationError | None,
-) -> str:
-    error_summary = _repair_error_summary(error)
-    return "\n".join(
-        [
-            extraction_text,
-            "",
-            "Repair instructions:",
-            (
-                "- Previous preview failed validation: "
-                f"{error_summary}."
-            ),
-            "- Regenerate the extraction items by following the field rules exactly.",
-            "- entityId must be copied exactly as a UUID from Entity context.",
-            "- evidenceText must be an exact contiguous substring from the AI answer section.",
-            "- When copying evidenceText, preserve Markdown delimiters such as **, *, _, and backticks exactly.",
-            "- Replace invalid evidenceText with a copied raw answer substring, or leave evidenceText empty.",
-            "- Leave evidenceText empty when no exact supporting substring exists.",
-            "- Do not use neutral, mixed, unknown, or uncertain sentiment values.",
-            "- Use only product, service, topic, or common_statement for factType.",
-            "- Do not extract facts from these repair instructions.",
-        ]
-    )
-
-
-def _repair_error_summary(error: KMindHubExtractionValidationError | None) -> str:
-    if error is None:
-        return "unknown validation error"
-    message = str(error)
-    if message.startswith("evidenceText must exist in raw response"):
-        return "evidenceText was not an exact substring of the AI answer"
-    return _safe_text(message) or "unknown validation error"
-
-
 def _log_semantic_preview_debug_payloads(
     *,
     command: AnalyzeGeoRunResultCommand,
     workspace_id: UUID,
     task_id: UUID,
     attempt: int,
-    extraction_text: str,
     preview: KMindHubExtractionPreviewResult,
     error: KMindHubExtractionValidationError,
 ) -> None:
@@ -509,23 +602,21 @@ def _log_semantic_preview_debug_payloads(
         "workspaceId": str(workspace_id),
         "taskId": str(task_id),
         "attempt": attempt,
-        "error": str(error),
-        "kmindhubExtractionText": extraction_text,
-        "kmindhubPreviewItems": [
-            item.model_dump(mode="json", by_alias=True) for item in preview.items
-        ],
+        "errorType": error.__class__.__name__,
+        "itemCount": len(preview.items),
+        "itemFieldNames": [sorted(item.fields) for item in preview.items],
     }
     logger.warning(
-        "KMindHub semantic preview validation debug payloads: %s",
+        "KMindHub semantic preview validation metadata: %s",
         _debug_payload(payload),
         extra={
             "run_result_id": str(command.run_result_id),
             "workspace_id": str(workspace_id),
             "task_id": str(task_id),
             "attempt": attempt,
-            "error": str(error),
-            "kmindhub_extraction_text": extraction_text,
-            "kmindhub_preview_items": payload["kmindhubPreviewItems"],
+            "error_type": error.__class__.__name__,
+            "item_count": len(preview.items),
+            "item_field_names": payload["itemFieldNames"],
         },
     )
 
@@ -690,10 +781,7 @@ class HttpKMindHubWorkspaceClient:
                 last_error = exc
                 if isinstance(exc, httpx.HTTPStatusError):
                     response = exc.response
-                if (
-                    not _should_retry_preview(exc)
-                    or attempt >= max_attempts - 1
-                ):
+                if not _should_retry_preview(exc) or attempt >= max_attempts - 1:
                     break
                 logger.warning(
                     "Retrying KMindHub extraction preview after transient failure",
@@ -733,11 +821,7 @@ class HttpKMindHubWorkspaceClient:
         )
         raise KMindHubExtractionUnavailable(
             "KMindHub extraction preview is unavailable"
-            + (
-                f": {last_error.__class__.__name__}"
-                if last_error is not None
-                else ""
-            )
+            + (f": {last_error.__class__.__name__}" if last_error is not None else "")
         ) from last_error
 
     async def commit_extraction_items(
@@ -771,13 +855,17 @@ class HttpKMindHubWorkspaceClient:
                     "workspace_id": str(workspace_id),
                     "task_id": str(task_id),
                     "status_code": response.status_code,
-                    "payload_keys": sorted(payload) if isinstance(payload, dict) else [],
+                    "payload_keys": sorted(payload)
+                    if isinstance(payload, dict)
+                    else [],
                     "has_commit_batch_id": (
                         isinstance(payload, dict)
                         and payload.get("commitBatchId") is not None
                     ),
                     "items_count": (
-                        len(payload.get("items", [])) if isinstance(payload, dict) else 0
+                        len(payload.get("items", []))
+                        if isinstance(payload, dict)
+                        else 0
                     ),
                 },
             )
@@ -802,7 +890,9 @@ class HttpKMindHubWorkspaceClient:
                     "workspace_id": str(workspace_id),
                     "task_id": str(task_id),
                     "item_count": len(items),
-                    "status_code": response.status_code if response is not None else None,
+                    "status_code": response.status_code
+                    if response is not None
+                    else None,
                     "response_body": _response_excerpt(response),
                     "exception_type": exc.__class__.__name__,
                 },

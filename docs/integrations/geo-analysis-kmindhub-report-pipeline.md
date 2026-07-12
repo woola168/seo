@@ -17,9 +17,14 @@ flowchart TD
   G --> H["KMindHubGeoRunResultAnalyzer"]
   H --> I["KMindHub /extraction-tasks 確保 task"]
   H --> J["KMindHub /extractions preview"]
-  J --> K["GEO 驗證 preview 並轉成 semantic facts"]
-  K --> L["KMindHub /extractions/commit"]
-  K --> M["保存 geo_semantic_analysis 與 child facts"]
+  J --> K["GEO 檢查 KMindHub verification"]
+  K --> R["GEO 驗證 evidence exact substring"]
+  R -->|只有 invalid evidence| S["SEO Gemini focused repair 選 sourceBlockId"]
+  S --> T["程式映射 untouched raw text 並重新驗證"]
+  R -->|全部 exact| U["轉成 semantic facts"]
+  T --> U
+  U --> L["KMindHub /extractions/commit"]
+  U --> M["保存 geo_semantic_analysis 與 child facts"]
   M --> N["NormalizeRunResultCitations"]
   F --> N
   N --> O["保存 url_domain:v2 citation facts"]
@@ -39,7 +44,7 @@ Semantic analysis 要能完成，project 內必須有以下設定：
 | Active own brand entity | `AnalyzeRunResult` 必要條件。缺少時 semantic analysis 會保存 `failed`，`errorCode = own_brand_missing`。 |
 | Active competitor entities | 非必要，但有設定才會送入 KMindHub entity context，並出現在競品比較。 |
 | Own brand website URL | citation normalization 用來判斷引用來源是否為自有網站。 |
-| KMindHub workspace mapping | worker 呼叫 KMindHub 前會透過 mapping 取得 workspace；沒有 mapping 時會 provision workspace。 |
+| KMindHub workspace mapping | worker 呼叫 KMindHub 前會透過 mapping 取得 workspace；沒有 active mapping 時 analysis fail closed，不會自動 provision。 |
 
 ## Worker 成功後的後處理
 
@@ -162,32 +167,15 @@ Task 欄位如下：
 
 ## KMindHub 呼叫順序與 response
 
-### 1. Provision 或取得 workspace
+### 1. 取得已綁定 workspace
 
 Worker 透過 `ManageKMindHubWorkspaceMapping` 取得 tenant 對應的 KMindHub workspace。
 
-若沒有 mapping，會呼叫 KMindHub：
-
-```http
-POST /workspaces
-Content-Type: application/json
-
-{
-  "displayName": "..."
-}
-```
-
-GEO 端需要的 response 欄位：
-
-```json
-{
-  "workspaceId": "00000000-0000-4000-8000-000000000001"
-}
-```
+Workspace 必須先由 API 手動綁定或明確 provision；worker 不會在首次 analysis 時自行建立 workspace。Mapping 不存在或不是 active 時，analysis 保存 failed status。
 
 ### 2. 建立或重用 extraction task
 
-如果 `kmindhub_extraction_task_mapping` 已有 active 的 `geo_semantic_analysis` v1，就重用既有 `kmindhub_task_id`。
+如果 `kmindhub_extraction_task_mapping` 已有 active 的 `geo_semantic_analysis` v4，就重用既有 `kmindhub_task_id`。
 
 否則呼叫：
 
@@ -197,7 +185,7 @@ X-Workspace-Id: <workspaceId>
 Content-Type: application/json
 
 {
-  "name": "GEO semantic analysis v1",
+  "name": "GEO semantic analysis v4",
   "task": "...",
   "description": "...",
   "status": "active",
@@ -239,8 +227,7 @@ GEO 端解析的 response 形狀：
         "entityName": { "value": "..." },
         "mentioned": { "value": "true" },
         "firstMentionOrder": { "value": "1" },
-        "evidenceText": { "value": "..." },
-        "confidence": { "value": "0.9" }
+        "evidenceText": { "value": "..." }
       },
       "verification": {
         "passed": true
@@ -262,17 +249,60 @@ Preview 回來後，GEO 端會先驗證，不會直接寫入報表 facts。
 
 | 規則 | 失敗結果 |
 | --- | --- |
-| `verification.passed = false` | 不 commit，analysis failed。 |
+| `verification.passed = false` | 不進 focused repair、不 commit，analysis failed。 |
 | `entityId` 必須是 UUID | 不 commit，analysis failed。 |
 | `entityRole` 必須是 `own_brand` 或 `competitor` | 不 commit，analysis failed。 |
 | `sentiment` 必須是 `positive` 或 `negative` | 不 commit，analysis failed。 |
 | `factType` 必須是支援 enum | 不 commit，analysis failed。 |
 | `firstMentionOrder` 若有值必須大於等於 1 | 不 commit，analysis failed。 |
 | `mentioned = false` 時不能有 `firstMentionOrder` 或 `evidenceText` | 不 commit，analysis failed。 |
-| `confidence` 若有值必須介於 0 到 1 | 不 commit，analysis failed。 |
-| `evidenceText` 必須存在於 raw response | 不 commit，analysis failed。 |
+| `evidenceText` 必須存在於 raw response | 先嘗試 exact metadata excerpt，再進 SEO focused repair；仍無法逐字回溯才 analysis failed。 |
 
-### 5. Commit extraction items
+### 5. SEO focused evidence source selection
+
+KMindHub 每筆 run result 只做一次 logical preview，不因 evidence validation 失敗重跑整包 extraction；HTTP client 仍可對 429 / 5xx 做 transport retry。若 preview verification 已通過，但部分 `evidenceText` 經 Unicode NFKC 與 whitespace normalization 後仍不是 raw response substring，GEO 才透過 `EvidenceTextRepairer` 發出第二次 Gemini LLM 呼叫。這次呼叫只選擇 evidence 的原文來源，不是第二次 KMindHub extraction，也不重新生成 entity、sentiment、fact type、已正確 evidence 或任何文字。
+
+Gemini adapter 的 user payload：
+
+```json
+{
+  "rawResponse": "...",
+  "sourceBlocks": [
+    { "sourceBlockId": "B0017", "text": "* **Acme** 的原始回答句子。" }
+  ],
+  "failures": [
+    { "itemIndex": 3, "wrongEvidenceText": "Acme 的原始回答句子。" }
+  ]
+}
+```
+
+Structured output 只允許回傳定位結果：
+
+```json
+{
+  "repairs": [
+    { "itemIndex": 3, "sourceBlockId": "B0017" }
+  ]
+}
+```
+
+模型不回傳 `evidenceText`、start/end offset，也不使用 Google Search tool。`sourceBlockId` 是單次 request 內的暫時定位碼，不存入資料庫、不回傳前端，完成映射後即失效。SEO 依 ID 取回未修改的原始行，再以相同 deterministic substring 規則驗證。Repair 必須與 failures 同序且數量一致；缺筆、重排、重複 index、未知 block 或任何非逐字結果都會整批拒絕，不部分修改 preview item。
+
+正式 runtime 使用 `google-genai[aiohttp]`，每個 API / worker process 重用同一個 async client 與 `aiohttp.ClientSession`，由 dependency lifecycle 關閉。可用設定：
+
+```env
+GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
+VERTEX_AI_PROJECT=
+VERTEX_AI_LOCATION=global
+GEO_EVIDENCE_REPAIR_MODEL=gemini-3.1-flash-lite
+GEO_EVIDENCE_REPAIR_TEMPERATURE=0
+GEO_EVIDENCE_REPAIR_THINKING_LEVEL=medium
+GEO_EVIDENCE_REPAIR_TIMEOUT_SECONDS=60
+```
+
+`VERTEX_AI_PROJECT` 可省略，adapter 會從 service account JSON 的 `project_id` 取得。Compose 會把 `GCP_CREDENTIALS_FILE_HOST` 指定的 JSON 以唯讀方式掛載到 geo-analysis API、兩個 provider worker 與 geo-tracking API。
+
+### 6. Commit extraction items
 
 只有 preview 驗證通過後才會呼叫 commit：
 
@@ -543,6 +573,7 @@ Response 形狀：
 | `entityId must be a UUID` | KMindHub preview 回傳 entity name 而非 context 內 UUID。 | 看 analyzer preview warning log 的 `entity_id_preview` 與 entity context。 |
 | `evidenceText must exist in raw response` | KMindHub preview 回傳的 evidenceText 不是 raw answer 中可比對到的文字。 | 查該 run result 的 raw response，並比對 preview item 的 evidenceText 是否來自 context、query、summary 或被改寫過。 |
 | `KMindHubExtractionUnavailable` | workspace、task、preview 或 commit 呼叫失敗。 | 看 error message 階段與 KMindHub API logs。 |
+| `EvidenceTextRepairUnavailable` | Vertex 設定、網路或 structured output 無法完成 focused repair。 | 檢查 credential mount、Vertex project / location、model 與 timeout。 |
 | Report 沒 citation | citation normalization 沒完成、version 不符，或 references URL 無法 normalize。 | 查 `url_domain:v2` normalization status。 |
 | Report 有 completed analysis 但 KPI 為 0 | semantic facts completed 但沒有 own brand `mentioned=true`。 | 查 entity mention facts。 |
 | Citation 顯示 Vertex redirect | 舊資料仍是 `url_domain:v1`，或 resolver 未成功產生 `url_domain:v2`。 | 新 run 或 force re-normalize 產生 v2 facts。 |
@@ -599,16 +630,18 @@ errorMessage = evidenceText must exist in raw response
 
 這是今天下午測試遇到的錯誤。它的意思是：KMindHub preview 回傳了某個 `evidenceText`，但 GEO 端用正規化後的字串去比對 `geo_run_result.raw_response`，找不到相同片段。
 
-目前 GEO 的 evidence 驗證只做這件事：
+目前 GEO 的 evidence 處理順序：
 
 1. 取 preview item 的 `evidenceText`。
 2. 對 evidence 與 raw response 做 Unicode NFKC 與 whitespace normalization。
-3. 確認 normalized evidence 是 normalized raw response 的 substring。
-4. 如果不是，就丟 `KMindHubExtractionValidationError("evidenceText must exist in raw response")`。
+3. 已是 substring 時直接接受。
+4. 否則先檢查 KMindHub field metadata 中是否已有 exact excerpt。
+5. 仍無法回溯時，只把 invalid evidence 交給 SEO Gemini block-ID adapter 定位原文。
+6. 全部 repair 再次通過 substring 與順序驗證後才原子套用；否則丟出 validation error。
 
-### 為什麼第一次成功、第二次可能失敗
+### 為什麼 evidence 可能無法逐字回溯
 
-這通常不是 DB 或 dashboard 的不穩定，而是 KMindHub / LLM extraction output 每次可能略有差異。第一次 preview 可能複製了 raw answer 裡的原句，所以通過；第二次 preview 可能回傳：
+這通常不是 DB 或 dashboard 的不穩定，而是 KMindHub / LLM extraction output 可能回傳：
 
 - query context 裡的文字，而不是 AI answer 裡的文字。
 - entity context 裡的 brand name / website，而不是 answer 內的 evidence。
@@ -629,7 +662,7 @@ Dashboard 的 facts 需要可追溯到原始回答，避免報表指標來自 co
 - sentiment statement 不是回答原文。
 - common statement 或 topic 不是 AI answer 實際內容。
 
-所以目前策略是寧可該 run result semantic analysis failed，也不要把不可追溯的 fact 算進報表。
+所以目前策略是先用 block ID 找回 untouched source text；若仍不能逐字回溯，寧可讓該 run result semantic analysis failed，也不要把不可追溯的 fact 算進報表。
 
 ### Debug 步驟
 
@@ -696,31 +729,40 @@ KMindHub semantic preview verification failed
 | --- | --- |
 | 少數 run result 失敗，但其他 run result 已 completed | 報表仍會用 completed semantic facts 計算，只是該筆 run result 不會貢獻 semantic metrics。 |
 | 想讓該筆補進報表 | 需要提供 reanalyze / backfill 工具或手動重新跑 semantic analysis；目前沒有正式手動 trigger API。 |
-| 多數 run result 都失敗 | 優先調整 KMindHub task instruction，要求 `evidenceText` 必須逐字複製 `AI answer` 中的連續片段。 |
-| evidence 因 Markdown delimiters 被移除而失敗 | v4 instruction 要求逐字保留 Markdown；不放寬 substring validation。 |
+| 多數 run result 的 evidence 失敗 | 檢查 Vertex focused repair 設定與失敗原因；不要改成 semantic similarity matching。 |
+| evidence 因 Markdown delimiters 被移除而失敗 | v4 instruction 是第一層約束；focused repair 會用 block ID 取回含 Markdown 的 untouched source text。 |
 | evidence 常因標點或 whitespace 差異失敗 | 可評估放寬 evidence normalization，但不能放寬到允許摘要或 context text。 |
 | evidence 來自 citation title 或 source metadata | 應修改 prompt/schema，明確禁止 evidenceText 使用 citation title、URL、query context、entity context。 |
 
-### 後續建議修正
+### Focused repair 驗證結果
 
-若要降低這類偶發失敗，建議分階段做：
+正式 `GeminiEvidenceTextRepairer` 已使用 23 筆歷史失敗 response、46 個 invalid evidence 做 live regression。`gemini-3.1-flash-lite` 在第一輪回傳 46/46 可映射的 source block ID，程式重新驗證後 46/46 都是 raw response 的 exact normalized substring，repair rate 為 100%，沒有 unresolved case。
 
-1. **Prompt / schema 強化**
-   - v4 task field instruction 要求 `evidenceText` 逐字複製 AI answer，並保留 Markdown delimiters、標點與 spacing。
-   - 在 extraction text instructions 再補一條：`If no exact evidence exists, leave evidenceText empty.`
-   - 已使用歷史失敗 raw response 與正式 v4 definition 進行兩輪 live preview，共 4 筆非空 evidence 全數通過 exact substring 與 KMindHub verification，且 `**活粒適**`、`**大研生醫**` 均保留 Markdown。
+Repo 提供 opt-in live test，fixture 因包含客戶 raw response，不得提交到 Git。Fixture 格式如下；測試會硬性檢查必須是 23 筆 case、46 個 failure，並逐筆驗證回傳順序及 exact normalized substring：
 
-2. **Debug 可觀測性**
-   - preview validation 失敗時，log 安全截斷後的 `evidenceTextPreview`。
-   - log 不超過 120 字，不包含完整 raw response。
+```json
+{
+  "cases": [
+    {
+      "rawResponse": "...",
+      "failures": [
+        { "itemIndex": 0, "wrongEvidenceText": "..." }
+      ]
+    }
+  ]
+}
+```
 
-3. **驗證策略微調**
-   - 仍保留「必須來自 raw response」。
-   - 可考慮允許更強的標點 normalization，但不接受語意相似或摘要 matching。
+```powershell
+$env:GEO_EVIDENCE_REPAIR_LIVE_FIXTURE="C:\secure\geo-evidence-repair-live-fixture.json"
+$env:GOOGLE_APPLICATION_CREDENTIALS="C:\secure\vertex-service-account.json"
+$env:GEO_EVIDENCE_REPAIR_MODEL="gemini-3.1-flash-lite"
+uv run pytest packages/younilab-seo/tests/geo_analysis/infrastructure/test_gemini_evidence_text_repairer_live.py -vv
+```
 
-4. **Operational 工具**
-   - 補 admin-only reanalyze endpoint 或 backfill command。
-   - 讓 flow-check 顯示 `analysisErrorCode` / `analysisErrorMessage`，避免只看到 failed 或 pending。
+沒有設定 `GEO_EVIDENCE_REPAIR_LIVE_FIXTURE` 時，default test suite 會 skip 此 live test，不會呼叫 Vertex AI。
+
+這個結果只證明目前歷史樣本與 block-ID 方法可行，不代表放寬 provenance 規則。Production 仍以 deterministic validation 為最後判定；後續需補 admin-only reanalyze / backfill 工具與 flow-check error detail，讓既有 failed rows 能明確補跑。
 
 ## 與舊版 extraction 的差異
 

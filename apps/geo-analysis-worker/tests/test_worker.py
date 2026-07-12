@@ -1,8 +1,10 @@
+# ruff: noqa: E402
+
 import asyncio
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
 import sys
 import types
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from uuid import uuid4
 
 fake_aio_pika = types.SimpleNamespace(
@@ -17,6 +19,8 @@ from younilab_geo_analysis_worker.composition import build_dependencies
 from younilab_geo_analysis_worker.worker import GeoAnalysisWorker
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
+    EvidenceTextRepairCommand,
+    EvidenceTextRepairResult,
     NormalizeRunResultCitations,
     QueryRunJobMessage,
 )
@@ -42,6 +46,20 @@ class FakeProcessor:
         self.messages.append(message)
 
 
+@dataclass
+class FakeEvidenceTextRepairer:
+    close_calls: int = 0
+
+    async def repair(
+        self,
+        command: EvidenceTextRepairCommand,
+    ) -> EvidenceTextRepairResult:
+        raise AssertionError("repair should not run during composition tests")
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
 def test_worker_passes_consumed_message_to_processor() -> None:
     async def run() -> None:
         message = _message()
@@ -62,9 +80,11 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     monkeypatch.setenv("GEO_ANALYSIS_DATABASE_URL", "postgresql+asyncpg://example")
     monkeypatch.delenv("GEO_ANALYSIS_WORKER_QUEUE", raising=False)
 
+    repairer = FakeEvidenceTextRepairer()
     dependencies = build_dependencies(
         repository=object(),
         tracking_client=object(),
+        evidence_text_repairer=repairer,
         provider="gemini",
     )
 
@@ -79,6 +99,9 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
         dependencies.analyze_run_result.analyzer,
         KMindHubGeoRunResultAnalyzer,
     )
+    assert dependencies.analyze_run_result.analyzer.evidence_text_repairer is repairer
+    assert dependencies.evidence_text_repairer is repairer
+    assert dependencies.closeables.count(repairer) == 1
     assert isinstance(dependencies.citation_url_resolver, HttpCitationUrlResolver)
     assert (
         dependencies.normalize_run_result_citations.url_resolver
@@ -94,6 +117,10 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     assert dependencies.kmindhub_workspace_client.workspace_headers(workspace_id) == {
         "X-Workspace-Id": str(workspace_id)
     }
+
+    asyncio.run(dependencies.close())
+
+    assert repairer.close_calls == 1
 
 
 def test_composition_builds_google_aio_provider_queue(monkeypatch) -> None:

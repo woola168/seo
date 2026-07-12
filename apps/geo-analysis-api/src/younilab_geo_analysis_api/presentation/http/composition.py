@@ -2,14 +2,15 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
     BuildGeoMetricFormulaSource,
     CalculateGeoReportMetrics,
     Clock,
     DispatchQueryRunJob,
+    EvidenceTextRepairer,
     GeoAnalysisRepository,
+    GetGeoDashboardReport,
     KMindHubWorkspaceClient,
     ManageGeoSetup,
     ManageKMindHubWorkspaceMapping,
@@ -20,16 +21,19 @@ from younilab_seo.geo_analysis.application import (
     QueryPlanningClient,
     ReceiveExternalRunCallback,
     ResourceCatalogReferenceVerifier,
-    GetGeoDashboardReport,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
+    GeminiEvidenceTextRepairer,
+    GeminiEvidenceTextRepairSettings,
     KMindHubGeoRunResultAnalyzer,
     ResourceCatalogHttpReferenceVerifier,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
+
+from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,7 @@ class GeoAnalysisApiDependencies:
     manage_query_planning: ManageQueryPlanning
     manage_query_run_jobs: ManageQueryRunJobs
     analyze_run_result: AnalyzeRunResult
+    evidence_text_repairer: EvidenceTextRepairer
     calculate_geo_report_metrics: CalculateGeoReportMetrics
     get_geo_dashboard_report: GetGeoDashboardReport
     dispatch_query_run_job: DispatchQueryRunJob | None
@@ -62,6 +67,7 @@ def build_dependencies(
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,
     kmindhub_client: KMindHubWorkspaceClient | None = None,
+    evidence_text_repairer: EvidenceTextRepairer | None = None,
     authorizer: PermissionAuthorizer | None = None,
     reference_verifier: ResourceCatalogReferenceVerifier | None = None,
     callback_base_url: str | None = None,
@@ -71,6 +77,9 @@ def build_dependencies(
     active_publisher = publisher or _build_publisher()
     active_planning_client = planning_client or _build_planning_client()
     active_kmindhub_client = kmindhub_client or _build_kmindhub_client()
+    active_evidence_text_repairer = (
+        evidence_text_repairer or _build_evidence_text_repairer()
+    )
     active_authorizer = authorizer or _build_authorizer()
     active_reference_verifier = reference_verifier or _build_reference_verifier()
     kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
@@ -82,11 +91,17 @@ def build_dependencies(
         kmindhub_workspace_resolver,
         active_kmindhub_client,
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
+        evidence_text_repairer=active_evidence_text_repairer,
     )
     metric_source_builder = BuildGeoMetricFormulaSource(active_repository)
     closeables = tuple(
         item
-        for item in (active_publisher, active_planning_client, active_kmindhub_client)
+        for item in (
+            active_publisher,
+            active_planning_client,
+            active_kmindhub_client,
+            active_evidence_text_repairer,
+        )
         if item is not None
     )
     return GeoAnalysisApiDependencies(
@@ -105,6 +120,7 @@ def build_dependencies(
             semantic_analyzer,
             active_clock,
         ),
+        evidence_text_repairer=active_evidence_text_repairer,
         calculate_geo_report_metrics=CalculateGeoReportMetrics(
             metric_source_builder,
         ),
@@ -181,9 +197,17 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
     from younilab_seo.geo_analysis.infrastructure import HttpKMindHubWorkspaceClient
 
     return HttpKMindHubWorkspaceClient(
-        base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
+        base_url=os.getenv(
+            "KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"
+        ),
         timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
+    )
+
+
+def _build_evidence_text_repairer() -> EvidenceTextRepairer:
+    return GeminiEvidenceTextRepairer(
+        GeminiEvidenceTextRepairSettings.from_environment()
     )
 
 

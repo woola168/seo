@@ -1,5 +1,5 @@
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -7,6 +7,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     AcceptQueryDraftCommand,
     AnalyzeGeoRunResultCommand,
     CreateQueryRunJobCommand,
+    EvidenceTextRepairCommand,
+    EvidenceTextRepairResult,
     ExternalRunCallback,
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
@@ -25,8 +27,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
-    GeoRunResultAnalysisRecord,
     GeoRunResultAnalysis,
+    GeoRunResultAnalysisRecord,
     GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoTopicCommand,
@@ -46,9 +48,9 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchCommand,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultAnalysisCommand,
     SaveRunResultCitationNormalizationCommand,
     SaveSemanticRunResultAnalysisCommand,
-    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
 )
@@ -111,6 +113,22 @@ class GeoRunResultAnalyzer(Protocol):
         command: AnalyzeGeoRunResultCommand,
     ) -> GeoRunResultAnalysis:
         raise NotImplementedError
+
+
+class EvidenceTextRepairer(Protocol):
+    """將 invalid evidence 對回 raw response 中的原文片段。"""
+
+    async def repair(
+        self,
+        command: EvidenceTextRepairCommand,
+    ) -> EvidenceTextRepairResult:
+        raise NotImplementedError
+
+
+class EvidenceTextRepairUnavailable(RuntimeError):
+    """SEO evidence repair adapter 無法完成 focused repair。"""
+
+    pass
 
 
 class KMindHubWorkspaceClient(Protocol):
@@ -476,7 +494,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     async def delete_project(self, tenant_id: UUID, project_id: UUID) -> bool:
         raise NotImplementedError
 
-    async def list_markets(self, tenant_id: UUID, project_id: UUID) -> list[GeoMarketRecord]:
+    async def list_markets(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoMarketRecord]:
         raise NotImplementedError
 
     async def create_market(
@@ -498,10 +518,14 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     async def delete_market(self, tenant_id: UUID, market_id: UUID) -> bool:
         raise NotImplementedError
 
-    async def list_entities(self, tenant_id: UUID, project_id: UUID) -> list[GeoEntityRecord]:
+    async def list_entities(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoEntityRecord]:
         raise NotImplementedError
 
-    async def get_entity(self, tenant_id: UUID, entity_id: UUID) -> GeoEntityRecord | None:
+    async def get_entity(
+        self, tenant_id: UUID, entity_id: UUID
+    ) -> GeoEntityRecord | None:
         raise NotImplementedError
 
     async def create_entity(
@@ -523,7 +547,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     async def delete_entity(self, tenant_id: UUID, entity_id: UUID) -> bool:
         raise NotImplementedError
 
-    async def list_aliases(self, tenant_id: UUID, entity_id: UUID) -> list[GeoEntityAliasRecord]:
+    async def list_aliases(
+        self, tenant_id: UUID, entity_id: UUID
+    ) -> list[GeoEntityAliasRecord]:
         raise NotImplementedError
 
     async def create_alias(
@@ -545,7 +571,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     async def delete_alias(self, tenant_id: UUID, alias_id: UUID) -> bool:
         raise NotImplementedError
 
-    async def list_topics(self, tenant_id: UUID, project_id: UUID) -> list[GeoTopicRecord]:
+    async def list_topics(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoTopicRecord]:
         raise NotImplementedError
 
     async def create_topic(
@@ -567,7 +595,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     async def delete_topic(self, tenant_id: UUID, topic_id: UUID) -> bool:
         raise NotImplementedError
 
-    async def list_queries(self, tenant_id: UUID, project_id: UUID) -> list[GeoQueryRecord]:
+    async def list_queries(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoQueryRecord]:
         raise NotImplementedError
 
     async def get_query(self, tenant_id: UUID, query_id: UUID) -> GeoQueryRecord | None:
@@ -641,7 +671,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> GeoQueryRunJob | None:
         raise NotImplementedError
 
-    async def list_jobs(self, tenant_id: UUID, project_id: UUID) -> list[GeoQueryRunJob]:
+    async def list_jobs(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoQueryRunJob]:
         raise NotImplementedError
 
     async def get_job(self, tenant_id: UUID, job_id: UUID) -> GeoQueryRunJob | None:

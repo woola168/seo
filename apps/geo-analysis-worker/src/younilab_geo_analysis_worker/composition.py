@@ -6,6 +6,7 @@ from typing import Any
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
     Clock,
+    EvidenceTextRepairer,
     GeoAnalysisRepository,
     KMindHubWorkspaceClient,
     ManageKMindHubWorkspaceMapping,
@@ -14,6 +15,8 @@ from younilab_seo.geo_analysis.application import (
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.infrastructure import (
+    GeminiEvidenceTextRepairer,
+    GeminiEvidenceTextRepairSettings,
     HttpCitationUrlResolver,
     KMindHubGeoRunResultAnalyzer,
 )
@@ -29,6 +32,7 @@ class GeoAnalysisWorkerDependencies:
     analyze_run_result: AnalyzeRunResult
     normalize_run_result_citations: NormalizeRunResultCitations
     citation_url_resolver: HttpCitationUrlResolver
+    evidence_text_repairer: EvidenceTextRepairer
     kmindhub_workspace_resolver: ManageKMindHubWorkspaceMapping
     kmindhub_workspace_client: KMindHubWorkspaceClient
     closeables: tuple[object, ...] = ()
@@ -45,6 +49,7 @@ def build_dependencies(
     repository: GeoAnalysisRepository | None = None,
     tracking_client: TrackingRunClient | None = None,
     kmindhub_client: KMindHubWorkspaceClient | None = None,
+    evidence_text_repairer: EvidenceTextRepairer | None = None,
     consumer: Any | None = None,
     clock: Clock | None = None,
     provider: str | None = None,
@@ -53,6 +58,9 @@ def build_dependencies(
     active_repository = repository or _build_repository()
     active_tracking_client = tracking_client or _build_tracking_client()
     active_kmindhub_client = kmindhub_client or _build_kmindhub_client()
+    active_evidence_text_repairer = (
+        evidence_text_repairer or _build_evidence_text_repairer()
+    )
     citation_url_resolver = _build_citation_url_resolver()
     active_consumer = consumer or _build_consumer(active_provider)
     active_clock = clock or SystemClock()
@@ -65,6 +73,7 @@ def build_dependencies(
         kmindhub_workspace_resolver,
         active_kmindhub_client,
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
+        evidence_text_repairer=active_evidence_text_repairer,
     )
     analyze_run_result = AnalyzeRunResult(
         active_repository,
@@ -89,12 +98,14 @@ def build_dependencies(
         analyze_run_result=analyze_run_result,
         normalize_run_result_citations=normalize_run_result_citations,
         citation_url_resolver=citation_url_resolver,
+        evidence_text_repairer=active_evidence_text_repairer,
         kmindhub_workspace_resolver=kmindhub_workspace_resolver,
         kmindhub_workspace_client=active_kmindhub_client,
         closeables=(
             active_tracking_client,
             active_kmindhub_client,
             citation_url_resolver,
+            active_evidence_text_repairer,
         ),
     )
 
@@ -121,9 +132,17 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
     from younilab_seo.geo_analysis.infrastructure import HttpKMindHubWorkspaceClient
 
     return HttpKMindHubWorkspaceClient(
-        base_url=os.getenv("KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"),
+        base_url=os.getenv(
+            "KMINDHUB_INSIGHT_BASE_URL", "http://kmindhub-insight-api:8000"
+        ),
         timeout_seconds=float(os.getenv("KMINDHUB_INSIGHT_TIMEOUT_SECONDS", "30")),
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
+    )
+
+
+def _build_evidence_text_repairer() -> EvidenceTextRepairer:
+    return GeminiEvidenceTextRepairer(
+        GeminiEvidenceTextRepairSettings.from_environment()
     )
 
 
@@ -141,11 +160,15 @@ def _build_consumer(provider: str) -> Any:
         RabbitMqQueryRunJobConsumer,
     )
 
+    queue_prefix = os.getenv(
+        "GEO_ANALYSIS_RABBITMQ_QUEUE_PREFIX",
+        "geo.query-runs",
+    )
     return RabbitMqQueryRunJobConsumer(
         url=_required_env("GEO_ANALYSIS_RABBITMQ_URL"),
         queue_name=os.getenv(
             "GEO_ANALYSIS_WORKER_QUEUE",
-            f"{os.getenv('GEO_ANALYSIS_RABBITMQ_QUEUE_PREFIX', 'geo.query-runs')}.{provider}",
+            f"{queue_prefix}.{provider}",
         ),
         prefetch_count=int(os.getenv("GEO_ANALYSIS_WORKER_PREFETCH", "1")),
     )

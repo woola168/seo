@@ -1,12 +1,14 @@
 import asyncio
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 import pytest
-
 from younilab_seo.geo_analysis.application import (
     AnalyzeGeoRunResultCommand,
+    EvidenceTextRepair,
+    EvidenceTextRepairCommand,
+    EvidenceTextRepairResult,
     GeoAnalysisEntityContext,
     GeoAnalysisEntityInput,
     KMindHubExtractionFieldValue,
@@ -23,7 +25,6 @@ from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     geo_semantic_analysis_task_definition,
 )
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 TASK_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -71,7 +72,6 @@ class FakeWorkspaceResolver:
 @dataclass
 class FakeKMindHubClient:
     preview_items: list[KMindHubExtractionPreviewItem]
-    preview_item_batches: list[list[KMindHubExtractionPreviewItem]] | None = None
     unavailable: bool = False
     created_tasks: int = 0
     committed_items: list[dict] | None = None
@@ -97,15 +97,9 @@ class FakeKMindHubClient:
         assert task_id == TASK_ID
         self.preview_text = text
         self.preview_texts.append(text)
-        items = self.preview_items
-        if self.preview_item_batches is not None:
-            batch_index = len(self.preview_texts) - 1
-            items = self.preview_item_batches[
-                min(batch_index, len(self.preview_item_batches) - 1)
-            ]
         return KMindHubExtractionPreviewResult(
             task_id=task_id,
-            items=items,
+            items=self.preview_items,
         )
 
     async def commit_extraction_items(self, *, workspace_id, task_id, items):
@@ -113,6 +107,19 @@ class FakeKMindHubClient:
         assert task_id == TASK_ID
         self.committed_items = items
         return None
+
+
+@dataclass
+class FakeEvidenceTextRepairer:
+    repairs: list[EvidenceTextRepair]
+    commands: list[EvidenceTextRepairCommand] = field(default_factory=list)
+
+    async def repair(
+        self,
+        command: EvidenceTextRepairCommand,
+    ) -> EvidenceTextRepairResult:
+        self.commands.append(command)
+        return EvidenceTextRepairResult(repairs=self.repairs)
 
 
 def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
@@ -141,6 +148,63 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
     asyncio.run(run())
 
 
+def test_kmindhub_semantic_analyzer_repairs_only_invalid_evidence() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme ERP 適合製造業。",
+            evidence=[
+                {
+                    "excerpt": "Acme ERP 適合製造業。",
+                    "source": {"sourceId": "inline-text", "mediaType": "text"},
+                }
+            ],
+        )
+        client = FakeKMindHubClient(preview_items=[item])
+        repairer = FakeEvidenceTextRepairer(
+            repairs=[
+                EvidenceTextRepair(
+                    item_index=0,
+                    evidence_text="**Acme ERP** 適合製造業。",
+                )
+            ]
+        )
+        command = _command().model_copy(
+            update={"raw_response": "**Acme ERP** 適合製造業。"}
+        )
+
+        result = await KMindHubGeoRunResultAnalyzer(
+            FakeRepository(),
+            FakeWorkspaceResolver(),
+            client,
+            evidence_text_repairer=repairer,
+        ).analyze(command)
+
+        assert len(client.preview_texts) == 1
+        assert len(repairer.commands) == 1
+        assert repairer.commands[0].raw_response == "**Acme ERP** 適合製造業。"
+        assert repairer.commands[0].failures[0].item_index == 0
+        assert (
+            repairer.commands[0].failures[0].wrong_evidence_text
+            == "Acme ERP 適合製造業。"
+        )
+        assert result.entity_mentions[0].evidence_text == "**Acme ERP** 適合製造業。"
+        assert result.sentiments[0].statement == "Acme ERP 適合製造業。"
+        assert result.sentiments[0].evidence_text == "**Acme ERP** 適合製造業。"
+        assert result.semantic_facts[0].evidence_text == "**Acme ERP** 適合製造業。"
+        assert client.committed_items is not None
+        committed_fields = client.committed_items[0]["fields"]
+        assert committed_fields["entityName"]["value"] == "Acme"
+        assert committed_fields["statement"]["value"] == "Acme ERP 適合製造業。"
+        assert committed_fields["evidenceText"]["value"] == "**Acme ERP** 適合製造業。"
+        assert (
+            committed_fields["evidenceText"]["evidence"][0]["excerpt"]
+            == "**Acme ERP** 適合製造業。"
+        )
+
+    asyncio.run(run())
+
+
 def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> None:
     definition = geo_semantic_analysis_task_definition()
     fields = {field.name: field for field in definition.fields}
@@ -150,20 +214,21 @@ def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> N
     assert "preserve all Markdown delimiters" in definition.task
     assert "including Markdown formatting syntax" in definition.description
     assert "confidence" not in fields
-    assert "Copy the exact UUID from Entity context" in fields[
-        "entityId"
-    ].normalization["instruction"]
-    assert "exact contiguous substring copied from the AI answer" in fields[
-        "evidenceText"
-    ].normalization["instruction"]
-    assert "Do not paraphrase" in fields["evidenceText"].normalization[
-        "instruction"
-    ]
+    assert (
+        "Copy the exact UUID from Entity context"
+        in fields["entityId"].normalization["instruction"]
+    )
+    assert (
+        "exact contiguous substring copied from the AI answer"
+        in fields["evidenceText"].normalization["instruction"]
+    )
+    assert "Do not paraphrase" in fields["evidenceText"].normalization["instruction"]
     assert "Bad evidenceText" in fields["evidenceText"].normalization["instruction"]
     assert "Good evidenceText" in fields["evidenceText"].normalization["instruction"]
-    assert "leave evidenceText empty" in fields["evidenceText"].normalization[
-        "instruction"
-    ]
+    assert (
+        "leave evidenceText empty"
+        in fields["evidenceText"].normalization["instruction"]
+    )
     assert (
         "including all Markdown formatting delimiters"
         in fields["evidenceText"].description
@@ -228,8 +293,7 @@ def test_kmindhub_semantic_analyzer_repairs_evidence_text_from_exact_excerpt() -
         assert result.semantic_facts[0].evidence_text == "Acme ERP"
         assert client.committed_items is not None
         assert (
-            client.committed_items[0]["fields"]["evidenceText"]["value"]
-            == "Acme ERP"
+            client.committed_items[0]["fields"]["evidenceText"]["value"] == "Acme ERP"
         )
 
     asyncio.run(run())
@@ -279,7 +343,9 @@ def test_kmindhub_semantic_analyzer_preserves_markdown_evidence() -> None:
 def test_kmindhub_semantic_analyzer_ignores_preview_confidence_field() -> None:
     async def run() -> None:
         item = _complete_item()
-        item.fields["confidence"] = KMindHubExtractionFieldValue(value="missing-evidence")
+        item.fields["confidence"] = KMindHubExtractionFieldValue(
+            value="missing-evidence"
+        )
         client = FakeKMindHubClient(preview_items=[item])
 
         result = await KMindHubGeoRunResultAnalyzer(
@@ -296,111 +362,252 @@ def test_kmindhub_semantic_analyzer_ignores_preview_confidence_field() -> None:
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_analyzer_repairs_invalid_evidence_once() -> None:
+def test_kmindhub_semantic_analyzer_repairs_multiple_evidence_values_once() -> None:
     async def run() -> None:
-        invalid_item = _complete_item()
-        invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
-            value="not in raw response"
+        first_item = _complete_item()
+        first_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme ERP 適合製造業。"
         )
-        valid_item = _complete_item()
-        client = FakeKMindHubClient(
-            preview_items=[],
-            preview_item_batches=[[invalid_item], [valid_item]],
+        second_item = _complete_item()
+        second_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Rival ERP 適合零售業。"
+        )
+        client = FakeKMindHubClient(preview_items=[first_item, second_item])
+        repairer = FakeEvidenceTextRepairer(
+            repairs=[
+                EvidenceTextRepair(
+                    item_index=0,
+                    evidence_text="* **Acme ERP** 適合製造業。",
+                ),
+                EvidenceTextRepair(
+                    item_index=1,
+                    evidence_text="* **Rival ERP** 適合零售業。",
+                ),
+            ]
+        )
+        command = _command().model_copy(
+            update={
+                "raw_response": (
+                    "* **Acme ERP** 適合製造業。\n* **Rival ERP** 適合零售業。"
+                )
+            }
         )
 
         result = await KMindHubGeoRunResultAnalyzer(
             FakeRepository(),
             FakeWorkspaceResolver(),
             client,
-        ).analyze(_command())
+            evidence_text_repairer=repairer,
+        ).analyze(command)
 
         assert result.status == "completed"
-        assert len(client.preview_texts) == 2
-        assert "Repair instructions:" in client.preview_texts[1]
-        assert (
-            "evidenceText was not an exact substring of the AI answer"
-            in client.preview_texts[1]
-        )
-        assert "not in raw response" not in client.preview_texts[1]
-        assert "exact contiguous substring from the AI answer" in client.preview_texts[1]
-        assert "preserve Markdown delimiters" in client.preview_texts[1]
-        assert "copied raw answer substring, or leave evidenceText empty" in client.preview_texts[1]
-        assert "Do not extract facts from these repair instructions" in client.preview_texts[1]
-        assert client.preview_texts[1].index("--- END AI ANSWER ---") < client.preview_texts[
-            1
-        ].index("Repair instructions:")
+        assert len(client.preview_texts) == 1
+        assert len(repairer.commands) == 1
+        assert [failure.item_index for failure in repairer.commands[0].failures] == [
+            0,
+            1,
+        ]
         assert client.committed_items is not None
-        assert (
-            client.committed_items[0]["fields"]["evidenceText"]["value"]
-            == "Acme ERP"
+        assert client.committed_items[0]["fields"]["evidenceText"]["value"] == (
+            "* **Acme ERP** 適合製造業。"
+        )
+        assert client.committed_items[1]["fields"]["evidenceText"]["value"] == (
+            "* **Rival ERP** 適合零售業。"
         )
 
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_analyzer_repairs_invalid_entity_id_once() -> None:
+def test_kmindhub_semantic_analyzer_rejects_non_exact_focused_repair() -> None:
     async def run() -> None:
-        invalid_item = _complete_item()
-        invalid_item.fields["entityId"] = KMindHubExtractionFieldValue(value="Acme")
-        valid_item = _complete_item()
-        client = FakeKMindHubClient(
-            preview_items=[],
-            preview_item_batches=[[invalid_item], [valid_item]],
-        )
-
-        result = await KMindHubGeoRunResultAnalyzer(
-            FakeRepository(),
-            FakeWorkspaceResolver(),
-            client,
-        ).analyze(_command())
-
-        assert result.status == "completed"
-        assert len(client.preview_texts) == 2
-        assert "Repair instructions:" in client.preview_texts[1]
-        assert "entityId must be a UUID: Acme" in client.preview_texts[1]
-        assert "entityId must be copied exactly as a UUID" in client.preview_texts[1]
-        assert client.committed_items is not None
-
-    asyncio.run(run())
-
-
-def test_kmindhub_semantic_analyzer_fails_after_one_repair_attempt() -> None:
-    async def run() -> None:
-        invalid_item = _complete_item()
-        invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+        item = _complete_item()
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
             value="not in raw response"
         )
-        client = FakeKMindHubClient(
-            preview_items=[],
-            preview_item_batches=[[invalid_item], [invalid_item]],
+        client = FakeKMindHubClient(preview_items=[item])
+        repairer = FakeEvidenceTextRepairer(
+            repairs=[
+                EvidenceTextRepair(
+                    item_index=0,
+                    evidence_text="still not in raw response",
+                )
+            ]
         )
 
         with pytest.raises(
             KMindHubExtractionValidationError,
-            match="evidenceText must exist in raw response",
+            match="evidenceText repair must exist in raw response",
         ):
             await KMindHubGeoRunResultAnalyzer(
                 FakeRepository(),
                 FakeWorkspaceResolver(),
                 client,
+                evidence_text_repairer=repairer,
             ).analyze(_command())
 
-        assert len(client.preview_texts) == 2
+        assert len(client.preview_texts) == 1
+        assert len(repairer.commands) == 1
         assert client.committed_items is None
 
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_analyzer_logs_validation_debug_payloads(caplog) -> None:
+def test_kmindhub_semantic_analyzer_applies_focused_repairs_atomically() -> None:
+    async def run() -> None:
+        first_item = _complete_item()
+        first_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme ERP 適合製造業。"
+        )
+        second_item = _complete_item()
+        second_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Rival ERP 適合零售業。"
+        )
+        client = FakeKMindHubClient(preview_items=[first_item, second_item])
+        repairer = FakeEvidenceTextRepairer(
+            repairs=[
+                EvidenceTextRepair(
+                    item_index=0,
+                    evidence_text="* **Acme ERP** 適合製造業。",
+                ),
+                EvidenceTextRepair(
+                    item_index=1,
+                    evidence_text="not in raw response",
+                ),
+            ]
+        )
+        command = _command().model_copy(
+            update={
+                "raw_response": (
+                    "* **Acme ERP** 適合製造業。\n* **Rival ERP** 適合零售業。"
+                )
+            }
+        )
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="evidenceText repair must exist in raw response",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+                evidence_text_repairer=repairer,
+            ).analyze(command)
+
+        assert first_item.fields["evidenceText"].value == "Acme ERP 適合製造業。"
+        assert second_item.fields["evidenceText"].value == "Rival ERP 適合零售業。"
+        assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "repairs",
+    [
+        [
+            EvidenceTextRepair(
+                item_index=0,
+                evidence_text="* **Acme ERP** 適合製造業。",
+            )
+        ],
+        [
+            EvidenceTextRepair(
+                item_index=1,
+                evidence_text="* **Rival ERP** 適合零售業。",
+            ),
+            EvidenceTextRepair(
+                item_index=0,
+                evidence_text="* **Acme ERP** 適合製造業。",
+            ),
+        ],
+        [
+            EvidenceTextRepair(
+                item_index=0,
+                evidence_text="* **Acme ERP** 適合製造業。",
+            ),
+            EvidenceTextRepair(
+                item_index=0,
+                evidence_text="* **Acme ERP** 適合製造業。",
+            ),
+        ],
+    ],
+)
+def test_kmindhub_semantic_analyzer_rejects_mismatched_focused_repairs(
+    repairs: list[EvidenceTextRepair],
+) -> None:
+    async def run() -> None:
+        first_item = _complete_item()
+        first_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme ERP 適合製造業。"
+        )
+        second_item = _complete_item()
+        second_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Rival ERP 適合零售業。"
+        )
+        client = FakeKMindHubClient(preview_items=[first_item, second_item])
+        command = _command().model_copy(
+            update={
+                "raw_response": (
+                    "* **Acme ERP** 適合製造業。\n* **Rival ERP** 適合零售業。"
+                )
+            }
+        )
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="evidenceText repair result does not match failures",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+                evidence_text_repairer=FakeEvidenceTextRepairer(repairs=repairs),
+            ).analyze(command)
+
+        assert first_item.fields["evidenceText"].value == "Acme ERP 適合製造業。"
+        assert second_item.fields["evidenceText"].value == "Rival ERP 適合零售業。"
+        assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_does_not_repair_invalid_entity_id() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["entityId"] = KMindHubExtractionFieldValue(value="Acme")
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="not in raw response"
+        )
+        client = FakeKMindHubClient(preview_items=[item])
+        repairer = FakeEvidenceTextRepairer(repairs=[])
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="entityId must be a UUID: Acme",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                client,
+                evidence_text_repairer=repairer,
+            ).analyze(_command())
+
+        assert len(client.preview_texts) == 1
+        assert repairer.commands == []
+        assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_logs_validation_metadata_without_content(
+    caplog,
+) -> None:
     async def run() -> None:
         invalid_item = _complete_item()
         invalid_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
             value="not in raw response"
         )
-        client = FakeKMindHubClient(
-            preview_items=[],
-            preview_item_batches=[[invalid_item], [invalid_item]],
-        )
+        client = FakeKMindHubClient(preview_items=[invalid_item])
 
         with caplog.at_level(logging.WARNING):
             with pytest.raises(KMindHubExtractionValidationError):
@@ -415,67 +622,18 @@ def test_kmindhub_semantic_analyzer_logs_validation_debug_payloads(caplog) -> No
             item
             for item in caplog.records
             if item.message.startswith(
-                "KMindHub semantic preview validation debug payloads: "
+                "KMindHub semantic preview validation metadata: "
             )
         )
 
         assert record.run_result_id == str(RUN_RESULT_ID)
-        assert record.error == "evidenceText must exist in raw response: not in raw response"
-        assert "AI answer:" in record.kmindhub_extraction_text
-        assert "Acme ERP" in record.kmindhub_extraction_text
-        assert '"kmindhubExtractionText":' in record.message
-        assert "AI answer:" in record.message
-        assert "Acme ERP" in record.message
-        assert '"kmindhubPreviewItems":' in record.message
-        assert "not in raw response" in record.message
-        assert (
-            record.kmindhub_preview_items[0]["fields"]["evidenceText"]["value"]
-            == "not in raw response"
-        )
-
-    asyncio.run(run())
-
-
-def test_kmindhub_semantic_analyzer_logs_actual_retry_request_text(caplog) -> None:
-    async def run() -> None:
-        invalid_evidence_item = _complete_item()
-        invalid_evidence_item.fields["evidenceText"] = KMindHubExtractionFieldValue(
-            value="not in raw response"
-        )
-        invalid_entity_item = _complete_item()
-        invalid_entity_item.fields["entityId"] = KMindHubExtractionFieldValue(
-            value="Acme"
-        )
-        client = FakeKMindHubClient(
-            preview_items=[],
-            preview_item_batches=[[invalid_evidence_item], [invalid_entity_item]],
-        )
-
-        with caplog.at_level(logging.WARNING):
-            with pytest.raises(KMindHubExtractionValidationError):
-                await KMindHubGeoRunResultAnalyzer(
-                    FakeRepository(),
-                    FakeWorkspaceResolver(),
-                    client,
-                    debug_payloads=True,
-                ).analyze(_command())
-
-        retry_record = [
-            item
-            for item in caplog.records
-            if item.message.startswith(
-                "KMindHub semantic preview validation debug payloads: "
-            )
-        ][1]
-
-        assert "Previous preview failed validation: evidenceText was not an exact substring of the AI answer" in (
-            retry_record.kmindhub_extraction_text
-        )
-        assert "Previous preview failed validation: evidenceText was not an exact substring of the AI answer" in (
-            retry_record.message
-        )
-        assert "not in raw response" not in retry_record.kmindhub_extraction_text
-        assert "entityId must be a UUID: Acme" not in retry_record.kmindhub_extraction_text
+        assert record.error_type == "KMindHubExtractionValidationError"
+        assert record.item_count == 1
+        assert record.item_field_names == [sorted(invalid_item.fields)]
+        assert "Acme ERP" not in record.message
+        assert "not in raw response" not in record.message
+        assert "kmindhubExtractionText" not in record.message
+        assert "kmindhubPreviewItems" not in record.message
 
     asyncio.run(run())
 
@@ -516,8 +674,46 @@ def test_kmindhub_semantic_analyzer_rejects_failed_preview_verification() -> Non
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
-        assert len(client.preview_texts) == 2
+        assert len(client.preview_texts) == 1
         assert client.committed_items is None
+
+    asyncio.run(run())
+
+
+def test_kmindhub_semantic_analyzer_does_not_repair_failed_verification() -> None:
+    async def run() -> None:
+        item = _complete_item()
+        item.fields["evidenceText"] = KMindHubExtractionFieldValue(
+            value="Acme ERP 適合製造業。"
+        )
+        item.verification = {
+            "passed": False,
+            "failures": [{"field": "evidenceText"}],
+        }
+        repairer = FakeEvidenceTextRepairer(
+            repairs=[
+                EvidenceTextRepair(
+                    item_index=0,
+                    evidence_text="**Acme ERP** 適合製造業。",
+                )
+            ]
+        )
+        command = _command().model_copy(
+            update={"raw_response": "**Acme ERP** 適合製造業。"}
+        )
+
+        with pytest.raises(
+            KMindHubExtractionValidationError,
+            match="KMindHub preview verification failed",
+        ):
+            await KMindHubGeoRunResultAnalyzer(
+                FakeRepository(),
+                FakeWorkspaceResolver(),
+                FakeKMindHubClient(preview_items=[item]),
+                evidence_text_repairer=repairer,
+            ).analyze(command)
+
+        assert repairer.commands == []
 
     asyncio.run(run())
 
@@ -546,7 +742,7 @@ def test_kmindhub_semantic_analyzer_rejects_invalid_preview_values(
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
-        assert len(client.preview_texts) == 2
+        assert len(client.preview_texts) == 1
         assert client.committed_items is None
 
     asyncio.run(run())
@@ -588,7 +784,7 @@ def test_kmindhub_semantic_analyzer_rejects_context_only_evidence_text() -> None
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
-        assert len(client.preview_texts) == 2
+        assert len(client.preview_texts) == 1
         assert client.preview_text is not None
         assert str(COMPETITOR_ID) in client.preview_text
         assert client.committed_items is None
@@ -637,7 +833,7 @@ def test_kmindhub_semantic_analyzer_accepts_missing_evidence_text_field() -> Non
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_analyzer_accepts_unmentioned_entity_without_position_or_evidence() -> None:
+def test_kmindhub_semantic_analyzer_accepts_unmentioned_entity_without_fields() -> None:
     async def run() -> None:
         item = _complete_item()
         item.fields["mentioned"] = KMindHubExtractionFieldValue(value="false")
@@ -716,7 +912,7 @@ def test_kmindhub_semantic_analyzer_reports_invalid_entity_id_value() -> None:
                 FakeWorkspaceResolver(),
                 client,
             ).analyze(_command())
-        assert len(client.preview_texts) == 2
+        assert len(client.preview_texts) == 1
         assert client.committed_items is None
 
     asyncio.run(run())

@@ -94,15 +94,24 @@ GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.google_aio
 
 GEO Analysis provider worker 會把 RabbitMQ message 轉成 `geo-tracking-api` 的 `/api/v1/geo-tracking/run-requests` payload。Tracking completed 時會保存 `geo_run_request`、`geo_run_result`、`geo_run_result_reference`，並把 GEO job 標記為 `succeeded`；tracking failed、HTTP timeout、unsupported provider 時會保存失敗 evidence 並把 job 標記為 `failed`。
 
-目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。KMindHub analysis extraction 會在 worker 保存 raw result 後產生 summary、mention、statement 與 citation classification 的報表前處理資料；visibility/SOV 聚合與正式報表 API 尚未實作。
+目前 raw response 存在 PostgreSQL `text` 欄位，references 存在 `geo_run_result_reference`。Worker 保存 raw result 後會用 KMindHub `geo_semantic_analysis` v4 產生 mention、position、positive / negative sentiment 與 semantic facts；references 則由獨立 citation normalization pipeline 處理。Dashboard report API 讀取這兩類 normalized facts 即時計算 visibility、mentions、SOV、average position 與 citation 指標。
 
 ## GEO Tracking
 
-`geo-tracking-api` 使用 Google Vertex AI service account JSON 時，請放在 VM 上並透過 Compose volume 掛載，不要提交到 source control。
+`geo-tracking-api` 與 GEO focused evidence repair 都使用 Google Vertex AI service account JSON。請放在 VM 上並透過 Compose volume 唯讀掛載到 geo-tracking API、geo-analysis API 與兩個 provider worker，不要提交到 source control。
 
 ```env
 GCP_CREDENTIALS_FILE_HOST=/root/kmind/deploy/credentials/dev-gcp-key.json
 GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
+```
+
+Focused repair 預設沿用 `GEMINI_MODEL` / `GEMINI_THINKING_LEVEL`，也可獨立覆寫：
+
+```env
+GEO_EVIDENCE_REPAIR_MODEL=gemini-3.1-flash-lite
+GEO_EVIDENCE_REPAIR_TEMPERATURE=0
+GEO_EVIDENCE_REPAIR_THINKING_LEVEL=medium
+GEO_EVIDENCE_REPAIR_TIMEOUT_SECONDS=60
 ```
 
 Google AIO 使用 SerpApi，正式環境需設定 `SERPAPI_API_KEY`。

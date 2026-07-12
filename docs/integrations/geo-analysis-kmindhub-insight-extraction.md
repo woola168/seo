@@ -1,6 +1,6 @@
 # GEO Analysis 與 KMindHub Insight Extraction 串接流程
 
-本文說明 GEO Analysis 如何把已保存的 AI raw answer 串接到 KMindHub Insight API，產生報表需要的結構化資料。此流程只處理資料擷取與保存，不負責正式報表聚合 API。
+本文說明 GEO Analysis 如何把已保存的 AI raw answer 串接到 KMindHub Insight API，產生報表需要的結構化資料。正式 dashboard 主線使用 `geo_semantic_analysis` v4；舊 `geo_answer_analysis` 與手動 analysis-extractions endpoint 已停止作為報表來源。完整報表流程見 `geo-analysis-kmindhub-report-pipeline.md`。
 
 ## 整體資料流
 
@@ -12,9 +12,10 @@
 6. worker 確認 tenant 是否已有 `tenant_kmindhub_extraction_task_mapping`。
 7. 若沒有 mapping，GEO Analysis 依程式碼中的 schema version 建立 KMindHub extraction task。
 8. worker 呼叫 `POST /extractions` 做 preview。
-9. GEO application 驗證 preview 結果。
-10. 驗證通過後呼叫 `POST /extractions/commit`。
-11. GEO Analysis 保存 `geo_run_result_analysis` 與 mention、statement、citation classification rows。
+9. GEO application 先保留 KMindHub verification 判定，再驗證 `evidenceText` 是否可逐字回溯。
+10. 只有 invalid evidence 時，由 SEO Gemini block-ID adapter 定位 untouched raw text；不重跑 KMindHub extraction。
+11. 驗證通過後呼叫 `POST /extractions/commit`。
+12. GEO Analysis 保存 semantic analysis、entity mention、sentiment statement 與 semantic fact rows；citation 由獨立 normalization pipeline 處理。
 
 Insight API 失敗不會把 GEO job 改成 failed。job 仍代表跑題是否成功；analysis 狀態另外存在 `geo_run_result_analysis.status`。
 
@@ -22,7 +23,7 @@ Insight API 失敗不會把 GEO job 改成 failed。job 仍代表跑題是否成
 
 KMindHub `POST /extractions` 是 preview，不會把資料寫入 KMindHub MongoDB。GEO Analysis 會先使用 preview 結果做驗證，例如 enum、型別、evidence text 是否合理。
 
-驗證通過後才呼叫 `POST /extractions/commit`。commit 成功後，GEO Analysis 會保存 `kmindhub_commit_batch_id` 與 `kmindhub_item_id`，方便後續稽核與追蹤。
+驗證通過後才呼叫 `POST /extractions/commit`。目前 GEO dashboard 不依賴 KMindHub commit item ID，而是讀取 GEO 自己保存的 normalized semantic facts。
 
 若 preview 驗證失敗，GEO Analysis 不會 commit，並把 analysis 標記為 `failed`。
 
@@ -49,68 +50,54 @@ GEO Analysis 的 KMindHub task schema 由程式碼定義，不由使用者在前
 
 | task_key | schema_version | 用途 |
 | --- | ---: | --- |
-| `geo_answer_analysis` | `1` | 擷取單筆 AI answer 的摘要、情緒、主題、entity mention 與 statement。 |
+| `geo_answer_analysis` | `1` | Legacy extraction；不再作為 dashboard 正式資料來源。 |
 | `geo_semantic_analysis` | `4` | 擷取 tracked entity mention、排名、正負面情緒與 semantic facts；evidence 必須保留 raw answer 的 Markdown delimiters。 |
 
 若未來需要新增、刪除、改變欄位語意或改變會影響 extraction 結果的 instruction，請新增新的 `schema_version`。不要直接破壞舊 task，避免歷史 analysis rows 無法解讀。
 
 ## Field 定義
 
-目前 task 使用 KMindHub 支援的基本欄位型別。多個 mention 或 statement 會以多個 extraction item 表示，不用 JSON/list 欄位。
+目前 v4 task 使用 KMindHub 支援的基本欄位型別。多個 mention、statement 或 semantic fact 會以多個 extraction item 表示，不用 JSON/list 欄位。
 
 | name | fieldType | lookupRole | displayName | 說明 | normalization | 範例 | GEO 驗證 | 報表用途 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `summary` | `string` | `ignored` | 答案摘要 | 用繁中摘要 AI answer 的主要結論。 | 1 到 3 句，不新增原文沒有的資訊。 | `AI 建議優先評估具備在地服務能力的供應商。` | 可為空；若有值需為字串。 | AI answer analysis、run detail。 |
-| `overallSentiment` | `string` | `ignored` | 整體情緒 | AI answer 的整體情緒。 | 只能回 `positive / neutral / negative / mixed / unknown`。 | `neutral` | 必須符合 allowlist。 | Overview KPI、sentiment summary。 |
-| `theme` | `string` | `ignored` | 主題 | 答案主要討論的主題或評估面向。 | 回傳短詞。 | `售後服務` | 可為空；若有值需為字串。 | Topic performance、AI answer analysis。 |
-| `entityName` | `string` | `ignored` | 提及對象 | 答案中被提及的品牌、競品或其他公司/產品。 | 只回傳原文中明確出現或可由別名對應的名稱。 | `Acme` | 有值時才建立 mention row。 | Competitor/SOV、mentions。 |
-| `entityType` | `string` | `ignored` | 提及類型 | 提及對象的類型。 | 只能回 `own_brand / competitor / other`。 | `competitor` | 必須符合 allowlist。 | SOV、競品比較。 |
-| `mentionCount` | `int` | `ignored` | 提及次數 | entity 在答案中被提及的次數。 | 只回傳 0 或正整數。 | `2` | 必須是 0 或正整數。 | mention count、SOV。 |
-| `statementText` | `string` | `ignored` | 重要陳述 | 可供報表觀察的關鍵陳述。 | 必須忠實來自原文，不創造新陳述。 | `Acme 在售後服務上較具優勢。` | 有值時才建立 statement row。 | AI answer analysis。 |
-| `statementSentiment` | `string` | `ignored` | 陳述情緒 | 單一 statement 的情緒或評價方向。 | 只能回 `positive / neutral / negative / mixed / unknown`。 | `positive` | 必須符合 allowlist。 | statement 分析、情緒 drill-down。 |
-| `subjectEntityName` | `string` | `ignored` | 陳述對象 | statement 主要描述的品牌或競品。 | 沒有特定對象可留空。 | `Acme` | 可為空；若有值需為字串。 | statement 與 entity 對應。 |
-| `evidenceText` | `string` | `ignored` | 證據文字 | 支持 mention 或 statement 的原文片段。 | 必須能在 raw answer 中找到。 | `Acme 在售後服務上較具優勢。` | 會先做 Unicode NFKC 與 whitespace normalization；若仍找不到才視為失敗。 | 人工稽核、報表引用。 |
+| `entityId` | `string` | `ignored` | Entity ID | 從 GEO entity context 複製 UUID。 | 不得自行產生。 | `00000000-...` | 必須是 context 內 UUID。 | Entity comparison、sentiment。 |
+| `entityRole` | `string` | `ignored` | Entity role | `own_brand` 或 `competitor`。 | allowlist。 | `own_brand` | 必須符合 allowlist。 | Visibility、SOV。 |
+| `entityName` | `string` | `ignored` | Entity name | Tracked entity 顯示名稱。 | 與 entity context 一致。 | `Acme` | 有 entity fact 時使用。 | Entity comparison。 |
+| `mentioned` | `boolean` | `ignored` | 是否提及 | Answer 是否提及 tracked entity。 | boolean。 | `true` | `false` 時不得有 position / evidence。 | Visibility、mentions。 |
+| `firstMentionOrder` | `int` | `ignored` | 首次順序 | Tracked entities 在整個 answer 的首次出現順序。 | 1-based。 | `1` | 必須大於等於 1。 | Average position。 |
+| `sentiment` | `string` | `ignored` | 情緒 | Statement 對 tracked entity 的評價方向。 | `positive` / `negative`。 | `positive` | 必須符合 MVP allowlist。 | Sentiment breakdown。 |
+| `theme` | `string` | `ignored` | 主題 | Sentiment statement 主題。 | 短詞。 | `售後服務` | sentiment fact 使用。 | Statement detail。 |
+| `statement` | `string` | `ignored` | 陳述 | 品牌相關 statement。 | 忠實描述 answer。 | `Acme 售後服務完整。` | sentiment fact 使用。 | Statement detail。 |
+| `factType` | `string` | `ignored` | Fact type | Semantic fact 類型。 | `product` / `service` / `topic` / `common_statement`。 | `service` | 必須符合 allowlist。 | Response detail。 |
+| `value` | `string` | `ignored` | Fact value | Semantic fact 的值。 | 不新增 answer 外資訊。 | `售後服務` | semantic fact 使用。 | Response detail。 |
+| `evidenceText` | `string` | `ignored` | 證據文字 | 支持 fact 的原文片段。 | 必須來自 raw answer。 | `**Acme** 售後服務完整。` | exact metadata excerpt 或 SEO source-block selection 後仍須是 normalized substring。 | Provenance、人工稽核。 |
 
 ## GEO 端驗證規則
 
 KMindHub 的 `normalization.instruction` 是第一層約束，但 GEO application 仍會做最終驗證：
 
-- `overallSentiment`、`statementSentiment` 必須是 `positive / neutral / negative / mixed / unknown`。
-- `entityType` 必須是 `own_brand / competitor / other`。
-- `mentionCount` 必須是 0 或正整數。
+- `entityRole` 必須是 `own_brand / competitor`。
+- `sentiment` 必須是 `positive / negative`。
+- `factType` 必須是 `product / service / topic / common_statement`。
 - `evidenceText` 若有值，會先做 Unicode NFKC 與 whitespace normalization，再確認是否出現在 raw response。
-- preview `verification.passed = false` 時，不 commit。
+- preview `verification.passed = false` 時直接拒絕，不進 focused repair。
+- 只有 invalid evidence 可交給 SEO `EvidenceTextRepairer`；它會以第二次 Gemini LLM 呼叫選擇 request-scoped source block，不重跑 extraction、不改寫文字，也不處理其他欄位錯誤。
 
 驗證失敗時：
 
 - `geo_run_result_analysis.status = failed`
 - 保存 `error_code` / `error_message`
 - 不呼叫 KMindHub commit
-- 可透過 retry endpoint 重新分析
+- 目前沒有正式手動 reanalyze endpoint；需後續補 admin-only backfill / reanalyze 工具
 
-## Citation Classification
+## Citation Boundary
 
-Citation URL 來源以 `geo_run_result_reference` 為準，不讓 KMindHub 重新產生 URL。GEO Analysis 會在 analysis 階段建立 `geo_run_result_citation_classification`。
-
-第一版 classification 先保守寫入 `unknown`，並保留：
-
-- `run_result_reference_id`
-- `classification`
-- `matched_domain`
-- `confidence`
-- `source`
-
-後續可在不改 raw reference 的前提下，補上 own / competitor / third_party 的 rule-based 或 domain mapping 分類。
+Citation URL 來源以 `geo_run_result_reference` 為準，不讓 KMindHub 或 evidence repair 重新產生 URL。URL resolve、normalization、ownership 與 report aggregation 都由獨立 citation normalization module 處理。
 
 ## Retry 與失敗處理
 
-正式 worker 會在 raw result 保存完成後自動觸發 analysis extraction。若後續需要手動補跑，可呼叫：
-
-```http
-POST /api/geo/run-results/{resultId}/analysis-extractions
-```
-
-這個 endpoint 會套用目前登入者的 tenant 與 GEO resource grant 邊界。跨 tenant 或 grant 外 result 會回 404。
+正式 worker 會在 raw result 保存完成後自動觸發 semantic analysis。Legacy `POST /api/geo/run-results/{resultId}/analysis-extractions` 已回 `410 Gone`，不能用來補跑目前的 `geo_semantic_analysis`；手動 reanalyze / backfill 仍是後續開發項目。
 
 ## 未來欄位調整方式
 

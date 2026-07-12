@@ -168,7 +168,9 @@ class GeoAnalysisEntityContext(ContractModel):
     def validate_entity_roles(self):
         if self.own_brand.entity_role != "own_brand":
             raise ValueError("ownBrand entityRole must be own_brand")
-        if any(competitor.entity_role != "competitor" for competitor in self.competitors):
+        if any(
+            competitor.entity_role != "competitor" for competitor in self.competitors
+        ):
             raise ValueError("competitor entityRole must be competitor")
         return self
 
@@ -193,6 +195,33 @@ class AnalyzeGeoRunResultCommand(ContractModel):
     entities: GeoAnalysisEntityContext
 
 
+class EvidenceTextRepairFailure(ContractModel):
+    """單一 preview item 中無法逐字回溯的 evidence。"""
+
+    item_index: int = Field(ge=0)
+    wrong_evidence_text: str = Field(min_length=1)
+
+
+class EvidenceTextRepairCommand(ContractModel):
+    """要求 repair adapter 將失敗 evidence 對回 raw response 原文。"""
+
+    raw_response: str = Field(min_length=1)
+    failures: list[EvidenceTextRepairFailure] = Field(min_length=1)
+
+
+class EvidenceTextRepair(ContractModel):
+    """單一失敗 evidence 的 focused repair 結果。"""
+
+    item_index: int = Field(ge=0)
+    evidence_text: str | None = None
+
+
+class EvidenceTextRepairResult(ContractModel):
+    """與 repair command failures 順序一致的修復結果。"""
+
+    repairs: list[EvidenceTextRepair] = Field(default_factory=list)
+
+
 class GeoEntityMentionFact(ContractModel):
     """單一 tracked entity 在回答中的 mention 與相對排序事實。"""
 
@@ -208,7 +237,9 @@ class GeoEntityMentionFact(ContractModel):
     def validate_position(self):
         if not self.mentioned:
             if self.first_mention_order is not None:
-                raise ValueError("firstMentionOrder must be empty when mentioned is false")
+                raise ValueError(
+                    "firstMentionOrder must be empty when mentioned is false"
+                )
             if self.evidence_text is not None:
                 raise ValueError("evidenceText must be empty when mentioned is false")
         return self
@@ -606,7 +637,9 @@ class SaveRunResultAnalysisCommand(ContractModel):
     kmindhub_item_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
-    entity_mentions: list[GeoRunResultEntityMentionCommand] = Field(default_factory=list)
+    entity_mentions: list[GeoRunResultEntityMentionCommand] = Field(
+        default_factory=list
+    )
     statements: list[GeoRunResultStatementCommand] = Field(default_factory=list)
     citation_classifications: list[GeoRunResultCitationClassificationCommand] = Field(
         default_factory=list

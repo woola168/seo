@@ -1,11 +1,10 @@
-﻿import asyncio
-from datetime import datetime, timezone
+import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-
 from younilab_geo_analysis_api.presentation.http import create_app
 from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
@@ -14,16 +13,18 @@ from younilab_seo.geo_analysis.application import (
     AuthenticationRequired,
     AuthorizedPrincipal,
     CalculateGeoReportMetrics,
-    GetGeoDashboardReport,
-    KMindHubExtractionCommitResult,
-    KMindHubExtractionFieldValue,
-    KMindHubExtractionPreviewItem,
-    KMindHubExtractionPreviewResult,
+    EvidenceTextRepairCommand,
+    EvidenceTextRepairResult,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
+    GetGeoDashboardReport,
+    KMindHubExtractionCommitResult,
+    KMindHubExtractionFieldValue,
+    KMindHubExtractionPreviewItem,
+    KMindHubExtractionPreviewResult,
     PublishResult,
     QueryRunJobMessage,
     ResourceCatalogVerificationDenied,
@@ -35,10 +36,23 @@ from younilab_seo.geo_analysis.application import (
 from younilab_seo.geo_analysis.domain import JobStatus
 from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyzer
 
-
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
+
+
+@dataclass
+class FakeEvidenceTextRepairer:
+    close_calls: int = 0
+
+    async def repair(
+        self,
+        command: EvidenceTextRepairCommand,
+    ) -> EvidenceTextRepairResult:
+        raise AssertionError("repair should not run during composition tests")
+
+    async def close(self) -> None:
+        self.close_calls += 1
 
 
 def test_local_admin_portal_preflight_is_allowed() -> None:
@@ -191,10 +205,12 @@ def test_kmindhub_workspace_mapping_endpoints() -> None:
 
 def test_composition_builds_report_semantic_analysis_dependency() -> None:
     kmindhub_client = FakeKMindHubClient()
+    repairer = FakeEvidenceTextRepairer()
     dependencies = build_dependencies(
         repository=GeoApiStore(),
         planning_client=FakePlanningClient(),
         kmindhub_client=kmindhub_client,
+        evidence_text_repairer=repairer,
         authorizer=FakeAuthorizer(),
         reference_verifier=FakeReferenceVerifier(),
     )
@@ -204,6 +220,8 @@ def test_composition_builds_report_semantic_analysis_dependency() -> None:
         dependencies.analyze_run_result.analyzer,
         KMindHubGeoRunResultAnalyzer,
     )
+    assert dependencies.analyze_run_result.analyzer.evidence_text_repairer is repairer
+    assert dependencies.evidence_text_repairer is repairer
     assert not hasattr(dependencies, "run_kmindhub_analysis_extraction")
     assert isinstance(
         dependencies.calculate_geo_report_metrics,
@@ -214,6 +232,11 @@ def test_composition_builds_report_semantic_analysis_dependency() -> None:
         GetGeoDashboardReport,
     )
     assert dependencies.closeables.count(kmindhub_client) == 1
+    assert dependencies.closeables.count(repairer) == 1
+
+    asyncio.run(dependencies.close())
+
+    assert repairer.close_calls == 1
 
 
 def test_app_state_exposes_report_semantic_analysis_dependency() -> None:
@@ -261,7 +284,9 @@ def test_kmindhub_workspace_provision_rejects_existing_mapping() -> None:
 
     assert first_response.status_code == 201
     assert second_response.status_code == 409
-    assert second_response.json()["detail"] == "KMindHub workspace mapping already exists"
+    assert (
+        second_response.json()["detail"] == "KMindHub workspace mapping already exists"
+    )
     assert kmindhub_client.created_display_names == ["Acme Workspace"]
 
 
@@ -349,7 +374,9 @@ def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
 
     allowed_job_response = restricted.get(f"/api/geo/jobs/{allowed_job.json()['id']}")
     denied_job_response = restricted.get(f"/api/geo/jobs/{denied_job.json()['id']}")
-    allowed_result_response = restricted.get(f"/api/geo/run-results/{allowed_result_id}")
+    allowed_result_response = restricted.get(
+        f"/api/geo/run-results/{allowed_result_id}"
+    )
     denied_result_response = restricted.get(f"/api/geo/run-results/{denied_result_id}")
 
     assert allowed_job_response.status_code == 200
@@ -376,7 +403,7 @@ def test_validation_error_returns_problem_details() -> None:
     assert _invalid_param_names(body) == {"body.name"}
 
 
-def test_project_allows_empty_customer_reference_but_rejects_task_without_customer() -> None:
+def test_project_allows_empty_customer_but_rejects_task_without_customer() -> None:
     client = _client()
 
     response = client.post("/api/geo/projects", json={"name": "Draft GEO"})
@@ -428,7 +455,9 @@ def test_project_reference_verification_denied_returns_forbidden() -> None:
 
 
 def test_project_reference_authentication_failure_returns_unauthorized() -> None:
-    client = _client(reference_verifier=FakeReferenceVerifier(authentication_required=True))
+    client = _client(
+        reference_verifier=FakeReferenceVerifier(authentication_required=True)
+    )
 
     response = client.post(
         "/api/geo/projects",
@@ -440,7 +469,7 @@ def test_project_reference_authentication_failure_returns_unauthorized() -> None
     assert response.json()["detail"] == "Authentication required"
 
 
-def test_project_reference_verification_unavailable_returns_service_unavailable() -> None:
+def test_project_reference_unavailable_returns_service_unavailable() -> None:
     client = _client(reference_verifier=FakeReferenceVerifier(unavailable=True))
 
     response = client.post(
@@ -471,7 +500,11 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     client = _client(planning_client=planning_client)
     project_response = client.post(
         "/api/geo/projects",
-        json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
+        json={
+            "customerId": str(uuid4()),
+            "seoTaskId": str(uuid4()),
+            "name": "Acme GEO",
+        },
     )
     project_id = project_response.json()["id"]
 
@@ -584,9 +617,9 @@ def test_query_research_rejects_oversized_arrays() -> None:
         ),
     ]
 
-    for field, value in cases:
+    for field_name, value in cases:
         payload = _query_research_payload()
-        payload[field] = value
+        payload[field_name] = value
         response = client.post(
             f"/api/geo/projects/{project_id}/query-research-runs",
             json=payload,
@@ -1127,7 +1160,9 @@ def test_missing_run_result_returns_problem_details() -> None:
 def test_run_result_analysis_extraction_route_is_disabled() -> None:
     kmindhub_client = FakeKMindHubClient(created_workspace_id=uuid4())
     store = GeoApiStore()
-    client, store, job_id = _client_with_job(repository=store, kmindhub_client=kmindhub_client)
+    client, store, job_id = _client_with_job(
+        repository=store, kmindhub_client=kmindhub_client
+    )
     result_id = _add_run_result(store, job_id)
     client.put(
         "/api/geo/integrations/kmindhub/workspace",
@@ -1190,7 +1225,7 @@ def test_store_saves_and_loads_semantic_run_result_analysis() -> None:
         saved = await store.save_semantic_run_result_analysis(
             TENANT_ID,
             SaveSemanticRunResultAnalysisCommand(analysis=analysis),
-            datetime(2026, 7, 5, tzinfo=timezone.utc),
+            datetime(2026, 7, 5, tzinfo=UTC),
         )
         loaded = await store.get_semantic_run_result_analysis(TENANT_ID, result_id)
 
@@ -1231,7 +1266,7 @@ def test_store_saves_and_loads_citation_normalization() -> None:
         saved = await store.save_run_result_citation_normalization(
             TENANT_ID,
             SaveRunResultCitationNormalizationCommand(normalization=normalization),
-            datetime(2026, 7, 5, tzinfo=timezone.utc),
+            datetime(2026, 7, 5, tzinfo=UTC),
         )
         loaded = await store.get_run_result_citation_normalization(
             TENANT_ID,
@@ -1263,7 +1298,7 @@ def test_store_saves_and_loads_citation_normalization() -> None:
                         ],
                     )
                 ),
-                datetime(2026, 7, 5, tzinfo=timezone.utc),
+                datetime(2026, 7, 5, tzinfo=UTC),
             )
 
     asyncio.run(run())
@@ -1302,9 +1337,8 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     assert first_response.status_code == 201
     assert second_response.status_code == 201
     assert first_response.json()["dedupeKey"] == second_response.json()["dedupeKey"]
-    assert (
-        datetime.fromisoformat(first_response.json()["scheduledFor"])
-        == datetime(2026, 6, 22, tzinfo=timezone.utc)
+    assert datetime.fromisoformat(first_response.json()["scheduledFor"]) == datetime(
+        2026, 6, 22, tzinfo=UTC
     )
 
 
@@ -1312,7 +1346,9 @@ def _client(**kwargs) -> TestClient:
     return TestClient(
         create_app(
             authorizer=kwargs.pop("authorizer", FakeAuthorizer()),
-            reference_verifier=kwargs.pop("reference_verifier", FakeReferenceVerifier()),
+            reference_verifier=kwargs.pop(
+                "reference_verifier", FakeReferenceVerifier()
+            ),
             **kwargs,
         ),
         headers=AUTH_HEADERS,
@@ -1392,7 +1428,11 @@ def _metric(
 def _create_project(client: TestClient) -> str:
     response = client.post(
         "/api/geo/projects",
-        json={"customerId": str(uuid4()), "seoTaskId": str(uuid4()), "name": "Acme GEO"},
+        json={
+            "customerId": str(uuid4()),
+            "seoTaskId": str(uuid4()),
+            "name": "Acme GEO",
+        },
     )
     assert response.status_code == 201
     return response.json()["id"]
@@ -1436,7 +1476,7 @@ def _query_research_payload() -> dict:
 
 def _add_run_result(store: GeoApiStore, job_id: UUID) -> UUID:
     job = store.jobs[job_id]
-    now = datetime(2026, 6, 25, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 25, tzinfo=UTC)
     result_id = uuid4()
     reference = GeoRunResultReferenceRecord(
         id=uuid4(),
@@ -1526,9 +1566,7 @@ class FakeKMindHubClient:
                         "statementSentiment": KMindHubExtractionFieldValue(
                             value="neutral"
                         ),
-                        "subjectEntityName": KMindHubExtractionFieldValue(
-                            value="Acme"
-                        ),
+                        "subjectEntityName": KMindHubExtractionFieldValue(value="Acme"),
                         "evidenceText": KMindHubExtractionFieldValue(
                             value="Raw answer"
                         ),
@@ -1638,7 +1676,10 @@ class FakePlanningClient:
                     "marketType": command.market_type,
                     "isBranded": True,
                     "attributes": {
-                        "intent": {"category": "commercial", "description": "比較供應商"},
+                        "intent": {
+                            "category": "commercial",
+                            "description": "比較供應商",
+                        },
                         "topicName": "ERP 導入",
                     },
                     "metadata": {"source": "fake"},

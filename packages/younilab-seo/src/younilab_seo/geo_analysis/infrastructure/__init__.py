@@ -1,3 +1,7 @@
+from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
+    build_postgres_repository,
+    build_postgres_session_factory,
+)
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
     GeoAiPlatformRow,
     GeoEntityAliasRow,
@@ -17,12 +21,12 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
     GeoResponseSemanticFactRow,
+    GeoRunRequestRow,
     GeoRunResultAnalysisRow,
     GeoRunResultCitationClassificationRow,
     GeoRunResultCitationNormalizationRow,
     GeoRunResultCitationRow,
     GeoRunResultEntityMentionRow,
-    GeoRunRequestRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
     GeoRunResultStatementRow,
@@ -31,13 +35,10 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     TenantKMindHubExtractionTaskMappingRow,
     TenantKMindHubWorkspaceMappingRow,
 )
-from younilab_seo.geo_analysis.infrastructure.persistence.postgres.database import (
-    build_postgres_repository,
-    build_postgres_session_factory,
-)
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository import (
     PostgresGeoAnalysisRepository,
 )
+
 __all__ = [
     "AccessControlAuthorizer",
     "GeoAiPlatformRow",
@@ -69,6 +70,8 @@ __all__ = [
     "GeoRunResultStatementRow",
     "GeoTopicRow",
     "GeoWorkerLeaseRow",
+    "GeminiEvidenceTextRepairer",
+    "GeminiEvidenceTextRepairSettings",
     "TenantKMindHubExtractionTaskMappingRow",
     "TenantKMindHubWorkspaceMappingRow",
     "KMindHubGeoRunResultAnalyzer",
@@ -85,6 +88,16 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {"GeminiEvidenceTextRepairer", "GeminiEvidenceTextRepairSettings"}:
+        from younilab_seo.geo_analysis.infrastructure.evidence_repair import (
+            GeminiEvidenceTextRepairer,
+            GeminiEvidenceTextRepairSettings,
+        )
+
+        return {
+            "GeminiEvidenceTextRepairer": GeminiEvidenceTextRepairer,
+            "GeminiEvidenceTextRepairSettings": GeminiEvidenceTextRepairSettings,
+        }[name]
     if name == "AccessControlAuthorizer":
         from younilab_seo.geo_analysis.infrastructure.authorization import (
             AccessControlAuthorizer,

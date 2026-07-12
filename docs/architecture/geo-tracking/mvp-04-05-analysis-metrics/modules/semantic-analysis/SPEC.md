@@ -12,6 +12,19 @@ class GeoRunResultAnalyzer(Protocol):
 
 這是 `geo-analysis` 與 KMindHub 之間的 seam。Caller 只依賴此 interface；HTTP payload mapping、retry、timeout、KMindHub task selection 與 response validation 都屬於 adapter 內部實作。
 
+Focused evidence repair 使用另一個 application port：
+
+```python
+class EvidenceTextRepairer(Protocol):
+    async def repair(
+        self,
+        command: EvidenceTextRepairCommand,
+    ) -> EvidenceTextRepairResult:
+        ...
+```
+
+`EvidenceTextRepairCommand` 只包含 raw response 與無法逐字回溯的 `item_index` / `wrong_evidence_text`。這是 KMindHub extraction 之後、必要時才發生的第二次 Gemini LLM 呼叫；Gemini infrastructure adapter 只用 structured output 選擇 request-scoped source block ID，不重跑 extraction，也不產生 evidence 文字。Application result 才包含由程式取回的 untouched `evidence_text`，block ID 不保存也不進入 domain model。
+
 ## AnalyzeGeoRunResultCommand
 
 ```python
@@ -154,6 +167,11 @@ class GeoRunResultAnalysisRepository(Protocol):
 - Sentiment MVP supports `positive` and `negative` only.
 - Statement-level sentiment is the default; response-level or entity-level sentiment can be derived from statement facts.
 - Semantic `topic` fact describes what the response discusses; it does not mutate `geo_topic`.
+- KMindHub `verification.passed = false` 必須直接拒絕，不進 focused repair。
+- Evidence 以 Unicode NFKC 與 whitespace normalization 後，必須是 raw response 的 contiguous substring。
+- Repair result 的 item indexes 必須與 failures 完全同序且無缺漏、重複或額外項目。
+- 所有 repair result 驗證完成後才能原子套用；任一失敗不得修改任何 preview item。
+- Repair 不重跑 KMindHub extraction，不修復 entity、sentiment、fact type 或其他 schema 錯誤。
 
 ## Tests
 
@@ -163,3 +181,5 @@ class GeoRunResultAnalysisRepository(Protocol):
 - `AnalyzeRunResult` does not call analyzer for failed run result.
 - `AnalyzeRunResult` persists failed analysis on analyzer failure.
 - KMindHub adapter mapping tests for request casing, response mapping, timeout and error mapping.
+- Focused repair tests for exact source mapping, Markdown preservation, malformed output, unknown block、順序與 atomicity。
+- Live regression 使用 23 筆歷史失敗 response、46 個 invalid evidence 驗證正式 adapter，接受標準為 100% exact provenance。

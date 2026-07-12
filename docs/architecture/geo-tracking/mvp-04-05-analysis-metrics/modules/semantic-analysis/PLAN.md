@@ -23,6 +23,8 @@ AnalyzeRunResult
   -> save analysis status + mention/sentiment/semantic facts
 ```
 
+`evidenceText` 的逐字 provenance 是 GEO 報表規則，不是 KMindHub 的通用 extraction 規則。KMindHub preview 通過自己的 verification 後，GEO 先以 deterministic substring 驗證 evidence；只有無法逐字回溯的 evidence 才透過 `EvidenceTextRepairer` 發出第二次 Gemini LLM 呼叫。這次呼叫只選擇原文來源，不重跑 extraction、不改寫 evidence，也不重新生成其他已正確 facts。
+
 ## KMindHub Scope
 
 KMindHub capability 的責任：
@@ -40,6 +42,19 @@ KMindHub 不應：
 - 保存 GEO project / query / provider lifecycle。
 - 決定前期比較區間。
 - 知道 dashboard 篩選維度。
+- 實作 GEO 專用的 exact-substring repair 或 block-ID 規則。
+
+## Evidence Source Selection Scope
+
+SEO repair adapter 的責任：
+
+- 把 raw response 切成帶 request-scoped ID 的非空原始行；ID 只在單次呼叫內有效，不保存也不曝光。
+- 只把 raw response、失敗的 `itemIndex` / `wrongEvidenceText` 與 source blocks 交給 Gemini。
+- Structured output 只接收 `itemIndex` / `sourceBlockId`，再由程式取回 untouched source text。
+- 不使用 Google Search 或任何外部搜尋工具。
+- 共用單一 `google-genai[aiohttp]` client / session，並由 API 或 worker lifecycle 關閉。
+
+Repair 不應處理 KMindHub verification、entity ID、sentiment、fact type 或 schema 錯誤，也不接受 semantic similarity 作為 provenance。
 
 ## Rollout Slice
 
@@ -48,12 +63,7 @@ KMindHub 不應：
 3. 新增 analysis facts persistence。
 4. 實作 `AnalyzeRunResult` use case。
 5. 新增 KMindHub HTTP adapter。
-6. 用已保存 Gemini 或 Google AIO result 做 optional live smoke。
-
-## Open Decisions
-
-- KMindHub endpoint 名稱與正式 API shape。
-- KMindHub 是否直接支援 nested mention/sentiment/semantic structured output，或先回多個 item facts。
+6. 以 focused repair adapter 處理非逐字 evidence，並用已保存的真實 result 做 live regression。
 
 ## Acceptance
 
@@ -63,3 +73,6 @@ KMindHub 不應：
 - mention facts 可回溯 `run_result_id` 與 evidence text。
 - sentiment MVP 只接受 `positive` / `negative`，不接受 `neutral`。
 - semantic facts 只接受 `product`、`service`、`topic`、`common_statement`。
+- KMindHub 每次 analysis 只做一次 logical preview，不因 evidence 失敗重跑整包 extraction；429 / 5xx transport retry 仍可依 HTTP client policy 執行。
+- Gemini 只回 request-scoped block ID，最終 evidence 必須是 raw response 的 exact normalized substring。
+- Repair 缺筆、重排、重複 index、未知 block 或非逐字文字時整批拒絕，且不部分修改 preview。
