@@ -125,9 +125,15 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     analysis_metrics_patch_path = (
         postgres_dir / "012_geo_analysis_analysis_metrics_patch.sql"
     )
+    nullable_seo_task_patch_path = (
+        postgres_dir / "013_geo_analysis_nullable_seo_task_patch.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
+    nullable_seo_task_patch = nullable_seo_task_patch_path.read_text(
+        encoding="utf-8"
+    )
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -170,6 +176,8 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_citation" in analysis_metrics_patch
     assert "ux_geo_run_result_citation_normalization_version" in analysis_metrics_patch
     assert "ix_geo_run_result_citation_reference" in analysis_metrics_patch
+    assert "ALTER TABLE geo_run_request" in nullable_seo_task_patch
+    assert "ALTER COLUMN seo_task_id DROP NOT NULL" in nullable_seo_task_patch
 
 
 def test_semantic_analysis_rows_expose_phase_two_columns() -> None:

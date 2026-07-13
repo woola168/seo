@@ -1,3 +1,5 @@
+import logging
+
 from fastapi.testclient import TestClient
 from younilab_geo_tracking_api import create_app
 from younilab_geo_tracking_application import (
@@ -71,6 +73,11 @@ class GoogleAioAnswerStubProvider:
 class GoogleAioNoResultStubProvider:
     async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
         raise ProviderRequestError("no_google_aio_result")
+
+
+class GeminiFailingAnswerStubProvider:
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+        raise RuntimeError("vertex unavailable")
 
 
 class CloseableAnswerStubProvider(GeminiAnswerStubProvider):
@@ -557,6 +564,99 @@ def test_run_request_preserves_google_aio_no_result_error_code() -> None:
     assert result["error"] == "no_google_aio_result"
     assert result["referenceUrls"] == []
     assert result["references"] == []
+
+
+def test_run_request_logs_known_provider_failure_for_docker_logs(caplog) -> None:
+    client = TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: DummyAnswerProvider(),
+                ProviderCode.GEMINI: GeminiAnswerStubProvider(),
+                ProviderCode.GOOGLE_AIO: GoogleAioNoResultStubProvider(),
+            }
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post(
+            "/api/v1/geo-tracking/run-requests",
+            json={
+                "provider": "google_aio",
+                "timing": "run_now",
+                "queries": [
+                    {
+                        "id": "44444444-4444-4444-8444-444444444444",
+                        "text": "query with no aio result",
+                        "topicName": "topic",
+                        "region": "TW",
+                        "language": "zh-TW",
+                        "marketType": "b2c",
+                        "isBranded": False,
+                        "metadata": {},
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    record = next(
+        item
+        for item in caplog.records
+        if item.message.startswith("Geo tracking provider request failed: ")
+    )
+    assert "provider=google_aio" in record.message
+    assert "queryId=44444444-4444-4444-8444-444444444444" in record.message
+    assert "errorCode=no_google_aio_result" in record.message
+    assert "exceptionType=ProviderRequestError" in record.message
+    assert record.error_code == "no_google_aio_result"
+
+
+def test_run_request_logs_unexpected_provider_failure_for_docker_logs(caplog) -> None:
+    client = TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: DummyAnswerProvider(),
+                ProviderCode.GEMINI: GeminiFailingAnswerStubProvider(),
+            }
+        )
+    )
+
+    with caplog.at_level(logging.ERROR):
+        response = client.post(
+            "/api/v1/geo-tracking/run-requests",
+            json={
+                "provider": "gemini",
+                "timing": "run_now",
+                "queries": [
+                    {
+                        "id": "55555555-5555-4555-8555-555555555555",
+                        "text": "query with provider exception",
+                        "topicName": "topic",
+                        "region": "US",
+                        "language": "en-US",
+                        "marketType": "b2b_procurement",
+                        "isBranded": True,
+                        "metadata": {},
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "failed"
+    assert result["error"] == "provider_request_failed"
+    record = next(
+        item
+        for item in caplog.records
+        if item.message.startswith("Geo tracking provider request failed: ")
+    )
+    assert "provider=gemini" in record.message
+    assert "queryId=55555555-5555-4555-8555-555555555555" in record.message
+    assert "errorCode=provider_request_failed" in record.message
+    assert "exceptionType=RuntimeError" in record.message
+    assert record.exc_info is not None
+    assert record.error_code == "provider_request_failed"
 
 
 def test_app_lifespan_closes_answer_providers() -> None:

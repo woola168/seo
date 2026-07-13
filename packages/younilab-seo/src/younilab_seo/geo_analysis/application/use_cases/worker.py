@@ -144,6 +144,7 @@ class ProcessQueryRunJobMessage:
                 error_message=error_message,
                 request_payload=request_payload,
             ),
+            reject_unexpected_errors=True,
         )
         if (
             status == "succeeded"
@@ -190,6 +191,8 @@ class ProcessQueryRunJobMessage:
     async def _save_or_reject(
         self,
         command: SaveTrackingRunResultCommand,
+        *,
+        reject_unexpected_errors: bool = False,
     ) -> GeoQueryRunJob:
         """保存 worker 結果，若 job 狀態已不接受回寫則轉為 poison message rejection。"""
 
@@ -201,4 +204,34 @@ class ProcessQueryRunJobMessage:
         except QueryRunJobStatusError as exc:
             raise QueryRunJobMessageRejected(
                 f"job {command.message.job_id} rejected message: {exc}"
+            ) from exc
+        except Exception as exc:
+            if not reject_unexpected_errors:
+                raise
+            logger.exception(
+                (
+                    "GEO tracking result persistence failed after provider response: "
+                    "jobId=%s tenantId=%s provider=%s status=%s errorCode=%s "
+                    "exceptionType=%s"
+                ),
+                command.message.job_id,
+                command.message.tenant_id,
+                command.message.platform,
+                command.status,
+                command.error_code,
+                exc.__class__.__name__,
+                extra={
+                    "job_id": str(command.message.job_id),
+                    "tenant_id": str(command.message.tenant_id),
+                    "provider": command.message.platform,
+                    "status": command.status,
+                    "error_code": command.error_code,
+                    "exception_type": exc.__class__.__name__,
+                },
+            )
+            raise QueryRunJobMessageRejected(
+                (
+                    f"job {command.message.job_id} rejected message: "
+                    f"tracking result persistence failed: {exc.__class__.__name__}"
+                )
             ) from exc

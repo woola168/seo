@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+import logging
 
 from younilab_geo_tracking_domain import ProviderCode, RunResultStatus
 
@@ -16,6 +17,9 @@ from younilab_geo_tracking_application.interfaces import (
     ProviderRequestError,
 )
 from younilab_geo_tracking_application.prompt_templates import system_prompt
+
+
+logger = logging.getLogger(__name__)
 
 
 class RunEngineService:
@@ -72,6 +76,29 @@ class RunEngineService:
                     )
                 )
             except ProviderRequestError as exc:
+                logger.warning(
+                    (
+                        "Geo tracking provider request failed: "
+                        "runRequestId=%s queryId=%s provider=%s region=%s "
+                        "language=%s errorCode=%s exceptionType=%s"
+                    ),
+                    run_request_id,
+                    query.id,
+                    command.provider,
+                    query.region,
+                    query.language,
+                    exc.code,
+                    exc.__class__.__name__,
+                    extra={
+                        "run_request_id": str(run_request_id),
+                        "query_id": str(query.id),
+                        "provider": str(command.provider),
+                        "region": query.region,
+                        "language": query.language,
+                        "error_code": exc.code,
+                        "exception_type": exc.__class__.__name__,
+                    },
+                )
                 results.append(
                     RunResult(
                         id=self._id_generator.new_id(),
@@ -90,7 +117,30 @@ class RunEngineService:
                         run_at=run_at,
                     )
                 )
-            except Exception:
+            except Exception as exc:
+                logger.exception(
+                    (
+                        "Geo tracking provider request failed: "
+                        "runRequestId=%s queryId=%s provider=%s region=%s "
+                        "language=%s errorCode=%s exceptionType=%s"
+                    ),
+                    run_request_id,
+                    query.id,
+                    command.provider,
+                    query.region,
+                    query.language,
+                    "provider_request_failed",
+                    exc.__class__.__name__,
+                    extra={
+                        "run_request_id": str(run_request_id),
+                        "query_id": str(query.id),
+                        "provider": str(command.provider),
+                        "region": query.region,
+                        "language": query.language,
+                        "error_code": "provider_request_failed",
+                        "exception_type": exc.__class__.__name__,
+                    },
+                )
                 results.append(
                     RunResult(
                         id=self._id_generator.new_id(),
