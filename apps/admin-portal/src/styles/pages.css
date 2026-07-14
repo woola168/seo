@@ -478,7 +478,7 @@
   height: 22px;
   border-radius: 50%;
   color: var(--surface);
-  background: var(--primary-dark);
+  background: var(--primary);
   font-size: 11px;
 }
 
