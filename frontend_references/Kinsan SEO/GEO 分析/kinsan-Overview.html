@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KINSAN SEO — GEO 分析</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -35,7 +36,7 @@ button,input{font-family:inherit;}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect,useRef,useMemo} = React;
 
 /* ══════════════════════════════════════════════════════════
    ICON SYSTEM
@@ -44,6 +45,22 @@ const {useState,useEffect,useRef} = React;
      monitor, zap, box, trending-up
 ══════════════════════════════════════════════════════════ */
 const FI_PATHS = {
+  "globe":        "<circle cx='12' cy='12' r='10'/><line x1='2' y1='12' x2='22' y2='12'/><path d='M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z'/>",
+  "copy":         "<rect x='9' y='9' width='13' height='13' rx='2' ry='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/>",
+  "external-link":"<path d='M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6'/><polyline points='15 3 21 3 21 9'/><line x1='10' y1='14' x2='21' y2='3'/>",
+  "activity":     "<polyline points='22 12 18 12 15 21 9 3 6 12 2 12'/>",
+  "inbox":        "<polyline points='22 12 16 12 14 15 10 15 8 12 2 12'/><path d='M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z'/>",
+  "chevron-left": "<polyline points='15 18 9 12 15 6'/>",
+  "download":     "<path d='M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/>",
+  "at-sign":      "<circle cx='12' cy='12' r='4'/><path d='M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94'/>",
+  "award":        "<circle cx='12' cy='8' r='7'/><polyline points='8.21 13.89 7 23 12 20 17 23 15.79 13.88'/>",
+  "eye":          "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
+  "pie-chart":    "<path d='M21.21 15.89A10 10 0 118 2.83'/><path d='M22 12A10 10 0 0012 2v10z'/>",
+  "link":         "<path d='M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71'/><path d='M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71'/>",
+  "message-square":"<path d='M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'/>",
+  "folder":       "<path d='M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z'/>",
+  "file-text":    "<path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/>",
+  "clock":        "<circle cx='12' cy='12' r='10'/><polyline points='12 6 12 12 16 14'/>",
   /* ── official set ── */
   "grid":          "<rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/>",
   "user":          "<path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2'/><circle cx='12' cy='7' r='4'/>",
@@ -66,7 +83,6 @@ const FI_PATHS = {
   "log-out":       "<path d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/>",
   "more-horizontal":"<circle cx='12' cy='12' r='1'/><circle cx='19' cy='12' r='1'/><circle cx='5' cy='12' r='1'/>",
   "menu":          "<line x1='3' y1='12' x2='21' y2='12'/><line x1='3' y1='6' x2='21' y2='6'/><line x1='3' y1='18' x2='21' y2='18'/>",
-  "check-circle":  "<path d='M22 11.08V12a10 10 0 11-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/>",
   "alert-circle":  "<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/>",
   "slash":         "<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>",
   "eye":           "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/><circle cx='12' cy='12' r='3'/>",
@@ -446,103 +462,1304 @@ const JOBS=[
 /* ══════════════════════════════════════════════════════════
    GEO OVERVIEW PAGE
 ══════════════════════════════════════════════════════════ */
+/* ─── 資料 ─── */
+
+const AI_PLATFORMS=[
+  {name:"ChatGPT",           color:"#0958D9", share:52},
+  {name:"Google AI Overview",color:"#1677FF", share:28},
+  {name:"Perplexity",        color:"#69B1FF", share:12},
+  {name:"Gemini",            color:"#BAE0FF", share:8},
+];
+
+/* 引用來源：AI 回答中被引用的所有網頁（含自家 Owned 與外部 Others）*/
+const CITATION_SOURCES=[
+  {url:"https://www.biotanico.com.tw/polygonatum-benefits", domain:"biotanico.com.tw", title:"【黃精功效】素食者必吃！認識九蒸九曬黃精", type:"Owned",  tag:"Informational", mentioned:true},
+  {url:"https://www.biotanico.com.tw/kefir-probiotics",     domain:"biotanico.com.tw", title:"克菲爾益生菌科學解析：功效、科學研究",   type:"Owned",  tag:"Informational", mentioned:true},
+  {url:"https://kmweb.moa.gov.tw/subject/subject.php",      domain:"kmweb.moa.gov.tw", title:"黃精 - 藥用植物主題館 - 農業知識入口網", type:"Others", tag:"Informational", mentioned:false},
+  {url:"https://www.bowtie.com.hk/blog/zh/health-tips",     domain:"bowtie.com.hk",    title:"【海帶】了解 6 大功效、卡路里、食用禁忌", type:"Others", tag:"Blog",          mentioned:false},
+  {url:"https://www.jiankang.com.tw/",                      domain:"jiankang.com.tw",  title:"麗登藥局 · 港香蘭系列",                  type:"Others", tag:"Product",       mentioned:true},
+  {url:"https://www.biotanico.com.tw/acupoints-for-sleep",  domain:"biotanico.com.tw", title:"5 大幫助睡眠的穴道全攻略，幫助你按對神門穴", type:"Owned", tag:"Informational", mentioned:true},
+  {url:"https://mag.betery.com.tw/kefir-exercise",          domain:"mag.betery.com.tw",title:"從腸腦軸線到運動表現：克菲爾如何改變我們",  type:"Others", tag:"Blog",         mentioned:false},
+  {url:"https://www.kuaikuaibio.com.tw/blog/posts/kefir",   domain:"kuaikuaibio.com.tw",title:"克菲爾益生菌是什麼？- 亭亭生技",         type:"Others", tag:"Blog",          mentioned:true},
+];
+
+/* 監控網址：使用者主動監控的自家 URL */
+const MONITORED_URLS=[
+  {url:"https://www.kaiser.com.tw/products.php", domain:"kaiser.com.tw",      title:"產品總覽 - 港香蘭應用生技", type:"Owned", tag:"Product",       mentioned:true},
+  {url:"https://www.kaiser.com.tw/about.php",    domain:"kaiser.com.tw",      title:"關於我們 - 港香蘭應用生技", type:"Owned", tag:"Informational", mentioned:true},
+  {url:"https://www.kaiser.com.tw/health/kefir", domain:"kaiser.com.tw",      title:"克菲爾益生菌完整介紹",      type:"Owned", tag:"Informational", mentioned:false},
+  {url:"https://blog.kaiser.com.tw/probiotics",  domain:"blog.kaiser.com.tw", title:"益生菌完整指南",            type:"Owned", tag:"Blog",          mentioned:false},
+];
+
+const BRAND_META=[
+  {name:"港香蘭應用生技", initial:"港", color:"#1677FF", baseVis:36.9, baseSov:64.0, baseRank:1.3, self:true},
+  {name:"順天堂藥廠",     initial:"順", color:"#52C41A", baseVis:7.4,  baseSov:12.8, baseRank:1.1},
+  {name:"勝昌製藥廠",     initial:"勝", color:"#D68C24", baseVis:6.5,  baseSov:11.2, baseRank:2.9},
+  {name:"科達製藥",       initial:"科", color:"#7C3AED", baseVis:5.5,  baseSov:9.6,  baseRank:2.9},
+  {name:"天一中藥",       initial:"天", color:"#F5222D", baseVis:1.4,  baseSov:2.4,  baseRank:3.3},
+];
+
+
+/* ─── 篩選器資料 ─── */
+const TIME_OPTIONS=[
+  {id:"7d",   label:"近 7 天",  days:7},
+  {id:"14d",  label:"近 14 天", days:14},
+  {id:"30d",  label:"近 30 天", days:30},
+  {id:"tm",   label:"本月",     days:30},
+  {id:"lm",   label:"上月",     days:30},
+  {id:"custom",label:"自訂區間", days:0},
+];
+
+const TOPIC_OPTIONS=["品牌型","產品型","資訊型"];
+const PLATFORM_OPTIONS=["ChatGPT","Google AI Overview"];
+const META_GROUPS=[
+  {name:"industry", items:["問題類型"]},
+  {name:"type",     items:["品牌提及","資訊引用"]},
+];
+
+const REGIONS=[
+  "全部地區","臺北市","新北市","桃園市","臺中市","臺南市","高雄市",
+  "基隆市","新竹市","新竹縣","苗栗縣","彰化縣","南投縣","雲林縣",
+  "嘉義市","嘉義縣","屏東縣","宜蘭縣","花蓮縣","臺東縣",
+  "澎湖縣","金門縣","連江縣",
+];
+
+/* 以篩選條件為 seed 的穩定偽隨機（同條件永遠同結果）*/
+function seededRand(seed){
+  let h=2166136261;
+  for(let i=0;i<seed.length;i++){ h^=seed.charCodeAt(i); h=Math.imul(h,16777619); }
+  return ()=>{ h+=0x6D2B79F5; let t=h; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; };
+}
+
+/* 依篩選條件生成資料 */
+function genData(timeId,region,customRange,topics,platforms,metas){
+  const opt=TIME_OPTIONS.find(t=>t.id===timeId)||TIME_OPTIONS[0];
+  let days=opt.days;
+  if(timeId==="custom"&&customRange.start&&customRange.end){
+    days=Math.max(1,Math.round((new Date(customRange.end)-new Date(customRange.start))/86400000)+1);
+  }
+  const seed=timeId+"|"+region+"|"+(customRange.start||"")+(customRange.end||"")+"|"+topics.join(",")+"|"+platforms.join(",")+"|"+metas.join(",");
+  const rnd=seededRand(seed);
+  const regionFactor = region==="全部地區" ? 1 : (0.08 + rnd()*0.25);
+  const topicFactor = topics.length===0 ? 1 : (topics.length/TOPIC_OPTIONS.length)*0.85+0.15;
+  const platFactor  = platforms.length===0 ? 1 : (platforms.length/PLATFORM_OPTIONS.length)*0.8+0.2;
+  const metaFactor  = metas.length===0 ? 1 : 0.55+rnd()*0.3;
+  const filterFactor = regionFactor*topicFactor*platFactor*metaFactor;
+
+  /* 標籤 */
+  const labels=[];
+  const base=new Date("2026-07-12");
+  const showDaily = days<=14;
+  const buckets = showDaily ? days : Math.ceil(days/7);
+  for(let i=buckets-1;i>=0;i--){
+    if(showDaily){
+      const d=new Date(base); d.setDate(d.getDate()-i);
+      labels.push((d.getMonth()+1)+"/"+d.getDate());
+    } else {
+      labels.push("第 "+(buckets-i)+" 週");
+    }
+  }
+
+  /* 評價傾向 */
+  const mult = showDaily ? 1 : 7;
+  const pos=labels.map(()=>Math.round((20+rnd()*30)*mult*filterFactor));
+  /* 負向：先定總量（≈20），再分配到各區間，避免累加放大 */
+  const negTarget=Math.max(3,Math.round((16+rnd()*8)*filterFactor));
+  const weights=labels.map(()=>rnd()<0.55?rnd()*0.3:rnd());
+  const wSum=weights.reduce((a,b)=>a+b,0)||1;
+  let allocated=0;
+  const neg=weights.map((w,i)=>{
+    if(i===weights.length-1) return Math.max(0,negTarget-allocated);
+    const v=Math.round(negTarget*(w/wSum));
+    allocated+=v;
+    return v;
+  });
+  const posTotal=pos.reduce((a,b)=>a+b,0);
+  const negTotal=neg.reduce((a,b)=>a+b,0);
+
+  /* 能見度趨勢 */
+  /* ⑤⑥ 只吃時間+地區（不吃主題/平台/Metadata）*/
+  const trSeed=timeId+"|"+region+"|"+(customRange.start||"")+(customRange.end||"");
+  const trRnd=seededRand(trSeed);
+  const trFactor = region==="全部地區" ? 1 : (0.1+trRnd()*0.3);
+
+  /* AI 流量表現（放大數值供 demo）*/
+  const traffic=labels.map(()=>{
+    const sessions=Math.round((180+trRnd()*520)*trFactor*(showDaily?1:5));
+    const pct=+((0.8+trRnd()*2.4)*trFactor).toFixed(2);
+    return {sessions,pct};
+  });
+
+  /* AI 平台分布 */
+  const platformDist=AI_PLATFORMS.map(p=>{
+    const jitter=(trRnd()-0.5)*8;
+    return {...p, value:Math.max(2,Math.round(p.share+jitter))};
+  });
+  const pTotal=platformDist.reduce((a,b)=>a+b.value,0);
+  platformDist.forEach(p=>{ p.pct=+((p.value/pTotal)*100).toFixed(1); });
+  const totalSessions=traffic.reduce((a,t)=>a+t.sessions,0);
+
+  /* 引用來源（依引用次數排序）*/
+  const citations=CITATION_SOURCES.map(u=>{
+    const cites=Math.round(8+trRnd()*38*trFactor);
+    const queries=Math.max(1,Math.round(trRnd()*4));
+    return {...u, cites, queries,
+      rate:+(2+trRnd()*8).toFixed(1),
+      share:+(0.8+trRnd()*3.2).toFixed(1),
+      rivals:"n/a"};
+  }).sort((a,b)=>b.cites-a.cites);
+
+  /* 監控網址 */
+  const monitored=MONITORED_URLS.map(u=>{
+    const cites=Math.round(trRnd()*30*trFactor);
+    const queries=Math.round(trRnd()*5);
+    return {...u, cites, queries,
+      rate:+(cites>0?(2+trRnd()*7):0).toFixed(1),
+      share:+(cites>0?(0.4+trRnd()*2.6):0).toFixed(1),
+      rivals:"n/a"};
+  });
+
+  const brands=BRAND_META.map((b,bi)=>{
+    const bump=(rnd()-0.5)*(b.self?6:2);
+    return {...b,data:labels.map(()=>Math.max(0.3,+(b.baseVis+bump+(rnd()-0.5)*(b.self?7:2)).toFixed(1)))};
+  });
+  const kpi={
+    mention:Math.round(80*filterFactor*(days/7)),
+    mentionTotal:Math.round(217*filterFactor*(days/7)),
+    rank:+(1.0+rnd()*1.2).toFixed(1),
+    vis:+(brands[0].data.reduce((a,b)=>a+b,0)/labels.length).toFixed(1),
+    sov:+(50+rnd()*25).toFixed(1),
+    citeShare:+(10+rnd()*12).toFixed(1),
+    citeCount:Math.round(187*filterFactor*(days/7)),
+    citePages:Math.round(297*filterFactor*(days/7)),
+    avgCiteRate:+(4+rnd()*4).toFixed(1),
+    competitorBest:+(1.0+rnd()*0.3).toFixed(1),
+    industryAvg:+(9+rnd()*5).toFixed(1),
+    secondSov:+(10+rnd()*6).toFixed(1),
+  };
+  return {labels,pos,neg,posTotal,negTotal,brands,kpi,showDaily,days,traffic,platformDist,totalSessions,citations,monitored,empty:posTotal+negTotal===0};
+}
+
+
+
+/* ─── 垂直準線 plugin（hover 時貫穿圖表的參考線）─── */
+const crosshairPlugin={
+  id:"crosshair",
+  afterDraw(chart){
+    const active=chart.tooltip?._active;
+    if(!active||!active.length) return;
+    const {ctx,chartArea}=chart;
+    const x=active[0].element.x;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x,chartArea.top);
+    ctx.lineTo(x,chartArea.bottom);
+    ctx.lineWidth=1;
+    ctx.strokeStyle="#BFBFBF";
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
+/* ─── 圖表漸層工具 ─── */
+/* 垂直漸層（長條用）：上深下淺 */
+function vGradient(ctx,area,deep,light,fallback){
+  if(!area) return fallback||deep;
+  const g=ctx.createLinearGradient(0,area.top,0,area.bottom);
+  g.addColorStop(0,deep);
+  g.addColorStop(1,light);
+  return g;
+}
+/* 對角漸層（環圈每段用）：左上深、右下淺 */
+function dGradient(ctx,area,deep,light,fallback){
+  if(!area) return fallback||deep;
+  const g=ctx.createLinearGradient(area.left,area.top,area.right,area.bottom);
+  g.addColorStop(0,deep);
+  g.addColorStop(1,light);
+  return g;
+}
+
+/* 各平台的漸層色對（深→淺，維持深淺=佔比大小的邏輯） */
+const PLATFORM_GRADIENTS=[
+  ["#003EB3","#4096FF"],
+  ["#0958D9","#69B1FF"],
+  ["#4096FF","#91CAFF"],
+  ["#91CAFF","#E6F4FF"],
+];
+
+/* ─── FilterSelect（單選下拉，對齊規範）─── */
+function FilterSelect({label,value,options,onChange,width=140}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  return(
+    <div ref={ref} style={{position:"relative"}}>
+      <div onClick={()=>setOpen(!open)}
+        style={{height:36,minWidth:width,padding:"0 10px 0 12px",display:"flex",alignItems:"center",gap:8,
+          border:"1px solid "+(open?"#0A2B41":"#D9D9D9"),borderRadius:8,background:"#fff",cursor:"pointer",
+          fontSize:13,color:value?"#1F1F1F":"#BFBFBF",boxShadow:open?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}>
+        <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value||label}</span>
+        <FI name="chevron-down" size={13} color="#8C8C8C" style={{transform:open?"rotate(180deg)":"none",transition:"transform .15s",flexShrink:0}}/>
+      </div>
+      {open&&(
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,minWidth:"100%",background:"#fff",
+          border:"1px solid #D9D9D9",borderRadius:10,padding:4,zIndex:120,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.08)",maxHeight:280,overflowY:"auto"}}>
+          {options.map(o=>{
+            const sel=o===value;
+            return(
+              <div key={o} onClick={()=>{onChange(o);setOpen(false);}}
+                onMouseEnter={e=>{if(!sel)e.currentTarget.style.background="#FAFAFA";}}
+                onMouseLeave={e=>{if(!sel)e.currentTarget.style.background="transparent";}}
+                style={{padding:"8px 10px",borderRadius:6,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,
+                  background:sel?"#E7EAEC":"transparent",color:sel?"#0A2B41":"#1F1F1F",fontWeight:sel?500:400}}>
+                <span>{o}</span>{sel&&<FI name="check" size={13} color="#0A2B41"/>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ─── 多選篩選器（checkbox + 計數 badge）─── */
+function FilterMulti({label,selected,options,onChange,width=110}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  const toggle=(o)=>onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o]);
+  return(
+    <div ref={ref} style={{position:"relative"}}>
+      <div onClick={()=>setOpen(!open)}
+        style={{height:36,minWidth:width,padding:"0 10px 0 12px",display:"flex",alignItems:"center",gap:8,
+          border:"1px solid "+(open?"#0A2B41":"#D9D9D9"),borderRadius:8,background:"#fff",cursor:"pointer",
+          fontSize:13,color:"#1F1F1F",
+          boxShadow:open?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}>
+        <span style={{flex:1,whiteSpace:"nowrap"}}>{label}</span>
+        {selected.length>0&&(
+          <span style={{fontSize:11,background:"#0A2B41",color:"#fff",borderRadius:9,padding:"1px 6px",fontWeight:600,flexShrink:0}}>{selected.length}</span>
+        )}
+        <FI name="chevron-down" size={13} color="#8C8C8C" style={{transform:open?"rotate(180deg)":"none",transition:"transform .15s",flexShrink:0}}/>
+      </div>
+      {open&&(
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,minWidth:170,background:"#fff",
+          border:"1px solid #D9D9D9",borderRadius:10,padding:4,zIndex:120,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.08)",maxHeight:280,overflowY:"auto"}}>
+          {options.map(o=>{
+            const on=selected.includes(o);
+            return(
+              <div key={o} onClick={()=>toggle(o)}
+                onMouseEnter={e=>{if(!on)e.currentTarget.style.background="#FAFAFA";}}
+                onMouseLeave={e=>{if(!on)e.currentTarget.style.background="transparent";}}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,fontSize:13,cursor:"pointer",
+                  whiteSpace:"nowrap",background:on?"#E6F4FF":"transparent",color:"#1F1F1F",transition:"background .12s"}}>
+                <span style={{width:16,height:16,borderRadius:4,flexShrink:0,
+                  background:on?"#0A2B41":"transparent",border:on?"none":"1.5px solid #D9D9D9",
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {on&&<FI name="check" size={10} color="#fff"/>}
+                </span>
+                {o}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── 階層式多選（Metadata：群組 + 子項）─── */
+function FilterMeta({label,selected,groups,onChange,width=120}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  const toggle=(o)=>onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o]);
+  return(
+    <div ref={ref} style={{position:"relative"}}>
+      <div onClick={()=>setOpen(!open)}
+        style={{height:36,minWidth:width,padding:"0 10px 0 12px",display:"flex",alignItems:"center",gap:8,
+          border:"1px solid "+(open?"#0A2B41":"#D9D9D9"),borderRadius:8,background:"#fff",cursor:"pointer",
+          fontSize:13,color:"#1F1F1F",
+          boxShadow:open?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}>
+        <span style={{flex:1,whiteSpace:"nowrap"}}>{label}</span>
+        {selected.length>0&&(
+          <span style={{fontSize:11,background:"#0A2B41",color:"#fff",borderRadius:9,padding:"1px 6px",fontWeight:600,flexShrink:0}}>{selected.length}</span>
+        )}
+        <FI name="chevron-down" size={13} color="#8C8C8C" style={{transform:open?"rotate(180deg)":"none",transition:"transform .15s",flexShrink:0}}/>
+      </div>
+      {open&&(
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,minWidth:190,background:"#fff",
+          border:"1px solid #D9D9D9",borderRadius:10,padding:"6px 4px",zIndex:120,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.08)",maxHeight:300,overflowY:"auto"}}>
+          {groups.map((g,gi)=>(
+            <React.Fragment key={g.name}>
+              {gi>0&&<div style={{height:1,background:"#F0F0F0",margin:"4px 8px"}}/>}
+              <div style={{fontSize:11,fontWeight:600,color:"#8C8C8C",padding:"4px 10px 6px",letterSpacing:"0.04em",textTransform:"uppercase"}}>{g.name}</div>
+              {g.items.map(o=>{
+                const on=selected.includes(o);
+                return(
+                  <div key={o} onClick={()=>toggle(o)}
+                    onMouseEnter={e=>{if(!on)e.currentTarget.style.background="#FAFAFA";}}
+                    onMouseLeave={e=>{if(!on)e.currentTarget.style.background="transparent";}}
+                    style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px 8px 20px",borderRadius:6,fontSize:13,cursor:"pointer",
+                      whiteSpace:"nowrap",background:on?"#E6F4FF":"transparent",color:"#1F1F1F",transition:"background .12s"}}>
+                    <span style={{width:16,height:16,borderRadius:4,flexShrink:0,
+                      background:on?"#0A2B41":"transparent",border:on?"none":"1.5px solid #D9D9D9",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {on&&<FI name="check" size={10} color="#fff"/>}
+                    </span>
+                    {o}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Metric Group（一卡多指標，對齊規範）─── */
+function MetricGroup({title,metrics}){
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      {title&&<div style={{fontSize:14,fontWeight:600,color:"var(--fg)",marginBottom:18}}>{title}</div>}
+      <div style={{display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:16}}>
+        {metrics.map(m=>(
+          <div key={m.label} style={{textAlign:"center",minWidth:110}}>
+            <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:8}}>{m.label}</div>
+            <div style={{fontSize:24,fontWeight:700,color:m.color||"var(--fg)"}}>
+              {m.value}{m.unit&&<span style={{fontSize:16}}>{m.unit}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── 日曆（完整月曆，支援區間選擇，對齊規範）─── */
+function Calendar({start,end,onSelect}){
+  const [view,setView]=useState(new Date("2026-07-01"));
+  const y=view.getFullYear(), m=view.getMonth();
+  const first=new Date(y,m,1).getDay();
+  const daysInM=new Date(y,m+1,0).getDate();
+  const today=new Date("2026-07-13");
+  const fmt=(d)=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const cells=[];
+  for(let i=0;i<first;i++) cells.push(null);
+  for(let d=1;d<=daysInM;d++) cells.push(new Date(y,m,d));
+
+  const inRange=(d)=>{
+    if(!start||!end) return false;
+    const s=new Date(start), e=new Date(end);
+    return d>s&&d<e;
+  };
+  const isEdge=(d)=>{
+    const ds=fmt(d);
+    return ds===start||ds===end;
+  };
+
+  return(
+    <div style={{width:280,background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:12,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <div onClick={()=>setView(new Date(y,m-1,1))} aria-label="上個月"
+          style={{width:28,height:28,border:"1px solid #E7EAEC",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+          <FI name="chevron-left" size={14} color="#595959"/>
+        </div>
+        <div style={{fontSize:14,fontWeight:600,color:"#1F1F1F"}}>{y} 年 {m+1} 月</div>
+        <div onClick={()=>setView(new Date(y,m+1,1))} aria-label="下個月"
+          style={{width:28,height:28,border:"1px solid #E7EAEC",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+          <FI name="chevron-right" size={14} color="#595959"/>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+        {["日","一","二","三","四","五","六"].map(d=>(
+          <div key={d} style={{height:24,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#BFBFBF"}}>{d}</div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+        {cells.map((d,i)=>{
+          if(!d) return <div key={"e"+i} style={{height:32}}/>;
+          const ds=fmt(d);
+          const edge=isEdge(d);
+          const mid=inRange(d);
+          const isToday=fmt(today)===ds;
+          return(
+            <div key={ds} onClick={()=>onSelect(ds)}
+              onMouseEnter={e=>{if(!edge&&!mid)e.currentTarget.style.background="#FAFAFA";}}
+              onMouseLeave={e=>{if(!edge&&!mid)e.currentTarget.style.background="transparent";}}
+              style={{height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,cursor:"pointer",fontSize:13,
+                background:edge?"#0A2B41":(mid?"#E7EAEC":"transparent"),
+                color:edge?"#fff":"#1F1F1F",
+                fontWeight:(edge||isToday)?600:400,
+                border:isToday&&!edge?"1px solid #0A2B41":"1px solid transparent",
+                transition:"all .12s"}}>
+              {d.getDate()}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── 自訂區間選擇器 ─── */
+function DateRangePicker({range,onChange,onClose}){
+  const [tmp,setTmp]=useState({start:range.start||"",end:range.end||""});
+  const pick=(ds)=>{
+    if(!tmp.start||(tmp.start&&tmp.end)) setTmp({start:ds,end:""});
+    else if(ds<tmp.start) setTmp({start:ds,end:tmp.start});
+    else setTmp({...tmp,end:ds});
+  };
+  return(
+    <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:130}}>
+      <div style={{background:"#fff",border:"1px solid #D9D9D9",borderRadius:12,padding:12,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:13}}>
+          <div style={{flex:1,height:36,border:"1px solid #D9D9D9",borderRadius:8,display:"flex",alignItems:"center",padding:"0 10px",color:tmp.start?"#1F1F1F":"#BFBFBF"}}>
+            {tmp.start||"開始日期"}
+          </div>
+          <span style={{color:"#8C8C8C"}}>至</span>
+          <div style={{flex:1,height:36,border:"1px solid #D9D9D9",borderRadius:8,display:"flex",alignItems:"center",padding:"0 10px",color:tmp.end?"#1F1F1F":"#BFBFBF"}}>
+            {tmp.end||"結束日期"}
+          </div>
+        </div>
+        <Calendar start={tmp.start} end={tmp.end} onSelect={pick}/>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:10}}>
+          <button onClick={onClose}
+            style={{height:32,padding:"0 12px",borderRadius:6,fontSize:13,fontFamily:"var(--font)",border:"1px solid #D9D9D9",background:"#fff",color:"#434343",cursor:"pointer"}}>取消</button>
+          <button onClick={()=>{ if(tmp.start&&tmp.end){ onChange(tmp); onClose(); } }}
+            disabled={!tmp.start||!tmp.end}
+            style={{height:32,padding:"0 12px",borderRadius:6,fontSize:13,fontFamily:"var(--font)",border:"none",
+              background:(tmp.start&&tmp.end)?"#0A2B41":"#D9D9D9",color:"#fff",cursor:(tmp.start&&tmp.end)?"pointer":"not-allowed"}}>套用</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 能見度趨勢圖 ─── */
+function TrendChart({data}){
+  const ref=useRef(null);
+  const inst=useRef(null);
+  const [hidden,setHidden]=useState([]);
+
+  useEffect(()=>{
+    if(!window.Chart||!ref.current||data.empty) return;
+    const shown=data.brands.filter((b,i)=>!hidden.includes(i));
+    const maxV=Math.max(...shown.flatMap(b=>b.data),1);
+    const maxY=Math.ceil(maxV*1.2/5)*5;
+    if(inst.current) inst.current.destroy();
+    inst.current=new window.Chart(ref.current,{
+      type:"line",
+      plugins:[crosshairPlugin],
+      data:{labels:data.labels,datasets:shown.map(b=>({
+        label:b.name,data:b.data,borderColor:b.color,backgroundColor:b.color,
+        borderWidth:2.5,
+        pointRadius:0,
+        pointHoverRadius:5,
+        pointBackgroundColor:b.color,pointBorderColor:b.color,
+        pointHoverBackgroundColor:b.color,pointHoverBorderColor:b.color,pointHoverBorderWidth:0,
+        pointHitRadius:10,
+        tension:0.3
+      }))},
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:"index",intersect:false,axis:"x"},
+        plugins:{legend:{display:false},
+          tooltip:{backgroundColor:"#1F1F1F",padding:12,cornerRadius:6,
+            boxWidth:8,boxHeight:8,boxPadding:4,usePointStyle:true,
+            titleFont:{size:12,weight:"600"},titleMarginBottom:8,
+            bodyFont:{size:13},bodySpacing:6,
+            callbacks:{
+              title:(x)=>x[0].label,
+              labelPointStyle:()=>({pointStyle:"circle",rotation:0}),
+              label:(x)=>" "+x.dataset.label+"  "+x.raw+"%"}}},
+        scales:{x:{ticks:{color:"#8C8C8C",font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{display:false},border:{display:false}},
+                y:{beginAtZero:true,max:maxY,ticks:{color:"#BFBFBF",font:{size:11},callback:(v)=>v+"%"},grid:{color:"#F0F0F0"},border:{display:false}}}}
+    });
+    return()=>{ if(inst.current) inst.current.destroy(); };
+  },[hidden,data]);
+
+  const toggle=(i)=>setHidden(prev=>{
+    const next=prev.includes(i)?prev.filter(x=>x!==i):[...prev,i];
+    return next.length===data.brands.length?prev:next;
+  });
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>能見度分數趨勢</div>
+      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:14}}>點擊圖例可隱藏／顯示品牌，刻度會自動調整</div>
+      {data.empty ? <EmptyState/> : (
+        <>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+            {data.brands.map((b,i)=>{
+              const off=hidden.includes(i);
+              const avg=(b.data.reduce((a,x)=>a+x,0)/b.data.length).toFixed(1);
+              return(
+                <div key={b.name} onClick={()=>toggle(i)}
+                  style={{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"5px 10px",cursor:"pointer",
+                    border:"1px solid "+(off?"#F0F0F0":"#E7EAEC"),borderRadius:6,
+                    background:off?"#FAFAFA":"#fff",color:off?"#BFBFBF":"#595959",
+                    textDecoration:off?"line-through":"none",transition:"all .12s"}}>
+                  <span style={{width:10,height:10,borderRadius:3,background:off?"#D9D9D9":b.color,flexShrink:0}}/>
+                  {b.name} {avg}%
+                </div>
+              );
+            })}
+          </div>
+          <div style={{position:"relative",width:"100%",height:250}}><canvas ref={ref}/></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─── 空狀態 ─── */
+function EmptyState(){
+  return(
+    <div style={{height:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10}}>
+      <FI name="inbox" size={32} color="#D9D9D9"/>
+      <div style={{fontSize:13,color:"#BFBFBF"}}>此條件下無資料</div>
+    </div>
+  );
+}
+
+/* ─── 品牌評價傾向（>14 天自動切折線）─── */
+function SentimentChart({data}){
+  const ref=useRef(null);
+  const inst=useRef(null);
+  const [mode,setMode]=useState("all");
+
+  useEffect(()=>{
+    if(!window.Chart||!ref.current||data.empty) return;
+    const useLine = data.labels.length>14;
+    const ds=[];
+    if(mode==="all"||mode==="pos") ds.push(useLine
+      ? {label:"正向提及",data:data.pos,borderColor:"#1677FF",backgroundColor:"#1677FF",borderWidth:2.5,
+         pointRadius:0,pointHoverRadius:5,pointBackgroundColor:"#1677FF",pointHoverBackgroundColor:"#1677FF",pointHoverBorderWidth:0,pointHitRadius:10,
+         tension:0,fill:false}
+      : {label:"正向提及",data:data.pos,maxBarThickness:44,borderRadius:{topLeft:4,topRight:4},
+         backgroundColor:(x)=>{const{ctx,chartArea}=x.chart; return vGradient(ctx,chartArea,"#1677FF","#BAE0FF","#69B1FF");}});
+    if(mode==="all"||mode==="neg") ds.push(useLine
+      ? {label:"負向提及",data:data.neg,borderColor:"#D68C24",backgroundColor:"#D68C24",borderWidth:2.5,
+         pointRadius:0,pointHoverRadius:5,pointBackgroundColor:"#D68C24",pointHoverBackgroundColor:"#D68C24",pointHoverBorderWidth:0,pointHitRadius:10,
+         tension:0,fill:false}
+      : {label:"負向提及",data:data.neg,maxBarThickness:44,borderRadius:{topLeft:4,topRight:4},
+         backgroundColor:(x)=>{const{ctx,chartArea}=x.chart; return vGradient(ctx,chartArea,"#D68C24","#FFE7BA","#FDB338");}});
+
+    const vals=mode==="pos"?data.pos:mode==="neg"?data.neg:[...data.pos,...data.neg];
+    const mx=Math.max(...vals,1);
+    const maxY=mx<5?3:Math.ceil(mx*1.15/10)*10;
+    if(inst.current) inst.current.destroy();
+    inst.current=new window.Chart(ref.current,{
+      type:useLine?"line":"bar",
+      data:{labels:data.labels,datasets:ds},
+      options:{responsive:true,maintainAspectRatio:false,
+        datasets:useLine?{}:{bar:{categoryPercentage:0.7,barPercentage:1.0}},
+        plugins:{legend:{display:false},tooltip:{backgroundColor:"#1F1F1F",padding:10,cornerRadius:6,boxWidth:8,boxHeight:8,
+          callbacks:{label:(x)=>" "+x.dataset.label+"："+x.raw+" 則"}}},
+        scales:{x:{ticks:{color:"#8C8C8C",font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:12},grid:{display:false},border:{display:false}},
+                y:{beginAtZero:true,max:maxY,ticks:{color:"#BFBFBF",font:{size:11}},grid:{color:"#F0F0F0"},border:{display:false}}}}
+    });
+    return()=>{ if(inst.current) inst.current.destroy(); };
+  },[mode,data]);
+
+  const Tab=({id,label})=>{
+    const on=mode===id;
+    return(
+      <div onClick={()=>setMode(id)}
+        style={{fontSize:13,padding:"5px 14px",borderRadius:6,cursor:"pointer",
+          background:on?"#fff":"transparent",color:on?"#0A2B41":"#8C8C8C",fontWeight:on?500:400,
+          boxShadow:on?"0 1px 2px rgba(0,0,0,0.06)":"none",transition:"all .12s"}}>{label}</div>
+    );
+  };
+  const Sq=({c,t})=>(
+    <span style={{display:"flex",alignItems:"center",gap:6}}>
+      <span style={{width:10,height:10,borderRadius:3,background:c,flexShrink:0}}/>{t}
+    </span>
+  );
+
+  const ratio = data.negTotal>0 ? (data.posTotal/data.negTotal).toFixed(1)+":1" : "—";
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:18,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:600,color:"var(--fg)"}}>品牌評價傾向</div>
+          <div style={{fontSize:13,color:"var(--fg-3)",marginTop:3}}>AI 回答中提及品牌時的正負向評價</div>
+        </div>
+        <div style={{display:"flex",gap:2,background:"#F5F5F5",borderRadius:8,padding:2,flexShrink:0}}>
+          <Tab id="all" label="全部"/><Tab id="pos" label="正向"/><Tab id="neg" label="負向"/>
+        </div>
+      </div>
+
+      {data.empty ? <EmptyState/> : (
+        <>
+          <div style={{display:"flex",alignItems:"center",gap:32,marginBottom:20,flexWrap:"wrap"}}>
+            <div style={{minWidth:80}}>
+              <div style={{fontSize:13,color:"var(--fg-3)"}}>正向提及</div>
+              <div style={{fontSize:24,fontWeight:600,color:"var(--fg)",marginTop:2,lineHeight:1.2}}>{data.posTotal}</div>
+            </div>
+            <div style={{width:1,height:40,background:"#F0F0F0",flexShrink:0}}/>
+            <div style={{minWidth:80}}>
+              <div style={{fontSize:13,color:"var(--fg-3)"}}>負向提及</div>
+              <div style={{fontSize:24,fontWeight:600,color:"var(--fg)",marginTop:2,lineHeight:1.2}}>{data.negTotal}</div>
+            </div>
+            <div style={{width:1,height:40,background:"#F0F0F0",flexShrink:0}}/>
+            <div style={{minWidth:80}}>
+              <div style={{fontSize:13,color:"var(--fg-3)"}}>正負比</div>
+              <div style={{fontSize:24,fontWeight:600,color:"var(--fg)",marginTop:2,lineHeight:1.2}}>{ratio}</div>
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:18,marginBottom:10,fontSize:12,color:"var(--fg-3)"}}>
+            {(mode==="all"||mode==="pos")&&<Sq c="#69B1FF" t="正向提及"/>}
+            {(mode==="all"||mode==="neg")&&<Sq c="#FDB338" t="負向提及"/>}
+          </div>
+
+          <div style={{position:"relative",width:"100%",height:240}}><canvas ref={ref}/></div>
+
+          {data.labels.length>14&&(
+            <div style={{fontSize:12,color:"#BFBFBF",marginTop:12}}>區間超過 14 天，已改以折線圖呈現趨勢。</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─── 競品排名表 ─── */
+function RankTable({data}){
+  if(data.empty) return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>AI 搜尋品牌能見度</div>
+      <EmptyState/>
+    </div>
+  );
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>AI 搜尋品牌能見度</div>
+      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>本品牌與競品的能見度排名</div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:520}}>
+          <thead>
+            <tr style={{borderBottom:"1px solid #F0F0F0"}}>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>品牌</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>能見度</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>較上期</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>聲量佔有率</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>平均排名</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.brands.map(b=>{
+              const avg=+(b.data.reduce((a,x)=>a+x,0)/b.data.length).toFixed(1);
+              const wow=+(avg-b.baseVis).toFixed(1);
+              const col=wow>0?"#389E0D":(wow<0?"#CF1322":"#8C8C8C");
+              const sign=wow>0?"+":"";
+              return(
+                <tr key={b.name} style={{borderBottom:"1px solid #F0F0F0"}}>
+                  <td style={{padding:"12px 8px"}}>
+                    <span style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{width:24,height:24,borderRadius:"50%",background:b.color,color:"#fff",
+                        fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {b.initial}
+                      </span>
+                      <span style={{fontWeight:b.self?500:400,color:"var(--fg)"}}>{b.name}</span>
+                      {b.self&&<span style={{fontSize:11,padding:"1px 6px",borderRadius:4,background:"#E6F4FF",color:"#0958D9",border:"1px solid #91CAFF",flexShrink:0}}>自身</span>}
+                    </span>
+                  </td>
+                  <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{avg}%</td>
+                  <td style={{padding:"12px 8px",textAlign:"right",color:col}}>{sign}{wow}pp</td>
+                  <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{b.baseSov}%</td>
+                  <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{b.baseRank}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+/* ─── ⑤ AI 流量表現（雙 Y 軸：Sessions 數量 + 佔總流量 %）─── */
+function TrafficChart({data}){
+  const ref=useRef(null);
+  const inst=useRef(null);
+
+  const totalSess=data.traffic.reduce((a,t)=>a+t.sessions,0);
+  const avgPct=+(data.traffic.reduce((a,t)=>a+t.pct,0)/data.traffic.length).toFixed(1);
+
+  useEffect(()=>{
+    if(!window.Chart||!ref.current) return;
+    if(inst.current) inst.current.destroy();
+    inst.current=new window.Chart(ref.current,{
+      type:"bar",
+      data:{labels:data.labels,datasets:[
+        {data:data.traffic.map(t=>t.sessions),
+         maxBarThickness:40,borderRadius:{topLeft:4,topRight:4},
+         backgroundColor:(x)=>{const{ctx,chartArea}=x.chart; return vGradient(ctx,chartArea,"#1677FF","#BAE0FF","#69B1FF");}},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},
+          tooltip:{backgroundColor:"#1F1F1F",padding:10,cornerRadius:6,displayColors:false,
+            titleFont:{size:12},bodyFont:{size:13},
+            callbacks:{
+              title:(x)=>x[0].label,
+              label:(x)=>["AI 工作階段："+x.raw.toLocaleString(),
+                          "佔總流量："+data.traffic[x.dataIndex].pct+"%"]}}},
+        scales:{
+          x:{ticks:{color:"#8C8C8C",font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{display:false},border:{display:false}},
+          y:{beginAtZero:true,ticks:{color:"#BFBFBF",font:{size:11},callback:(v)=>v.toLocaleString()},
+             grid:{color:"#F0F0F0"},border:{display:false}},
+        }}
+    });
+    return()=>{ if(inst.current) inst.current.destroy(); };
+  },[data]);
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px",height:"100%",boxSizing:"border-box",minWidth:0,overflow:"hidden"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:16}}>所選區間內的 AI 流量表現</div>
+
+      <div style={{display:"flex",alignItems:"center",gap:28,marginBottom:18,flexWrap:"wrap"}}>
+        <div style={{minWidth:90}}>
+          <div style={{fontSize:13,color:"var(--fg-3)"}}>AI 工作階段</div>
+          <div style={{fontSize:24,fontWeight:600,color:"var(--fg)",marginTop:2,lineHeight:1.2}}>{totalSess.toLocaleString()}</div>
+        </div>
+        <div style={{width:1,height:40,background:"#F0F0F0",flexShrink:0}}/>
+        <div style={{minWidth:90}}>
+          <div style={{fontSize:13,color:"var(--fg-3)"}}>佔總流量</div>
+          <div style={{fontSize:24,fontWeight:600,color:"var(--fg)",marginTop:2,lineHeight:1.2}}>
+            {avgPct}<span style={{fontSize:16}}>%</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{position:"relative",width:"100%",height:230}}><canvas ref={ref}/></div>
+      <div style={{fontSize:12,color:"#BFBFBF",marginTop:10}}>滑過長條可查看當日的工作階段數與佔總流量比例</div>
+    </div>
+  );
+}
+
+/* ─── ⑥ AI 平台分布（環圈，多平台）─── */
+function PlatformDonut({data}){
+  const ref=useRef(null);
+  const inst=useRef(null);
+
+  useEffect(()=>{
+    if(!window.Chart||!ref.current) return;
+    if(inst.current) inst.current.destroy();
+    inst.current=new window.Chart(ref.current,{
+      type:"doughnut",
+      data:{labels:data.platformDist.map(p=>p.name),
+        datasets:[{data:data.platformDist.map(p=>p.pct),
+          backgroundColor:(x)=>{
+            const{ctx,chartArea}=x.chart;
+            const pair=PLATFORM_GRADIENTS[x.dataIndex]||PLATFORM_GRADIENTS[0];
+            return dGradient(ctx,chartArea,pair[0],pair[1],data.platformDist[x.dataIndex]?.color);
+          },
+          borderColor:"#fff",borderWidth:2,hoverOffset:4}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:"60%",
+        plugins:{legend:{display:false},
+          tooltip:{backgroundColor:"#1F1F1F",padding:10,cornerRadius:6,boxWidth:8,boxHeight:8,
+            callbacks:{label:(x)=>" "+x.label+"："+x.raw+"%"}}}}
+    });
+    return()=>{ if(inst.current) inst.current.destroy(); };
+  },[data]);
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px",height:"100%",boxSizing:"border-box",minWidth:0,overflow:"hidden"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:16}}>帶來工作階段的 AI 平台</div>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:0}}>
+        <div style={{position:"relative",width:"100%",maxWidth:200,aspectRatio:"1 / 1"}}>
+          <canvas ref={ref}/>
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+            <div style={{fontSize:22,fontWeight:600,color:"var(--fg)",lineHeight:1.1}}>{data.totalSessions.toLocaleString()}</div>
+            <div style={{fontSize:11,color:"var(--fg-3)",marginTop:2}}>總工作階段</div>
+          </div>
+        </div>
+        <div style={{width:"100%",minWidth:0,marginTop:20,display:"flex",flexDirection:"column",gap:10}}>
+          {data.platformDist.map(p=>(
+            <div key={p.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,minWidth:0}}>
+              <span style={{width:10,height:10,borderRadius:3,background:p.color,flexShrink:0}}/>
+              <span style={{flex:1,minWidth:0,color:"var(--fg-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={p.name}>{p.name}</span>
+              <span style={{fontWeight:600,color:"var(--fg)",fontVariantNumeric:"tabular-nums",flexShrink:0}}>{p.pct}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 網址表格（引用來源 / 監控網址 共用）─── */
+function UrlTable({title,subtitle,rows:src,showTabs=true,showSearch=true}){
+  const [view,setView]=useState("url");
+  const [q,setQ]=useState("");
+
+  const rows=useMemo(()=>{
+    if(view==="url"){
+      return src.filter(u=>{
+        if(!q) return true;
+        const s=q.toLowerCase();
+        return u.title.toLowerCase().includes(s)||u.url.toLowerCase().includes(s)||u.tag.toLowerCase().includes(s);
+      });
+    }
+    const map={};
+    src.forEach(u=>{
+      if(!map[u.domain]) map[u.domain]={domain:u.domain,cites:0,queries:0,rateSum:0,shareSum:0,n:0,type:u.type,tag:u.tag,mentioned:false,rivals:"n/a"};
+      const g=map[u.domain];
+      g.cites+=u.cites; g.queries+=u.queries; g.rateSum+=u.rate; g.shareSum+=u.share; g.n++;
+      if(u.mentioned) g.mentioned=true;
+    });
+    return Object.values(map)
+      .map(g=>({...g, rate:+(g.rateSum/g.n).toFixed(1), share:+(g.shareSum/g.n).toFixed(1)}))
+      .sort((a,b)=>b.cites-a.cites)
+      .filter(g=>!q||g.domain.toLowerCase().includes(q.toLowerCase()));
+  },[view,q,src]);
+
+  const Tab=({id,label})=>{
+    const on=view===id;
+    return(
+      <div onClick={()=>setView(id)}
+        style={{fontSize:13,padding:"6px 16px",borderRadius:6,cursor:"pointer",
+          background:on?"#fff":"transparent",color:on?"#0A2B41":"#8C8C8C",fontWeight:on?500:400,
+          boxShadow:on?"0 1px 2px rgba(0,0,0,0.06)":"none",transition:"all .12s",whiteSpace:"nowrap"}}>
+        {label}
+      </div>
+    );
+  };
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>{title}</div>
+      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>{subtitle}</div>
+
+      {(showTabs||showSearch)&&(
+        <div style={{display:"flex",alignItems:"center",justifyContent:showTabs?"space-between":"flex-end",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+          {showTabs&&(
+            <div style={{display:"flex",gap:2,background:"#F5F5F5",borderRadius:8,padding:2,flexShrink:0}}>
+              <Tab id="url" label="By Url"/><Tab id="domain" label="By Domain"/>
+            </div>
+          )}
+          {showSearch&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,height:36,padding:"0 12px",
+              border:"1px solid #D9D9D9",borderRadius:8,background:"#fff",minWidth:200}}>
+              <FI name="search" size={14} color="#BFBFBF"/>
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋"
+                style={{flex:1,border:"none",outline:"none",fontSize:13,fontFamily:"var(--font)",color:"#1F1F1F",background:"transparent",minWidth:0}}/>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed",minWidth:1020}}>
+          <colgroup>
+            <col style={{width:48}}/><col style={{width:300}}/><col style={{width:90}}/>
+            <col style={{width:110}}/><col style={{width:80}}/><col style={{width:90}}/>
+            <col style={{width:90}}/><col style={{width:120}}/><col style={{width:100}}/><col style={{width:160}}/>
+          </colgroup>
+          <thead>
+            <tr style={{borderBottom:"1px solid #F0F0F0"}}>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>索引</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>{view==="url"?"頁面":"網域"}</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>引用次數</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>追蹤問題數量</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>引用率</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>引用份額</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>類型</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>標籤</th>
+              <th style={{textAlign:"center",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>在引用中提及</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>在引用中提及的競爭對手</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length===0 ? (
+              <tr><td colSpan={10} style={{padding:"40px 8px",textAlign:"center",color:"#BFBFBF",fontSize:13}}>查無符合的資料</td></tr>
+            ) : rows.map((u,i)=>(
+              <tr key={view==="url"?u.url:u.domain} style={{borderBottom:"1px solid #F0F0F0"}}>
+                <td style={{padding:"12px 8px",color:"var(--fg-3)"}}>{i+1}</td>
+                <td style={{padding:"12px 8px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                    <span style={{width:24,height:24,borderRadius:6,background:"#F5F5F5",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <FI name="globe" size={13} color="#8C8C8C"/>
+                    </span>
+                    <div style={{minWidth:0,flex:1}}>
+                      {view==="url" ? (
+                        <>
+                          <div style={{color:"var(--fg)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.title}</div>
+                          <div style={{fontSize:11,color:"var(--fg-3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.url}</div>
+                        </>
+                      ) : (
+                        <div style={{color:"var(--fg)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.domain}</div>
+                      )}
+                    </div>
+                    <span style={{display:"flex",gap:2,flexShrink:0}}>
+                      <span title="複製連結" style={{width:24,height:24,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <FI name="copy" size={13} color="#BFBFBF"/>
+                      </span>
+                      <span title="開啟連結" style={{width:24,height:24,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <FI name="external-link" size={13} color="#BFBFBF"/>
+                      </span>
+                    </span>
+                  </div>
+                </td>
+                <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{u.cites}</td>
+                <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{u.queries}</td>
+                <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{u.rate}<span style={{fontSize:10}}>%</span></td>
+                <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{u.share}<span style={{fontSize:10}}>%</span></td>
+                <td style={{padding:"12px 8px"}}>
+                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:999,whiteSpace:"nowrap",
+                    background:u.type==="Owned"?"#E6F4FF":"#F5F5F5",
+                    color:u.type==="Owned"?"#0958D9":"#595959",
+                    border:"1px solid "+(u.type==="Owned"?"#91CAFF":"#E7EAEC")}}>{u.type}</span>
+                </td>
+                <td style={{padding:"12px 8px"}}>
+                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:999,background:"#F5F5F5",color:"#595959",border:"1px solid #E7EAEC",whiteSpace:"nowrap"}}>{u.tag}</span>
+                </td>
+                <td style={{padding:"12px 8px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <FI name={u.mentioned?"check":"x"} size={16} color={u.mentioned?"#389E0D":"#CF1322"}/>
+                  </div>
+                </td>
+                <td style={{padding:"12px 8px",color:"var(--fg-3)"}}>{u.rivals}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+/* ─── ① 追蹤問題分析（簡化：3 主題 × 2-3 查詢）─── */
+const TOPIC_QUERIES=[
+  {topic:"產品型", count:3, vis:"100.0", sov:"100.0", cites:50, queries:[
+    {q:"港香蘭可以改善睡眠品質的產品嗎？", vis:"100.0", sov:"100.0", cites:36},
+    {q:"中藥保健食品 推薦",                vis:"n/a",   sov:"n/a",   cites:0},
+    {q:"港香蘭可以促進新陳代謝的產品嗎？", vis:"100.0", sov:"100.0", cites:14},
+  ]},
+  {topic:"品牌型", count:2, vis:"85.2", sov:"50.5", cites:37, queries:[
+    {q:"港香蘭保健食品在哪邊買比較優惠？", vis:"100.0", sov:"100.0", cites:14},
+    {q:"科學中藥推薦哪些品牌",             vis:"92.3",  sov:"24.5",  cites:23},
+  ]},
+  {topic:"資訊型", count:3, vis:"3.6", sov:"83.3", cites:126, queries:[
+    {q:"紅蔘跟白蔘有差別嗎？",             vis:"7.1",  sov:"100.0", cites:13},
+    {q:"睡不著穴道按摩位置和教學",         vis:"7.1",  sov:"100.0", cites:20},
+    {q:"克菲爾菌對腸道有哪些好處？",       vis:"7.1",  sov:"100.0", cites:12},
+  ]},
+];
+
+function TopicAnalysis(){
+  const [open,setOpen]=useState(["產品型"]);
+  const toggle=(t)=>setOpen(prev=>prev.includes(t)?prev.filter(x=>x!==t):[...prev,t]);
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>追蹤問題分析</div>
+      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>了解個別追蹤問題的相關數據</div>
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed",minWidth:640}}>
+          <colgroup>
+            <col/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:100}}/>
+          </colgroup>
+          <thead>
+            <tr style={{borderBottom:"1px solid #F0F0F0"}}>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>主題</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>能見度</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>聲量佔有率</th>
+              <th style={{textAlign:"right",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>引用次數</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TOPIC_QUERIES.map(t=>{
+              const exp=open.includes(t.topic);
+              return(
+                <React.Fragment key={t.topic}>
+                  <tr onClick={()=>toggle(t.topic)}
+                    style={{borderBottom:"1px solid #F0F0F0",cursor:"pointer",background:exp?"#FAFAFA":"transparent"}}
+                    onMouseEnter={e=>{if(!exp)e.currentTarget.style.background="#FAFAFA";}}
+                    onMouseLeave={e=>{if(!exp)e.currentTarget.style.background="transparent";}}>
+                    <td style={{padding:"12px 8px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <FI name={exp?"chevron-down":"chevron-right"} size={14} color="#8C8C8C"/>
+                        <div>
+                          <div style={{fontWeight:500,color:"var(--fg)"}}>{t.topic}</div>
+                          <div style={{fontSize:11,color:"var(--fg-3)",marginTop:2}}>{t.count} 追蹤問題清單</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{t.vis}<span style={{fontSize:10}}>%</span></td>
+                    <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{t.sov}<span style={{fontSize:10}}>%</span></td>
+                    <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{t.cites}</td>
+                  </tr>
+                  {exp&&t.queries.map(qr=>(
+                    <tr key={qr.q} style={{borderBottom:"1px solid #F0F0F0"}}>
+                      <td style={{padding:"12px 8px 12px 38px",color:"var(--fg-2)"}}>
+                        <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}}>{qr.q}</span>
+                      </td>
+                      <td style={{padding:"12px 8px",textAlign:"right",color:qr.vis==="n/a"?"#BFBFBF":"var(--fg)"}}>
+                        {qr.vis==="n/a"?"n/a":<>{qr.vis}<span style={{fontSize:10}}>%</span></>}
+                      </td>
+                      <td style={{padding:"12px 8px",textAlign:"right",color:qr.sov==="n/a"?"#BFBFBF":"var(--fg)"}}>
+                        {qr.sov==="n/a"?"n/a":<>{qr.sov}<span style={{fontSize:10}}>%</span></>}
+                      </td>
+                      <td style={{padding:"12px 8px",textAlign:"right",color:"var(--fg)"}}>{qr.cites}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ② 回應（簡化：查詢下拉 + Tab + 5 筆樣本）─── */
+const RESPONSE_QUERIES=["kefir 對身體健康有什麼幫助？","港香蘭可以改善睡眠品質的產品嗎？","科學中藥推薦哪些品牌"];
+const RESPONSES=[
+  {text:"Kefir（克菲爾）含有豐富的益生菌與酵母，能有效維持腸道菌叢生態，促進消化並改善便秘…", mentioned:false, platform:"ChatGPT",           region:"TW", date:"2026/07/13"},
+  {text:"克菲爾（kefir，開菲爾）是一種「克菲爾菌種」發酵的乳製飲品，和優格有點像，但菌種更多元…", mentioned:false, platform:"Google AI Overview", region:"TW", date:"2026/07/13"},
+  {text:"克菲爾（Kefir）是一種傳統發酵乳飲品，富含多種活性益生菌與酵母菌。它可為身體帶來多項益處…", mentioned:true,  platform:"ChatGPT",           region:"TW", date:"2026/07/12"},
+  {text:"kefir（克菲爾、開菲爾）是一種「克菲爾菌粒」發酵牛奶或植物奶做成的發酵飲品，和優格類似…", mentioned:false, platform:"Google AI Overview", region:"TW", date:"2026/07/12"},
+  {text:"Kefir（Kefir）是一種富含活性乳酸菌與酵母菌的發酵乳飲品。其對健康的幫助包含：改善腸道…", mentioned:true,  platform:"ChatGPT",           region:"TW", date:"2026/07/11"},
+];
+
+function ResponseTable(){
+  const [query,setQuery]=useState(RESPONSE_QUERIES[0]);
+  const [tab,setTab]=useState("all");
+
+  const rows=RESPONSES.filter(r=>
+    tab==="all" ? true : tab==="yes" ? r.mentioned : !r.mentioned);
+
+  const Tab=({id,label})=>{
+    const on=tab===id;
+    return(
+      <div onClick={()=>setTab(id)}
+        style={{fontSize:13,padding:"6px 14px",borderRadius:6,cursor:"pointer",
+          background:on?"#fff":"transparent",color:on?"#0A2B41":"#8C8C8C",fontWeight:on?500:400,
+          boxShadow:on?"0 1px 2px rgba(0,0,0,0.06)":"none",transition:"all .12s",whiteSpace:"nowrap"}}>
+        {label}
+      </div>
+    );
+  };
+
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"20px 24px"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"var(--fg)",marginBottom:3}}>回應</div>
+      <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>選擇查詢，並查看來自不同 LLM 模型的所有 AI 回應</div>
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{minWidth:260,flex:"0 1 320px"}}>
+          <FilterSelect label="選擇查詢" value={query} options={RESPONSE_QUERIES} onChange={setQuery} width={320}/>
+        </div>
+        <div style={{display:"flex",gap:2,background:"#F5F5F5",borderRadius:8,padding:2,flexShrink:0}}>
+          <Tab id="all" label="全部"/><Tab id="yes" label="已提及"/><Tab id="no" label="未提及"/>
+        </div>
+      </div>
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed",minWidth:760}}>
+          <colgroup>
+            <col/><col style={{width:90}}/><col style={{width:150}}/><col style={{width:70}}/><col style={{width:110}}/>
+          </colgroup>
+          <thead>
+            <tr style={{borderBottom:"1px solid #F0F0F0"}}>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>回應</th>
+              <th style={{textAlign:"center",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>已提及</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>平台</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>地區</th>
+              <th style={{textAlign:"left",padding:"10px 8px",fontWeight:500,color:"var(--fg-3)",fontSize:12}}>日期 (UTC)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length===0 ? (
+              <tr><td colSpan={5} style={{padding:"40px 8px",textAlign:"center",color:"#BFBFBF",fontSize:13}}>此條件下無回應</td></tr>
+            ) : rows.map((r,i)=>(
+              <tr key={i} style={{borderBottom:"1px solid #F0F0F0"}}>
+                <td style={{padding:"12px 8px",color:"var(--fg-2)"}}>
+                  <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}}>{r.text}</span>
+                </td>
+                <td style={{padding:"12px 8px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <FI name={r.mentioned?"check":"x"} size={16} color={r.mentioned?"#389E0D":"#CF1322"}/>
+                  </div>
+                </td>
+                <td style={{padding:"12px 8px"}}>
+                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:999,whiteSpace:"nowrap",display:"inline-block",
+                    background:r.platform==="ChatGPT"?"#E6F4FF":"#F6FFED",
+                    color:r.platform==="ChatGPT"?"#0958D9":"#389E0D",
+                    border:"1px solid "+(r.platform==="ChatGPT"?"#91CAFF":"#B7EB8F")}}>{r.platform}</span>
+                </td>
+                <td style={{padding:"12px 8px",color:"var(--fg)"}}>{r.region}</td>
+                <td style={{padding:"12px 8px",color:"var(--fg-3)"}}>{r.date}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function GeoOverviewPage({windowWidth}){
   const isWide=windowWidth>=1024;
   const pad=isWide?"24px 32px":"16px 20px";
-  /* Bottom grid: 2:2 equal width — aligns with the 4-column stat grid above */
-  const btmCols=isWide?"repeat(2,minmax(0,1fr))":"1fr";
-  /* Stat cards: 4 cols ≥1024, 2 cols ≥640, 1 col <640 */
-  const statCols=windowWidth>=1024?"repeat(4,minmax(0,1fr))":windowWidth>=640?"repeat(2,minmax(0,1fr))":"1fr";
+
+  const [timeId,setTimeId]=useState("7d");
+  const [region,setRegion]=useState("全部地區");
+  const [topics,setTopics]=useState([]);
+  const [platforms,setPlatforms]=useState([]);
+  const [metas,setMetas]=useState([]);
+  const [customRange,setCustomRange]=useState({start:"",end:""});
+  const [calOpen,setCalOpen]=useState(false);
+
+  const data=useMemo(()=>genData(timeId,region,customRange,topics,platforms,metas),
+    [timeId,region,customRange,topics,platforms,metas]);
+
+  const timeLabel = timeId==="custom"
+    ? (customRange.start&&customRange.end ? customRange.start+" ~ "+customRange.end : "自訂區間")
+    : (TIME_OPTIONS.find(t=>t.id===timeId)||TIME_OPTIONS[0]).label;
+
+  const onTimeChange=(label)=>{
+    const opt=TIME_OPTIONS.find(t=>t.label===label);
+    if(!opt) return;
+    setTimeId(opt.id);
+    if(opt.id==="custom") setCalOpen(true);
+  };
+
+  const statCols = windowWidth>=1024 ? "repeat(4,minmax(0,1fr))"
+                 : windowWidth>=640  ? "repeat(2,minmax(0,1fr))" : "1fr";
+
+  const CARDS=[
+    {label:"品牌提及",   value:String(data.kpi.mention), unit:" / "+data.kpi.mentionTotal, unitSize:15,
+     sub:{l:"覆蓋率",v:data.kpi.vis,u:"%",c:"#434343"},
+     icon:"user",        iconColor:"#1677FF", iconBg:"#E6F4FF"},
+    {label:"平均排名",   value:String(data.kpi.rank), unit:"",
+     sub:{l:"競品最佳",v:String(data.kpi.competitorBest),u:"",c:"#434343"},
+     icon:"bar-chart-2", iconColor:"#389E0D", iconBg:"#F6FFED"},
+    {label:"能見度",     value:String(data.kpi.vis), unit:"%", unitSize:16,
+     sub:{l:"產業均值",v:String(data.kpi.industryAvg),u:"%",c:"#434343"},
+     icon:"eye",         iconColor:"#1677FF", iconBg:"#E6F4FF"},
+    {label:"聲量佔有率", value:String(data.kpi.sov), unit:"%", unitSize:16,
+     sub:{l:"次高",v:String(data.kpi.secondSov),u:"%",c:"#434343"},
+     icon:"pie-chart",   iconColor:"#D68C24", iconBg:"#FFFCF0"},
+  ];
+
+  const CITE_METRICS=[
+    {label:"自有引用份額", value:String(data.kpi.citeShare),  unit:"%"},
+    {label:"引用次數",     value:String(data.kpi.citeCount),  unit:""},
+    {label:"被引用網頁",   value:String(data.kpi.citePages),  unit:""},
+    {label:"平均引用率",   value:String(data.kpi.avgCiteRate),unit:"%"},
+  ];
 
   return(
     <main style={{padding:pad,background:"var(--bg-page)",minHeight:"calc(100vh - 56px)"}}>
-      {/* Content wrapper — maxWidth 1200px centred */}
       <div style={{maxWidth:1200,margin:"0 auto"}}>
 
-        {/* ── Page Header ── */}
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:200}}>
-            {/* h3: 20px/600 per spec */}
-            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>Overview</h1>
-            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>
-              以 mock data 盤點 GEO 分析後台需要的功能，後續 DB、API、正式分析資料完成後再替換。
-            </p>
+        <div style={{marginBottom:16}}>
+          <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>Overview</h1>
+          <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>
+            品牌在 AI 搜尋中的能見度、評價傾向與競品表現總覽。
+          </p>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{position:"relative"}}>
+              <FilterSelect label="時間區間" value={timeLabel}
+                width={timeId==="custom"&&customRange.start?200:130}
+                options={TIME_OPTIONS.map(t=>t.label)} onChange={onTimeChange}/>
+              {calOpen&&(
+                <DateRangePicker range={customRange}
+                  onChange={(r)=>{setCustomRange(r);setTimeId("custom");}}
+                  onClose={()=>setCalOpen(false)}/>
+              )}
+            </div>
+            <FilterSelect label="地區" value={region} options={REGIONS} onChange={setRegion} width={120}/>
+            <FilterMulti label="主題"     selected={topics}    options={TOPIC_OPTIONS}    onChange={setTopics}    width={100}/>
+            <FilterMulti label="平台"     selected={platforms} options={PLATFORM_OPTIONS} onChange={setPlatforms} width={100}/>
+            <FilterMeta  label="Metadata" selected={metas}     groups={META_GROUPS}       onChange={setMetas}     width={120}/>
           </div>
-          <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap"}}>
-            <Btn variant="secondary">
-              <FI name="refresh-cw" size={14} color="#595959"/>重置
-            </Btn>
-            <ProjectDropdown/>
-            <Btn variant="primary">
-              <FI name="plus" size={14} color="#fff"/>建立專案
-            </Btn>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+            <Btn variant="secondary"><FI name="refresh-cw" size={14} color="#595959"/>重置</Btn>
+            <Btn variant="secondary"><FI name="download" size={14} color="#595959"/>匯出報告</Btn>
           </div>
         </div>
 
-        {/* ── Info Banner — info variant per spec ── */}
-        <div style={{background:"#E6F4FF",border:"1px solid #91CAFF",borderRadius:8,padding:"11px 16px",display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-          <FI name="info" size={15} color="#1677FF" style={{flexShrink:0}}/>
-          <span style={{fontSize:13,color:"#0958D9",lineHeight:"20px"}}>
-            目前為「示意資料 / Mock 操作」。本頁不會呼叫 /api/geo，操作只更新前端 local state。
-          </span>
-        </div>
-
-        {/* ── Stat Cards — 4 columns, icon 36×36 r9, data-lg 28px/600 ── */}
         <div style={{display:"grid",gridTemplateColumns:statCols,gap:16,marginBottom:16}}>
-          <StatCard label="Projects"      value="2" sub="1 active"
-            icon="box"      iconColor="#1677FF" iconBg="#E6F4FF"/>
-          <StatCard label="Active Queries" value="3" sub="2 topics"
-            icon="monitor"  iconColor="#389E0D" iconBg="#F6FFED"/>
-          <StatCard label="Schedules"     value="2" sub="Pub/Sub publisher 待實作"
-            icon="calendar" iconColor="#D68C24" iconBg="#FFFCF0"/>
-          <StatCard label="Running Jobs"  value="1" sub="1 failed mock jobs"
-            icon="settings" iconColor="#CF1322" iconBg="#FFF1F0"/>
+          {CARDS.map(k=>(
+            <div key={k.label} style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                <div style={{width:36,height:36,borderRadius:9,background:k.iconBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <FI name={k.icon} size={18} color={k.iconColor}/>
+                </div>
+                <span style={{fontSize:13,color:"var(--fg-3)"}}>{k.label}</span>
+              </div>
+              <div style={{fontSize:28,fontWeight:600,color:"var(--fg)",lineHeight:1.1,marginBottom:10}}>
+                {k.value}
+                {k.unit&&<span style={{fontSize:k.unitSize||16,color:k.unit.startsWith(" /")?"#BFBFBF":"inherit",fontWeight:k.unit.startsWith(" /")?400:600}}>{k.unit}</span>}
+              </div>
+              <div style={{fontSize:12,color:"var(--fg-3)"}}>
+                {k.sub.l} <span style={{color:k.sub.c,fontWeight:600}}>{k.sub.v}{k.sub.u&&<span style={{fontSize:10}}>{k.sub.u}</span>}</span>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* ── Bottom Grid: Trend Chart + Jobs Table — alignItems stretch ── */}
-        <div style={{display:"grid",gridTemplateColumns:btmCols,gap:16,alignItems:"stretch"}}>
-
-          {/* Mock 趨勢 Card — flex column */}
-          <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"16px 20px",borderBottom:"1px solid #F0F0F0",flexShrink:0}}>
-              <div style={{fontSize:15,fontWeight:600,color:"var(--fg)"}}>Mock 趨勢</div>
-              <div style={{fontSize:12,color:"var(--fg-3)",marginTop:2}}>示意資料，後續接正式分析資料</div>
-            </div>
-            {/* Chart fills remaining height — minHeight ensures visible on small viewports */}
-            <div style={{flex:1,minHeight:260,padding:"0 12px 8px"}}>
-              <BarChart data={TREND_DATA}/>
-            </div>
-          </div>
-
-          {/* 近期 Jobs Card — flex column */}
-          <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"16px 20px",borderBottom:"1px solid #F0F0F0",flexShrink:0}}>
-              <div style={{fontSize:15,fontWeight:600,color:"var(--fg)"}}>近期 Jobs</div>
-              <div style={{fontSize:12,color:"var(--fg-3)",marginTop:2}}>只顯示目前選取專案的 mock jobs</div>
-            </div>
-            <div style={{overflowX:"auto",flex:1}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:360}}>
-                <thead>
-                  <tr>
-                    {["Query","Platform","Status","Scheduled"].map((h,i)=>(
-                      <th key={i} style={{textAlign:"left",padding:"10px 16px",fontWeight:500,color:"var(--fg-3)",fontSize:12,borderBottom:"1px solid #F0F0F0",whiteSpace:"nowrap"}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {JOBS.slice(0,5).map((job,ri,arr)=><JobRow key={ri} job={job} isLast={ri===arr.length-1}/>)}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
+        <div style={{marginBottom:16}}>
+          <MetricGroup metrics={CITE_METRICS}/>
         </div>
+
+        <div style={{marginBottom:16}}><TrendChart data={data}/></div>
+        <div style={{marginBottom:16}}><SentimentChart data={data}/></div>
+        <div style={{marginBottom:16}}><RankTable data={data}/></div>
+
+        <div style={{marginBottom:16}}><TopicAnalysis/></div>
+
+        <div style={{marginBottom:16}}><ResponseTable/></div>
+
+        <div style={{marginBottom:16}}>
+          <UrlTable title="引用來源" subtitle="探索 AI 回答中最常被引用的網頁" rows={data.citations}/>
+        </div>
+
+        <div style={{marginBottom:16}}>
+          <UrlTable title="監控網址" subtitle="追蹤您監控網址在 AI 回答中的引用和品牌提及" rows={data.monitored} showTabs={false} showSearch={false}/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:windowWidth>=1200?"minmax(0,1.5fr) minmax(0,1fr)":"minmax(0,1fr)",gap:16,marginBottom:16}}>
+          <TrafficChart data={data}/>
+          <PlatformDonut data={data}/>
+        </div>
+
       </div>
     </main>
   );
 }
 
-/* Jobs Table Row — row height 48px, hover #FAFAFA per spec */
 function JobRow({job,isLast}){
   const [hov,setHov]=useState(false);
   const bb=isLast?"none":"1px solid #F5F5F5";
@@ -582,6 +1799,7 @@ function App(){
   const [collapsed,setCollapsed]=useState(false);
   const [drawerOpen,setDrawer]=useState(false);
   const [userMenu,setUserMenu]=useState(false);
+  const [searchOpen,setSearchOpen]=useState(false);
   const [ww,setWw]=useState(window.innerWidth);
 
   useEffect(()=>{
@@ -601,7 +1819,10 @@ function App(){
   const isDrawerMode=isMobile;
   const sw=isDrawerMode?0:(collapsed?56:240);
 
-  const onSelect=id=>{setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
+  const onSelect=id=>{
+    const GEO_LINKS={"geo-overview":"kinsan-Overview.html","geo-projects":"kinsan-Projects.html","geo-entities":"kinsan-Entities.html","geo-topics":"kinsan-Topics-Queries.html","geo-platforms":"kinsan-Platforms-Schedules.html","geo-jobs":"kinsan-Run-Jobs.html","geo-reports":"kinsan-Reports.html"};
+    if(GEO_LINKS[id] && GEO_LINKS[id]!=="kinsan-Overview.html"){ window.location.href=GEO_LINKS[id]; return; }
+    setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
   const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
   const crumbs=CRUMBS[activeId]||[activeId];
 
@@ -698,7 +1919,7 @@ function App(){
           </nav>
 
           {/* Right: search, bell, divider, avatar — per spec order */}
-          <IconBtn name="search" title="搜尋 ⌘K"/>
+          <IconBtn name="search" title="搜尋 ⌘K" onClick={()=>setSearchOpen(true)}/>
           <IconBtn name="bell"   title="通知" badge/>
           <div style={{width:1,height:20,background:"#F0F0F0",margin:"0 2px",flexShrink:0}}/>
 
@@ -717,10 +1938,10 @@ function App(){
                   </div>
                   {[["user","個人設定"],["settings","帳號設定"],["log-out","登出"]].map(([ic,lbl])=>(
                     <div key={lbl} onClick={()=>setUserMenu(false)}
-                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:lbl==="登出"?"#CF1322":"#595959"}}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:6,cursor:"pointer",fontSize:13,color:"#595959"}}
                       onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <FI name={ic} size={14} color={lbl==="登出"?"#CF1322":"#8C8C8C"}/>{lbl}
+                      <FI name={ic} size={14} color="#8C8C8C"/>{lbl}
                     </div>
                   ))}
                 </div>
@@ -728,6 +1949,56 @@ function App(){
             )}
           </div>
         </header>
+
+        {/* 全域搜尋 popup（Command Palette，靜態示意） */}
+        {searchOpen&&(
+          <>
+            <div onClick={()=>setSearchOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:300}}/>
+            <div style={{position:"fixed",top:"18vh",left:"50%",transform:"translateX(-50%)",width:560,maxWidth:"92vw",background:"#fff",
+              borderRadius:12,boxShadow:"0 16px 48px rgba(0,0,0,0.18)",zIndex:301,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:"1px solid #F0F0F0"}}>
+                <FI name="search" size={18} color="#8C8C8C"/>
+                <input autoFocus placeholder="搜尋專案、報表…"
+                  style={{flex:1,border:"none",outline:"none",fontSize:15,fontFamily:"var(--font)",color:"#1F1F1F"}}
+                  onKeyDown={e=>{if(e.key==="Escape")setSearchOpen(false);}}/>
+                <kbd style={{fontSize:11,color:"#8C8C8C",background:"#F5F5F5",border:"1px solid #E7EAEC",borderRadius:4,padding:"2px 6px"}}>Esc</kbd>
+              </div>
+              <div style={{padding:8,maxHeight:"48vh",overflowY:"auto"}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#8C8C8C",padding:"6px 10px 4px",letterSpacing:"0.04em"}}>專案</div>
+                {["品牌 GEO 追蹤"].map(t=>(
+                  <div key={t} onClick={()=>setSearchOpen(false)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:6,cursor:"pointer",fontSize:14,color:"#1F1F1F"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <FI name="folder" size={15} color="#8C8C8C"/>{t}
+                  </div>
+                ))}
+                {["電商關鍵字監測"].map(t=>(
+                  <div key={t} onClick={()=>setSearchOpen(false)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:6,cursor:"pointer",fontSize:14,color:"#1F1F1F"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <FI name="folder" size={15} color="#8C8C8C"/>{t}
+                  </div>
+                ))}
+                <div style={{fontSize:11,fontWeight:600,color:"#8C8C8C",padding:"6px 10px 4px",letterSpacing:"0.04em"}}>報表</div>
+                {["本月成效總覽"].map(t=>(
+                  <div key={t} onClick={()=>setSearchOpen(false)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:6,cursor:"pointer",fontSize:14,color:"#1F1F1F"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <FI name="file-text" size={15} color="#8C8C8C"/>{t}
+                  </div>
+                ))}
+                {["競品分析報告"].map(t=>(
+                  <div key={t} onClick={()=>setSearchOpen(false)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:6,cursor:"pointer",fontSize:14,color:"#1F1F1F"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <FI name="file-text" size={15} color="#8C8C8C"/>{t}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
 
         {renderPage()}
       </div>

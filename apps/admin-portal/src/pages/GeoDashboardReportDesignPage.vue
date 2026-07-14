@@ -2,13 +2,6 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
-import {
-  mockGeoDashboardReport,
-  mockGeoDashboardQueries,
-  mockGeoDashboardRunResults,
-  mockGeoDashboardSemanticAnalyses,
-  mockGeoDashboardReportProject,
-} from "../mocks/geo-dashboard-report";
 import { ApiError, api } from "../services/api";
 import type {
   GeoAnalysisRunResult,
@@ -44,14 +37,11 @@ import {
   isGeoDashboardReportEmpty,
 } from "../utils/geo-dashboard-report";
 
-type DataSource = "mock" | "live";
-
 const route = useRoute();
 const initialLiveProjectId =
   typeof route.query.projectId === "string" ? route.query.projectId : "";
-const dataSource = ref<DataSource>("mock");
 const projects = ref<GeoProjectResource[]>([]);
-const selectedProjectId = ref(mockGeoDashboardReportProject.id);
+const selectedProjectId = ref(initialLiveProjectId);
 const liveReport = ref<GeoDashboardReport | null>(null);
 const liveQueries = ref<GeoQueryResource[]>([]);
 const liveRunResults = ref<GeoAnalysisRunResult[]>([]);
@@ -72,17 +62,11 @@ const runResultPagination = reactive<PaginationState>({ page: 1, pageSize: 10 })
 
 const filters = reactive(buildDefaultGeoDashboardReportFilters());
 
-const projectOptions = computed(() =>
-  dataSource.value === "mock" ? [mockGeoDashboardReportProject] : projects.value,
-);
 const selectedProject = computed(() =>
-  projectOptions.value.find((project) => project.id === selectedProjectId.value),
+  projects.value.find((project) => project.id === selectedProjectId.value),
 );
-const currentReport = computed(() =>
-  dataSource.value === "mock" ? mockGeoDashboardReport : liveReport.value,
-);
+const currentReport = computed(() => liveReport.value);
 const reportIsEmpty = computed(() =>
-  dataSource.value === "live" &&
   !liveLoading.value &&
   !liveError.value &&
   liveReport.value !== null &&
@@ -96,12 +80,8 @@ const visibleCitationRows = computed(() =>
 const paginatedCitationRows = computed(() =>
   paginateItems(visibleCitationRows.value, citationPagination),
 );
-const currentQueries = computed(() =>
-  dataSource.value === "mock" ? mockGeoDashboardQueries : liveQueries.value,
-);
-const currentRunResults = computed(() =>
-  dataSource.value === "mock" ? mockGeoDashboardRunResults : liveRunResults.value,
-);
+const currentQueries = computed(() => liveQueries.value);
+const currentRunResults = computed(() => liveRunResults.value);
 const runResultRows = computed(() =>
   filterRunResultRows(
     buildRunResultRows(currentRunResults.value, currentQueries.value),
@@ -120,9 +100,6 @@ const paginatedRunResultRows = computed(() =>
 const selectedSemanticAnalysis = computed(() => {
   if (!selectedRunResultRow.value) return null;
   const resultId = selectedRunResultRow.value.result.id;
-  if (dataSource.value === "mock") {
-    return mockGeoDashboardSemanticAnalyses[resultId] ?? null;
-  }
   return semanticAnalysisCache.value[resultId] ?? null;
 });
 const selectedEvidenceHighlights = computed<EvidenceHighlight[]>(() => {
@@ -140,48 +117,26 @@ const selectedRawResponseHtml = computed(() => {
     selectedEvidenceHighlights.value,
   );
 });
-const sourceLabel = computed(() =>
-  dataSource.value === "mock" ? "Mock Data" : "Live API",
-);
-
 onMounted(() => {
-  if (initialLiveProjectId) {
-    dataSource.value = "live";
-    selectedProjectId.value = initialLiveProjectId;
-  }
   void loadProjects();
 });
 
-watch(dataSource, (source) => {
-  if (source === "mock") {
-    selectedProjectId.value = mockGeoDashboardReportProject.id;
-    return;
-  }
-  if (projects.value.length === 0) {
-    selectedProjectId.value = initialLiveProjectId;
-    void loadProjects();
-    return;
-  }
-  selectedProjectId.value = projects.value[0].id;
-});
-
 watch(selectedProjectId, () => {
-  if (dataSource.value === "live" && selectedProjectId.value) {
+  if (selectedProjectId.value) {
     void loadLiveReport();
   }
 });
 
-watch([citationView, dataSource], () => {
+watch(citationView, () => {
   citationPagination.page = 1;
 });
 
-watch([dataSource, selectedProjectId], () => {
+watch(selectedProjectId, () => {
   runResultPagination.page = 1;
   selectedRunResultRow.value = null;
 });
 
 watch(paginatedRunResultRows, (page) => {
-  if (dataSource.value !== "live") return;
   void loadSemanticAnalysesForRows(page.items);
 });
 
@@ -192,7 +147,6 @@ async function loadProjects(): Promise<void> {
     const response = await api.geoAnalysis.projects();
     projects.value = response.items;
     if (
-      dataSource.value === "live" &&
       (!selectedProjectId.value ||
         !response.items.some((project) => project.id === selectedProjectId.value)) &&
       response.items[0]
@@ -245,14 +199,13 @@ function dashboardQuery() {
 }
 
 function refreshReport(): void {
-  if (dataSource.value === "mock") return;
   void loadLiveReport();
 }
 
 async function openRunResult(row: GeoReportRunResultRow): Promise<void> {
   selectedRunResultRow.value = row;
   drilldownError.value = "";
-  if (dataSource.value === "mock" || row.result.id in semanticAnalysisCache.value) {
+  if (row.result.id in semanticAnalysisCache.value) {
     return;
   }
   drilldownLoading.value = true;
@@ -354,9 +307,6 @@ function omitRecordKey<T>(record: Record<string, T>, keyToOmit: string): Record<
 function rowSemanticAnalysis(
   row: GeoReportRunResultRow,
 ): GeoRunResultSemanticAnalysis | null | undefined {
-  if (dataSource.value === "mock") {
-    return mockGeoDashboardSemanticAnalyses[row.result.id] ?? null;
-  }
   if (row.result.id in semanticAnalysisCache.value) {
     return semanticAnalysisCache.value[row.result.id];
   }
@@ -429,30 +379,14 @@ function badgeClass(value: string): string {
         <p class="page-kicker">GEO 報表設計</p>
         <h1>Dashboard Report 設計沙盒</h1>
         <p>
-          使用完整 mock data 或實際 Live API 檢視 GEO dashboard report 的資料型態、空狀態與報表呈現方式。
+          使用 Live API 檢視目前專案的 GEO dashboard report 資料型態、空狀態與報表呈現方式。
         </p>
       </div>
       <div class="page-actions">
-        <div class="segmented-control" aria-label="資料來源">
-          <button
-            type="button"
-            :class="{ active: dataSource === 'mock' }"
-            @click="dataSource = 'mock'"
-          >
-            Mock Data
-          </button>
-          <button
-            type="button"
-            :class="{ active: dataSource === 'live' }"
-            @click="dataSource = 'live'"
-          >
-            Live API
-          </button>
-        </div>
         <button
           class="button button-secondary"
           type="button"
-          :disabled="dataSource === 'mock' || liveLoading || !selectedProjectId"
+          :disabled="liveLoading || !selectedProjectId"
           @click="refreshReport"
         >
           <AppIcon name="refresh" :size="16" />重新整理
@@ -471,11 +405,11 @@ function badgeClass(value: string): string {
         </span>
         <select
           v-model="selectedProjectId"
-          :disabled="dataSource === 'live' && projectsLoading"
+          :disabled="projectsLoading"
         >
           <option value="">選擇專案</option>
           <option
-            v-for="project in projectOptions"
+            v-for="project in projects"
             :key="project.id"
             :value="project.id"
           >
@@ -556,8 +490,8 @@ function badgeClass(value: string): string {
     </section>
 
     <div class="report-status-strip">
-      <span class="badge" :class="dataSource === 'mock' ? 'badge-warning' : 'badge-info'">
-        資料來源：{{ sourceLabel }}
+      <span class="badge badge-info">
+        資料來源：Live API
       </span>
       <span>{{ selectedProject?.name ?? "尚未選擇專案" }}</span>
       <span>
@@ -576,13 +510,10 @@ function badgeClass(value: string): string {
       <AppIcon name="alert-circle" :size="17" />{{ liveError }}
     </div>
 
-    <div
-      v-if="dataSource === 'live' && !selectedProjectId"
-      class="empty-state report-empty-state"
-    >
+    <div v-if="!selectedProjectId" class="empty-state report-empty-state">
       <AppIcon name="layers" />
       <strong>請先選擇 GEO 專案</strong>
-      <span>Live API 模式需要專案 ID 才能載入 dashboard report。</span>
+      <span>需要專案 ID 才能載入 dashboard report。</span>
     </div>
 
     <div v-else-if="liveLoading" class="empty-state report-empty-state">
@@ -594,7 +525,7 @@ function badgeClass(value: string): string {
     <div v-else-if="reportIsEmpty" class="empty-state report-empty-state">
       <AppIcon name="grid" />
       <strong>此區間沒有 dashboard report 資料</strong>
-      <span>Live API 已回傳空資料，這裡呈現正式無資料版型，不會 fallback 到 mock data。</span>
+      <span>Live API 已回傳空資料，這裡呈現正式無資料版型。</span>
     </div>
 
     <template v-else-if="currentReport">
