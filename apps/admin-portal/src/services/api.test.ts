@@ -44,7 +44,6 @@ describe("api.geoAnalysis.dashboardReport", () => {
             projectDescription: "位於台灣的中藥製藥公司。",
             projectType: "company",
             coreOfferings: ["科學中藥"],
-            targetAudiences: ["一般消費者"],
           }),
         } as Response;
       }),
@@ -95,12 +94,10 @@ describe("api.geoAnalysis.dashboardReport", () => {
         projectDescription: "提供科學中藥產品。",
         projectType: "company",
         coreOfferings: ["科學中藥"],
-        targetAudiences: ["一般消費者"],
       },
       region: "TW",
       language: "zh-TW",
       marketType: "b2c",
-      audience: null,
       competitorCount: 5,
       topicCount: 5,
       keywordCount: 5,
@@ -117,6 +114,10 @@ describe("api.geoAnalysis.dashboardReport", () => {
       region: "TW",
       competitorCount: 5,
     });
+    expect(JSON.parse(requestedBody)).not.toHaveProperty("audience");
+    expect(JSON.parse(requestedBody).confirmedProject).not.toHaveProperty(
+      "targetAudiences",
+    );
   });
 
   it("requests the dashboard report endpoint with camelCase query params", async () => {

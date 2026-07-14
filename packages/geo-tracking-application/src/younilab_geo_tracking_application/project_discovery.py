@@ -56,10 +56,6 @@ class ProjectDiscoveryService:
             project_description=project_description,
             project_type=inspection.identity.project_type,
             core_offerings=core_offerings,
-            target_audiences=_clean_text_items(
-                inspection.identity.target_audiences,
-                limit=8,
-            ),
         )
 
     async def suggest(
@@ -79,9 +75,6 @@ class ProjectDiscoveryService:
             project_description=project_description,
             project_type=confirmed.project_type,
             core_offerings=core_offerings,
-            target_audiences=tuple(
-                _clean_text_items(confirmed.target_audiences, limit=8)
-            ),
         )
         try:
             suggestions = await self._provider.research_suggestions(

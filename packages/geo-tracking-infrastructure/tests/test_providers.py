@@ -9,7 +9,6 @@ from younilab_geo_tracking_application import (
     ProjectInspectionCommand,
     ProjectSuggestionCommand,
     ProviderRequestError,
-    QueryAudience,
     VerifiedProjectIdentity,
 )
 from younilab_geo_tracking_domain import MarketType, ProviderCode, RegionCode
@@ -105,7 +104,6 @@ async def test_project_discovery_inspects_url_with_url_context_only() -> None:
                 "projectDescription": "位於台灣的中藥製藥公司。",
                 "projectType": "company",
                 "coreOfferings": ["科學中藥"],
-                "targetAudiences": ["一般消費者"],
                 "sufficientContext": True,
                 "limitation": "",
             },
@@ -179,7 +177,6 @@ async def test_project_discovery_uses_page_metadata_when_url_context_fails() -> 
                 "projectDescription": "A fitness club operator in Taiwan.",
                 "projectType": "service",
                 "coreOfferings": ["Fitness clubs", "Personal coaching"],
-                "targetAudiences": ["Fitness consumers"],
                 "sufficientContext": True,
                 "limitation": "",
             },
@@ -231,7 +228,6 @@ async def test_project_discovery_passes_title_only_metadata_to_stage_one() -> No
                 "projectDescription": "An example service Project.",
                 "projectType": "service",
                 "coreOfferings": ["Example service"],
-                "targetAudiences": [],
                 "sufficientContext": True,
                 "limitation": "",
             },
@@ -337,7 +333,6 @@ async def test_project_discovery_researches_with_verified_identity_and_search() 
         project_description="位於台灣的中藥製藥公司。",
         project_type="company",
         core_offerings=("科學中藥",),
-        target_audiences=("一般消費者",),
     )
 
     result = await provider.research_suggestions(
@@ -357,11 +352,8 @@ async def test_project_discovery_researches_with_verified_identity_and_search() 
         "region": "TW",
         "language": "zh-TW",
         "marketType": "b2c",
-        "audience": {
-            "name": "B2C 消費",
-            "description": "正在了解中藥產品的一般消費者",
-        },
     }
+    assert "targetAudiences" not in payload["verifiedProject"]
     assert payload["targetCounts"] == {
         "competitors": 5,
         "topics": 5,
@@ -404,7 +396,6 @@ async def test_project_discovery_falls_back_to_search_entry_point() -> None:
         project_description="位於台灣的中藥製藥公司。",
         project_type="company",
         core_offerings=("科學中藥",),
-        target_audiences=("一般消費者",),
     )
 
     result = await provider.research_suggestions(
@@ -452,7 +443,6 @@ async def test_project_discovery_reuses_and_closes_gemini_client(
                 "projectDescription": "位於台灣的中藥製藥公司。",
                 "projectType": "company",
                 "coreOfferings": ["科學中藥"],
-                "targetAudiences": ["一般消費者"],
                 "sufficientContext": True,
                 "limitation": "",
             },
@@ -515,7 +505,6 @@ async def test_project_discovery_reuses_and_closes_gemini_client(
         project_description=inspection.identity.project_description,
         project_type=inspection.identity.project_type,
         core_offerings=tuple(inspection.identity.core_offerings),
-        target_audiences=tuple(inspection.identity.target_audiences),
     )
     await provider.research_suggestions(_suggestion_command(), identity)
     await provider.close()
@@ -734,15 +723,10 @@ def _suggestion_command() -> ProjectSuggestionCommand:
             project_description="位於台灣的中藥製藥公司。",
             project_type="company",
             core_offerings=["科學中藥"],
-            target_audiences=["一般消費者"],
         ),
         region=RegionCode.TAIWAN,
         language="zh-TW",
         market_type=MarketType.B2C,
-        audience=QueryAudience(
-            name="B2C 消費",
-            description="正在了解中藥產品的一般消費者",
-        ),
     )
 
 

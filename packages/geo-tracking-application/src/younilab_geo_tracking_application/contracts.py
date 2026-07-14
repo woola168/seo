@@ -166,13 +166,14 @@ class ProjectInspectionCommand(ContractModel):
 
 
 class ConfirmedProjectIdentity(ContractModel):
+    model_config = ConfigDict(extra="forbid")
+
     source_url: AnyHttpUrl
     retrieved_url: AnyHttpUrl
     project_name: str = Field(min_length=1, max_length=200)
     project_description: str = Field(min_length=1, max_length=1000)
     project_type: ProjectType
     core_offerings: list[str] = Field(min_length=1, max_length=8)
-    target_audiences: list[str] = Field(default_factory=list, max_length=8)
 
     @field_validator("source_url", "retrieved_url")
     @classmethod
@@ -181,11 +182,12 @@ class ConfirmedProjectIdentity(ContractModel):
 
 
 class ProjectSuggestionCommand(ContractModel):
+    model_config = ConfigDict(extra="forbid")
+
     confirmed_project: ConfirmedProjectIdentity
     region: RegionCode
     language: str = Field(min_length=1, max_length=20)
     market_type: MarketType
-    audience: QueryAudience | None = None
     competitor_count: int = Field(default=5, ge=1, le=8)
     topic_count: int = Field(default=5, ge=1, le=8)
     keyword_count: int = Field(default=5, ge=1, le=10)
@@ -215,7 +217,6 @@ class ProjectDiscoveryIdentity(ContractModel):
     project_description: str = Field(max_length=1000)
     project_type: ProjectType
     core_offerings: list[str] = Field(default_factory=list, max_length=8)
-    target_audiences: list[str] = Field(default_factory=list, max_length=8)
     sufficient_context: bool
     limitation: str = Field(default="", max_length=1000)
 
@@ -229,7 +230,6 @@ class VerifiedProjectIdentity(ContractModel):
     project_description: str
     project_type: ProjectType
     core_offerings: tuple[str, ...]
-    target_audiences: tuple[str, ...]
 
 
 class ProjectDiscoveryInspection(ContractModel):
@@ -245,7 +245,6 @@ class ProjectInspectionResult(ContractModel):
     project_description: str
     project_type: ProjectType
     core_offerings: list[str]
-    target_audiences: list[str]
 
 
 class RunQueryInput(ContractModel):

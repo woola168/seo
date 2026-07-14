@@ -8,7 +8,6 @@ import type {
   GeoGeneratedQuery,
   GeoMarketType,
   GeoProvider,
-  GeoQueryAudienceRequest,
   GeoQueryProvider,
   GeoRegion,
   GeoRunResult,
@@ -88,15 +87,6 @@ const keywordCount = computed(() => lines(form.keywords).length);
 const marketTypeLabel = computed(() =>
   form.marketType === "b2b_procurement" ? "B2B 採購" : "B2C 消費",
 );
-const projectDiscoveryAudience = computed<GeoQueryAudienceRequest | null>(() =>
-  form.audienceName.trim() && form.audienceDescription.trim()
-    ? {
-        name: form.audienceName.trim(),
-        description: form.audienceDescription.trim(),
-      }
-    : null,
-);
-
 onMounted(() => {
   void loadExample();
 });
@@ -391,61 +381,12 @@ async function run(action: () => Promise<void>): Promise<void> {
             <p>設定品牌、市場、Topic、Intent 與 Audience。</p>
           </div>
         </header>
-        <div class="geo-form-footer">
-          <label class="geo-provider-control">
-            <span>生成模型</span>
-            <select
-              v-model="queryGenerationProvider"
-              aria-label="生成模型"
-            >
-              <option value="dummy">Dummy</option>
-              <option value="gemini">Gemini</option>
-            </select>
-          </label>
-          <button
-            class="button button-primary"
-            type="button"
-            :disabled="loading"
-            @click="generateQueries"
-          >
-            <AppIcon name="sparkles" :size="16" />生成 Query
-          </button>
-        </div>
         <div class="geo-form-body">
-          <ProjectDiscoveryPanel
-            :key="projectDiscoveryResetKey"
-            :region="form.region"
-            :language="form.language"
-            :market-type="form.marketType"
-            :audience="projectDiscoveryAudience"
-            @apply="applyProjectDiscovery"
-          />
-
           <fieldset class="geo-fieldset">
-            <legend>專案與品牌</legend>
-            <label>
-              <span>SEO 任務 ID</span>
-              <input v-model="form.seoTaskId" type="text" />
-            </label>
-            <label>
-              <span>自身品牌</span>
-              <input v-model="form.brandName" type="text" />
-            </label>
-            <label>
-              <span>競品品牌</span>
-              <textarea v-model="form.competitorBrands" rows="3"></textarea>
-            </label>
-          </fieldset>
-
-          <fieldset class="geo-fieldset">
-            <legend>市場與 Topic</legend>
-            <label>
-              <span>關鍵字清單</span>
-              <textarea v-model="form.keywords" rows="3"></textarea>
-            </label>
+            <legend>市場設定</legend>
             <div class="geo-three-col">
               <label>
-              <span>地區</span>
+                <span>地區</span>
                 <select
                   v-model="form.region"
                   aria-label="地區"
@@ -470,6 +411,38 @@ async function run(action: () => Promise<void>): Promise<void> {
                 </select>
               </label>
             </div>
+          </fieldset>
+
+          <ProjectDiscoveryPanel
+            :key="projectDiscoveryResetKey"
+            :region="form.region"
+            :language="form.language"
+            :market-type="form.marketType"
+            @apply="applyProjectDiscovery"
+          />
+
+          <fieldset class="geo-fieldset">
+            <legend>專案與品牌</legend>
+            <label>
+              <span>SEO 任務 ID</span>
+              <input v-model="form.seoTaskId" type="text" />
+            </label>
+            <label>
+              <span>自身品牌</span>
+              <input v-model="form.brandName" type="text" />
+            </label>
+            <label>
+              <span>競品品牌</span>
+              <textarea v-model="form.competitorBrands" rows="3"></textarea>
+            </label>
+          </fieldset>
+
+          <fieldset class="geo-fieldset">
+            <legend>Keywords 與 Topics</legend>
+            <label>
+              <span>關鍵字清單</span>
+              <textarea v-model="form.keywords" rows="3"></textarea>
+            </label>
             <div class="geo-topic-editor">
               <div class="geo-topic-editor-header">
                 <div>
@@ -515,7 +488,7 @@ async function run(action: () => Promise<void>): Promise<void> {
           </fieldset>
 
           <fieldset class="geo-fieldset">
-            <legend>生成約束</legend>
+            <legend>Query 生成約束</legend>
             <label>
               <span>Intent 分類</span>
               <select
@@ -565,6 +538,26 @@ async function run(action: () => Promise<void>): Promise<void> {
               <input v-model.number="form.maxQueries" min="1" max="40" type="number" />
             </label>
           </fieldset>
+        </div>
+        <div class="geo-form-footer">
+          <label class="geo-provider-control">
+            <span>Query 生成模型</span>
+            <select
+              v-model="queryGenerationProvider"
+              aria-label="Query 生成模型"
+            >
+              <option value="dummy">Dummy</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </label>
+          <button
+            class="button button-primary"
+            type="button"
+            :disabled="loading"
+            @click="generateQueries"
+          >
+            <AppIcon name="sparkles" :size="16" />生成 Query
+          </button>
         </div>
       </form>
 

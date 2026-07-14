@@ -22,7 +22,6 @@ export function createProjectIdentityDraft(
   return {
     ...result,
     coreOfferings: [...result.coreOfferings],
-    targetAudiences: [...result.targetAudiences],
   };
 }
 

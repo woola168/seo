@@ -153,7 +153,6 @@ class ProjectDiscoveryStubProvider:
                 project_description="位於台灣的中藥製藥公司。",
                 project_type="company",
                 core_offerings=["科學中藥"],
-                target_audiences=["一般消費者"],
                 sufficient_context=True,
                 limitation="",
             ),
@@ -194,7 +193,6 @@ class InsufficientProjectDiscoveryStubProvider(ProjectDiscoveryStubProvider):
                 project_description="頁面缺少用途說明。",
                 project_type="repository",
                 core_offerings=[],
-                target_audiences=[],
                 sufficient_context=False,
                 limitation="README 沒有提供專案用途。",
             ),
@@ -455,7 +453,6 @@ def test_project_inspection_returns_editable_identity() -> None:
         "projectDescription": "位於台灣的中藥製藥公司。",
         "projectType": "company",
         "coreOfferings": ["科學中藥"],
-        "targetAudiences": ["一般消費者"],
     }
     assert provider.last_inspection_command is not None
     assert provider.last_inspection_command.language == "zh-TW"
@@ -481,15 +478,10 @@ def test_project_suggestions_use_confirmed_identity() -> None:
                 "projectDescription": "使用者確認的科學中藥品牌描述。",
                 "projectType": "company",
                 "coreOfferings": ["科學中藥"],
-                "targetAudiences": ["一般消費者"],
             },
             "region": "TW",
             "language": "zh-TW",
             "marketType": "b2c",
-            "audience": {
-                "name": "B2C 消費",
-                "description": "正在了解中藥產品的一般消費者",
-            },
         },
     )
 
@@ -514,6 +506,39 @@ def test_project_suggestions_use_confirmed_identity() -> None:
     assert provider.last_identity.project_description == (
         "使用者確認的科學中藥品牌描述。"
     )
+
+
+def test_project_discovery_rejects_legacy_audience_fields() -> None:
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            project_discovery_provider=ProjectDiscoveryStubProvider(),
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/project-discovery/suggestions",
+        json={
+            "confirmedProject": {
+                "sourceUrl": "https://www.kaiser.com.tw/",
+                "retrievedUrl": "https://www.kaiser.com.tw/",
+                "projectName": "港香蘭",
+                "projectDescription": "提供科學中藥產品。",
+                "projectType": "company",
+                "coreOfferings": ["科學中藥"],
+                "targetAudiences": ["一般消費者"],
+            },
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2c",
+            "audience": {
+                "name": "B2C 消費",
+                "description": "一般消費者",
+            },
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_project_discovery_reports_insufficient_public_context() -> None:

@@ -10,18 +10,13 @@ import {
   type QueryResearchProjectReplacement,
 } from "../../composables/project-discovery-draft";
 import { ApiError, api } from "../../services/api";
-import type {
-  GeoMarketType,
-  GeoQueryAudienceRequest,
-  GeoRegion,
-} from "../../types";
+import type { GeoMarketType, GeoRegion } from "../../types";
 import AppIcon from "../ui/AppIcon.vue";
 
 const props = defineProps<{
   region: GeoRegion;
   language: string;
   marketType: GeoMarketType;
-  audience: GeoQueryAudienceRequest | null;
 }>();
 
 const emit = defineEmits<{
@@ -53,12 +48,7 @@ watch(
   () => invalidateIdentity(),
 );
 watch(
-  () => [
-    props.region,
-    props.marketType,
-    props.audience?.name ?? "",
-    props.audience?.description ?? "",
-  ],
+  () => [props.region, props.marketType],
   () => invalidateSuggestions(),
 );
 watch(
@@ -108,7 +98,6 @@ async function generateSuggestions(): Promise<void> {
       region: props.region,
       language: props.language,
       marketType: props.marketType,
-      audience: props.audience,
       competitorCount: input.competitorCount,
       topicCount: input.topicCount,
       keywordCount: input.keywordCount,
@@ -205,7 +194,6 @@ function normalizedIdentity(
     projectName: identity.projectName.trim(),
     projectDescription: identity.projectDescription.trim(),
     coreOfferings: cleanedLines(identity.coreOfferings),
-    targetAudiences: cleanedLines(identity.targetAudiences),
   };
 }
 
@@ -240,7 +228,7 @@ function referenceLabel(title: string | null | undefined, url: string): string {
 
 <template>
   <fieldset class="geo-fieldset geo-discovery-fieldset">
-    <legend>Project URL 建議</legend>
+    <legend>Project 網站分析</legend>
     <div class="geo-discovery-url-row">
       <label>
         <span>Project URL</span>
@@ -259,7 +247,7 @@ function referenceLabel(title: string | null | undefined, url: string): string {
         @click="inspectProject"
       >
         <AppIcon name="search" :size="16" />
-        {{ inspecting ? "分析中" : "分析 Project" }}
+        {{ inspecting ? "分析中" : "分析網站" }}
       </button>
     </div>
 
@@ -365,8 +353,8 @@ function referenceLabel(title: string | null | undefined, url: string): string {
           :disabled="!canSuggest || suggesting || inspecting"
           @click="generateSuggestions"
         >
-          <AppIcon name="search" :size="16" />
-          {{ suggesting ? "生成中" : "確認並產生建議" }}
+          <AppIcon name="sparkles" :size="16" />
+          {{ suggesting ? "產生中" : "產生競品、Topics 與 Keywords" }}
         </button>
       </div>
     </section>
@@ -504,7 +492,7 @@ function referenceLabel(title: string | null | undefined, url: string): string {
           type="button"
           @click="requestApply"
         >
-          <AppIcon name="check" :size="16" />套用至表單
+          <AppIcon name="check" :size="16" />套用至 Query Research
         </button>
       </div>
 

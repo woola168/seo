@@ -12,7 +12,6 @@ from younilab_geo_tracking_application import (
     ProjectSuggestionResult,
     ProjectSuggestionsResult,
     ProviderRequestError,
-    QueryAudience,
     Reference,
     TopicInput,
     VerifiedProjectIdentity,
@@ -91,7 +90,6 @@ async def test_discovery_stops_before_research_when_context_is_insufficient() ->
                 project_description="只有 repository 名稱，缺少用途說明。",
                 project_type="repository",
                 core_offerings=[],
-                target_audiences=[],
                 sufficient_context=False,
                 limitation="README 沒有提供專案用途。",
             ),
@@ -117,7 +115,6 @@ async def test_discovery_requires_at_least_one_core_offering() -> None:
                 project_description="頁面只有公司名稱。",
                 project_type="company",
                 core_offerings=[],
-                target_audiences=[],
                 sufficient_context=True,
                 limitation="",
             ),
@@ -142,7 +139,6 @@ async def test_discovery_rejects_blank_verified_identity_fields() -> None:
                 project_description=" ",
                 project_type="company",
                 core_offerings=[" "],
-                target_audiences=[],
                 sufficient_context=True,
                 limitation="",
             ),
@@ -167,7 +163,6 @@ async def test_inspection_returns_editable_project_identity() -> None:
                 project_description="位於台灣的中藥製藥公司。",
                 project_type="company",
                 core_offerings=["科學中藥", "中藥保健產品"],
-                target_audiences=["中醫醫療院所", "一般消費者"],
                 sufficient_context=True,
                 limitation="",
             ),
@@ -183,7 +178,6 @@ async def test_inspection_returns_editable_project_identity() -> None:
         project_description="位於台灣的中藥製藥公司。",
         project_type="company",
         core_offerings=["科學中藥", "中藥保健產品"],
-        target_audiences=["中醫醫療院所", "一般消費者"],
     )
     assert provider.research_calls == 0
 
@@ -216,7 +210,6 @@ async def test_suggestions_use_confirmed_identity_from_the_user() -> None:
         project_description="使用者確認的科學中藥品牌描述。",
         project_type="company",
         core_offerings=("科學中藥",),
-        target_audiences=("一般消費者",),
     )
     assert result == ProjectSuggestionsResult(
         competitors=["順天堂藥廠", "勝昌製藥"],
@@ -346,7 +339,6 @@ def _successful_inspection() -> ProjectDiscoveryInspection:
             project_description="位於台灣的中藥製藥公司。",
             project_type="company",
             core_offerings=["科學中藥"],
-            target_audiences=["一般消費者"],
             sufficient_context=True,
             limitation="",
         ),
@@ -369,13 +361,8 @@ def _suggestion_command() -> ProjectSuggestionCommand:
             project_description="使用者確認的科學中藥品牌描述。",
             project_type="company",
             core_offerings=["科學中藥"],
-            target_audiences=["一般消費者"],
         ),
         region=RegionCode.TAIWAN,
         language="zh-TW",
         market_type=MarketType.B2C,
-        audience=QueryAudience(
-            name="B2C 消費",
-            description="正在了解中藥產品的一般消費者",
-        ),
     )

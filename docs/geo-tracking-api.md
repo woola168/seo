@@ -133,8 +133,7 @@ Stage 1 只辨識 Project 身分，不執行 Google Search。Adapter 先以 boun
   "projectName": "港香蘭藥廠股份有限公司",
   "projectDescription": "位於台灣的中藥製藥公司。",
   "projectType": "company",
-  "coreOfferings": ["科學中藥"],
-  "targetAudiences": ["一般消費者"]
+  "coreOfferings": ["科學中藥"]
 }
 ```
 
@@ -152,18 +151,18 @@ Stage 2 接收使用者確認後的 `confirmedProject`，只使用 Google Search
     "projectName": "港香蘭",
     "projectDescription": "提供科學中藥與中藥保健產品。",
     "projectType": "company",
-    "coreOfferings": ["科學中藥"],
-    "targetAudiences": ["一般消費者"]
+    "coreOfferings": ["科學中藥"]
   },
   "region": "TW",
   "language": "zh-TW",
   "marketType": "b2c",
-  "audience": null,
   "competitorCount": 5,
   "topicCount": 5,
   "keywordCount": 5
 }
 ```
+
+Project Discovery 不接受 Query Generation 的 `audience`。Stage 2 只依使用者確認的 Project 身分、核心產品或服務、地區、語言、市場語境與目標數量產生建議。
 
 ```json
 {

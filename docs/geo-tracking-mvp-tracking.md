@@ -39,6 +39,7 @@
 - Query Generation 不使用 web search、Google Search tool、SERP adapter。
 - Query Research 才能使用 Google Search grounding，用來取得市場語氣、搜尋語句、reference URL。
 - Project Discovery 是 Query Generation 前的輸入準備能力，不是 Runner。Stage 1 URL Context 與 Stage 2 Google Search 由兩個 endpoint 分開；Stage 2 只能接收使用者確認後建立的 immutable verified identity，不得重新判斷 Project 身分。
+- Project Discovery 不接收或推論 Audience；Stage 2 只使用 confirmed Project、region、language、market type 與 target counts。Audience 僅屬於後續 Query Generation 約束。
 - Project Discovery 的建議數量是 target，不是最低保證；市場資料不足時允許少於使用者指定數量。
 - Project Discovery application service 以使用者確認的 `projectName` 排除自身品牌與 branded keyword；其他短名稱與 alias 不在本輪推論，留給後續 `geo-analysis` Entity / Alias model。
 - Project Discovery references 優先使用 grounding chunks；structured output 只有 Search Entry Point 時，顯示 Google 官方搜尋 query / redirect 作為搜尋依據，不把模型自行輸出的 URL 當成已驗證 citation。
@@ -148,7 +149,7 @@
 - Query Research 工具在前端語意上負責生成 query draft，不再要求先透過 Gemini grounding 取得搜尋脈絡。
 - Query Research backend adapter 仍支援 structured output + Google Search grounding，可作為未來市場語氣或來源脈絡的後端能力，但目前不是前端流程的必要步驟。
 - Query Generation 可透過 Gemini structured output 產生多筆 query。
-- Project URL 建議的 Stage 1 顯示可編輯名稱、業務描述與 core offerings；Stage 2 依目前 region、language、market type、audience 產生直接競品、Topics 與 Keywords。業務描述只作為 confirmed identity，不帶入 Query Generation。
+- Project 網站分析的 Stage 1 顯示可編輯名稱、業務描述與 core offerings；Stage 2 依目前 region、language 與 market type 產生直接競品、Topics 與 Keywords。業務描述只作為 confirmed identity，不帶入 Query Generation；Audience 只影響 Query Generation。
 
 ### 尚未完成，交接後端
 

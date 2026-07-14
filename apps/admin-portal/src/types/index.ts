@@ -318,7 +318,6 @@ export interface GeoConfirmedProjectIdentity {
   projectDescription: string;
   projectType: GeoProjectType;
   coreOfferings: string[];
-  targetAudiences: string[];
 }
 
 export interface GeoProjectInspectionResult
@@ -344,10 +343,6 @@ export interface GeoProjectSuggestionsRequest {
   region: GeoRegion;
   language: string;
   marketType: GeoMarketType;
-  audience: {
-    name: string;
-    description: string;
-  } | null;
   competitorCount?: number;
   topicCount?: number;
   keywordCount?: number;

@@ -13,7 +13,6 @@ const identityResult = {
   projectDescription: "位於台灣的中藥製藥公司。",
   projectType: "company" as const,
   coreOfferings: ["科學中藥"],
-  targetAudiences: ["一般消費者"],
 };
 
 const suggestionsResult = {
