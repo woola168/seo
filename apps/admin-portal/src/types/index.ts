@@ -303,6 +303,56 @@ export interface GeoQueryResearchResult {
   sourceUrls: string[];
 }
 
+export type GeoProjectType =
+  | "company"
+  | "brand"
+  | "product"
+  | "service"
+  | "repository"
+  | "other";
+
+export interface GeoConfirmedProjectIdentity {
+  sourceUrl: string;
+  retrievedUrl: string;
+  projectName: string;
+  projectDescription: string;
+  projectType: GeoProjectType;
+  coreOfferings: string[];
+  targetAudiences: string[];
+}
+
+export interface GeoProjectInspectionResult
+  extends GeoConfirmedProjectIdentity {}
+
+export interface GeoProjectSuggestionsResult {
+  competitors: string[];
+  topics: GeoTopicInput[];
+  keywords: string[];
+  references: Array<{
+    url: string;
+    title: string | null;
+  }>;
+}
+
+export interface GeoProjectInspectionRequest {
+  projectUrl: string;
+  language: string;
+}
+
+export interface GeoProjectSuggestionsRequest {
+  confirmedProject: GeoConfirmedProjectIdentity;
+  region: GeoRegion;
+  language: string;
+  marketType: GeoMarketType;
+  audience: {
+    name: string;
+    description: string;
+  } | null;
+  competitorCount?: number;
+  topicCount?: number;
+  keywordCount?: number;
+}
+
 export interface GeoQueryGenerationResult {
   topics: GeoTopicSummary[];
   queries: GeoGeneratedQuery[];

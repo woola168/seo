@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Request
 from younilab_geo_tracking_application import (
+    ProjectInspectionCommand,
+    ProjectInspectionResult,
+    ProjectSuggestionCommand,
+    ProjectSuggestionsResult,
     QueryGenerationCommand,
     QueryGenerationResult,
     QueryResearchCommand,
@@ -52,6 +56,28 @@ async def generate_queries(
     request: Request,
 ) -> QueryGenerationResult:
     return await request.app.state.query_generation.generate(payload)
+
+
+@router.post(
+    "/project-discovery/inspection",
+    response_model=ProjectInspectionResult,
+)
+async def inspect_project(
+    payload: ProjectInspectionCommand,
+    request: Request,
+) -> ProjectInspectionResult:
+    return await request.app.state.project_discovery.inspect(payload)
+
+
+@router.post(
+    "/project-discovery/suggestions",
+    response_model=ProjectSuggestionsResult,
+)
+async def suggest_project_inputs(
+    payload: ProjectSuggestionCommand,
+    request: Request,
+) -> ProjectSuggestionsResult:
+    return await request.app.state.project_discovery.suggest(payload)
 
 
 @router.post("/run-requests", response_model=RunRequestResult)

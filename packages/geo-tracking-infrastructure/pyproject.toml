@@ -5,6 +5,7 @@ description = "GEO tracking infrastructure adapters."
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.12,<4",
+    "beautifulsoup4>=4.13,<5",
     "google-genai[aiohttp]>=1.0",
     "younilab-geo-tracking-application",
     "younilab-geo-tracking-domain",

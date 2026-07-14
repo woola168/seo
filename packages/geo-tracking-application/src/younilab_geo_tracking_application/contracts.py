@@ -1,7 +1,9 @@
+import ipaddress
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 from younilab_geo_tracking_domain import (
     MarketType,
     ProviderCode,
@@ -143,6 +145,109 @@ class QueryResearchResult(ContractModel):
     source_urls: list[str] = Field(default_factory=list)
 
 
+ProjectType = Literal[
+    "company",
+    "brand",
+    "product",
+    "service",
+    "repository",
+    "other",
+]
+
+
+class ProjectInspectionCommand(ContractModel):
+    project_url: AnyHttpUrl
+    language: str = Field(min_length=1, max_length=20)
+
+    @field_validator("project_url")
+    @classmethod
+    def validate_public_project_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        return _validate_public_project_url(value)
+
+
+class ConfirmedProjectIdentity(ContractModel):
+    source_url: AnyHttpUrl
+    retrieved_url: AnyHttpUrl
+    project_name: str = Field(min_length=1, max_length=200)
+    project_description: str = Field(min_length=1, max_length=1000)
+    project_type: ProjectType
+    core_offerings: list[str] = Field(min_length=1, max_length=8)
+    target_audiences: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("source_url", "retrieved_url")
+    @classmethod
+    def validate_public_project_urls(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        return _validate_public_project_url(value)
+
+
+class ProjectSuggestionCommand(ContractModel):
+    confirmed_project: ConfirmedProjectIdentity
+    region: RegionCode
+    language: str = Field(min_length=1, max_length=20)
+    market_type: MarketType
+    audience: QueryAudience | None = None
+    competitor_count: int = Field(default=5, ge=1, le=8)
+    topic_count: int = Field(default=5, ge=1, le=8)
+    keyword_count: int = Field(default=5, ge=1, le=10)
+
+
+def _validate_public_project_url(value: AnyHttpUrl) -> AnyHttpUrl:
+    host = (value.host or "").lower().rstrip(".")
+    if (
+        value.username
+        or value.password
+        or host == "localhost"
+        or host.endswith(".localhost")
+        or host.endswith(".local")
+    ):
+        raise ValueError("project_url must be a public URL")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return value
+    if not address.is_global:
+        raise ValueError("project_url must be a public URL")
+    return value
+
+
+class ProjectDiscoveryIdentity(ContractModel):
+    project_name: str = Field(max_length=200)
+    project_description: str = Field(max_length=1000)
+    project_type: ProjectType
+    core_offerings: list[str] = Field(default_factory=list, max_length=8)
+    target_audiences: list[str] = Field(default_factory=list, max_length=8)
+    sufficient_context: bool
+    limitation: str = Field(default="", max_length=1000)
+
+
+class VerifiedProjectIdentity(ContractModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_url: AnyHttpUrl
+    retrieved_url: AnyHttpUrl
+    project_name: str
+    project_description: str
+    project_type: ProjectType
+    core_offerings: tuple[str, ...]
+    target_audiences: tuple[str, ...]
+
+
+class ProjectDiscoveryInspection(ContractModel):
+    retrieval_succeeded: bool
+    retrieved_url: AnyHttpUrl | None
+    identity: ProjectDiscoveryIdentity | None
+
+
+class ProjectInspectionResult(ContractModel):
+    source_url: AnyHttpUrl
+    retrieved_url: AnyHttpUrl
+    project_name: str
+    project_description: str
+    project_type: ProjectType
+    core_offerings: list[str]
+    target_audiences: list[str]
+
+
 class RunQueryInput(ContractModel):
     id: UUID
     text: str
@@ -174,6 +279,21 @@ class AnswerRequest(ContractModel):
 class Reference(ContractModel):
     url: str
     title: str | None = None
+
+
+class ProjectSuggestionResult(ContractModel):
+    search_succeeded: bool
+    competitors: list[str] = Field(default_factory=list, max_length=8)
+    topics: list[TopicInput] = Field(default_factory=list, max_length=8)
+    keywords: list[str] = Field(default_factory=list, max_length=10)
+    references: list[Reference] = Field(default_factory=list)
+
+
+class ProjectSuggestionsResult(ContractModel):
+    competitors: list[str]
+    topics: list[TopicInput]
+    keywords: list[str]
+    references: list[Reference]
 
 
 class AnswerResponse(ContractModel):

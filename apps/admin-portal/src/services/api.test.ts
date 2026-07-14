@@ -26,6 +26,99 @@ describe("api.geoAnalysis.dashboardReport", () => {
     });
   });
 
+  it("posts Project inspection inputs without market research settings", async () => {
+    let requestedPath = "";
+    let requestedBody = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        requestedPath = String(path);
+        requestedBody = String(init?.body ?? "");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sourceUrl: "https://www.kaiser.com.tw/",
+            retrievedUrl: "https://www.kaiser.com.tw/",
+            projectName: "港香蘭藥廠股份有限公司",
+            projectDescription: "位於台灣的中藥製藥公司。",
+            projectType: "company",
+            coreOfferings: ["科學中藥"],
+            targetAudiences: ["一般消費者"],
+          }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.inspectGeoProject({
+      projectUrl: "https://www.kaiser.com.tw/",
+      language: "zh-TW",
+    });
+
+    expect(requestedPath).toBe(
+      "/api/v1/geo-tracking/project-discovery/inspection",
+    );
+    expect(JSON.parse(requestedBody)).toEqual({
+      projectUrl: "https://www.kaiser.com.tw/",
+      language: "zh-TW",
+    });
+  });
+
+  it("posts confirmed Project identity to the suggestions endpoint", async () => {
+    let requestedPath = "";
+    let requestedBody = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        requestedPath = String(path);
+        requestedBody = String(init?.body ?? "");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            competitors: [],
+            topics: [],
+            keywords: [],
+            references: [],
+          }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.suggestGeoProject({
+      confirmedProject: {
+        sourceUrl: "https://www.kaiser.com.tw/",
+        retrievedUrl: "https://www.kaiser.com.tw/",
+        projectName: "港香蘭",
+        projectDescription: "提供科學中藥產品。",
+        projectType: "company",
+        coreOfferings: ["科學中藥"],
+        targetAudiences: ["一般消費者"],
+      },
+      region: "TW",
+      language: "zh-TW",
+      marketType: "b2c",
+      audience: null,
+      competitorCount: 5,
+      topicCount: 5,
+      keywordCount: 5,
+    });
+
+    expect(requestedPath).toBe(
+      "/api/v1/geo-tracking/project-discovery/suggestions",
+    );
+    expect(JSON.parse(requestedBody)).toMatchObject({
+      confirmedProject: {
+        projectName: "港香蘭",
+        projectDescription: "提供科學中藥產品。",
+      },
+      region: "TW",
+      competitorCount: 5,
+    });
+  });
+
   it("requests the dashboard report endpoint with camelCase query params", async () => {
     let requestedPath = "";
     vi.stubGlobal(

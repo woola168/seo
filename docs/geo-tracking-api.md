@@ -30,7 +30,7 @@
 /api/v1/geo-tracking
 ```
 
-本機前端 Vite proxy 目前會將下列路徑導到 `http://127.0.0.1:8002`：
+本機前端 Vite proxy 目前會將下列路徑導到 `http://127.0.0.1:8003`：
 
 ```text
 /api/v1/geo-tracking
@@ -114,6 +114,90 @@
 | `marketType` | string | 市場類型。 |
 | `topics` | object[] | topic 名稱與描述。 |
 | `topicNames` | string[] | 舊版相容欄位，只提供 topic 名稱。 |
+
+## POST /project-discovery/inspection
+
+Stage 1 只辨識 Project 身分，不執行 Google Search。Adapter 先以 bounded HTTP fetch 擷取 title、meta、Open Graph、canonical、JSON-LD 與有限 H1/H2，再由 URL Context 搭配 `pageMetadata` 產生可編輯草稿。
+
+```json
+{
+  "projectUrl": "https://www.kaiser.com.tw/",
+  "language": "zh-TW"
+}
+```
+
+```json
+{
+  "sourceUrl": "https://www.kaiser.com.tw/",
+  "retrievedUrl": "https://www.kaiser.com.tw/",
+  "projectName": "港香蘭藥廠股份有限公司",
+  "projectDescription": "位於台灣的中藥製藥公司。",
+  "projectType": "company",
+  "coreOfferings": ["科學中藥"],
+  "targetAudiences": ["一般消費者"]
+}
+```
+
+`projectUrl` 必須是公開 HTTP(S) URL；`language` 長度為 1-20 字。Admin Portal 會讓使用者編輯 `projectName`、`projectDescription` 與 `coreOfferings`，不會自動執行 Stage 2。
+
+## POST /project-discovery/suggestions
+
+Stage 2 接收使用者確認後的 `confirmedProject`，只使用 Google Search 產生直接競品、Topics 與 non-branded seed keywords。它不重新讀取 URL，也不得重新命名 confirmed Project。
+
+```json
+{
+  "confirmedProject": {
+    "sourceUrl": "https://www.kaiser.com.tw/",
+    "retrievedUrl": "https://www.kaiser.com.tw/",
+    "projectName": "港香蘭",
+    "projectDescription": "提供科學中藥與中藥保健產品。",
+    "projectType": "company",
+    "coreOfferings": ["科學中藥"],
+    "targetAudiences": ["一般消費者"]
+  },
+  "region": "TW",
+  "language": "zh-TW",
+  "marketType": "b2c",
+  "audience": null,
+  "competitorCount": 5,
+  "topicCount": 5,
+  "keywordCount": 5
+}
+```
+
+```json
+{
+  "competitors": ["順天堂藥廠", "勝昌製藥"],
+  "topics": [
+    {
+      "name": "科學中藥製程與品質",
+      "description": "探討製程、品質與產品使用情境。"
+    }
+  ],
+  "keywords": ["科學中藥", "漢方保健食品"],
+  "references": [
+    {
+      "title": "Google Search: 台灣科學中藥品牌",
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/..."
+    }
+  ]
+}
+```
+
+`confirmedProject` 必須包含非空名稱、描述與至少一個 core offering。數量欄位仍是 target，不保證一定補滿。`references` 優先使用 grounding chunks；只有 Search Entry Point 時顯示 Google 官方搜尋 query 與 redirect。
+
+### 錯誤
+
+| HTTP | code | 階段 | 說明 |
+| --- | --- | --- | --- |
+| `422` | `insufficient_project_context` | Stage 1 | 公開內容不足以確認名稱、描述與 core offering。 |
+| `422` | `invalid_confirmed_project` | Stage 2 | 使用者確認的 Project 身分缺少必要內容。 |
+| `502` | `project_url_retrieval_failed` | Stage 1 | URL Context 未成功，且 bounded HTTP metadata 沒有名稱線索。 |
+| `502` | `project_url_inspection_failed` | Stage 1 | Provider 呼叫或 structured output 解析失敗。 |
+| `502` | `project_market_research_not_grounded` | Stage 2 | 沒有 Google Search metadata。 |
+| `502` | `project_market_research_failed` | Stage 2 | 市場搜尋或 structured output 失敗。 |
+
+兩個 endpoint 都不讀寫 DB。Admin Portal 只保存 memory draft；重新整理頁面會遺失 Stage 1 與 Stage 2 結果。
 
 ## POST /query-research
 

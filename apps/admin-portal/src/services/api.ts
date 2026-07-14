@@ -30,6 +30,10 @@
   GeoOverviewResponsePage,
   GeoOverviewResponseQuery,
   GeoProvider,
+  GeoProjectInspectionRequest,
+  GeoProjectInspectionResult,
+  GeoProjectSuggestionsRequest,
+  GeoProjectSuggestionsResult,
   GeoProjectRequest,
   GeoProjectResource,
   GeoQueryPlatformRequest,
@@ -452,6 +456,22 @@ export const api = {
   },
   geoDummyProject: () =>
     request<GeoDummyProject>("/api/v1/geo-tracking/dummy-project"),
+  inspectGeoProject: (input: GeoProjectInspectionRequest) =>
+    request<GeoProjectInspectionResult>(
+      "/api/v1/geo-tracking/project-discovery/inspection",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    ),
+  suggestGeoProject: (input: GeoProjectSuggestionsRequest) =>
+    request<GeoProjectSuggestionsResult>(
+      "/api/v1/geo-tracking/project-discovery/suggestions",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    ),
   researchGeoQueries: (input: {
     provider: GeoQueryProvider;
     brandName: string;

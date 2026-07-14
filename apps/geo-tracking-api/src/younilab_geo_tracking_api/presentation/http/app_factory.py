@@ -1,10 +1,13 @@
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from younilab_geo_tracking_application import (
     AnswerProvider,
+    ProjectDiscoveryError,
+    ProjectDiscoveryProvider,
     QueryGenerationProvider,
     QueryResearchProvider,
 )
@@ -27,6 +30,7 @@ def create_app(
     ) = None,
     query_research_providers: Mapping[ProviderCode, QueryResearchProvider]
     | None = None,
+    project_discovery_provider: ProjectDiscoveryProvider | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
         settings=settings,
@@ -34,6 +38,7 @@ def create_app(
         answer_providers=answer_providers,
         query_generation_providers=query_generation_providers,
         query_research_providers=query_research_providers,
+        project_discovery_provider=project_discovery_provider,
     )
 
     @asynccontextmanager
@@ -50,9 +55,33 @@ def create_app(
     )
     _register_cors_middleware(app)
     app.state.query_generation = dependencies.query_generation
+    app.state.project_discovery = dependencies.project_discovery
     app.state.query_research = dependencies.query_research
     app.state.run_engine = dependencies.run_engine
     app.state.geo_tracking_dependencies = dependencies
+
+    @app.exception_handler(ProjectDiscoveryError)
+    async def project_discovery_error_handler(
+        request: Request,
+        exc: ProjectDiscoveryError,
+    ) -> JSONResponse:
+        status = (
+            422
+            if exc.code in {"insufficient_project_context", "invalid_confirmed_project"}
+            else 502
+        )
+        return JSONResponse(
+            status_code=status,
+            media_type="application/problem+json",
+            content={
+                "type": f"urn:younilab:geo-tracking:error:{exc.code}",
+                "title": "Project discovery failed",
+                "status": status,
+                "detail": exc.code,
+                "instance": request.url.path,
+                "code": exc.code,
+            },
+        )
 
     @app.get("/health")
     async def health() -> dict[str, str]:

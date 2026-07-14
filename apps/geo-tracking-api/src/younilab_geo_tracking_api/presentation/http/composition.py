@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from younilab_geo_tracking_application import (
     AnswerProvider,
+    ProjectDiscoveryProvider,
+    ProjectDiscoveryService,
     QueryGenerationProvider,
     QueryGenerationService,
     QueryResearchProvider,
@@ -11,6 +13,7 @@ from younilab_geo_tracking_application import (
 )
 from younilab_geo_tracking_domain import ProviderCode
 from younilab_geo_tracking_infrastructure import (
+    GeminiProjectDiscoveryProvider,
     GeoTrackingSettings,
     SystemClock,
     UuidGenerator,
@@ -22,6 +25,7 @@ from younilab_geo_tracking_infrastructure import (
 
 @dataclass(frozen=True)
 class GeoTrackingApiDependencies:
+    project_discovery: ProjectDiscoveryService
     query_generation: QueryGenerationService
     query_research: QueryResearchService
     run_engine: RunEngineService
@@ -44,6 +48,7 @@ def build_dependencies(
     ) = None,
     query_research_providers: Mapping[ProviderCode, QueryResearchProvider]
     | None = None,
+    project_discovery_provider: ProjectDiscoveryProvider | None = None,
 ) -> GeoTrackingApiDependencies:
     id_generator = UuidGenerator()
     resolved_settings = settings or GeoTrackingSettings()
@@ -66,7 +71,15 @@ def build_dependencies(
         if query_generation_providers is not None
         else build_query_generation_providers(resolved_settings)
     )
+    resolved_project_discovery_provider = (
+        project_discovery_provider
+        if project_discovery_provider is not None
+        else GeminiProjectDiscoveryProvider(resolved_settings)
+    )
     return GeoTrackingApiDependencies(
+        project_discovery=ProjectDiscoveryService(
+            resolved_project_discovery_provider,
+        ),
         query_generation=QueryGenerationService(
             id_generator,
             resolved_query_generation_providers,
@@ -86,6 +99,7 @@ def build_dependencies(
                     list(resolved_providers.values())
                     + list(resolved_query_research_providers.values())
                     + list(resolved_query_generation_providers.values())
+                    + [resolved_project_discovery_provider]
                 )
             }.values()
         ),

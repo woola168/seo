@@ -10,6 +10,7 @@
 - 新增跑題 Run Engine use case，可依 request provider 選擇 dummy、Gemini 或 Google AIO answer provider。
 - 新增 Gemini Query Generation adapter，使用 structured output，不掛 Google Search tool。
 - 新增 Gemini Query Research backend adapter，使用 structured output 並掛 Google Search tool；前端目前不再曝光獨立「取得搜尋脈絡」步驟。
+- 新增 Project Discovery use case 與 Gemini adapter：Stage 1 以 bounded HTTP fetch + BeautifulSoup 與 URL Context 產生可編輯身分，使用者確認名稱、描述與 core offerings 後，Stage 2 才以 Google Search 產生直接競品、Topics 與 non-branded seed keywords。
 - 新增 Gemini Run Answer adapter，使用 Google Search grounding，回傳 `referenceUrls`。
 - 新增 Google AIO Run Answer adapter，透過 SerpApi 取得 Google AI Overview，回傳 `rawResponse`、`referenceUrls` 與 `references[{ title, url }]`。
 - Run Answer result 已保留 `provider`、`surface`、`model`，可標示結果來自哪個 AI / 平台；另新增 `references[{ title, url }]` 結構化來源，前端優先顯示 title，並保留舊 `referenceUrls` 相容欄位。
@@ -19,9 +20,10 @@
 - Query Generation structured output 已調整為每筆 draft 先輸出 `attributes`、接著 `query`、最後 `keywords`；`keywords` 代表該 prompt 實際使用到的輸入 seed keywords。
 - Query Generation attributes 已移除 `sourceUrls`、`searchedKeywords`、SERP intent、evidence 類欄位。
 - Query Research output 保留 `researchContext`、`searchedKeywords`、`sourceUrls`。
-- API 新增 `/api/v1/geo-tracking/query-generation`、`/query-research`、`/run-requests`、`/dummy-project`。
+- API 新增 `/api/v1/geo-tracking/project-discovery/inspection`、`/project-discovery/suggestions`、`/query-generation`、`/query-research`、`/run-requests`、`/dummy-project`。
 - Admin Portal 新增 GEO 跑題頁，可輸入品牌、競品、keywords、地區、語言、市場語境、topic 名稱與描述、intent、audience、brand mention rules。
 - Admin Portal 已新增 `/geo-tracking` GEO 測試頁面，作為 Phase 1 MVP 串接 Query Research、Query Generation、Run Engine 的本機操作入口。
+- Admin Portal Query Research 頁面已新增兩階段 Project URL 建議區塊；Stage 1 的名稱、描述與 core offerings 可編輯，確認後才生成 Stage 2，最終套用時才原子取代自身品牌、競品、Topics 與 Keywords。重新整理頁面不保留 draft。
 - Admin Portal 右側流程已對齊 PDF 架構：`Query Research 工具` 負責用輸入與背景設定生成 query draft；`Query / Topic 管理紀錄` 只呈現已生成/暫存紀錄；`Runner 跑題引擎` 才負責把 query 送到 AI provider 取得結果。
 - Admin Portal Query / Topic 管理預覽表格已對齊客戶澄清欄位：`Prompt`、`Keywords`、`Intent`、`動作`。
 - Admin Portal 的 Intent 欄位使用 `N / I / C / T` 圓圈標記，對應客戶提供分類名稱：導航、資訊、商業、交易。
@@ -36,6 +38,10 @@
 
 - Query Generation 不使用 web search、Google Search tool、SERP adapter。
 - Query Research 才能使用 Google Search grounding，用來取得市場語氣、搜尋語句、reference URL。
+- Project Discovery 是 Query Generation 前的輸入準備能力，不是 Runner。Stage 1 URL Context 與 Stage 2 Google Search 由兩個 endpoint 分開；Stage 2 只能接收使用者確認後建立的 immutable verified identity，不得重新判斷 Project 身分。
+- Project Discovery 的建議數量是 target，不是最低保證；市場資料不足時允許少於使用者指定數量。
+- Project Discovery application service 以使用者確認的 `projectName` 排除自身品牌與 branded keyword；其他短名稱與 alias 不在本輪推論，留給後續 `geo-analysis` Entity / Alias model。
+- Project Discovery references 優先使用 grounding chunks；structured output 只有 Search Entry Point 時，顯示 Google 官方搜尋 query / redirect 作為搜尋依據，不把模型自行輸出的 URL 當成已驗證 citation。
 - Run Engine / Answer adapter 可使用 Google Search grounding，因為它是在跑題回答階段。
 - Intent 是使用者選擇的生成角度，不是 LLM 自行分類結果。
 - SERP intent 判斷是未來獨立 adapter/API，不參與 Query Generation attributes，也不影響其他 LLM adapter 邏輯。
@@ -55,7 +61,7 @@
 ## Live Gemini 驗證
 
 - 使用本機 Vertex credentials JSON 進行 live test；憑證內容與檔案不進 source。
-- Admin Portal 測試頁面路由：`http://127.0.0.1:5174/geo-tracking`。
+- Admin Portal 測試頁面路由：`http://127.0.0.1:5173/geo-tracking`。
 - 測試頁面用途：暫時替代完整 CRUD 後台，用同一頁完成 dummy project 載入、Query Research 工具生成 query、Query / Topic 暫存紀錄預覽、選取 query、Runner 執行與 raw result 檢視。
 - `gemini-3.1-flash-lite` 可執行 Query Generation structured output。
 - Query Generation live result：成功回傳 2 筆 query；attributes 保留使用者選定 intent；沒有 source URL attributes。
@@ -65,6 +71,22 @@
 - Runner live references 第 1 輪：27/31 筆有 grounding references，成功率 87.1%，未達 95%。主要問題是部分 Gemini response 沒有 grounding chunks；另有一個本機 script 輸出遇到 cp950 encoding 問題。
 - Runner live references 第 2 輪：加入無 references 時 retry 一次的 prompt 後，30/30 筆有 grounding references，成功率 100%，達標。
 - 技術修正：Vertex 不接受 application DTO 產出的完整 Pydantic schema 約束，因此 infrastructure adapter 使用 Gemini 專用簡化 schema，再轉回 application contract。
+
+## Live Project Discovery 驗證
+
+- Model：Vertex AI `gemini-3.1-flash-lite`；SDK 使用 `google-genai[aiohttp]`，兩階段重用同一個 client / session。
+- 成功案例：`https://www.kaiser.com.tw/`。
+  - 第一階段正確辨識 `港香蘭藥廠股份有限公司` 與藥品 / 中藥相關 core offering。
+  - 第二階段以 `TW / zh-TW` 成功回傳直接競品、含 name / description 的 Topics 與 non-branded seed keywords。
+  - 目標數量 5 的 live run 可回傳 5 個競品、5 個 Topics、5 個 Keywords。
+- Search reference 行為：Vertex structured output live response 有 `webSearchQueries` 與 Search Entry Point，但沒有 `groundingChunks`。Adapter 會解析 Google 官方 chip title / grounding redirect，前端標示為「搜尋依據」；不把它宣稱為來源站 citation。
+- 失敗案例：`https://github.com/pleomax0730/agent-settings`。
+  - 第一階段判斷缺少足夠 Project 用途與 core offering，API 回 `422 insufficient_project_context`。
+  - Application service 在第一階段停止，不呼叫 Google Search suggestions。
+- Vertex URL Context 可能只回 `URL_RETRIEVAL_STATUS_SUCCESS` metadata 而沒有 final structured content；重複 smoke test 曾復現此情況。Stage 1 prompt 已明確要求工具完成後必須提交最終判斷，但 live test 仍可能發生空 final content，因此不能把 prompt 視為可靠修復。Adapter 會回 `502 project_url_inspection_failed`，不以第三次模型呼叫 retry，維持「Stage 1 + Stage 2」最多兩次呼叫的決策。
+- URL Context 對 `https://www.worldgymtaiwan.com/` 曾連續回 `project_url_retrieval_failed`；加入 bounded HTTP metadata fallback 後，以 Vertex AI `gemini-3.1-flash-lite` 完成兩階段 live test。Stage 1 正確辨識 `World Gym世界健身俱樂部`、業務描述與 4 個 core offerings，且沒有提前產生競品、Topics 或 Keywords；使用者將名稱修改為 `World Gym 台灣` 並確認後，Stage 2 回傳 5 個競品、5 個 Topics、5 個 Keywords 與 3 筆 Google Search 搜尋依據。
+- Metadata fallback 與 Gemini 共用同一個 `aiohttp.ClientSession`，只解析最多 2 MiB 的公開 HTML，不執行 JavaScript；即使只有非空 title 也會提供給 Stage 1，最終仍須通過 Project 名稱、core offering 與 `sufficientContext` gate。
+- Browser QA：Playwright 已實際走過 Stage 1 身分確認、人工修改、Stage 2 建議與確認取代流程；最新兩階段頁面在 `390px` 的 document scroll width 為 `380px`，沒有水平溢位或元件重疊，browser console 為 0 errors / 0 warnings。
 
 ## Live Google AIO / SerpApi 驗證
 
@@ -126,6 +148,7 @@
 - Query Research 工具在前端語意上負責生成 query draft，不再要求先透過 Gemini grounding 取得搜尋脈絡。
 - Query Research backend adapter 仍支援 structured output + Google Search grounding，可作為未來市場語氣或來源脈絡的後端能力，但目前不是前端流程的必要步驟。
 - Query Generation 可透過 Gemini structured output 產生多筆 query。
+- Project URL 建議的 Stage 1 顯示可編輯名稱、業務描述與 core offerings；Stage 2 依目前 region、language、market type、audience 產生直接競品、Topics 與 Keywords。業務描述只作為 confirmed identity，不帶入 Query Generation。
 
 ### 尚未完成，交接後端
 
@@ -139,6 +162,7 @@
 - Research context history：保存每次 Query Research 的輸入、provider、model、searched keywords、source URLs、raw metadata、建立時間。
 - Generated query draft CRUD：保存生成出的 query draft、attributes、使用者採納狀態、淘汰原因。
 - Shortlist 資料模型：需保存使用者加入 Shortlist 的 prompt/query、keywords、intent、topic、建立者、建立時間、狀態；目前前端 local state 不會持久化。
+- Project Discovery persistence：目前不保存 request、verified identity、suggestions 或使用者編輯內容。後續若要正式保存，應由 `geo-analysis` 建立 discovery run / draft audit，並在使用者確認後原子更新 Project、Entity、Topic 與 Keyword；`geo-tracking` 維持無 DB 的生成能力。
 
 ### 尚未完成，表單設計
 
@@ -518,6 +542,8 @@ CRUD / actions：
 - `uv run --package younilab-geo-tracking-api pytest apps/geo-tracking-api/tests`
 - `npm run test:portal`
 - `npm run build:portal`
+- Project Discovery live smoke test：設定 `VERTEX_AI_CREDENTIALS_PATH` 後，以 `https://www.kaiser.com.tw/` 呼叫 `/project-discovery/inspection`，確認身分後再呼叫 `/project-discovery/suggestions`，確認競品、Topics、Keywords 與搜尋依據非空。
+- Project Discovery insufficient-context smoke test：以 `https://github.com/pleomax0730/agent-settings` 呼叫 inspection endpoint，確認回 `422 insufficient_project_context`，且 suggestions endpoint 沒有執行。
 - Google AIO live smoke test：設定 `SERPAPI_API_KEY` 後，用 `SerpApiGoogleAioAnswerProvider` 跑 `黃連膏 推薦` / `TW` / `zh-TW`，確認 `rawResponse` 與 `references` 非空。
 - Google AIO API route smoke test：設定 `SERPAPI_API_KEY` 後，用最新版 app 呼叫 `/api/v1/geo-tracking/run-requests`，確認 `provider=google_aio`、`status=completed`、`references[{ title, url }]` 非空。
 
@@ -529,4 +555,6 @@ CRUD / actions：
 - SerpApi free plan 可能一題消耗兩段 request：`engine=google` 加上必要時的 `engine=google_ai_overview`。
 - Query Generation adapter 會強制把 attributes 對齊使用者輸入，避免模型改寫 intent/audience/brand rules。
 - 前端目前是 MVP 操作面，不是完整 CRUD 後台。
+- Project Discovery draft 只存在前端記憶體，重新整理即遺失；正式套用與 audit 尚待 `geo-analysis` CRUD / transaction 設計。
+- Project Discovery 的 Search Entry Point fallback 是 Google 搜尋依據，不是詳細來源站 citation；若未來報表要求逐站 provenance，需改用能穩定提供 grounding chunks 的 provider response 或獨立搜尋結果 contract。
 - `workduo-survey/` 是探索資料與 PDF 來源，本輪未納入程式碼變更範圍。

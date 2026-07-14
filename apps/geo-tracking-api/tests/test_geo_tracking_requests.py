@@ -5,12 +5,19 @@ from younilab_geo_tracking_api import create_app
 from younilab_geo_tracking_application import (
     AnswerRequest,
     AnswerResponse,
+    ProjectDiscoveryIdentity,
+    ProjectDiscoveryInspection,
+    ProjectInspectionCommand,
+    ProjectSuggestionCommand,
+    ProjectSuggestionResult,
     ProviderRequestError,
     QueryDraft,
     QueryGenerationCommand,
     QueryResearchCommand,
     QueryResearchResult,
     Reference,
+    TopicInput,
+    VerifiedProjectIdentity,
 )
 from younilab_geo_tracking_domain import ProviderCode
 from younilab_geo_tracking_infrastructure import DummyAnswerProvider
@@ -124,6 +131,81 @@ class GeminiQueryResearchStubProvider:
             searched_keywords=["山華塑膠 氣動管", "台灣 氣動管 供應商"],
             source_urls=["https://example.com/source"],
         )
+
+
+class ProjectDiscoveryStubProvider:
+    def __init__(self) -> None:
+        self.last_inspection_command: ProjectInspectionCommand | None = None
+        self.last_suggestion_command: ProjectSuggestionCommand | None = None
+        self.last_identity: VerifiedProjectIdentity | None = None
+        self.research_calls = 0
+
+    async def inspect_url(
+        self,
+        command: ProjectInspectionCommand,
+    ) -> ProjectDiscoveryInspection:
+        self.last_inspection_command = command
+        return ProjectDiscoveryInspection(
+            retrieval_succeeded=True,
+            retrieved_url=command.project_url,
+            identity=ProjectDiscoveryIdentity(
+                project_name="港香蘭藥廠股份有限公司",
+                project_description="位於台灣的中藥製藥公司。",
+                project_type="company",
+                core_offerings=["科學中藥"],
+                target_audiences=["一般消費者"],
+                sufficient_context=True,
+                limitation="",
+            ),
+        )
+
+    async def research_suggestions(
+        self,
+        command: ProjectSuggestionCommand,
+        identity: VerifiedProjectIdentity,
+    ) -> ProjectSuggestionResult:
+        self.research_calls += 1
+        self.last_suggestion_command = command
+        self.last_identity = identity
+        return ProjectSuggestionResult(
+            search_succeeded=True,
+            competitors=["順天堂藥廠", "勝昌製藥"],
+            topics=[
+                TopicInput(
+                    name="科學中藥",
+                    description="聚焦製程、品質與產品使用情境。",
+                )
+            ],
+            keywords=["科學中藥", "中藥濃縮粉"],
+            references=[Reference(url="https://example.com/source", title="市場來源")],
+        )
+
+
+class InsufficientProjectDiscoveryStubProvider(ProjectDiscoveryStubProvider):
+    async def inspect_url(
+        self,
+        command: ProjectInspectionCommand,
+    ) -> ProjectDiscoveryInspection:
+        return ProjectDiscoveryInspection(
+            retrieval_succeeded=True,
+            retrieved_url=command.project_url,
+            identity=ProjectDiscoveryIdentity(
+                project_name="agent-settings",
+                project_description="頁面缺少用途說明。",
+                project_type="repository",
+                core_offerings=[],
+                target_audiences=[],
+                sufficient_context=False,
+                limitation="README 沒有提供專案用途。",
+            ),
+        )
+
+    async def research_suggestions(
+        self,
+        command: ProjectSuggestionCommand,
+        identity: VerifiedProjectIdentity,
+    ) -> ProjectSuggestionResult:
+        raise AssertionError("market research must not run")
 
 
 def _generation_payload(**overrides: object) -> dict[str, object]:
@@ -342,6 +424,132 @@ def test_query_research_request_rejects_google_aio_provider() -> None:
             "region": "TW",
             "language": "zh-TW",
             "marketType": "b2b_procurement",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_project_inspection_returns_editable_identity() -> None:
+    provider = ProjectDiscoveryStubProvider()
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            project_discovery_provider=provider,
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/project-discovery/inspection",
+        json={
+            "projectUrl": "https://www.kaiser.com.tw/",
+            "language": "zh-TW",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "sourceUrl": "https://www.kaiser.com.tw/",
+        "retrievedUrl": "https://www.kaiser.com.tw/",
+        "projectName": "港香蘭藥廠股份有限公司",
+        "projectDescription": "位於台灣的中藥製藥公司。",
+        "projectType": "company",
+        "coreOfferings": ["科學中藥"],
+        "targetAudiences": ["一般消費者"],
+    }
+    assert provider.last_inspection_command is not None
+    assert provider.last_inspection_command.language == "zh-TW"
+    assert provider.research_calls == 0
+
+
+def test_project_suggestions_use_confirmed_identity() -> None:
+    provider = ProjectDiscoveryStubProvider()
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            project_discovery_provider=provider,
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/project-discovery/suggestions",
+        json={
+            "confirmedProject": {
+                "sourceUrl": "https://www.kaiser.com.tw/",
+                "retrievedUrl": "https://www.kaiser.com.tw/",
+                "projectName": "使用者確認的港香蘭",
+                "projectDescription": "使用者確認的科學中藥品牌描述。",
+                "projectType": "company",
+                "coreOfferings": ["科學中藥"],
+                "targetAudiences": ["一般消費者"],
+            },
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2c",
+            "audience": {
+                "name": "B2C 消費",
+                "description": "正在了解中藥產品的一般消費者",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "competitors": ["順天堂藥廠", "勝昌製藥"],
+        "topics": [
+            {
+                "name": "科學中藥",
+                "description": "聚焦製程、品質與產品使用情境。",
+            }
+        ],
+        "keywords": ["科學中藥", "中藥濃縮粉"],
+        "references": [{"url": "https://example.com/source", "title": "市場來源"}],
+    }
+    assert provider.last_suggestion_command is not None
+    assert provider.last_suggestion_command.competitor_count == 5
+    assert provider.last_suggestion_command.topic_count == 5
+    assert provider.last_suggestion_command.keyword_count == 5
+    assert provider.last_identity is not None
+    assert provider.last_identity.project_name == "使用者確認的港香蘭"
+    assert provider.last_identity.project_description == (
+        "使用者確認的科學中藥品牌描述。"
+    )
+
+
+def test_project_discovery_reports_insufficient_public_context() -> None:
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            project_discovery_provider=InsufficientProjectDiscoveryStubProvider(),
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/project-discovery/inspection",
+        json={
+            "projectUrl": "https://github.com/pleomax0730/agent-settings",
+            "language": "en-US",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "insufficient_project_context"
+
+
+def test_project_discovery_rejects_private_url() -> None:
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            project_discovery_provider=ProjectDiscoveryStubProvider(),
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/project-discovery/inspection",
+        json={
+            "projectUrl": "http://127.0.0.1:8000/internal",
+            "language": "zh-TW",
         },
     )
 

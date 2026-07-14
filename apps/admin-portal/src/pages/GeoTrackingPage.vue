@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import ProjectDiscoveryPanel from "../components/geo/ProjectDiscoveryPanel.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
+import type { QueryResearchProjectReplacement } from "../composables/project-discovery-draft";
 import { ApiError, api } from "../services/api";
 import type {
   GeoGeneratedQuery,
   GeoMarketType,
   GeoProvider,
+  GeoQueryAudienceRequest,
   GeoQueryProvider,
   GeoRegion,
   GeoRunResult,
@@ -75,6 +78,7 @@ const queries = ref<GeoGeneratedQuery[]>([]);
 const shortlistedQueryIds = ref<Set<string>>(new Set());
 const runResults = ref<GeoRunResult[]>([]);
 const querySection = ref<HTMLElement | null>(null);
+const projectDiscoveryResetKey = ref(0);
 
 const selectedQueries = computed(() =>
   queries.value.filter((query) => shortlistedQueryIds.value.has(query.id)),
@@ -83,6 +87,14 @@ const selectedQueries = computed(() =>
 const keywordCount = computed(() => lines(form.keywords).length);
 const marketTypeLabel = computed(() =>
   form.marketType === "b2b_procurement" ? "B2B 採購" : "B2C 消費",
+);
+const projectDiscoveryAudience = computed<GeoQueryAudienceRequest | null>(() =>
+  form.audienceName.trim() && form.audienceDescription.trim()
+    ? {
+        name: form.audienceName.trim(),
+        description: form.audienceDescription.trim(),
+      }
+    : null,
 );
 
 onMounted(() => {
@@ -113,7 +125,20 @@ async function loadExample(): Promise<void> {
     runResults.value = [];
     provider.value = "dummy";
     queryGenerationProvider.value = "dummy";
+    projectDiscoveryResetKey.value += 1;
   });
+}
+
+function applyProjectDiscovery(
+  replacement: QueryResearchProjectReplacement,
+): void {
+  form.brandName = replacement.brandName;
+  form.competitorBrands = replacement.competitorBrands;
+  form.topics = replacement.topics;
+  form.keywords = replacement.keywords;
+  queries.value = [];
+  shortlistedQueryIds.value = new Set();
+  runResults.value = [];
 }
 
 async function generateQueries(): Promise<void> {
@@ -387,6 +412,15 @@ async function run(action: () => Promise<void>): Promise<void> {
           </button>
         </div>
         <div class="geo-form-body">
+          <ProjectDiscoveryPanel
+            :key="projectDiscoveryResetKey"
+            :region="form.region"
+            :language="form.language"
+            :market-type="form.marketType"
+            :audience="projectDiscoveryAudience"
+            @apply="applyProjectDiscovery"
+          />
+
           <fieldset class="geo-fieldset">
             <legend>專案與品牌</legend>
             <label>

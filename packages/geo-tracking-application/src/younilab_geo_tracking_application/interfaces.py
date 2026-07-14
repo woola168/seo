@@ -5,10 +5,15 @@ from uuid import UUID
 from younilab_geo_tracking_application.contracts import (
     AnswerRequest,
     AnswerResponse,
+    ProjectDiscoveryInspection,
+    ProjectInspectionCommand,
+    ProjectSuggestionCommand,
+    ProjectSuggestionResult,
     QueryDraft,
     QueryGenerationCommand,
     QueryResearchCommand,
     QueryResearchResult,
+    VerifiedProjectIdentity,
 )
 
 
@@ -30,6 +35,18 @@ class QueryGenerationProvider(Protocol):
 
 class QueryResearchProvider(Protocol):
     async def research(self, command: QueryResearchCommand) -> QueryResearchResult: ...
+
+
+class ProjectDiscoveryProvider(Protocol):
+    async def inspect_url(
+        self, command: ProjectInspectionCommand
+    ) -> ProjectDiscoveryInspection: ...
+
+    async def research_suggestions(
+        self,
+        command: ProjectSuggestionCommand,
+        identity: VerifiedProjectIdentity,
+    ) -> ProjectSuggestionResult: ...
 
 
 class IdGenerator(Protocol):
