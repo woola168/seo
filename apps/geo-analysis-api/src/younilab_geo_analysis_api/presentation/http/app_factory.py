@@ -63,6 +63,8 @@ def create_app(
     app.state.analyze_run_result = dependencies.analyze_run_result
     app.state.calculate_geo_report_metrics = dependencies.calculate_geo_report_metrics
     app.state.get_geo_dashboard_report = dependencies.get_geo_dashboard_report
+    app.state.get_geo_overview_report = dependencies.get_geo_overview_report
+    app.state.list_geo_overview_responses = dependencies.list_geo_overview_responses
     app.state.dispatch_query_run_job = dependencies.dispatch_query_run_job
     app.state.receive_external_run_callback = dependencies.receive_external_run_callback
     app.state.geo_callback_base_url = dependencies.callback_base_url

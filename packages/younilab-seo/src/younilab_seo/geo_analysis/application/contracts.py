@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -511,6 +512,166 @@ class GeoDashboardReport(ContractModel):
     citation_urls: list[GeoDashboardCitationRow] = Field(default_factory=list)
     citation_domains: list[GeoDashboardCitationRow] = Field(default_factory=list)
     sentiments: list[GeoDashboardSentimentRow] = Field(default_factory=list)
+
+
+class GeoOverviewQuery(ContractModel):
+    """限制 Overview 報表期間、時區與使用者選取的查詢維度。"""
+
+    period_start: datetime
+    period_end: datetime
+    topic_ids: list[UUID] = Field(default_factory=list)
+    providers: list[str] = Field(default_factory=list)
+    region: str | None = None
+    metadata_industry: list[str] = Field(default_factory=list)
+    metadata_type: list[str] = Field(default_factory=list)
+    time_zone: str = "Asia/Taipei"
+
+    @model_validator(mode="after")
+    def validate_overview_query(self):
+        if not _is_timezone_aware(self.period_start) or not _is_timezone_aware(
+            self.period_end
+        ):
+            raise ValueError("overview periods must be timezone-aware")
+        if self.period_end <= self.period_start:
+            raise ValueError("periodEnd must be later than periodStart")
+        try:
+            ZoneInfo(self.time_zone)
+        except ZoneInfoNotFoundError as exc:
+            if self.time_zone == "Asia/Taipei":
+                return self
+            raise ValueError("timeZone must be a valid IANA time zone") from exc
+        return self
+
+
+class GeoOverviewFilterOption(ContractModel):
+    value: str
+    label: str
+
+
+class GeoOverviewFilterOptions(ContractModel):
+    topics: list[GeoOverviewFilterOption] = Field(default_factory=list)
+    platforms: list[GeoOverviewFilterOption] = Field(default_factory=list)
+    regions: list[str] = Field(default_factory=list)
+    metadata_industries: list[str] = Field(default_factory=list)
+    metadata_types: list[str] = Field(default_factory=list)
+
+
+class GeoOverviewKpi(ContractModel):
+    metric_name: Literal["mentions", "average_position", "visibility", "sov"]
+    value: float
+    unit: Literal["count", "position", "percent"]
+    numerator: float | None = None
+    denominator: float | None = None
+    secondary_label: str
+    secondary_value: float | None = None
+    secondary_unit: Literal["count", "position", "percent"] | None = None
+    delta: float | None = None
+    delta_unit: Literal["pp", "count", "position"] | None = None
+
+
+class GeoOverviewCitationSummary(ContractModel):
+    owned_share_percent: float
+    citation_count: int
+    cited_page_count: int
+    cited_response_percent: float
+
+
+class GeoOverviewTrendPoint(ContractModel):
+    date: str
+    value: float
+
+
+class GeoOverviewVisibilitySeries(ContractModel):
+    entity_id: UUID
+    entity_name: str
+    entity_role: Literal["own_brand", "competitor"]
+    points: list[GeoOverviewTrendPoint] = Field(default_factory=list)
+
+
+class GeoOverviewSentimentPoint(ContractModel):
+    date: str
+    positive_count: int
+    negative_count: int
+    positive_negative_ratio: float | None = None
+
+
+class GeoOverviewEntityRow(ContractModel):
+    entity_id: UUID
+    entity_name: str
+    entity_role: Literal["own_brand", "competitor"]
+    visibility_percent: float
+    visibility_delta_pp: float | None = None
+    sov_percent: float
+    average_position: float
+
+
+class GeoOverviewQueryRow(ContractModel):
+    query_id: UUID
+    query_text: str
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+
+
+class GeoOverviewTopicRow(ContractModel):
+    topic_id: UUID | None = None
+    topic_name: str
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+    queries: list[GeoOverviewQueryRow] = Field(default_factory=list)
+
+
+class GeoOverviewCitationRow(ContractModel):
+    scope_type: Literal["url", "domain"]
+    value: str
+    title: str | None = None
+    citation_count: int
+    query_count: int
+    citation_rate_percent: float
+    citation_share_percent: float
+    ownership: str | None = None
+    source_type: str | None = None
+    content_tag: str | None = None
+    mentions_brand: bool | None = None
+    mentioned_competitors: list[str] | None = None
+
+
+class GeoOverviewReport(ContractModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    filter_options: GeoOverviewFilterOptions
+    overview: list[GeoOverviewKpi] = Field(default_factory=list)
+    citation_summary: GeoOverviewCitationSummary
+    visibility_trend: list[GeoOverviewVisibilitySeries] = Field(default_factory=list)
+    sentiment_trend: list[GeoOverviewSentimentPoint] = Field(default_factory=list)
+    entities: list[GeoOverviewEntityRow] = Field(default_factory=list)
+    topics: list[GeoOverviewTopicRow] = Field(default_factory=list)
+    citation_urls: list[GeoOverviewCitationRow] = Field(default_factory=list)
+    citation_domains: list[GeoOverviewCitationRow] = Field(default_factory=list)
+
+
+class GeoOverviewResponseRow(ContractModel):
+    run_result_id: UUID
+    query_id: UUID
+    query_text: str
+    response_excerpt: str
+    mentioned: bool | None = None
+    provider: str
+    region: str
+    completed_at: datetime
+    reference_count: int
+    positive_count: int
+    negative_count: int
+
+
+class GeoOverviewResponsePage(ContractModel):
+    items: list[GeoOverviewResponseRow] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
 
 
 class KMindHubExtractionTaskField(ContractModel):

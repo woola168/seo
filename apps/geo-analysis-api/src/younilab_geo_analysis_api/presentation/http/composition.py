@@ -11,11 +11,13 @@ from younilab_seo.geo_analysis.application import (
     EvidenceTextRepairer,
     GeoAnalysisRepository,
     GetGeoDashboardReport,
+    GetGeoOverviewReport,
     KMindHubWorkspaceClient,
     ManageGeoSetup,
     ManageKMindHubWorkspaceMapping,
     ManageQueryPlanning,
     ManageQueryRunJobs,
+    ListGeoOverviewResponses,
     MessagePublisher,
     PermissionAuthorizer,
     QueryPlanningClient,
@@ -48,6 +50,8 @@ class GeoAnalysisApiDependencies:
     evidence_text_repairer: EvidenceTextRepairer
     calculate_geo_report_metrics: CalculateGeoReportMetrics
     get_geo_dashboard_report: GetGeoDashboardReport
+    get_geo_overview_report: GetGeoOverviewReport
+    list_geo_overview_responses: ListGeoOverviewResponses
     dispatch_query_run_job: DispatchQueryRunJob | None
     receive_external_run_callback: ReceiveExternalRunCallback
     callback_base_url: str
@@ -125,6 +129,14 @@ def build_dependencies(
             metric_source_builder,
         ),
         get_geo_dashboard_report=GetGeoDashboardReport(
+            metric_source_builder,
+        ),
+        get_geo_overview_report=GetGeoOverviewReport(
+            active_repository,
+            metric_source_builder,
+        ),
+        list_geo_overview_responses=ListGeoOverviewResponses(
+            active_repository,
             metric_source_builder,
         ),
         dispatch_query_run_job=(

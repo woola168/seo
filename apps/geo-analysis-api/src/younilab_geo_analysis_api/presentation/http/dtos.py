@@ -515,6 +515,137 @@ class DashboardReportResponse(ApiModel):
     sentiments: list[DashboardSentimentRowResponse]
 
 
+class OverviewFilterOptionResponse(ApiModel):
+    value: str
+    label: str
+
+
+class OverviewFilterOptionsResponse(ApiModel):
+    topics: list[OverviewFilterOptionResponse]
+    platforms: list[OverviewFilterOptionResponse]
+    regions: list[str]
+    metadata_industries: list[str]
+    metadata_types: list[str]
+
+
+class OverviewKpiResponse(ApiModel):
+    metric_name: str
+    value: float
+    unit: str
+    numerator: float | None = None
+    denominator: float | None = None
+    secondary_label: str
+    secondary_value: float | None = None
+    secondary_unit: str | None = None
+    delta: float | None = None
+    delta_unit: str | None = None
+
+
+class OverviewCitationSummaryResponse(ApiModel):
+    owned_share_percent: float
+    citation_count: int
+    cited_page_count: int
+    cited_response_percent: float
+
+
+class OverviewTrendPointResponse(ApiModel):
+    date: str
+    value: float
+
+
+class OverviewVisibilitySeriesResponse(ApiModel):
+    entity_id: UUID
+    entity_name: str
+    entity_role: str
+    points: list[OverviewTrendPointResponse]
+
+
+class OverviewSentimentPointResponse(ApiModel):
+    date: str
+    positive_count: int
+    negative_count: int
+    positive_negative_ratio: float | None = None
+
+
+class OverviewEntityRowResponse(ApiModel):
+    entity_id: UUID
+    entity_name: str
+    entity_role: str
+    visibility_percent: float
+    visibility_delta_pp: float | None = None
+    sov_percent: float
+    average_position: float
+
+
+class OverviewQueryRowResponse(ApiModel):
+    query_id: UUID
+    query_text: str
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+
+
+class OverviewTopicRowResponse(ApiModel):
+    topic_id: UUID | None = None
+    topic_name: str
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+    queries: list[OverviewQueryRowResponse]
+
+
+class OverviewCitationRowResponse(ApiModel):
+    scope_type: str
+    value: str
+    title: str | None = None
+    citation_count: int
+    query_count: int
+    citation_rate_percent: float
+    citation_share_percent: float
+    ownership: str | None = None
+    source_type: str | None = None
+    content_tag: str | None = None
+    mentions_brand: bool | None = None
+    mentioned_competitors: list[str] | None = None
+
+
+class OverviewReportResponse(ApiModel):
+    period_start: datetime
+    period_end: datetime
+    comparison_start: datetime
+    comparison_end: datetime
+    filter_options: OverviewFilterOptionsResponse
+    overview: list[OverviewKpiResponse]
+    citation_summary: OverviewCitationSummaryResponse
+    visibility_trend: list[OverviewVisibilitySeriesResponse]
+    sentiment_trend: list[OverviewSentimentPointResponse]
+    entities: list[OverviewEntityRowResponse]
+    topics: list[OverviewTopicRowResponse]
+    citation_urls: list[OverviewCitationRowResponse]
+    citation_domains: list[OverviewCitationRowResponse]
+
+
+class OverviewResponseRowResponse(ApiModel):
+    run_result_id: UUID
+    query_id: UUID
+    query_text: str
+    response_excerpt: str
+    mentioned: bool | None = None
+    provider: str
+    region: str
+    completed_at: datetime
+    reference_count: int
+    positive_count: int
+    negative_count: int
+
+
+class OverviewResponsePageResponse(ApiModel):
+    items: list[OverviewResponseRowResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class KMindHubWorkspaceMappingRequest(ApiModel):
     model_config = ConfigDict(
         alias_generator=_camel_case,

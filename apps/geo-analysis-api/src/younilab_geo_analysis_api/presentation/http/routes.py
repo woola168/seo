@@ -21,6 +21,8 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     MarketRequest,
     MarketResponse,
     MetricFormulaResultResponse,
+    OverviewReportResponse,
+    OverviewResponsePageResponse,
     PageResponse,
     ProjectRequest,
     ProjectResponse,
@@ -57,8 +59,10 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryScheduleCommand,
     GeoMetricFormulaQuery,
     GeoMetricFormulaSourceProjectNotFound,
+    GeoOverviewQuery,
     GeoTopicCommand,
     GetGeoDashboardReport,
+    GetGeoOverviewReport,
     KMindHubWorkspaceMappingCommand,
     KMindHubWorkspaceProvisionCommand,
     ManageQueryPlanning,
@@ -68,6 +72,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchCommand,
     ManageGeoSetup,
     ManageQueryRunJobs,
+    ListGeoOverviewResponses,
     ReceiveExternalRunCallback,
 )
 from younilab_seo.geo_analysis.application import AuthorizedPrincipal
@@ -98,6 +103,14 @@ def _report_metrics(request: Request) -> CalculateGeoReportMetrics:
 
 def _dashboard_report(request: Request) -> GetGeoDashboardReport:
     return request.app.state.get_geo_dashboard_report
+
+
+def _overview_report(request: Request) -> GetGeoOverviewReport:
+    return request.app.state.get_geo_overview_report
+
+
+def _overview_responses(request: Request) -> ListGeoOverviewResponses:
+    return request.app.state.list_geo_overview_responses
 
 
 def _dispatcher(request: Request) -> DispatchQueryRunJob | None:
@@ -307,6 +320,96 @@ async def get_project_dashboard_report(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     return DashboardReportResponse(**result.model_dump())
+
+
+@router.get(
+    "/projects/{project_id}/reports/overview",
+    response_model=OverviewReportResponse,
+)
+async def get_project_overview_report(
+    request: Request,
+    project_id: UUID,
+    period_start: datetime = Query(alias="periodStart"),
+    period_end: datetime = Query(alias="periodEnd"),
+    topic_ids: list[UUID] = Query(default=[], alias="topicIds"),
+    providers: list[str] = Query(default=[]),
+    region: str | None = None,
+    metadata_industry: list[str] = Query(default=[], alias="metadataIndustry"),
+    metadata_type: list[str] = Query(default=[], alias="metadataType"),
+    time_zone: str = Query(default="Asia/Taipei", alias="timeZone"),
+) -> OverviewReportResponse:
+    principal = await _principal(request, "geo.projects.read")
+    if await _setup(request).get_project(principal, project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        result = await _overview_report(request).execute(
+            principal.tenant_id,
+            project_id,
+            GeoOverviewQuery(
+                period_start=period_start,
+                period_end=period_end,
+                topic_ids=topic_ids,
+                providers=providers,
+                region=region,
+                metadata_industry=metadata_industry,
+                metadata_type=metadata_type,
+                time_zone=time_zone,
+            ),
+        )
+    except GeoMetricFormulaSourceProjectNotFound:
+        raise HTTPException(status_code=404, detail="project not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return OverviewReportResponse(**result.model_dump())
+
+
+@router.get(
+    "/projects/{project_id}/reports/overview/responses",
+    response_model=OverviewResponsePageResponse,
+)
+async def list_project_overview_responses(
+    request: Request,
+    project_id: UUID,
+    period_start: datetime = Query(alias="periodStart"),
+    period_end: datetime = Query(alias="periodEnd"),
+    topic_ids: list[UUID] = Query(default=[], alias="topicIds"),
+    providers: list[str] = Query(default=[]),
+    region: str | None = None,
+    metadata_industry: list[str] = Query(default=[], alias="metadataIndustry"),
+    metadata_type: list[str] = Query(default=[], alias="metadataType"),
+    time_zone: str = Query(default="Asia/Taipei", alias="timeZone"),
+    query_id: UUID | None = Query(default=None, alias="queryId"),
+    mention_status: str = Query(default="all", alias="mentionStatus"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+) -> OverviewResponsePageResponse:
+    principal = await _principal(request, "geo.projects.read")
+    if await _setup(request).get_project(principal, project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        result = await _overview_responses(request).execute(
+            principal.tenant_id,
+            project_id,
+            GeoOverviewQuery(
+                period_start=period_start,
+                period_end=period_end,
+                topic_ids=topic_ids,
+                providers=providers,
+                region=region,
+                metadata_industry=metadata_industry,
+                metadata_type=metadata_type,
+                time_zone=time_zone,
+            ),
+            query_id=query_id,
+            mention_status=mention_status,
+            page=page,
+            page_size=page_size,
+        )
+    except GeoMetricFormulaSourceProjectNotFound:
+        raise HTTPException(status_code=404, detail="project not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return OverviewResponsePageResponse(**result.model_dump())
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -1185,7 +1186,7 @@ class PostgresGeoAnalysisRepository:
                     .order_by(GeoRunResultRow.run_at.desc())
                 )
             ).all()
-            return [await _run_result_record(session, row) for row in rows]
+            return await _run_result_records(session, rows)
 
     async def list_project_run_results(
         self,
@@ -1208,7 +1209,7 @@ class PostgresGeoAnalysisRepository:
                     .order_by(GeoRunResultRow.run_at.desc())
                 )
             ).all()
-            return [await _run_result_record(session, row) for row in rows]
+            return await _run_result_records(session, rows)
 
     async def get_run_result(
         self,
@@ -2289,6 +2290,57 @@ async def _run_result_record(
         )
         .order_by(GeoRunResultAnalysisRow.updated_at.desc())
     )
+    return _run_result_record_from_rows(row, references, analysis)
+
+
+async def _run_result_records(
+    session: AsyncSession,
+    rows: list[GeoRunResultRow],
+) -> list[GeoRunResultRecord]:
+    if not rows:
+        return []
+    result_ids = [row.id for row in rows]
+    reference_rows = (
+        await session.scalars(
+            select(GeoRunResultReferenceRow)
+            .where(GeoRunResultReferenceRow.run_result_id.in_(result_ids))
+            .order_by(
+                GeoRunResultReferenceRow.run_result_id,
+                GeoRunResultReferenceRow.position,
+            )
+        )
+    ).all()
+    analysis_rows = (
+        await session.scalars(
+            select(GeoRunResultAnalysisRow)
+            .where(
+                GeoRunResultAnalysisRow.run_result_id.in_(result_ids),
+                GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
+            )
+            .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+        )
+    ).all()
+    references_by_result = defaultdict(list)
+    for reference in reference_rows:
+        references_by_result[reference.run_result_id].append(reference)
+    latest_analysis_by_result = {}
+    for analysis in analysis_rows:
+        latest_analysis_by_result.setdefault(analysis.run_result_id, analysis)
+    return [
+        _run_result_record_from_rows(
+            row,
+            references_by_result[row.id],
+            latest_analysis_by_result.get(row.id),
+        )
+        for row in rows
+    ]
+
+
+def _run_result_record_from_rows(
+    row: GeoRunResultRow,
+    references: list[GeoRunResultReferenceRow],
+    analysis: GeoRunResultAnalysisRow | None,
+) -> GeoRunResultRecord:
     return GeoRunResultRecord(
         id=row.id,
         run_request_id=row.run_request_id,

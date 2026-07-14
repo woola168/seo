@@ -1342,6 +1342,49 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     )
 
 
+def test_overview_endpoints_return_stable_empty_read_models() -> None:
+    client = _client()
+    project = client.post("/api/geo/projects", json={"name": "Overview Project"})
+    project_id = project.json()["id"]
+    params = {
+        "periodStart": "2026-07-01T00:00:00Z",
+        "periodEnd": "2026-07-08T00:00:00Z",
+        "timeZone": "Asia/Taipei",
+    }
+
+    report = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params=params,
+    )
+    responses = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview/responses",
+        params=params,
+    )
+
+    assert report.status_code == 200
+    assert report.json()["filterOptions"]["topics"] == []
+    assert report.json()["citationSummary"]["citationCount"] == 0
+    assert responses.status_code == 200
+    assert responses.json() == {"items": [], "total": 0, "page": 1, "pageSize": 20}
+
+
+def test_overview_rejects_invalid_time_zone() -> None:
+    client = _client()
+    project = client.post("/api/geo/projects", json={"name": "Overview Project"})
+
+    response = client.get(
+        f"/api/geo/projects/{project.json()['id']}/reports/overview",
+        params={
+            "periodStart": "2026-07-01T00:00:00Z",
+            "periodEnd": "2026-07-08T00:00:00Z",
+            "timeZone": "Mars/Olympus",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+
+
 def _client(**kwargs) -> TestClient:
     return TestClient(
         create_app(
