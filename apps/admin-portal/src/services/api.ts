@@ -25,6 +25,10 @@
   GeoQueryGenerationRunResource,
   GeoQueryGenerationResult,
   GeoMarketType,
+  GeoOverviewQuery,
+  GeoOverviewReport,
+  GeoOverviewResponsePage,
+  GeoOverviewResponseQuery,
   GeoProvider,
   GeoProjectRequest,
   GeoProjectResource,
@@ -125,6 +129,18 @@ function clearToken(): void {
 function apiUrl(path: string): string {
   if (!apiBaseUrl) return path;
   return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function overviewParams(input: GeoOverviewQuery | GeoOverviewResponseQuery): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, String(item));
+    } else if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  return params.toString();
 }
 
 export const api = {
@@ -417,6 +433,14 @@ export const api = {
         `/api/geo/projects/${projectId}/reports/dashboard?${params.toString()}`,
       );
     },
+    overviewReport: (projectId: string, input: GeoOverviewQuery) =>
+      request<GeoOverviewReport>(
+        `/api/geo/projects/${projectId}/reports/overview?${overviewParams(input)}`,
+      ),
+    overviewResponses: (projectId: string, input: GeoOverviewResponseQuery) =>
+      request<GeoOverviewResponsePage>(
+        `/api/geo/projects/${projectId}/reports/overview/responses?${overviewParams(input)}`,
+      ),
     dispatchJob: (jobId: string) =>
       request<GeoJobResource>(`/api/geo/jobs/${jobId}/dispatch`, {
         method: "POST",

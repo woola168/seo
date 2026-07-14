@@ -86,7 +86,7 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
     {
       path: "/geo-analysis/overview",
       name: "geo-analysis-overview",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoOverviewPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-overview" },
     },
     {

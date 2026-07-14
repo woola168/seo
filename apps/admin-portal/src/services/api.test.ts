@@ -70,6 +70,38 @@ describe("api.geoAnalysis.dashboardReport", () => {
     expect(url.searchParams.get("language")).toBe("zh-TW");
   });
 
+  it("serializes Overview multi-select filters as repeated query params", async () => {
+    let requestedPath = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        requestedPath = String(path);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({}),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.geoAnalysis.overviewReport("project-1", {
+      periodStart: "2026-07-01T00:00:00Z",
+      periodEnd: "2026-07-08T00:00:00Z",
+      topicIds: ["topic-1", "topic-2"],
+      providers: ["gemini", "google_aio"],
+      metadataIndustry: ["保健"],
+      metadataType: ["品牌提及", "資訊引用"],
+      timeZone: "Asia/Taipei",
+    });
+
+    const url = new URL(requestedPath, "https://portal.example");
+    expect(url.pathname).toBe("/api/geo/projects/project-1/reports/overview");
+    expect(url.searchParams.getAll("topicIds")).toEqual(["topic-1", "topic-2"]);
+    expect(url.searchParams.getAll("providers")).toEqual(["gemini", "google_aio"]);
+    expect(url.searchParams.getAll("metadataType")).toEqual(["品牌提及", "資訊引用"]);
+  });
+
   it("requests the KMindHub workspace mapping endpoint", async () => {
     let requestedPath = "";
     vi.stubGlobal(

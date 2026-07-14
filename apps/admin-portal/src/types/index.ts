@@ -38,9 +38,12 @@ export type IconName =
   | "chevron-left"
   | "chevron-right"
   | "clock"
+  | "copy"
   | "download"
   | "edit"
   | "eye"
+  | "external-link"
+  | "globe"
   | "grid"
   | "info"
   | "layers"
@@ -631,6 +634,138 @@ export interface GeoDashboardReportQuery {
   provider?: string;
   region?: string;
   language?: string;
+}
+
+export interface GeoOverviewFilterOption {
+  value: string;
+  label: string;
+}
+
+export interface GeoOverviewQuery {
+  periodStart: string;
+  periodEnd: string;
+  topicIds?: string[];
+  providers?: string[];
+  region?: string;
+  metadataIndustry?: string[];
+  metadataType?: string[];
+  timeZone?: string;
+}
+
+export interface GeoOverviewKpi {
+  metricName: "mentions" | "average_position" | "visibility" | "sov";
+  value: number;
+  unit: "count" | "position" | "percent";
+  numerator: number | null;
+  denominator: number | null;
+  secondaryLabel: string;
+  secondaryValue: number | null;
+  secondaryUnit: "count" | "position" | "percent" | null;
+  delta: number | null;
+  deltaUnit: "pp" | "count" | "position" | null;
+}
+
+export interface GeoOverviewCitationSummary {
+  ownedSharePercent: number;
+  citationCount: number;
+  citedPageCount: number;
+  citedResponsePercent: number;
+}
+
+export interface GeoOverviewReport {
+  periodStart: string;
+  periodEnd: string;
+  comparisonStart: string;
+  comparisonEnd: string;
+  filterOptions: {
+    topics: GeoOverviewFilterOption[];
+    platforms: GeoOverviewFilterOption[];
+    regions: string[];
+    metadataIndustries: string[];
+    metadataTypes: string[];
+  };
+  overview: GeoOverviewKpi[];
+  citationSummary: GeoOverviewCitationSummary;
+  visibilityTrend: Array<{
+    entityId: string;
+    entityName: string;
+    entityRole: "own_brand" | "competitor";
+    points: Array<{ date: string; value: number }>;
+  }>;
+  sentimentTrend: Array<{
+    date: string;
+    positiveCount: number;
+    negativeCount: number;
+    positiveNegativeRatio: number | null;
+  }>;
+  entities: Array<{
+    entityId: string;
+    entityName: string;
+    entityRole: "own_brand" | "competitor";
+    visibilityPercent: number;
+    visibilityDeltaPp: number | null;
+    sovPercent: number;
+    averagePosition: number;
+  }>;
+  topics: Array<{
+    topicId: string | null;
+    topicName: string;
+    visibilityPercent: number;
+    sovPercent: number;
+    citationCount: number;
+    queries: Array<{
+      queryId: string;
+      queryText: string;
+      visibilityPercent: number;
+      sovPercent: number;
+      citationCount: number;
+    }>;
+  }>;
+  citationUrls: GeoOverviewCitationRow[];
+  citationDomains: GeoOverviewCitationRow[];
+}
+
+export interface GeoOverviewCitationRow {
+  scopeType: "url" | "domain";
+  value: string;
+  title: string | null;
+  citationCount: number;
+  queryCount: number;
+  citationRatePercent: number;
+  citationSharePercent: number;
+  ownership: string | null;
+  sourceType: string | null;
+  contentTag: string | null;
+  mentionsBrand: boolean | null;
+  mentionedCompetitors: string[] | null;
+}
+
+export interface GeoOverviewResponseRow {
+  runResultId: string;
+  queryId: string;
+  queryText: string;
+  responseExcerpt: string;
+  mentioned: boolean | null;
+  provider: string;
+  region: string;
+  completedAt: string;
+  referenceCount: number;
+  positiveCount: number;
+  negativeCount: number;
+}
+
+export interface GeoOverviewResponsePage {
+  items: GeoOverviewResponseRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface GeoOverviewResponseQuery extends GeoOverviewQuery {
+  queryId?: string;
+  mentionStatus?: "all" | "mentioned" | "not_mentioned";
+  page?: number;
+  pageSize?: number;
 }
 
 export interface GeoProjectResource {
