@@ -9,9 +9,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "chart.js": "^4.4.0",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
     "vue": "^3.5.0",
+    "vue-chartjs": "^5.3.0",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {

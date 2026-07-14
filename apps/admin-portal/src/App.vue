@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppToast from "./components/ui/AppToast.vue";
 import Layout from "./layouts/Layout.vue";
@@ -31,6 +31,10 @@ import type {
   ToastTone,
   UserAccess,
 } from "./types";
+
+const GeoOverviewPage = defineAsyncComponent(
+  () => import("./pages/GeoOverviewPage.vue"),
+);
 import { hasPermission } from "./utils/permissions";
 import {
   shouldRestoreSession,
@@ -97,7 +101,6 @@ const activePermissionTab = computed<PermissionTab>(() => {
   return "members";
 });
 const geoAnalysisTabsByPage: Partial<Record<PageId, GeoAnalysisTab>> = {
-  "geo-analysis-overview": "overview",
   "geo-analysis-projects": "projects",
   "geo-analysis-entities": "entities",
   "geo-analysis-queries": "queries",
@@ -860,6 +863,7 @@ function unavailable(label: string): void {
       :active-tab="activeGeoAnalysisTab"
       @unavailable="unavailable"
     />
+    <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
     <GeoDashboardReportDesignPage
       v-else-if="activePage === 'geo-analysis-report-design'"
     />
