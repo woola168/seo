@@ -881,7 +881,7 @@ class PostgresGeoAnalysisRepository:
                 id=uuid4(),
                 query_id=query_id,
                 platform_id=command.platform_id,
-                model=command.model,
+                model=None,
                 status=command.status,
                 created_at=now,
                 updated_at=now,
@@ -1062,12 +1062,6 @@ class PostgresGeoAnalysisRepository:
             if query.topic_id is not None:
                 topic = await session.get(GeoTopicRow, query.topic_id)
                 topic_name = topic.name if topic is not None else ""
-            query_platform = await session.scalar(
-                select(GeoQueryPlatformRow).where(
-                    GeoQueryPlatformRow.query_id == row.query_id,
-                    GeoQueryPlatformRow.platform_id == row.platform_id,
-                )
-            )
             return GeoQueryRunJobDispatchContext(
                 job_id=row.id,
                 tenant_id=project.tenant_id,
@@ -1077,11 +1071,7 @@ class PostgresGeoAnalysisRepository:
                 query_text=query.query_text,
                 topic_name=topic_name,
                 platform=platform.code,
-                model=(
-                    query_platform.model
-                    if query_platform is not None and query_platform.model
-                    else platform.default_model
-                ),
+                model=platform.default_model,
                 region=query.region,
                 language=query.language,
                 market_type=query.market_type,
@@ -2153,7 +2143,6 @@ def _query_platform_record(row: GeoQueryPlatformRow) -> GeoQueryPlatformRecord:
         id=row.id,
         query_id=row.query_id,
         platform_id=row.platform_id,
-        model=row.model,
         status=row.status,
         created_at=row.created_at,
         updated_at=row.updated_at,

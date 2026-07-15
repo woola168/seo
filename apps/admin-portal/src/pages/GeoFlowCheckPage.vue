@@ -534,7 +534,6 @@ async function dispatchSelectedQueries(): Promise<void> {
       await api.geoAnalysis.replaceQueryPlatforms(query.id, [
         {
           platformId: selectedPlatform.value.platformId,
-          model: null,
           status: "active",
         },
       ]);

@@ -234,7 +234,7 @@ INSERT INTO geo_ai_platform (
     'gemini',
     'Gemini',
     'llm_api',
-    'gemini-2.5-pro',
+    'gemini-3.1-flash-lite',
     true,
     true,
     'active',
@@ -286,6 +286,10 @@ ON CONFLICT (code) DO UPDATE SET
     status = EXCLUDED.status,
     updated_at = now();
 ```
+
+`geo_ai_platform.default_model` 是平台顯示與 dispatch evidence 使用的模型快照，
+不提供 query-level override。Gemini 實際執行模型由 Geo Tracking deployment 的
+`GEMINI_MODEL` 決定；部署時兩者必須維持一致。
 
 ### Application Composition
 

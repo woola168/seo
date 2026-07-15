@@ -714,6 +714,36 @@ def test_missing_resource_returns_problem_details() -> None:
     assert response.json()["detail"] == "project not found"
 
 
+def test_query_platform_accepts_and_ignores_legacy_model_override() -> None:
+    client, _, query_id = _client_with_query()
+
+    response = client.put(
+        f"/api/geo/queries/{query_id}/platforms",
+        json=[
+            {
+                "platformId": str(uuid4()),
+                "model": "gemini-2.5-pro",
+                "status": "active",
+            }
+        ],
+    )
+
+    assert response.status_code == 200
+    assert "model" not in response.json()["items"][0]
+
+
+def test_query_platform_response_omits_model() -> None:
+    client, _, query_id = _client_with_query()
+
+    response = client.put(
+        f"/api/geo/queries/{query_id}/platforms",
+        json=[{"platformId": str(uuid4()), "status": "active"}],
+    )
+
+    assert response.status_code == 200
+    assert "model" not in response.json()["items"][0]
+
+
 def test_terminal_job_cancel_returns_problem_details() -> None:
     client, store, job_id = _client_with_job()
     store.jobs[job_id].status = JobStatus.SUCCEEDED

@@ -287,8 +287,14 @@ class AcceptQueryDraftRequest(ApiModel):
 class QueryPlatformRequest(ApiModel):
     """tracked query 的 platform 選擇。"""
 
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
     platform_id: UUID
-    model: str | None = None
+    model: str | None = Field(default=None, exclude=True, deprecated=True)
     status: str = Field(default="active", max_length=32)
 
 

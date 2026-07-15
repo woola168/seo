@@ -34,7 +34,7 @@ export interface GeoMockState {
 
 export const geoPlatformCatalog: GeoPlatform[] = [
   { id: "11111111-1111-4111-8111-111111111101", name: "ChatGPT", model: "gpt-4.1", status: "active" },
-  { id: "11111111-1111-4111-8111-111111111102", name: "Gemini", model: "gemini-2.5-pro", status: "active" },
+  { id: "11111111-1111-4111-8111-111111111102", name: "Gemini", model: "gemini-3.1-flash-lite", status: "active" },
   { id: "11111111-1111-4111-8111-111111111103", name: "Claude", model: "claude-sonnet-4", status: "active" },
   { id: "11111111-1111-4111-8111-111111111104", name: "Perplexity", model: "sonar", status: "active" },
   { id: "11111111-1111-4111-8111-111111111105", name: "Google AIO", model: "ai-overview", status: "active" },

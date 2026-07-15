@@ -90,6 +90,7 @@ describe("portal router", () => {
     expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
       "geo-analysis-overview",
     );
+    expect(router.hasRoute("geo-analysis-reports")).toBe(false);
   });
 
   it("keeps GEO query research under GEO navigation", async () => {
@@ -275,6 +276,7 @@ describe("route helpers", () => {
     expect(getRoutePage("geo-analysis-report-design")).toBe(
       "geo-analysis-report-design",
     );
+    expect(getRoutePage("geo-analysis-reports")).toBe("dashboard");
     expect(getRoutePage(undefined)).toBe("dashboard");
   });
 

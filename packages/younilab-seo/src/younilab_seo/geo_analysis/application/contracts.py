@@ -1121,7 +1121,6 @@ class GeoQueryPlatformCommand(ContractModel):
     """建立或更新 tracked query platform assignment 的 application input。"""
 
     platform_id: UUID
-    model: str | None = None
     status: str = "active"
 
 

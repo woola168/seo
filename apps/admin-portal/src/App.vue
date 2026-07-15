@@ -6,10 +6,14 @@ import Layout from "./layouts/Layout.vue";
 import AccountRecoveryPage from "./pages/AccountRecoveryPage.vue";
 import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
-import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
 import GeoDashboardReportDesignPage from "./pages/GeoDashboardReportDesignPage.vue";
+import GeoEntitiesPage from "./pages/GeoEntitiesPage.vue";
 import GeoFlowCheckPage from "./pages/GeoFlowCheckPage.vue";
+import GeoPlatformsSchedulesPage from "./pages/GeoPlatformsSchedulesPage.vue";
+import GeoProjectsPage from "./pages/GeoProjectsPage.vue";
+import GeoRunJobsPage from "./pages/GeoRunJobsPage.vue";
 import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
+import GeoTopicsQueriesPage from "./pages/GeoTopicsQueriesPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
 import RoleCreationPage from "./pages/RoleCreationPage.vue";
@@ -83,15 +87,6 @@ type PortalDataKey =
   | "customers"
   | "tasks";
 type PermissionTab = "members" | "roles" | "departments" | "evaluate";
-type GeoAnalysisTab =
-  | "overview"
-  | "projects"
-  | "entities"
-  | "queries"
-  | "schedules"
-  | "jobs"
-  | "reports";
-
 const loadedData = ref<Set<PortalDataKey>>(new Set());
 const pendingData = new Map<PortalDataKey, Promise<void>>();
 const activePermissionTab = computed<PermissionTab>(() => {
@@ -100,14 +95,6 @@ const activePermissionTab = computed<PermissionTab>(() => {
   if (activePage.value === "permissions-authorization") return "evaluate";
   return "members";
 });
-const geoAnalysisTabsByPage: Partial<Record<PageId, GeoAnalysisTab>> = {
-  "geo-analysis-projects": "projects",
-  "geo-analysis-entities": "entities",
-  "geo-analysis-queries": "queries",
-  "geo-analysis-schedules": "schedules",
-  "geo-analysis-jobs": "jobs",
-  "geo-analysis-reports": "reports",
-};
 const geoPageTitles: Partial<Record<PageId, string>> = {
   "geo-analysis-overview": "GEO Overview",
   "geo-analysis-projects": "GEO Projects",
@@ -115,16 +102,11 @@ const geoPageTitles: Partial<Record<PageId, string>> = {
   "geo-analysis-queries": "GEO Topics & Queries",
   "geo-analysis-schedules": "GEO Platforms & Schedules",
   "geo-analysis-jobs": "GEO Run Jobs",
-  "geo-analysis-reports": "GEO Reports",
   "geo-analysis-report-design": "GEO Report Design",
   "geo-analysis-flow-check": "GEO Flow Check",
   "geo-analysis-query-research": "GEO Query Research",
   "geo-tracking": "GEO 跑題實驗室",
 };
-const activeGeoAnalysisTab = computed(
-  () => geoAnalysisTabsByPage[activePage.value],
-);
-const isGeoAnalysisPage = computed(() => Boolean(activeGeoAnalysisTab.value));
 const isGeoTrackingPage = computed(
   () =>
     activePage.value === "geo-analysis-query-research" ||
@@ -201,12 +183,6 @@ const navigation = computed<NavigationItem[]>(() => [
         label: "Run Jobs",
         icon: "activity",
         page: "geo-analysis-jobs",
-      },
-      {
-        id: "geo-analysis-reports",
-        label: "Reports",
-        icon: "layers",
-        page: "geo-analysis-reports",
       },
       {
         id: "geo-analysis-report-design",
@@ -858,12 +834,12 @@ function unavailable(label: string): void {
       :search="globalSearch"
       @unavailable="unavailable"
     />
-    <GeoAnalysisPage
-      v-else-if="isGeoAnalysisPage && activeGeoAnalysisTab"
-      :active-tab="activeGeoAnalysisTab"
-      @unavailable="unavailable"
-    />
     <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
+    <GeoProjectsPage v-else-if="activePage === 'geo-analysis-projects'" />
+    <GeoEntitiesPage v-else-if="activePage === 'geo-analysis-entities'" />
+    <GeoTopicsQueriesPage v-else-if="activePage === 'geo-analysis-queries'" />
+    <GeoPlatformsSchedulesPage v-else-if="activePage === 'geo-analysis-schedules'" />
+    <GeoRunJobsPage v-else-if="activePage === 'geo-analysis-jobs'" />
     <GeoDashboardReportDesignPage
       v-else-if="activePage === 'geo-analysis-report-design'"
     />

@@ -781,14 +781,6 @@ class GeoApiStore:
         if query.topic_id is not None:
             topic = self.topics.get(query.topic_id)
             topic_name = topic.name if topic is not None else ""
-        query_platform = next(
-            (
-                item
-                for item in self.query_platforms.values()
-                if item.query_id == job.query_id and item.platform_id == job.platform_id
-            ),
-            None,
-        )
         return GeoQueryRunJobDispatchContext(
             job_id=job.id,
             tenant_id=project.tenant_id,
@@ -798,11 +790,7 @@ class GeoApiStore:
             query_text=query.query_text,
             topic_name=topic_name,
             platform=self.platform_codes.get(job.platform_id, str(job.platform_id)),
-            model=(
-                query_platform.model
-                if query_platform is not None and query_platform.model
-                else self.platform_models.get(job.platform_id)
-            ),
+            model=self.platform_models.get(job.platform_id),
             region=query.region,
             language=query.language,
             market_type=query.market_type,

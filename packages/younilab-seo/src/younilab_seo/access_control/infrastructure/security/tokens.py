@@ -18,7 +18,7 @@ class JwtTokenProvider:
         verification_key: str,
         issuer: str = "younilab-access-control",
         audience: str = "younilab-seo",
-        access_token_minutes: int = 10,
+        access_token_minutes: int = 60,
         refresh_token_days: int = 30,
     ) -> None:
         self._signing_key = signing_key

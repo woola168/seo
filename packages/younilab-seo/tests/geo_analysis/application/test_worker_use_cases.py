@@ -131,7 +131,13 @@ def test_worker_marks_completed_tracking_run_succeeded() -> None:
     async def run() -> None:
         job = make_job()
         repository = FakeRepository(job)
-        tracking = FakeTrackingClient(make_tracking_response(job, status="completed"))
+        tracking = FakeTrackingClient(
+            make_tracking_response(
+                job,
+                status="completed",
+                model="gemini-3.1-flash-lite",
+            )
+        )
 
         result = await ProcessQueryRunJobMessage(
             repository=repository,
@@ -149,6 +155,7 @@ def test_worker_marks_completed_tracking_run_succeeded() -> None:
         assert repository.save_commands[0].request_payload["provider"] == "gemini"
         assert "jobId" not in repository.save_commands[0].request_payload
         saved = repository.save_commands[0].response.results[0]
+        assert saved.model == "gemini-3.1-flash-lite"
         assert saved.raw_response == "Raw answer"
         assert saved.references[0].url == "https://example.com/reference"
         assert len(tracking.messages) == 1
