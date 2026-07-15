@@ -131,6 +131,34 @@ describe("api.geoAnalysis.dashboardReport", () => {
     expect(requestedPath).toBe("/api/geo/integrations/kmindhub/workspace");
   });
 
+  it("requests project-scoped setup list endpoints", async () => {
+    const requestedPaths: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        requestedPaths.push(String(path));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0 }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await Promise.all([
+      api.geoAnalysis.projectAliases("project-1"),
+      api.geoAnalysis.projectQueryPlatforms("project-1"),
+      api.geoAnalysis.projectSchedules("project-1"),
+    ]);
+
+    expect(requestedPaths).toEqual([
+      "/api/geo/projects/project-1/entity-aliases",
+      "/api/geo/projects/project-1/query-platforms",
+      "/api/geo/projects/project-1/schedules",
+    ]);
+  });
+
   it("requests run result semantic analysis endpoint", async () => {
     let requestedPath = "";
     vi.stubGlobal(

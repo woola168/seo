@@ -10,7 +10,6 @@ export type PageId =
   | "geo-analysis-queries"
   | "geo-analysis-schedules"
   | "geo-analysis-jobs"
-  | "geo-analysis-reports"
   | "geo-analysis-report-design"
   | "geo-analysis-flow-check"
   | "geo-analysis-query-research"
@@ -414,7 +413,6 @@ export interface GeoQueryPlatform {
   id: string;
   queryId: string;
   platformId: string;
-  model: string;
   status: "active" | "paused";
 }
 
@@ -863,7 +861,6 @@ export interface GeoQueryPlatformResource extends GeoQueryPlatform {
 
 export interface GeoQueryPlatformRequest {
   platformId: string;
-  model: string | null;
   status: GeoQueryPlatform["status"];
 }
 

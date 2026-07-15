@@ -12,7 +12,7 @@ import { formatDateInput, formatGeoDate, useGeoProjectWorkspace } from "../compo
 import { api } from "../services/api";
 import type { GeoSchedule } from "../types";
 
-const workspace = useGeoProjectWorkspace();
+const workspace = useGeoProjectWorkspace("platforms-schedules");
 const { formErrors, setFormErrors, clearFieldError, clearFormErrors } = useGeoFormErrors();
 const drawerOpen = ref(false);
 const search = ref("");

@@ -12,7 +12,7 @@ import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
 import { api } from "../services/api";
 import type { GeoJob } from "../types";
 
-const workspace = useGeoProjectWorkspace();
+const workspace = useGeoProjectWorkspace("run-jobs");
 const { formErrors, setFormErrors, clearFieldError, clearFormErrors } = useGeoFormErrors();
 const drawerOpen = ref(false);
 const search = ref("");
@@ -33,8 +33,7 @@ const filteredJobs = computed(() => {
     const query = queryLabel(job.queryId);
     const platform = platformName(job.platformId);
     const matchesKeyword =
-      !keyword ||
-      [query, platform, job.dedupeKey].join(" ").toLowerCase().includes(keyword);
+      !keyword || [query, platform].join(" ").toLowerCase().includes(keyword);
     return (
       matchesKeyword &&
       (!platformFilters.value.length || platformFilters.value.includes(platform)) &&
@@ -125,20 +124,19 @@ function clearFilters(): void {
         <span>共 {{ workspace.selectedProjectJobs.value.length }} 筆</span>
       </header>
       <div class="geo-kinsan-toolbar">
-        <label class="geo-search-field"><AppIcon name="search" :size="16" /><input v-model="search" type="search" placeholder="搜尋 query、dedupe key…" @input="page = 1" /></label>
+        <label class="geo-search-field"><AppIcon name="search" :size="16" /><input v-model="search" type="search" placeholder="搜尋 query、platform…" @input="page = 1" /></label>
         <GeoFilterDropdown label="Platform" :options="platformFilterOptions" :selected="platformFilters" @update:selected="platformFilters = $event; page = 1" />
         <GeoFilterDropdown label="Status" :options="['succeeded', 'running', 'failed', 'queued', 'external', 'pending', 'published', 'running_external', 'cancelled']" :selected="statusFilters" @update:selected="statusFilters = $event; page = 1" />
         <span v-if="activeFilterCount || search" class="geo-clear-filters" @click="clearFilters">清除全部</span>
       </div>
       <div class="geo-kinsan-table-wrap">
         <table class="data-table geo-table geo-kinsan-table geo-job-table">
-          <thead><tr><th>Query</th><th>Platform</th><th>Status</th><th>Dedupe key</th><th>Attempts</th><th class="sticky-action">Actions</th></tr></thead>
+          <thead><tr><th>Query</th><th>Platform</th><th>Status</th><th>Attempts</th><th class="sticky-action">Actions</th></tr></thead>
           <tbody>
             <tr v-for="job in pageRows" :key="job.id">
               <td>{{ queryLabel(job.queryId) }}</td>
               <td>{{ platformName(job.platformId) }}</td>
               <td><GeoStatusBadge :value="job.status" /></td>
-              <td><code>{{ job.dedupeKey }}</code></td>
               <td>{{ job.attemptCount }} / {{ job.maxAttempts }}</td>
               <td class="sticky-action">
                 <div class="geo-row-actions">
@@ -148,7 +146,7 @@ function clearFilters(): void {
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredJobs.length === 0"><td class="geo-table-empty" colspan="6">找不到符合條件的 job。</td></tr>
+            <tr v-if="filteredJobs.length === 0"><td class="geo-table-empty" colspan="5">找不到符合條件的 job。</td></tr>
           </tbody>
         </table>
       </div>

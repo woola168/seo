@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    CreateQueryRunJobCommand,
     GeoEntityAliasCommand,
     GeoEntityCommand,
     GeoEntityMentionFact,
@@ -39,11 +40,12 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoAiPlatformRow,
     GeoMessageDispatchLogRow,
     GeoProjectRow,
-    GeoQueryRow,
     GeoQueryDraftRow,
     GeoQueryDraftSelectionRow,
     GeoQueryGenerationRunRow,
+    GeoQueryPlatformRow,
     GeoQueryResearchRunRow,
+    GeoQueryRow,
     GeoQueryRunJobRow,
     GeoResponseSemanticFactRow,
     GeoRunResultAnalysisRow,
@@ -410,6 +412,7 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
                         code=f"bulk-list-{uuid4()}",
                         display_name="Bulk List Platform",
                         provider_type="test",
+                        default_model="gemini-3.1-flash-lite",
                         status="active",
                         created_at=now,
                         updated_at=now,
@@ -479,6 +482,25 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         )
         assert query_platforms is not None
         assert schedule is not None
+
+        async with session_factory() as session:
+            async with session.begin():
+                legacy_assignment = await session.get(
+                    GeoQueryPlatformRow,
+                    query_platforms[0].id,
+                )
+                assert legacy_assignment is not None
+                legacy_assignment.model = "gemini-2.5-pro"
+
+        job = await repository.create_job(
+            TENANT_ID,
+            query.id,
+            CreateQueryRunJobCommand(platform_id=platform_id),
+        )
+        assert job is not None
+        dispatch_context = await repository.get_job_dispatch_context(job.id)
+        assert dispatch_context is not None
+        assert dispatch_context.model == "gemini-3.1-flash-lite"
 
         aliases = await repository.list_project_aliases(TENANT_ID, project.id)
         platforms = await repository.list_project_query_platforms(

@@ -5,8 +5,8 @@ import {
 } from "../mocks/geo-analysis";
 import { api } from "../services/api";
 import type {
+  CollectionResponse,
   CustomerSummary,
-  GeoAnalysisRunResult,
   GeoEntityAliasResource,
   GeoEntityResource,
   GeoJobResource,
@@ -26,6 +26,13 @@ import {
 } from "../utils/geo-project-selection-storage";
 
 const fallback = createGeoMockState();
+
+export type GeoWorkspaceProfile =
+  | "projects"
+  | "entities"
+  | "topics-queries"
+  | "platforms-schedules"
+  | "run-jobs";
 
 function customerName(customers: CustomerSummary[], customerId: string | null): string {
   if (!customerId) return "未綁定 Customer";
@@ -68,7 +75,7 @@ export function formatDateInput(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
 }
 
-export function useGeoProjectWorkspace() {
+export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
   const loading = ref(false);
   const actionLoading = ref(false);
   const usingMockData = ref(false);
@@ -85,7 +92,6 @@ export function useGeoProjectWorkspace() {
   const queryPlatforms = ref<GeoQueryPlatformResource[]>([]);
   const schedules = ref<GeoScheduleResource[]>([]);
   const jobs = ref<GeoJobResource[]>([]);
-  const runResults = ref<GeoAnalysisRunResult[]>([]);
   let projectDetailsRequestId = 0;
 
   const selectedProject = computed(() =>
@@ -130,7 +136,7 @@ export function useGeoProjectWorkspace() {
     loading.value = true;
     errorMessage.value = "";
     try {
-      await loadLookups();
+      if (profile === "projects") await loadLookups();
       const response = await api.geoAnalysis.projects();
       usingMockData.value = false;
       projects.value = response.items.map((project) =>
@@ -168,26 +174,59 @@ export function useGeoProjectWorkspace() {
       loadMockProjectDetails(projectId);
       return;
     }
+    if (profile === "projects") {
+      clearProjectDetails();
+      return;
+    }
     loading.value = true;
     errorMessage.value = "";
+    clearProjectDetails();
     try {
-      const [entityResult, topicResult, queryResult, jobResult, resultResult] =
-        await Promise.all([
+      if (profile === "entities") {
+        const [entityResult, aliasResult] = await Promise.allSettled([
           api.geoAnalysis.entities(projectId),
+          api.geoAnalysis.projectAliases(projectId),
+        ]);
+        if (!isCurrentProjectRequest(requestId, projectId)) return;
+        const failures: string[] = [];
+        entities.value = settledItems(entityResult, "Entities", failures);
+        aliases.value = settledItems(aliasResult, "Aliases", failures);
+        setPartialLoadError(failures);
+      } else if (profile === "topics-queries") {
+        const [topicResult, queryResult] = await Promise.allSettled([
           api.geoAnalysis.topics(projectId),
           api.geoAnalysis.queries(projectId),
-          api.geoAnalysis.jobs(projectId),
-          api.geoAnalysis.runResults(projectId),
         ]);
-      if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) return;
-      entities.value = entityResult.items;
-      topics.value = topicResult.items;
-      queries.value = queryResult.items;
-      jobs.value = jobResult.items;
-      runResults.value = resultResult.items;
-      await loadNestedProjectDetails(projectId, requestId);
+        if (!isCurrentProjectRequest(requestId, projectId)) return;
+        const failures: string[] = [];
+        topics.value = settledItems(topicResult, "Topics", failures);
+        queries.value = settledItems(queryResult, "Queries", failures);
+        setPartialLoadError(failures);
+      } else if (profile === "platforms-schedules") {
+        const [queryResult, platformResult, scheduleResult] = await Promise.allSettled([
+          api.geoAnalysis.queries(projectId),
+          api.geoAnalysis.projectQueryPlatforms(projectId),
+          api.geoAnalysis.projectSchedules(projectId),
+        ]);
+        if (!isCurrentProjectRequest(requestId, projectId)) return;
+        const failures: string[] = [];
+        queries.value = settledItems(queryResult, "Queries", failures);
+        queryPlatforms.value = settledItems(platformResult, "Query Platforms", failures);
+        schedules.value = settledItems(scheduleResult, "Schedules", failures);
+        setPartialLoadError(failures);
+      } else if (profile === "run-jobs") {
+        const [queryResult, jobResult] = await Promise.allSettled([
+          api.geoAnalysis.queries(projectId),
+          api.geoAnalysis.jobs(projectId),
+        ]);
+        if (!isCurrentProjectRequest(requestId, projectId)) return;
+        const failures: string[] = [];
+        queries.value = settledItems(queryResult, "Queries", failures);
+        jobs.value = settledItems(jobResult, "Jobs", failures);
+        setPartialLoadError(failures);
+      }
     } catch (error) {
-      if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) return;
+      if (!isCurrentProjectRequest(requestId, projectId)) return;
       errorMessage.value = getErrorMessage(error);
       clearProjectDetails();
       setMessage("專案資料載入失敗，請確認 geo-analysis-api 是否啟動。");
@@ -198,30 +237,24 @@ export function useGeoProjectWorkspace() {
     }
   }
 
-  async function loadNestedProjectDetails(projectId: string, requestId: number): Promise<void> {
-    const aliasResults = await Promise.allSettled(
-      entities.value.map((entity) => api.geoAnalysis.aliases(entity.id)),
-    );
-    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) return;
-    aliases.value = aliasResults.flatMap((result) =>
-      result.status === "fulfilled" ? result.value.items : [],
-    );
+  function isCurrentProjectRequest(requestId: number, projectId: string): boolean {
+    return requestId === projectDetailsRequestId && projectId === selectedProjectId.value;
+  }
 
-    const platformResults = await Promise.allSettled(
-      queries.value.map((query) => api.geoAnalysis.queryPlatforms(query.id)),
-    );
-    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) return;
-    queryPlatforms.value = platformResults.flatMap((result) =>
-      result.status === "fulfilled" ? result.value.items : [],
-    );
+  function settledItems<T>(
+    result: PromiseSettledResult<CollectionResponse<T>>,
+    label: string,
+    failures: string[],
+  ): T[] {
+    if (result.status === "fulfilled") return result.value.items;
+    failures.push(label);
+    return [];
+  }
 
-    const scheduleResults = await Promise.allSettled(
-      queries.value.map((query) => api.geoAnalysis.schedules(query.id)),
-    );
-    if (requestId !== projectDetailsRequestId || projectId !== selectedProjectId.value) return;
-    schedules.value = scheduleResults.flatMap((result) =>
-      result.status === "fulfilled" ? result.value.items : [],
-    );
+  function setPartialLoadError(failures: string[]): void {
+    errorMessage.value = failures.length
+      ? `部分資料載入失敗：${failures.join("、")}。請稍後重新整理。`
+      : "";
   }
 
   function clearProjectDetails(): void {
@@ -232,16 +265,11 @@ export function useGeoProjectWorkspace() {
     queryPlatforms.value = [];
     schedules.value = [];
     jobs.value = [];
-    runResults.value = [];
   }
 
   function loadMockProjectDetails(projectId: string): void {
-    entities.value = fallback.entities.filter((entity) => entity.projectId === projectId);
-    aliases.value = fallback.aliases
-      .filter((alias) => entities.value.some((entity) => entity.id === alias.entityId))
-      .map((alias) => ({ ...alias, createdAt: "2026-06-01T00:00:00.000Z" }));
-    topics.value = fallback.topics.filter((topic) => topic.projectId === projectId) as GeoTopicResource[];
-    queries.value = fallback.queries
+    clearProjectDetails();
+    const mockQueries = fallback.queries
       .filter((query) => query.projectId === projectId)
       .map((query) => ({
         ...query,
@@ -249,15 +277,30 @@ export function useGeoProjectWorkspace() {
         createdAt: "2026-06-01T00:00:00.000Z",
         updatedAt: "2026-06-01T00:00:00.000Z",
       }));
-    queryPlatforms.value = [];
-    schedules.value = fallback.schedules as GeoScheduleResource[];
-    jobs.value = fallback.jobs.map((job) => ({
-      ...job,
-      dispatchBackend: null,
-      dispatchMessageId: null,
-      lastErrorCode: null,
-    }));
-    runResults.value = fallback.runResults;
+    if (profile === "entities") {
+      entities.value = fallback.entities.filter((entity) => entity.projectId === projectId);
+      aliases.value = fallback.aliases
+        .filter((alias) => entities.value.some((entity) => entity.id === alias.entityId))
+        .map((alias) => ({ ...alias, createdAt: "2026-06-01T00:00:00.000Z" }));
+    } else if (profile === "topics-queries") {
+      topics.value = fallback.topics.filter((topic) => topic.projectId === projectId) as GeoTopicResource[];
+      queries.value = mockQueries;
+    } else if (profile === "platforms-schedules") {
+      queries.value = mockQueries;
+      schedules.value = (fallback.schedules as GeoScheduleResource[]).filter((schedule) =>
+        mockQueries.some((query) => query.id === schedule.queryId),
+      );
+    } else if (profile === "run-jobs") {
+      queries.value = mockQueries;
+      jobs.value = fallback.jobs
+        .filter((job) => job.projectId === projectId)
+        .map((job) => ({
+          ...job,
+          dispatchBackend: null,
+          dispatchMessageId: null,
+          lastErrorCode: null,
+        }));
+    }
   }
 
   async function runAction(action: () => Promise<void>): Promise<void> {

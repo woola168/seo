@@ -8,10 +8,10 @@ import GeoPagination from "../components/geo/GeoPagination.vue";
 import GeoStatusBadge from "../components/geo/GeoStatusBadge.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
 import { useGeoFormErrors, type GeoFormValidationError } from "../composables/geo-form-errors";
-import { shortId, useGeoProjectWorkspace } from "../composables/geo-project-workspace";
+import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
 import type { GeoProject } from "../types";
 
-const workspace = useGeoProjectWorkspace();
+const workspace = useGeoProjectWorkspace("projects");
 const { formErrors, setFormErrors, clearFieldError, clearFormErrors } = useGeoFormErrors();
 const search = ref("");
 const drawerOpen = ref(false);
@@ -42,7 +42,7 @@ const filteredProjects = computed(() => {
     const locale = `${project.defaultRegion} / ${project.defaultLanguage}`;
     const matchesKeyword =
       !keyword ||
-      [project.name, project.customerName, project.seoTaskName ?? ""]
+      [project.name, project.customerName]
         .join(" ")
         .toLowerCase()
         .includes(keyword);
@@ -122,10 +122,6 @@ function clearFilters(): void {
   page.value = 1;
 }
 
-async function refreshProject(projectId: string): Promise<void> {
-  workspace.selectedProjectId.value = projectId;
-  await workspace.refreshProjectDetails();
-}
 </script>
 
 <template>
@@ -170,7 +166,7 @@ async function refreshProject(projectId: string): Promise<void> {
           <thead>
             <tr>
               <th>Project</th>
-              <th>Customer / Task</th>
+              <th>Customer</th>
               <th>Locale</th>
               <th>Budget</th>
               <th>Status</th>
@@ -179,16 +175,13 @@ async function refreshProject(projectId: string): Promise<void> {
           </thead>
           <tbody>
             <tr v-for="project in pageRows" :key="project.id">
-              <td><strong>{{ project.name }}</strong><small>{{ shortId(project.id) }}</small></td>
-              <td>{{ project.customerName }} <span class="text-muted">/</span> {{ project.seoTaskName ?? "-" }}</td>
+              <td><strong>{{ project.name }}</strong></td>
+              <td>{{ project.customerName }}</td>
               <td>{{ project.defaultRegion }} / {{ project.defaultLanguage }}</td>
               <td>{{ project.dailyRunBudget }}</td>
               <td><GeoStatusBadge :value="project.status" /></td>
               <td class="sticky-action">
                 <div class="geo-row-actions">
-                  <button class="geo-row-action" type="button" title="重新整理" @click="refreshProject(project.id)">
-                    <AppIcon name="refresh" :size="14" />
-                  </button>
                   <button class="geo-row-action" type="button" title="檢視 Project" @click.stop="openProjectView(project)">
                     <AppIcon name="edit" :size="14" />
                   </button>

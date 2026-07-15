@@ -308,6 +308,10 @@ export const api = {
       request<CollectionResponse<GeoEntityAliasResource>>(
         `/api/geo/entities/${entityId}/aliases`,
       ),
+    projectAliases: (projectId: string) =>
+      request<CollectionResponse<GeoEntityAliasResource>>(
+        `/api/geo/projects/${projectId}/entity-aliases`,
+      ),
     createAlias: (entityId: string, input: GeoEntityAliasRequest) =>
       request<GeoEntityAliasResource>(`/api/geo/entities/${entityId}/aliases`, {
         method: "POST",
@@ -373,6 +377,10 @@ export const api = {
       request<CollectionResponse<GeoQueryPlatformResource>>(
         `/api/geo/queries/${queryId}/platforms`,
       ),
+    projectQueryPlatforms: (projectId: string) =>
+      request<CollectionResponse<GeoQueryPlatformResource>>(
+        `/api/geo/projects/${projectId}/query-platforms`,
+      ),
     replaceQueryPlatforms: (
       queryId: string,
       input: GeoQueryPlatformRequest[],
@@ -387,6 +395,10 @@ export const api = {
     schedules: (queryId: string) =>
       request<CollectionResponse<GeoScheduleResource>>(
         `/api/geo/queries/${queryId}/schedules`,
+      ),
+    projectSchedules: (projectId: string) =>
+      request<CollectionResponse<GeoScheduleResource>>(
+        `/api/geo/projects/${projectId}/schedules`,
       ),
     createSchedule: (queryId: string, input: GeoScheduleRequest) =>
       request<GeoScheduleResource>(`/api/geo/queries/${queryId}/schedules`, {

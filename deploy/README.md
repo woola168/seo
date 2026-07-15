@@ -161,6 +161,7 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/009_geo_analysis_tenant_patch.sql
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/011_geo_analysis_kmindhub_extraction_patch.sql
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/014_geo_analysis_gemini_model_alignment.sql
 ```
 
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
@@ -170,3 +171,14 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 `010_kmindhub_workspace_mapping_patch.sql` 會建立 `tenant_kmindhub_workspace_mapping`，保存 tenant 到 KMindHub workspace 的 reference-only mapping。新環境可直接使用更新後的 `004_geo_analysis_schema.sql`。
 
 `011_geo_analysis_kmindhub_extraction_patch.sql` 會建立 KMindHub extraction task mapping 與 GEO run result analysis / mention / statement / citation classification tables。完整串接流程與欄位定義請參考 `docs/integrations/geo-analysis-kmindhub-insight-extraction.md`。
+
+`014_geo_analysis_gemini_model_alignment.sql` 只會將 `code='gemini'` 的
+`default_model` 對齊為 `gemini-3.1-flash-lite`，可重複執行且不修改歷史 run result。
+套用 Titan develop 前後應執行下列查詢，確認 DB snapshot 與 deployment 的
+`GEMINI_MODEL` 一致：
+
+```sql
+SELECT code, default_model
+FROM geo_ai_platform
+WHERE code = 'gemini';
+```

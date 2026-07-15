@@ -12,7 +12,7 @@ import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
 import { api } from "../services/api";
 import type { GeoMarketType, GeoQuery } from "../types";
 
-const workspace = useGeoProjectWorkspace();
+const workspace = useGeoProjectWorkspace("topics-queries");
 const { formErrors, setFormErrors, clearFieldError, clearFormErrors } = useGeoFormErrors();
 const search = ref("");
 const drawerOpen = ref(false);
