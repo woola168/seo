@@ -157,6 +157,81 @@ def test_project_topic_query_and_job_crud_flow() -> None:
     assert jobs_response.json()["total"] == 1
 
 
+def test_project_scoped_setup_lists_return_only_project_resources() -> None:
+    client = _client()
+    first = _create_project_setup_resources(client, "First GEO")
+    second = _create_project_setup_resources(client, "Second GEO")
+
+    expectations = {
+        "entity-aliases": first["alias_id"],
+        "query-platforms": first["query_platform_id"],
+        "schedules": first["schedule_id"],
+    }
+    excluded_ids = {
+        second["alias_id"],
+        second["query_platform_id"],
+        second["schedule_id"],
+    }
+
+    for resource, expected_id in expectations.items():
+        response = client.get(
+            f"/api/geo/projects/{first['project_id']}/{resource}"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        assert [item["id"] for item in response.json()["items"]] == [expected_id]
+        assert expected_id not in excluded_ids
+
+
+def test_project_scoped_setup_lists_respect_resource_grants() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed = _create_project_setup_resources(
+        admin,
+        "Allowed GEO",
+        customer_id=allowed_customer_id,
+    )
+    denied = _create_project_setup_resources(
+        admin,
+        "Denied GEO",
+        customer_id=denied_customer_id,
+    )
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    for resource in ("entity-aliases", "query-platforms", "schedules"):
+        allowed_response = restricted.get(
+            f"/api/geo/projects/{allowed['project_id']}/{resource}"
+        )
+        denied_response = restricted.get(
+            f"/api/geo/projects/{denied['project_id']}/{resource}"
+        )
+
+        assert allowed_response.status_code == 200
+        assert allowed_response.json()["total"] == 1
+        assert denied_response.status_code == 200
+        assert denied_response.json() == {"items": [], "total": 0}
+
+
+def test_project_scoped_setup_lists_require_read_capability() -> None:
+    client = _client(authorizer=FakeAuthorizer(access_denied=True))
+    project_id = uuid4()
+
+    for resource in ("entity-aliases", "query-platforms", "schedules"):
+        response = client.get(f"/api/geo/projects/{project_id}/{resource}")
+
+        assert response.status_code == 403
+        assert response.headers["content-type"] == "application/problem+json"
+
+
 def test_projects_are_scoped_by_authorized_tenant() -> None:
     store = GeoApiStore()
     tenant_a = _client(repository=store, authorizer=FakeAuthorizer(TENANT_ID))
@@ -1479,6 +1554,60 @@ def _create_project(client: TestClient) -> str:
     )
     assert response.status_code == 201
     return response.json()["id"]
+
+
+def _create_project_setup_resources(
+    client: TestClient,
+    name: str,
+    *,
+    customer_id: UUID | None = None,
+) -> dict[str, str]:
+    project_response = client.post(
+        "/api/geo/projects",
+        json={
+            **({"customerId": str(customer_id)} if customer_id else {}),
+            "name": name,
+        },
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+    entity_response = client.post(
+        f"/api/geo/projects/{project_id}/entities",
+        json={"entityType": "own_brand", "name": f"{name} Entity"},
+    )
+    assert entity_response.status_code == 201
+    alias_response = client.post(
+        f"/api/geo/entities/{entity_response.json()['id']}/aliases",
+        json={"alias": f"{name} Alias"},
+    )
+    assert alias_response.status_code == 201
+    query_response = client.post(
+        f"/api/geo/projects/{project_id}/queries",
+        json={
+            "queryText": f"What is {name}?",
+            "region": "TW",
+            "language": "zh-TW",
+        },
+    )
+    assert query_response.status_code == 201
+    query_id = query_response.json()["id"]
+    platform_id = uuid4()
+    platform_response = client.put(
+        f"/api/geo/queries/{query_id}/platforms",
+        json=[{"platformId": str(platform_id)}],
+    )
+    assert platform_response.status_code == 200
+    schedule_response = client.post(
+        f"/api/geo/queries/{query_id}/schedules",
+        json={"platformId": str(platform_id), "frequency": "daily"},
+    )
+    assert schedule_response.status_code == 201
+    return {
+        "project_id": project_id,
+        "alias_id": alias_response.json()["id"],
+        "query_platform_id": platform_response.json()["items"][0]["id"],
+        "schedule_id": schedule_response.json()["id"],
+    }
 
 
 def _create_query_for_customer(client: TestClient, customer_id: UUID) -> str:

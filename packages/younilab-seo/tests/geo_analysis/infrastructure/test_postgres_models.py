@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    GeoEntityAliasCommand,
+    GeoEntityCommand,
     GeoEntityMentionFact,
     GeoAnalysisRepository,
     GeoMetricFormulaQuery,
@@ -17,6 +19,9 @@ from younilab_seo.geo_analysis.application import (
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     GeoProjectCommand,
+    GeoQueryCommand,
+    GeoQueryPlatformCommand,
+    GeoQueryScheduleCommand,
     QueryAudience,
     QueryDraftSelectionCommand,
     QueryGenerationCommand,
@@ -373,6 +378,121 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
                 draft_id,
                 QueryDraftSelectionCommand(selection_status="rejected"),
             )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_postgres_repository_lists_project_setup_resources() -> None:
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    platform_id = uuid4()
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    try:
+        async with session_factory() as session:
+            async with session.begin():
+                session.add(
+                    GeoAiPlatformRow(
+                        id=platform_id,
+                        code=f"bulk-list-{uuid4()}",
+                        display_name="Bulk List Platform",
+                        provider_type="test",
+                        status="active",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+        project = await repository.create_project(
+            GeoProjectCommand(tenant_id=TENANT_ID, name=f"Bulk List {uuid4()}")
+        )
+        other_project = await repository.create_project(
+            GeoProjectCommand(tenant_id=TENANT_ID, name=f"Other Bulk List {uuid4()}")
+        )
+        entity = await repository.create_entity(
+            TENANT_ID,
+            project.id,
+            GeoEntityCommand(entity_type="own_brand", name="Bulk List Entity"),
+        )
+        other_entity = await repository.create_entity(
+            TENANT_ID,
+            other_project.id,
+            GeoEntityCommand(entity_type="own_brand", name="Other Bulk List Entity"),
+        )
+        assert entity is not None
+        assert other_entity is not None
+        alias = await repository.create_alias(
+            TENANT_ID,
+            entity.id,
+            GeoEntityAliasCommand(alias="Bulk List Alias"),
+        )
+        await repository.create_alias(
+            TENANT_ID,
+            other_entity.id,
+            GeoEntityAliasCommand(alias="Other Bulk List Alias"),
+        )
+        query = await repository.create_query(
+            TENANT_ID,
+            project.id,
+            GeoQueryCommand(query_text="Bulk list query", region="TW", language="zh-TW"),
+        )
+        other_query = await repository.create_query(
+            TENANT_ID,
+            other_project.id,
+            GeoQueryCommand(query_text="Other bulk list query", region="TW", language="zh-TW"),
+        )
+        assert alias is not None
+        assert query is not None
+        assert other_query is not None
+        query_platforms = await repository.replace_query_platforms(
+            TENANT_ID,
+            query.id,
+            [GeoQueryPlatformCommand(platform_id=platform_id)],
+        )
+        await repository.replace_query_platforms(
+            TENANT_ID,
+            other_query.id,
+            [GeoQueryPlatformCommand(platform_id=platform_id)],
+        )
+        schedule = await repository.create_schedule(
+            TENANT_ID,
+            query.id,
+            GeoQueryScheduleCommand(platform_id=platform_id, frequency="daily"),
+        )
+        await repository.create_schedule(
+            TENANT_ID,
+            other_query.id,
+            GeoQueryScheduleCommand(platform_id=platform_id, frequency="daily"),
+        )
+        assert query_platforms is not None
+        assert schedule is not None
+
+        aliases = await repository.list_project_aliases(TENANT_ID, project.id)
+        platforms = await repository.list_project_query_platforms(
+            TENANT_ID,
+            project.id,
+        )
+        schedules = await repository.list_project_schedules(TENANT_ID, project.id)
+
+        assert [item.id for item in aliases] == [alias.id]
+        assert [item.id for item in platforms] == [query_platforms[0].id]
+        assert [item.id for item in schedules] == [schedule.id]
+        assert await repository.list_project_aliases(uuid4(), project.id) == []
+        assert await repository.list_project_query_platforms(uuid4(), project.id) == []
+        assert await repository.list_project_schedules(uuid4(), project.id) == []
     finally:
         await engine.dispose()
 

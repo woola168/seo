@@ -516,6 +516,16 @@ async def create_entity(
     return EntityResponse(**_record_data(entity))
 
 
+@router.get("/projects/{project_id}/entity-aliases", response_model=PageResponse)
+async def list_project_aliases(request: Request, project_id: UUID) -> PageResponse:
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_project_aliases(principal, project_id)
+    return PageResponse(
+        items=[AliasResponse(**_record_data(item)) for item in items],
+        total=len(items),
+    )
+
+
 @router.get("/entities/{entity_id}", response_model=EntityResponse)
 async def get_entity(request: Request, entity_id: UUID) -> EntityResponse:
     principal = await _principal(request, "geo.projects.read")
@@ -860,6 +870,19 @@ async def list_query_platforms(request: Request, query_id: UUID) -> PageResponse
     )
 
 
+@router.get("/projects/{project_id}/query-platforms", response_model=PageResponse)
+async def list_project_query_platforms(
+    request: Request,
+    project_id: UUID,
+) -> PageResponse:
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_project_query_platforms(principal, project_id)
+    return PageResponse(
+        items=[QueryPlatformResponse(**_record_data(item)) for item in items],
+        total=len(items),
+    )
+
+
 @router.put("/queries/{query_id}/platforms", response_model=PageResponse)
 async def replace_query_platforms(
     request: Request,
@@ -884,6 +907,16 @@ async def replace_query_platforms(
 async def list_schedules(request: Request, query_id: UUID) -> PageResponse:
     principal = await _principal(request, "geo.projects.read")
     items = await _setup(request).list_schedules(principal, query_id)
+    return PageResponse(
+        items=[ScheduleResponse(**_record_data(item)) for item in items],
+        total=len(items),
+    )
+
+
+@router.get("/projects/{project_id}/schedules", response_model=PageResponse)
+async def list_project_schedules(request: Request, project_id: UUID) -> PageResponse:
+    principal = await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_project_schedules(principal, project_id)
     return PageResponse(
         items=[ScheduleResponse(**_record_data(item)) for item in items],
         total=len(items),

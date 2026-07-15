@@ -222,6 +222,18 @@ class ManageGeoSetup:
             return []
         return await self.repository.list_aliases(principal.tenant_id, entity_id)
 
+    async def list_project_aliases(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+    ) -> list[GeoEntityAliasRecord]:
+        if await self.get_project(principal, project_id) is None:
+            return []
+        return await self.repository.list_project_aliases(
+            principal.tenant_id,
+            project_id,
+        )
+
     async def create_alias(
         self,
         principal: AuthorizedPrincipal,
@@ -362,6 +374,18 @@ class ManageGeoSetup:
             return []
         return await self.repository.list_query_platforms(principal.tenant_id, query_id)
 
+    async def list_project_query_platforms(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+    ) -> list[GeoQueryPlatformRecord]:
+        if await self.get_project(principal, project_id) is None:
+            return []
+        return await self.repository.list_project_query_platforms(
+            principal.tenant_id,
+            project_id,
+        )
+
     async def replace_query_platforms(
         self,
         principal: AuthorizedPrincipal,
@@ -384,6 +408,18 @@ class ManageGeoSetup:
         if await self.get_query(principal, query_id) is None:
             return []
         return await self.repository.list_schedules(principal.tenant_id, query_id)
+
+    async def list_project_schedules(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+    ) -> list[GeoQueryScheduleRecord]:
+        if await self.get_project(principal, project_id) is None:
+            return []
+        return await self.repository.list_project_schedules(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def create_schedule(
         self,

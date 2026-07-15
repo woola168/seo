@@ -435,6 +435,22 @@ class GeoApiStore:
             return []
         return [item for item in self.aliases.values() if item.entity_id == entity_id]
 
+    async def list_project_aliases(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoEntityAliasRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
+        entity_ids = {
+            entity.id
+            for entity in self.entities.values()
+            if entity.project_id == project_id
+        }
+        return [
+            item for item in self.aliases.values() if item.entity_id in entity_ids
+        ]
+
     async def create_alias(
         self,
         tenant_id: UUID,
@@ -585,6 +601,20 @@ class GeoApiStore:
             item for item in self.query_platforms.values() if item.query_id == query_id
         ]
 
+    async def list_project_query_platforms(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryPlatformRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
+        query_ids = {
+            query.id for query in self.queries.values() if query.project_id == project_id
+        }
+        return [
+            item for item in self.query_platforms.values() if item.query_id in query_ids
+        ]
+
     async def replace_query_platforms(
         self,
         tenant_id: UUID,
@@ -618,6 +648,18 @@ class GeoApiStore:
         if await self.get_query(tenant_id, query_id) is None:
             return []
         return [item for item in self.schedules.values() if item.query_id == query_id]
+
+    async def list_project_schedules(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryScheduleRecord]:
+        if not self._project_matches(tenant_id, project_id):
+            return []
+        query_ids = {
+            query.id for query in self.queries.values() if query.project_id == project_id
+        }
+        return [item for item in self.schedules.values() if item.query_id in query_ids]
 
     async def create_schedule(
         self,
