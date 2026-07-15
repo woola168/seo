@@ -625,6 +625,22 @@ class PostgresGeoAnalysisRepository:
             _alias_record,
         )
 
+    async def list_project_aliases(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoEntityAliasRecord]:
+        if not await self._project_exists(tenant_id, project_id):
+            return []
+        statement = (
+            select(GeoEntityAliasRow)
+            .join(GeoEntityRow, GeoEntityRow.id == GeoEntityAliasRow.entity_id)
+            .where(GeoEntityRow.project_id == project_id)
+        )
+        async with self._session_scope() as session:
+            rows = (await session.scalars(statement)).all()
+            return [_alias_record(row) for row in rows]
+
     async def create_alias(
         self,
         tenant_id: UUID,
@@ -835,6 +851,22 @@ class PostgresGeoAnalysisRepository:
             _query_platform_record,
         )
 
+    async def list_project_query_platforms(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryPlatformRecord]:
+        if not await self._project_exists(tenant_id, project_id):
+            return []
+        statement = (
+            select(GeoQueryPlatformRow)
+            .join(GeoQueryRow, GeoQueryRow.id == GeoQueryPlatformRow.query_id)
+            .where(GeoQueryRow.project_id == project_id)
+        )
+        async with self._session_scope() as session:
+            rows = (await session.scalars(statement)).all()
+            return [_query_platform_record(row) for row in rows]
+
     async def replace_query_platforms(
         self,
         tenant_id: UUID,
@@ -877,6 +909,22 @@ class PostgresGeoAnalysisRepository:
             GeoQueryScheduleRow.query_id == query_id,
             _schedule_record,
         )
+
+    async def list_project_schedules(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryScheduleRecord]:
+        if not await self._project_exists(tenant_id, project_id):
+            return []
+        statement = (
+            select(GeoQueryScheduleRow)
+            .join(GeoQueryRow, GeoQueryRow.id == GeoQueryScheduleRow.query_id)
+            .where(GeoQueryRow.project_id == project_id)
+        )
+        async with self._session_scope() as session:
+            rows = (await session.scalars(statement)).all()
+            return [_schedule_record(row) for row in rows]
 
     async def create_schedule(
         self,

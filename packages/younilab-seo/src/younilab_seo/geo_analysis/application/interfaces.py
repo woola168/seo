@@ -552,6 +552,11 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> list[GeoEntityAliasRecord]:
         raise NotImplementedError
 
+    async def list_project_aliases(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoEntityAliasRecord]:
+        raise NotImplementedError
+
     async def create_alias(
         self,
         tenant_id: UUID,
@@ -629,6 +634,13 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> list[GeoQueryPlatformRecord]:
         raise NotImplementedError
 
+    async def list_project_query_platforms(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> list[GeoQueryPlatformRecord]:
+        raise NotImplementedError
+
     async def replace_query_platforms(
         self,
         tenant_id: UUID,
@@ -641,6 +653,13 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         self,
         tenant_id: UUID,
         query_id: UUID,
+    ) -> list[GeoQueryScheduleRecord]:
+        raise NotImplementedError
+
+    async def list_project_schedules(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
     ) -> list[GeoQueryScheduleRecord]:
         raise NotImplementedError
 
