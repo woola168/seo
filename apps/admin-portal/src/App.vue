@@ -8,8 +8,13 @@ import DashboardPage from "./pages/DashboardPage.vue";
 import EmployeeInvitationPage from "./pages/EmployeeInvitationPage.vue";
 import GeoAnalysisPage from "./pages/GeoAnalysisPage.vue";
 import GeoDashboardReportDesignPage from "./pages/GeoDashboardReportDesignPage.vue";
+import GeoEntitiesPage from "./pages/GeoEntitiesPage.vue";
 import GeoFlowCheckPage from "./pages/GeoFlowCheckPage.vue";
+import GeoPlatformsSchedulesPage from "./pages/GeoPlatformsSchedulesPage.vue";
+import GeoProjectsPage from "./pages/GeoProjectsPage.vue";
+import GeoRunJobsPage from "./pages/GeoRunJobsPage.vue";
 import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
+import GeoTopicsQueriesPage from "./pages/GeoTopicsQueriesPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import PermissionsPage from "./pages/PermissionsPage.vue";
 import RoleCreationPage from "./pages/RoleCreationPage.vue";
@@ -101,11 +106,6 @@ const activePermissionTab = computed<PermissionTab>(() => {
   return "members";
 });
 const geoAnalysisTabsByPage: Partial<Record<PageId, GeoAnalysisTab>> = {
-  "geo-analysis-projects": "projects",
-  "geo-analysis-entities": "entities",
-  "geo-analysis-queries": "queries",
-  "geo-analysis-schedules": "schedules",
-  "geo-analysis-jobs": "jobs",
   "geo-analysis-reports": "reports",
 };
 const geoPageTitles: Partial<Record<PageId, string>> = {
@@ -859,11 +859,16 @@ function unavailable(label: string): void {
       @unavailable="unavailable"
     />
     <GeoAnalysisPage
-      v-else-if="isGeoAnalysisPage && activeGeoAnalysisTab"
+      v-else-if="activePage === 'geo-analysis-reports' && activeGeoAnalysisTab"
       :active-tab="activeGeoAnalysisTab"
       @unavailable="unavailable"
     />
     <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
+    <GeoProjectsPage v-else-if="activePage === 'geo-analysis-projects'" />
+    <GeoEntitiesPage v-else-if="activePage === 'geo-analysis-entities'" />
+    <GeoTopicsQueriesPage v-else-if="activePage === 'geo-analysis-queries'" />
+    <GeoPlatformsSchedulesPage v-else-if="activePage === 'geo-analysis-schedules'" />
+    <GeoRunJobsPage v-else-if="activePage === 'geo-analysis-jobs'" />
     <GeoDashboardReportDesignPage
       v-else-if="activePage === 'geo-analysis-report-design'"
     />

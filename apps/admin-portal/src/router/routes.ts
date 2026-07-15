@@ -92,31 +92,31 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
     {
       path: "/geo-analysis/projects",
       name: "geo-analysis-projects",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoProjectsPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-projects" },
     },
     {
       path: "/geo-analysis/entities",
       name: "geo-analysis-entities",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoEntitiesPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-entities" },
     },
     {
       path: "/geo-analysis/topics-queries",
       name: "geo-analysis-queries",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoTopicsQueriesPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-queries" },
     },
     {
       path: "/geo-analysis/platforms-schedules",
       name: "geo-analysis-schedules",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoPlatformsSchedulesPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-schedules" },
     },
     {
       path: "/geo-analysis/run-jobs",
       name: "geo-analysis-jobs",
-      component: () => import("../pages/GeoAnalysisPage.vue"),
+      component: () => import("../pages/GeoRunJobsPage.vue"),
       meta: { requiresAuth: true, page: "geo-analysis-jobs" },
     },
     {

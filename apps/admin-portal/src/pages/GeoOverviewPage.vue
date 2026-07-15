@@ -27,6 +27,10 @@ import type {
   GeoRunResultSemanticAnalysis,
 } from "../types";
 import { renderSafeMarkdown } from "../utils/geo-dashboard-drilldown";
+import {
+  resolveStoredGeoProjectId,
+  setStoredGeoProjectId,
+} from "../utils/geo-project-selection-storage";
 
 ChartJS.register(
   CategoryScale,
@@ -216,7 +220,8 @@ function toggleVisibilitySeries(entityId: string): void {
 
 onMounted(() => void loadProjects());
 
-watch(selectedProjectId, () => {
+watch(selectedProjectId, (projectId) => {
+  setStoredGeoProjectId(projectId);
   resetDimensionFilters();
   void loadOverview();
 });
@@ -238,7 +243,7 @@ async function loadProjects(): Promise<void> {
   try {
     const response = await api.geoAnalysis.projects();
     projects.value = response.items;
-    selectedProjectId.value = response.items[0]?.id ?? "";
+    selectedProjectId.value = resolveStoredGeoProjectId(response.items);
     if (!selectedProjectId.value) loading.value = false;
   } catch (caught) {
     loading.value = false;
