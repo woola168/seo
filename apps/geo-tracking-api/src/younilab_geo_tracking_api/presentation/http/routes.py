@@ -18,7 +18,6 @@ router = APIRouter(prefix="/api/v1/geo-tracking", tags=["geo-tracking"])
 @router.get("/dummy-project")
 async def dummy_project() -> dict[str, object]:
     return {
-        "seoTaskId": "11111111-1111-4111-8111-111111111111",
         "brandName": "Shan Hua Plastic Industrial Co., Ltd. (SHPI)",
         "competitorBrands": ["CEJN Industrial Corporation"],
         "keywords": ["pneumatic tubing", "air brake hose"],

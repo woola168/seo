@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoProjectRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
+    GeoAiPlatformRecord,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
     GeoQueryRunJobDispatchContext,
@@ -273,6 +274,14 @@ class GeoQueryRunJobRepository(Protocol):
     async def save(self, job: GeoQueryRunJob) -> None:
         raise NotImplementedError
 
+    async def claim_job_for_publish(
+        self,
+        *,
+        job_id: UUID,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob | None:
+        raise NotImplementedError
+
     async def record_dispatch(
         self,
         *,
@@ -280,7 +289,7 @@ class GeoQueryRunJobRepository(Protocol):
         result: PublishResult,
         payload: QueryRunJobMessage,
         occurred_at: datetime,
-    ) -> None:
+    ) -> GeoQueryRunJob:
         raise NotImplementedError
 
     async def record_external_callback(
@@ -314,6 +323,18 @@ class GeoQueryRunJobRepository(Protocol):
         raise NotImplementedError
 
     async def get_job_tenant_id(self, job_id: UUID) -> UUID | None:
+        raise NotImplementedError
+
+    async def claim_job_for_execution(
+        self,
+        *,
+        job_id: UUID,
+        tenant_id: UUID,
+        external_run_id: str,
+        occurred_at: datetime,
+    ) -> bool:
+        """在呼叫 provider 前，以 atomic transition claim 已發布的 job。"""
+
         raise NotImplementedError
 
     async def get_job_project(
@@ -392,6 +413,31 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         tenant_id: UUID,
         customer_id: UUID | None = None,
     ) -> list[GeoProjectRecord]:
+        raise NotImplementedError
+
+    async def materialize_daily_runs(
+        self,
+        *,
+        business_date: date,
+        scheduled_for: datetime,
+        occurred_at: datetime,
+    ) -> "DailyRunMaterializationResult":
+        raise NotImplementedError
+
+    async def list_dispatchable_scheduled_job_ids(
+        self,
+        *,
+        occurred_at: datetime,
+        limit: int,
+    ) -> list[UUID]:
+        raise NotImplementedError
+
+    async def reconcile_stale_jobs(
+        self,
+        *,
+        stale_before: datetime,
+        occurred_at: datetime,
+    ) -> int:
         raise NotImplementedError
 
     async def get_project(
@@ -625,6 +671,9 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         raise NotImplementedError
 
     async def delete_query(self, tenant_id: UUID, query_id: UUID) -> bool:
+        raise NotImplementedError
+
+    async def list_ai_platforms(self) -> list[GeoAiPlatformRecord]:
         raise NotImplementedError
 
     async def list_query_platforms(

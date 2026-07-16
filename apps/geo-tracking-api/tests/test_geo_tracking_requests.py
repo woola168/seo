@@ -269,7 +269,7 @@ def test_query_generation_request_generates_b2b_us_queries() -> None:
     assert query["metadata"]["topicDescription"] == TOPIC_DESCRIPTION
 
 
-def test_query_generation_accepts_missing_seo_task_id() -> None:
+def test_query_generation_response_does_not_include_seo_task_id() -> None:
     client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
     payload = _generation_payload()
     payload.pop("seoTaskId")
@@ -280,7 +280,7 @@ def test_query_generation_accepts_missing_seo_task_id() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["queries"][0]["seoTaskId"] is None
+    assert "seoTaskId" not in response.json()["queries"][0]
 
 
 def test_query_generation_request_still_accepts_legacy_topic_names() -> None:
@@ -627,7 +627,7 @@ def test_run_request_returns_dummy_result_for_generated_query() -> None:
 
     assert run_response.status_code == 200
     body = run_response.json()
-    assert body["seoTaskId"] == "22222222-2222-4222-8222-222222222222"
+    assert "seoTaskId" not in body
     assert body["timing"] == "run_now"
     assert body["results"][0]["provider"] == "dummy"
     assert body["results"][0]["surface"] == "Dummy AI"
@@ -637,7 +637,7 @@ def test_run_request_returns_dummy_result_for_generated_query() -> None:
     assert query["text"] in body["results"][0]["rawResponse"]
 
 
-def test_run_request_accepts_missing_seo_task_id() -> None:
+def test_run_request_does_not_require_or_return_seo_task_id() -> None:
     client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
 
     response = client.post(
@@ -662,7 +662,7 @@ def test_run_request_accepts_missing_seo_task_id() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["seoTaskId"] is None
+    assert "seoTaskId" not in body
     assert body["results"][0]["status"] == "completed"
 
 

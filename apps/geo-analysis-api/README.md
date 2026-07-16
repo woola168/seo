@@ -1,6 +1,6 @@
 ﻿# GEO Analysis API
 
-GEO Analysis API 提供 GEO 專案設定、market、entity、topic、query、platform assignment、schedule、query run job orchestration 與 report metrics endpoint。實際 AI 跑題由 `geo-tracking-api` 負責；本服務負責 dispatch、job orchestration、worker 回寫的 raw result / references 保存，以及透過 application use case 讀取已正規化 facts 計算報表指標。
+GEO Analysis API 提供 GEO 專案設定、market、entity、topic、query、platform assignment、query run job orchestration 與 report metrics endpoint。實際 AI 跑題由 `geo-tracking-api` 負責；每日 job 由 `geo-analysis-scheduler` 在固定時間建立，本服務負責內部 manual dispatch、job orchestration、worker 回寫的 raw result / references 保存，以及透過 application use case 讀取已正規化 facts 計算報表指標。
 
 開發環境可用下列方式啟動：
 
@@ -21,8 +21,8 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - 既有遠端 DB 若要啟用 KMindHub analysis extraction，需手動執行 `deploy/local/postgresql/011_geo_analysis_kmindhub_extraction_patch.sql`。
 - 使用者 API 需帶 Access Control Bearer token；GEO Analysis 透過 `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。
 - `ProjectResponse` 會回傳 `tenantId`；project list/create/query/job/run result 都以目前 tenant 作為最外層資料邊界。
-- `customerId` / `seoTaskId` 維持 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。
-- 第一批 persistence 已支援 GEO setup CRUD、query platform、schedule、job、dispatch evidence、external callback reference。
+- `customerId` 是 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。每日排程流程不再使用 `seoTaskId`。
+- Persistence 已支援 GEO setup CRUD、query-platform 相容資源、daily batch、不可變 job snapshot、dispatch evidence 與 external callback reference。Daily scheduler 直接使用 active Query × active Platform，不讀取 query-platform assignment。
 - External callback 由 repository 的 transaction-capable operation 同步更新 job 狀態並寫入 external reference/event。
 - RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Report metrics API 讀取新的 semantic facts / citation facts pipeline；metrics snapshot persistence 與額外 worker trigger 仍屬後續批次。
 - KMindHub workspace 採手動優先策略；tenant 第一次使用後續 analysis extraction 前，需先用 API 綁定既有 workspace 或明確 provision workspace。Worker 不會在首次執行時自動建立 workspace，也不會 fallback 到 default workspace。
@@ -225,7 +225,7 @@ INSERT INTO geo_ai_platform (
     'gpt-4.1',
     false,
     true,
-    'active',
+    'paused',
     now(),
     now()
 ),
@@ -249,7 +249,7 @@ INSERT INTO geo_ai_platform (
     'claude-sonnet-4',
     false,
     false,
-    'active',
+    'paused',
     now(),
     now()
 ),
@@ -261,7 +261,7 @@ INSERT INTO geo_ai_platform (
     'sonar',
     true,
     true,
-    'active',
+    'paused',
     now(),
     now()
 ),
@@ -273,7 +273,7 @@ INSERT INTO geo_ai_platform (
     'ai-overview',
     true,
     true,
-    'active',
+    'paused',
     now(),
     now()
 )
@@ -344,8 +344,8 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
 
 - JSON 欄位使用 `camelCase`。
 - 未設定 `GEO_ANALYSIS_DATABASE_URL` 時會使用 in-memory store。
-- `customerId` 與 `seoTaskId` 都是 `resource-catalog` 的 reference id，不在 GEO DB 建 FK。兩者皆空、只有 `customerId`、或兩者都有都允許；只有 `seoTaskId` 沒有 `customerId` 會回 `422`。
-- `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue。Project 缺少 `seoTaskId` 時會回 `409`，避免 worker 無法呼叫 `geo-tracking-api`。
+- `customerId` 是 `resource-catalog` 的 nullable reference id，不在 GEO DB 建 FK。舊版 request 的 `seoTaskId` 暫時接受但會忽略，且不會出現在 response。
+- `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue，流程不依賴 `seoTaskId`。
 - `PATCH /api/geo/query-drafts/{draftId}/selection` 只允許尚未 accepted 的 draft；已接受成正式 query 的 draft 再次修改 selection 會回 `409`。
 - `cancel` 與 external callback 已可透過 store abstraction 套用到 in-memory 或 PostgreSQL-backed repository。
 - 錯誤回應使用 `application/problem+json`。
@@ -413,12 +413,13 @@ Problem Details 格式：
 | `GET` | `/api/geo/query-generation-runs/{runId}` | 取得單一 Query Generation run 與 drafts。 |
 | `PATCH` | `/api/geo/query-drafts/{draftId}/selection` | 將 draft 標記為 `shortlisted` 或 `rejected`。 |
 | `POST` | `/api/geo/query-drafts/{draftId}/accept` | 將 draft 轉成正式 `geo_query`，回傳既有 `QueryResponse`。 |
-| `GET` | `/api/geo/queries/{queryId}/platforms` | 列出 query 要派送的平台設定。 |
-| `PUT` | `/api/geo/queries/{queryId}/platforms` | 整批替換 query platform assignment。 |
-| `GET` | `/api/geo/queries/{queryId}/schedules` | 列出 query 的週期排程設定。 |
-| `POST` | `/api/geo/queries/{queryId}/schedules` | 建立 query/platform 的週期排程。 |
-| `PATCH` | `/api/geo/schedules/{scheduleId}` | 更新排程設定。 |
-| `DELETE` | `/api/geo/schedules/{scheduleId}` | 刪除排程設定。 |
+| `GET` | `/api/geo/platforms` | 列出資料庫中的 GEO AI Platform、預設 model 與 active/paused 狀態。 |
+| `GET` | `/api/geo/queries/{queryId}/platforms` | 舊版 query-platform 相容資源，不影響 daily scheduler。 |
+| `PUT` | `/api/geo/queries/{queryId}/platforms` | 整批替換舊版 query-platform 相容資源。 |
+| `GET` | `/api/geo/queries/{queryId}/schedules` | 舊版 schedule 相容 endpoint。 |
+| `POST` | `/api/geo/queries/{queryId}/schedules` | 舊版 schedule 相容 endpoint。 |
+| `PATCH` | `/api/geo/schedules/{scheduleId}` | 舊版 schedule 相容 endpoint。 |
+| `DELETE` | `/api/geo/schedules/{scheduleId}` | 舊版 schedule 相容 endpoint。 |
 | `POST` | `/api/geo/queries/{queryId}/jobs` | 建立手動 query run job。 |
 | `GET` | `/api/geo/projects/{projectId}/jobs` | 列出 project 的 query run jobs。 |
 | `GET` | `/api/geo/projects/{projectId}/run-results` | 列出 project 的 run history raw results。 |
@@ -445,7 +446,6 @@ Problem Details 格式：
 // ProjectRequest
 {
   "customerId": "uuid 或 null",
-  "seoTaskId": "uuid 或 null",
   "name": "Acme GEO",
   "defaultRegion": "TW",
   "defaultLanguage": "zh-TW",
@@ -461,7 +461,7 @@ Problem Details 格式：
 }
 ```
 
-`seoTaskId` 語意上屬於某個 customer，因此不能單獨存在。GEO 不跨服務驗證 reference 是否存在；前端若要顯示 customer/task 名稱，需另外呼叫 Resource Catalog。
+過渡期間若舊版 client 傳入 `seoTaskId`，API 會接受並忽略；新 client 不應再傳送此欄位。
 
 ## Markets
 
@@ -620,7 +620,6 @@ Problem Details 格式：
 ```json
 // QueryGenerationRunRequest
 {
-  "seoTaskId": "uuid",
   "provider": "gemini",
   "brandName": "Acme",
   "competitorBrands": ["Competitor"],

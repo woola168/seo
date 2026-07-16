@@ -8,6 +8,7 @@ from younilab_seo.geo_analysis.application import (
     ExternalRunCallback,
     ProcessQueryRunJobMessage,
     QueryRunJobMessageRejected,
+    QueryRunJobResultPersistenceFailed,
     QueryRunJobMessage,
     SaveTrackingRunResultCommand,
     TrackingRunReference,
@@ -58,6 +59,28 @@ class FakeRepository:
         self.callbacks.append(callback)
         return self.job
 
+    async def claim_job_for_execution(
+        self,
+        *,
+        job_id: UUID,
+        tenant_id: UUID,
+        external_run_id: str,
+        occurred_at: datetime,
+    ) -> bool:
+        if (
+            job_id != self.job.id
+            or tenant_id != TENANT_ID
+            or self.job.status not in {JobStatus.PUBLISHING, JobStatus.PUBLISHED}
+        ):
+            return False
+        callback = ExternalRunCallback(
+            job_id=job_id,
+            external_run_id=external_run_id,
+            status="running",
+        )
+        await self.apply_external_callback(callback=callback, occurred_at=occurred_at)
+        return True
+
     async def save_tracking_run_result(
         self,
         *,
@@ -103,8 +126,6 @@ class FakeTrackingClient:
                 }
             ],
         }
-        if message.seo_task_id is not None:
-            payload["seoTaskId"] = str(message.seo_task_id)
         return payload
 
     async def run(self, message: QueryRunJobMessage) -> TrackingRunResponse:
@@ -331,7 +352,7 @@ def test_worker_marks_tracking_exception_failed() -> None:
     asyncio.run(run())
 
 
-def test_worker_rejects_tracking_result_persistence_error_without_requeue(
+def test_worker_stops_when_tracking_result_cannot_be_persisted(
     caplog,
 ) -> None:
     async def run() -> None:
@@ -350,24 +371,59 @@ def test_worker_rejects_tracking_result_persistence_error_without_requeue(
                     clock=FakeClock(),
                     supported_provider="gemini",
                 ).execute(make_message(job, platform="gemini"))
-            except QueryRunJobMessageRejected as exc:
+            except QueryRunJobResultPersistenceFailed as exc:
                 assert "tracking result persistence failed: RuntimeError" in str(exc)
             else:
-                raise AssertionError("expected persistence failure to reject message")
+                raise AssertionError("expected result persistence failure")
 
         assert len(tracking.messages) == 1
+        assert job.status is JobStatus.RUNNING_EXTERNAL
         record = next(
             item
             for item in caplog.records
             if item.message.startswith(
-                "GEO tracking result persistence failed after provider response: "
+                "GEO tracking result persistence failed after provider execution: "
             )
         )
         assert f"jobId={job.id}" in record.message
         assert "provider=gemini" in record.message
         assert "status=succeeded" in record.message
         assert "exceptionType=RuntimeError" in record.message
+        assert record.job_id == str(job.id)
+        assert record.tenant_id == str(TENANT_ID)
+        assert record.provider == "gemini"
+        assert record.status == "succeeded"
+        assert record.error_code is None
+        assert record.exception_type == "RuntimeError"
         assert record.exc_info is not None
+
+    asyncio.run(run())
+
+
+def test_worker_stops_when_tracking_error_cannot_be_persisted() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(
+            job,
+            save_error=RuntimeError("database unavailable"),
+        )
+        tracking = FakeTrackingClient(error=TimeoutError("request timed out"))
+
+        try:
+            await ProcessQueryRunJobMessage(
+                repository=repository,
+                tracking_client=tracking,
+                clock=FakeClock(),
+                supported_provider="gemini",
+            ).execute(make_message(job, platform="gemini"))
+        except QueryRunJobResultPersistenceFailed:
+            pass
+        else:
+            raise AssertionError("expected result persistence failure")
+
+        assert len(tracking.messages) == 1
+        assert repository.save_commands == []
+        assert job.status is JobStatus.RUNNING_EXTERNAL
 
     asyncio.run(run())
 
@@ -486,7 +542,6 @@ def make_message(job: GeoQueryRunJob, *, platform: str) -> QueryRunJobMessage:
         job_id=job.id,
         tenant_id=TENANT_ID,
         project_id=job.project_id,
-        seo_task_id=uuid4(),
         query_id=job.query_id,
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",

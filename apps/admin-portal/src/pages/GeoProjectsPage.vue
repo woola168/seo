@@ -24,7 +24,6 @@ const customerFilters = ref<string[]>([]);
 const form = reactive({
   name: "",
   customerId: "",
-  seoTaskId: "",
   defaultRegion: "TW",
   defaultLanguage: "zh-TW",
   dailyRunBudget: 200,
@@ -84,7 +83,6 @@ function closeProjectView(): void {
 function resetForm(): void {
   form.name = "";
   form.customerId = workspace.customers.value[0]?.id ?? "";
-  form.seoTaskId = "";
   form.defaultRegion = "TW";
   form.defaultLanguage = "zh-TW";
   form.dailyRunBudget = 200;
@@ -104,7 +102,6 @@ async function submit(): Promise<void> {
   if (!validate()) return;
   const created = await workspace.createProject({
     customerId: form.customerId.trim(),
-    seoTaskId: form.seoTaskId.trim() || null,
     name: form.name.trim(),
     defaultRegion: form.defaultRegion.trim(),
     defaultLanguage: form.defaultLanguage.trim(),
@@ -128,7 +125,7 @@ function clearFilters(): void {
   <section class="page geo-page geo-kinsan-page">
     <GeoPageHeader
       title="Projects"
-      description="管理 GEO project、客戶與任務綁定。"
+      description="管理 GEO project 與客戶綁定。"
       :projects="workspace.projects.value"
       :selected-project-id="workspace.selectedProjectId.value"
       :loading="workspace.loading.value"
@@ -210,13 +207,6 @@ function clearFilters(): void {
           </select>
           <input v-else v-model="form.customerId" type="text" :class="{ invalid: formErrors.customerId }" placeholder="customer UUID" @input="clearFieldError('customerId')" />
         </GeoFormField>
-        <GeoFormField label="SEO Task">
-          <select v-if="workspace.tasks.value.length" v-model="form.seoTaskId">
-            <option value="">不綁定 task</option>
-            <option v-for="task in workspace.tasks.value" :key="task.id" :value="task.id">{{ task.name }}</option>
-          </select>
-          <input v-else v-model="form.seoTaskId" type="text" placeholder="seo task UUID，可留空" />
-        </GeoFormField>
         <GeoFormField label="Region" required :error="formErrors.defaultRegion">
           <input v-model="form.defaultRegion" type="text" :class="{ invalid: formErrors.defaultRegion }" @input="clearFieldError('defaultRegion')" />
         </GeoFormField>
@@ -245,9 +235,6 @@ function clearFilters(): void {
         </GeoFormField>
         <GeoFormField label="Customer" required>
           <input :value="viewProject.customerName" type="text" readonly />
-        </GeoFormField>
-        <GeoFormField label="SEO Task">
-          <input :value="viewProject.seoTaskName ?? '-'" type="text" readonly />
         </GeoFormField>
         <GeoFormField label="Region" required>
           <input :value="viewProject.defaultRegion" type="text" readonly />

@@ -461,7 +461,6 @@ async function runGeneration(): Promise<void> {
   if (!setValidation(errors)) return;
   await runAction(async () => {
     generationRun.value = await api.geoAnalysis.runQueryGeneration(selectedProjectId.value, {
-      seoTaskId: null,
       provider: queryForm.provider,
       brandName: queryForm.brandName.trim(),
       competitorBrands: normalizedCompetitors.value,
@@ -531,12 +530,6 @@ async function dispatchSelectedQueries(): Promise<void> {
   await runAction(async () => {
     const jobs: GeoJobResource[] = [];
     for (const query of queries) {
-      await api.geoAnalysis.replaceQueryPlatforms(query.id, [
-        {
-          platformId: selectedPlatform.value.platformId,
-          status: "active",
-        },
-      ]);
       const created = await api.geoAnalysis.createJob(query.id, {
         platformId: selectedPlatform.value.platformId,
         scheduledFor: null,
@@ -708,7 +701,6 @@ function fillProjectForm(project: GeoProjectResource): void {
 function projectRequestFromForm() {
   return {
     customerId: valueOrNull(projectForm.customerId),
-    seoTaskId: null,
     name: projectForm.name.trim(),
     defaultRegion: projectForm.defaultRegion,
     defaultLanguage: projectForm.defaultLanguage.trim() || "zh-TW",
@@ -874,7 +866,7 @@ function openReportDesign(): void {
     <article v-if="activeStep === 'project'" class="flow-card">
       <header>
         <h2>1. 選擇或建立 Project</h2>
-        <p>既有 project 可在這裡選擇 customer 綁定；demo 流程不再需要 seoTaskId。</p>
+        <p>既有 project 可在這裡選擇 customer 綁定。</p>
       </header>
       <label>
         既有 Project

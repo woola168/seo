@@ -13,10 +13,9 @@ const apiMocks = vi.hoisted(() => ({
   projectAliases: vi.fn(),
   topics: vi.fn(),
   queries: vi.fn(),
+  platforms: vi.fn(),
   queryPlatforms: vi.fn(),
   projectQueryPlatforms: vi.fn(),
-  schedules: vi.fn(),
-  projectSchedules: vi.fn(),
   jobs: vi.fn(),
   runResults: vi.fn(),
 }));
@@ -32,10 +31,9 @@ vi.mock("../services/api", () => ({
       projectAliases: apiMocks.projectAliases,
       topics: apiMocks.topics,
       queries: apiMocks.queries,
+      platforms: apiMocks.platforms,
       queryPlatforms: apiMocks.queryPlatforms,
       projectQueryPlatforms: apiMocks.projectQueryPlatforms,
-      schedules: apiMocks.schedules,
-      projectSchedules: apiMocks.projectSchedules,
       jobs: apiMocks.jobs,
       runResults: apiMocks.runResults,
     },
@@ -45,7 +43,6 @@ vi.mock("../services/api", () => ({
 const project = {
   id: "project-1",
   customerId: null,
-  seoTaskId: null,
   name: "Project 1",
   defaultRegion: "TW",
   defaultLanguage: "zh-TW",
@@ -84,8 +81,8 @@ describe("useGeoProjectWorkspace", () => {
     apiMocks.projectAliases.mockReturnValue(collection());
     apiMocks.topics.mockReturnValue(collection());
     apiMocks.queries.mockReturnValue(collection());
+    apiMocks.platforms.mockReturnValue(collection());
     apiMocks.projectQueryPlatforms.mockReturnValue(collection());
-    apiMocks.projectSchedules.mockReturnValue(collection());
     apiMocks.jobs.mockReturnValue(collection());
   });
 
@@ -98,9 +95,9 @@ describe("useGeoProjectWorkspace", () => {
     { profile: "topics-queries", expected: ["topics", "queries"] },
     {
       profile: "platforms-schedules",
-      expected: ["queries", "projectQueryPlatforms", "projectSchedules"],
+      expected: ["queries", "platforms"],
     },
-    { profile: "run-jobs", expected: ["queries", "jobs"] },
+    { profile: "run-jobs", expected: ["queries", "jobs", "platforms"] },
   ])("loads only the $profile profile resources", async ({ profile, expected }) => {
     const workspace = useGeoProjectWorkspace(profile);
 
@@ -118,8 +115,8 @@ describe("useGeoProjectWorkspace", () => {
       "projectAliases",
       "topics",
       "queries",
+      "platforms",
       "projectQueryPlatforms",
-      "projectSchedules",
       "jobs",
     ] as const;
     for (const name of detailCalls) {
@@ -129,7 +126,6 @@ describe("useGeoProjectWorkspace", () => {
     expect(apiMocks.tasks).toHaveBeenCalledTimes(expected.includes("tasks") ? 1 : 0);
     expect(apiMocks.aliases).not.toHaveBeenCalled();
     expect(apiMocks.queryPlatforms).not.toHaveBeenCalled();
-    expect(apiMocks.schedules).not.toHaveBeenCalled();
     expect(apiMocks.runResults).not.toHaveBeenCalled();
   });
 
@@ -157,37 +153,37 @@ describe("useGeoProjectWorkspace", () => {
     expect(workspace.errorMessage.value).toBe("");
   });
 
-  it("keeps queries and schedules when query platforms fail", async () => {
+  it("loads platform scheduling from active queries without assignments", async () => {
     apiMocks.queries.mockReturnValue(collection([
       { id: "query-1", projectId: "project-1", queryText: "Query 1" },
     ]));
-    apiMocks.projectQueryPlatforms.mockRejectedValue(new Error("platforms unavailable"));
-    apiMocks.projectSchedules.mockReturnValue(collection([
-      { id: "schedule-1", queryId: "query-1", platformId: "platform-1" },
+    apiMocks.platforms.mockReturnValue(collection([
+      {
+        id: "platform-1",
+        code: "google_aio",
+        displayName: "Google AIO",
+        providerType: "serpapi",
+        defaultModel: "ai-overview",
+        status: "paused",
+      },
     ]));
     const workspace = useGeoProjectWorkspace("platforms-schedules");
 
     await workspace.loadProjects();
-    await vi.waitFor(() => expect(workspace.schedules.value[0]?.id).toBe("schedule-1"));
+    await vi.waitFor(() => expect(workspace.queries.value[0]?.id).toBe("query-1"));
 
     expect(workspace.queries.value[0]?.id).toBe("query-1");
     expect(workspace.queryPlatforms.value).toEqual([]);
-    expect(workspace.errorMessage.value).toBe(
-      "部分資料載入失敗：Query Platforms。請稍後重新整理。",
-    );
-  });
-
-  it("lists every failed profile resource in request order", async () => {
-    apiMocks.projectQueryPlatforms.mockRejectedValue(new Error("platforms unavailable"));
-    apiMocks.projectSchedules.mockRejectedValue(new Error("schedules unavailable"));
-    const workspace = useGeoProjectWorkspace("platforms-schedules");
-
-    await workspace.loadProjects();
-    await vi.waitFor(() => {
-      expect(workspace.errorMessage.value).toBe(
-        "部分資料載入失敗：Query Platforms、Schedules。請稍後重新整理。",
-      );
-    });
+    expect(workspace.platforms.value).toEqual([
+      {
+        id: "platform-1",
+        name: "Google AIO",
+        model: "ai-overview",
+        status: "paused",
+      },
+    ]);
+    expect(apiMocks.projectQueryPlatforms).not.toHaveBeenCalled();
+    expect(workspace.errorMessage.value).toBe("");
   });
 
   it("does not let an older project request overwrite the current project", async () => {

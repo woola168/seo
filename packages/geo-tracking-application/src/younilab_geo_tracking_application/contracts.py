@@ -74,7 +74,6 @@ class QueryDraftList(ContractModel):
 
 class GeneratedQuery(ContractModel):
     id: UUID
-    seo_task_id: UUID | None = None
     text: str
     keywords: list[str] = Field(default_factory=list, max_length=10)
     topic_id: UUID | None
@@ -90,7 +89,6 @@ class GeneratedQuery(ContractModel):
 
 
 class QueryGenerationCommand(ContractModel):
-    seo_task_id: UUID | None = None
     provider: ProviderCode = ProviderCode.DUMMY
     brand_name: str = Field(min_length=1, max_length=200)
     competitor_brands: list[str] = Field(default_factory=list, max_length=8)
@@ -259,7 +257,6 @@ class RunQueryInput(ContractModel):
 
 
 class RunRequestCommand(ContractModel):
-    seo_task_id: UUID | None = None
     queries: list[RunQueryInput] = Field(min_length=1, max_length=20)
     provider: ProviderCode = ProviderCode.DUMMY
     timing: RunTiming = RunTiming.RUN_NOW
@@ -323,6 +320,5 @@ class RunResult(ContractModel):
 
 class RunRequestResult(ContractModel):
     id: UUID
-    seo_task_id: UUID | None = None
     timing: RunTiming
     results: list[RunResult]

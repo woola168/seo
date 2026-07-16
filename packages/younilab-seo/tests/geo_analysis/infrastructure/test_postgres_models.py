@@ -1,9 +1,10 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
@@ -135,12 +136,18 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     nullable_seo_task_patch_path = (
         postgres_dir / "013_geo_analysis_nullable_seo_task_patch.sql"
     )
+    scheduler_patch_path = postgres_dir / "015_geo_analysis_daily_scheduler.sql"
+    seo_task_contract_path = (
+        postgres_dir / "016_geo_analysis_remove_seo_task_contract.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
     nullable_seo_task_patch = nullable_seo_task_patch_path.read_text(
         encoding="utf-8"
     )
+    scheduler_patch = scheduler_patch_path.read_text(encoding="utf-8")
+    seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -149,18 +156,26 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "customer_id uuid NOT NULL" not in schema
     assert GeoProjectRow.__table__.columns["customer_id"].nullable is True
     assert not GeoProjectRow.__table__.columns["customer_id"].foreign_keys
-    assert not GeoProjectRow.__table__.columns["seo_task_id"].foreign_keys
+    assert "seo_task_id" not in GeoProjectRow.__table__.columns
     assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_query_draft" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_query_run_job" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_daily_run_batch" in scheduler_patch
+    assert "ux_geo_daily_run_batch_project_date" in scheduler_patch
+    assert "ux_geo_query_run_job_scheduled_identity" in scheduler_patch
+    assert "execution_snapshot jsonb NOT NULL" in scheduler_patch
+    assert "budget_enforced boolean NOT NULL DEFAULT false" in scheduler_patch
+    assert "WHERE code = 'google_aio'" in scheduler_patch
+    assert "DROP COLUMN IF EXISTS seo_task_id" not in scheduler_patch
+    assert seo_task_contract.count("DROP COLUMN IF EXISTS seo_task_id") == 2
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
-    assert GeoRunRequestRow.__table__.columns["seo_task_id"].nullable is True
+    assert "seo_task_id" not in GeoRunRequestRow.__table__.columns
     assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
     assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
     assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["tenant_id"].foreign_keys
@@ -515,6 +530,156 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         assert await repository.list_project_aliases(uuid4(), project.id) == []
         assert await repository.list_project_query_platforms(uuid4(), project.id) == []
         assert await repository.list_project_schedules(uuid4(), project.id) == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_daily_materialization_uses_active_queries_and_active_platforms() -> None:
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip(
+            "Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests."
+        )
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    active_platform_id = uuid4()
+    paused_platform_id = uuid4()
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    try:
+        async with session_factory() as session:
+            async with session.begin():
+                session.add_all(
+                    [
+                        GeoAiPlatformRow(
+                            id=active_platform_id,
+                            code=f"daily-active-{uuid4()}",
+                            display_name="Daily Active Platform",
+                            provider_type="test",
+                            default_model="active-default-model",
+                            status="active",
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        GeoAiPlatformRow(
+                            id=paused_platform_id,
+                            code=f"daily-paused-{uuid4()}",
+                            display_name="Daily Paused Platform",
+                            provider_type="test",
+                            default_model="paused-default-model",
+                            status="paused",
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                    ]
+                )
+
+        platform_records = {
+            platform.id: platform for platform in await repository.list_ai_platforms()
+        }
+        assert platform_records[active_platform_id].status == "active"
+        assert platform_records[paused_platform_id].status == "paused"
+
+        project = await repository.create_project(
+            GeoProjectCommand(tenant_id=TENANT_ID, name=f"Daily Runs {uuid4()}")
+        )
+        active_query = await repository.create_query(
+            TENANT_ID,
+            project.id,
+            GeoQueryCommand(
+                query_text="Daily active query",
+                region="TW",
+                language="zh-TW",
+            ),
+        )
+        paused_query = await repository.create_query(
+            TENANT_ID,
+            project.id,
+            GeoQueryCommand(
+                query_text="Daily paused query",
+                region="TW",
+                language="zh-TW",
+                status="paused",
+            ),
+        )
+        assert active_query is not None
+        assert paused_query is not None
+        assert await repository.list_query_platforms(TENANT_ID, active_query.id) == []
+
+        await repository.materialize_daily_runs(
+            business_date=date.today(),
+            scheduled_for=now,
+            occurred_at=now,
+        )
+
+        async with session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(GeoQueryRunJobRow).where(
+                        GeoQueryRunJobRow.project_id == project.id
+                    )
+                )
+            ).all()
+
+        assert any(row.platform_id == active_platform_id for row in rows)
+        assert all(row.platform_id != paused_platform_id for row in rows)
+        assert all(row.query_id == active_query.id for row in rows)
+        active_platform_job = next(
+            row for row in rows if row.platform_id == active_platform_id
+        )
+        assert active_platform_job.execution_snapshot["model"] == "active-default-model"
+
+        manual_job = await repository.create_job(
+            TENANT_ID,
+            active_query.id,
+            CreateQueryRunJobCommand(platform_id=active_platform_id),
+        )
+        assert manual_job is not None
+
+        async with session_factory() as session:
+            async with session.begin():
+                for job_id in (active_platform_job.id, manual_job.id):
+                    row = await session.get(GeoQueryRunJobRow, job_id)
+                    assert row is not None
+                    row.status = "running_external"
+                    row.updated_at = now - timedelta(minutes=10)
+
+        await repository.reconcile_stale_jobs(
+            stale_before=now - timedelta(minutes=5),
+            occurred_at=now,
+        )
+        async with session_factory() as session:
+            for job_id in (active_platform_job.id, manual_job.id):
+                reconciled = await session.get(GeoQueryRunJobRow, job_id)
+                assert reconciled is not None
+                assert reconciled.status == "failed"
+                assert reconciled.last_error_code == "execution_outcome_unknown"
+
+        async with session_factory() as session:
+            async with session.begin():
+                row = await session.get(GeoQueryRunJobRow, active_platform_job.id)
+                assert row is not None
+                row.status = "succeeded"
+                row.updated_at = now
+
+        await repository.reconcile_stale_jobs(
+            stale_before=now - timedelta(minutes=5),
+            occurred_at=now + timedelta(minutes=1),
+        )
+        async with session_factory() as session:
+            current = await session.get(GeoQueryRunJobRow, active_platform_job.id)
+            assert current is not None
+            assert current.status == "succeeded"
     finally:
         await engine.dispose()
 

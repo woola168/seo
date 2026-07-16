@@ -9,6 +9,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     AliasRequest,
     AliasResponse,
     AcceptQueryDraftRequest,
+    AiPlatformResponse,
     CreateJobRequest,
     DashboardReportResponse,
     EntityRequest,
@@ -860,6 +861,16 @@ async def accept_query_draft(
     return QueryResponse(**_planning_data(query))
 
 
+@router.get("/platforms", response_model=PageResponse)
+async def list_ai_platforms(request: Request) -> PageResponse:
+    await _principal(request, "geo.projects.read")
+    items = await _setup(request).list_ai_platforms()
+    return PageResponse(
+        items=[AiPlatformResponse(**_record_data(item)) for item in items],
+        total=len(items),
+    )
+
+
 @router.get("/queries/{query_id}/platforms", response_model=PageResponse)
 async def list_query_platforms(request: Request, query_id: UUID) -> PageResponse:
     principal = await _principal(request, "geo.projects.read")
@@ -923,7 +934,11 @@ async def list_project_schedules(request: Request, project_id: UUID) -> PageResp
     )
 
 
-@router.post("/queries/{query_id}/schedules", response_model=ScheduleResponse, status_code=201)
+@router.post(
+    "/queries/{query_id}/schedules",
+    response_model=ScheduleResponse,
+    status_code=201,
+)
 async def create_schedule(
     request: Request,
     query_id: UUID,

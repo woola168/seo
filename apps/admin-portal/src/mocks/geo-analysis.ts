@@ -9,7 +9,6 @@ import type {
   GeoQuery,
   GeoRecommendation,
   GeoReportMetric,
-  GeoSchedule,
   GeoTopic,
   GeoTopicPerformance,
   GeoTrendPoint,
@@ -22,7 +21,6 @@ export interface GeoMockState {
   topics: GeoTopic[];
   queries: GeoQuery[];
   platforms: GeoPlatform[];
-  schedules: GeoSchedule[];
   jobs: GeoJob[];
   reportMetrics: GeoReportMetric[];
   trendPoints: GeoTrendPoint[];
@@ -45,8 +43,6 @@ const projects: GeoProject[] = [
     id: "geo-project-kinsan",
     customerId: "customer-kinsan",
     customerName: "金山旅宿",
-    seoTaskId: "seo-task-kinsan-content",
-    seoTaskName: "北海岸內容 SEO",
     name: "金山旅宿 GEO 追蹤",
     defaultRegion: "TW",
     defaultLanguage: "zh-TW",
@@ -145,33 +141,22 @@ const queries: GeoQuery[] = [
   },
 ];
 
-const schedules: GeoSchedule[] = [
-  {
-    id: "geo-schedule-daily-chatgpt",
-    queryId: "geo-query-onsen-1",
-    platformId: "11111111-1111-4111-8111-111111111101",
-    frequency: "daily",
-    priority: "high",
-    timezone: "Asia/Taipei",
-    nextRunAt: "2026-06-24T01:00:00.000Z",
-    status: "active",
-  },
-];
-
 const jobs: GeoJob[] = [
   {
     id: "geo-job-20260623-chatgpt",
     projectId: "geo-project-kinsan",
     queryId: "geo-query-onsen-1",
     platformId: "11111111-1111-4111-8111-111111111101",
-    scheduleId: "geo-schedule-daily-chatgpt",
+    batchId: "geo-daily-batch-2026-06-23",
+    scheduleId: null,
+    source: "scheduled",
     jobType: "scheduled_run",
     priority: "high",
-    scheduledFor: "2026-06-23T01:00:00.000Z",
+    scheduledFor: "2026-06-22T19:00:00.000Z",
     status: "succeeded",
     attemptCount: 1,
     maxAttempts: 3,
-    dedupeKey: "geo-project-kinsan:geo-query-onsen-1:11111111-1111-4111-8111-111111111101:2026-06-23T01:00:00Z",
+    dedupeKey: "geo-project-kinsan:geo-query-onsen-1:11111111-1111-4111-8111-111111111101:2026-06-23T03:00:00+08:00",
     externalRunId: "mock-run-001",
     lastErrorMessage: null,
     createdAt: "2026-06-23T00:58:00.000Z",
@@ -322,7 +307,6 @@ export function createGeoMockState(): GeoMockState {
     topics: cloneItems(topics),
     queries: cloneItems(queries),
     platforms: cloneItems(geoPlatformCatalog),
-    schedules: cloneItems(schedules),
     jobs: cloneItems(jobs),
     reportMetrics: cloneItems(reportMetrics),
     trendPoints: cloneItems(trendPoints),

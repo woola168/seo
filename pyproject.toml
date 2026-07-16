@@ -19,6 +19,7 @@ members = [
     "apps/resource-catalog-api",
     "apps/geo-analysis-api",
     "apps/geo-analysis-worker",
+    "apps/geo-analysis-scheduler",
     "apps/geo-tracking-api",
     "packages/younilab-seo",
     "packages/geo-tracking-domain",
@@ -33,6 +34,7 @@ testpaths = [
     "apps/resource-catalog-api/tests",
     "apps/geo-analysis-api/tests",
     "apps/geo-tracking-api/tests",
+    "apps/geo-analysis-scheduler/tests",
     "packages/geo-tracking-infrastructure/tests",
     "packages/younilab-seo/tests",
 ]

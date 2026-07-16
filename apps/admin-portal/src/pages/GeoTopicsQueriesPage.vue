@@ -145,7 +145,6 @@ async function deleteQuery(queryId: string): Promise<void> {
     if (!workspace.usingMockData.value) await api.geoAnalysis.deleteQuery(queryId);
     workspace.queries.value = workspace.queries.value.filter((query) => query.id !== queryId);
     workspace.queryPlatforms.value = workspace.queryPlatforms.value.filter((item) => item.queryId !== queryId);
-    workspace.schedules.value = workspace.schedules.value.filter((schedule) => schedule.queryId !== queryId);
     workspace.setMessage("已刪除 query。");
   });
 }

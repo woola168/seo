@@ -49,7 +49,6 @@ class Topic:
 @dataclass(frozen=True)
 class TrackedQuery:
     id: UUID
-    seo_task_id: UUID | None
     text: str
     topic_id: UUID | None
     topic_name: str

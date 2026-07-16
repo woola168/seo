@@ -1,7 +1,19 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
@@ -14,7 +26,6 @@ class GeoProjectRow(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     tenant_id: UUID = Field(nullable=False, index=True)
     customer_id: UUID | None = Field(default=None)
-    seo_task_id: UUID | None = Field(default=None)
     name: str = Field(sa_column=Column(String(200), nullable=False))
     default_region: str = Field(default="TW", sa_column=Column(String(16), nullable=False))
     default_language: str = Field(
@@ -340,16 +351,52 @@ class GeoQueryScheduleRow(SQLModel, table=True):
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
+class GeoDailyRunBatchRow(SQLModel, table=True):
+    """每個 Project 在單一營業日只保存一筆冪等展開批次。"""
+
+    __tablename__ = "geo_daily_run_batch"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "business_date",
+            name="ux_geo_daily_run_batch_project_date",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
+    business_date: date = Field(sa_column=Column(Date, nullable=False))
+    scheduled_for: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    candidate_count: int = Field(default=0, nullable=False)
+    job_count: int = Field(default=0, nullable=False)
+    budget_enforced: bool = Field(default=False, sa_column=Column(Boolean, nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
 class GeoQueryRunJobRow(SQLModel, table=True):
     """Persistent query run job dispatched through the configured broker."""
 
     __tablename__ = "geo_query_run_job"
+    __table_args__ = (
+        Index(
+            "ux_geo_query_run_job_scheduled_identity",
+            "query_id",
+            "platform_id",
+            "scheduled_for",
+            unique=True,
+            postgresql_where=text("source = 'scheduled'"),
+        ),
+    )
 
     id: UUID = Field(primary_key=True)
     project_id: UUID = Field(foreign_key="geo_project.id", nullable=False)
     query_id: UUID = Field(foreign_key="geo_query.id", nullable=False)
     platform_id: UUID = Field(foreign_key="geo_ai_platform.id", nullable=False)
+    batch_id: UUID | None = Field(default=None, foreign_key="geo_daily_run_batch.id")
     schedule_id: UUID | None = Field(default=None, foreign_key="geo_query_schedule.id")
+    source: str = Field(default="manual", sa_column=Column(String(32), nullable=False))
     job_type: str = Field(default="scheduled_run", sa_column=Column(String(32), nullable=False))
     priority: str = Field(default="normal", sa_column=Column(String(32), nullable=False))
     scheduled_for: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
@@ -361,6 +408,10 @@ class GeoQueryRunJobRow(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True)),
     )
     dedupe_key: str = Field(sa_column=Column(String(200), nullable=False, unique=True))
+    execution_snapshot: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False),
+    )
     dispatch_backend: str | None = Field(default=None, sa_column=Column(String(32)))
     dispatch_message_id: str | None = Field(default=None, sa_column=Column(String(200)))
     external_run_id: str | None = Field(default=None, sa_column=Column(String(200)))
@@ -454,7 +505,6 @@ class GeoRunRequestRow(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     job_id: UUID = Field(foreign_key="geo_query_run_job.id", nullable=False)
     tracking_run_request_id: str = Field(sa_column=Column(String(200), nullable=False))
-    seo_task_id: UUID | None = Field(default=None)
     provider: str = Field(sa_column=Column(String(64), nullable=False))
     timing: str = Field(sa_column=Column(String(32), nullable=False))
     status: str = Field(sa_column=Column(String(32), nullable=False))

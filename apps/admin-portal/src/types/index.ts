@@ -242,7 +242,6 @@ export type GeoQueryProvider = "dummy" | "gemini";
 export type GeoProvider = GeoQueryProvider | "google_aio";
 
 export interface GeoDummyProject {
-  seoTaskId: string;
   brandName: string;
   competitorBrands: string[];
   keywords: string[];
@@ -259,7 +258,6 @@ export interface GeoTopicInput {
 
 export interface GeoGeneratedQuery {
   id: string;
-  seoTaskId: string | null;
   text: string;
   keywords: string[];
   topicId: string | null;
@@ -374,7 +372,6 @@ export interface GeoRunResult {
 
 export interface GeoRunRequestResult {
   id: string;
-  seoTaskId: string | null;
   timing: "run_now" | "next_cycle";
   results: GeoRunResult[];
 }
@@ -383,8 +380,6 @@ export interface GeoProject {
   id: string;
   customerId: string | null;
   customerName: string;
-  seoTaskId: string | null;
-  seoTaskName: string | null;
   name: string;
   defaultRegion: string;
   defaultLanguage: string;
@@ -454,21 +449,19 @@ export interface GeoPlatform {
   status: "active" | "paused";
 }
 
+export interface GeoPlatformResource {
+  id: string;
+  code: string;
+  displayName: string;
+  providerType: string;
+  defaultModel: string | null;
+  status: "active" | "paused";
+}
+
 export interface GeoQueryPlatform {
   id: string;
   queryId: string;
   platformId: string;
-  status: "active" | "paused";
-}
-
-export interface GeoSchedule {
-  id: string;
-  queryId: string;
-  platformId: string;
-  frequency: "daily" | "weekly" | "manual";
-  priority: "low" | "normal" | "high";
-  timezone: string;
-  nextRunAt: string | null;
   status: "active" | "paused";
 }
 
@@ -477,7 +470,9 @@ export interface GeoJob {
   projectId: string;
   queryId: string;
   platformId: string;
+  batchId: string | null;
   scheduleId: string | null;
+  source: "manual" | "scheduled";
   jobType: "manual_run" | "scheduled_run";
   priority: "low" | "normal" | "high";
   scheduledFor: string;
@@ -814,7 +809,6 @@ export interface GeoOverviewResponseQuery extends GeoOverviewQuery {
 export interface GeoProjectResource {
   id: string;
   customerId: string | null;
-  seoTaskId: string | null;
   name: string;
   defaultRegion: string;
   defaultLanguage: string;
@@ -826,7 +820,6 @@ export interface GeoProjectResource {
 
 export interface GeoProjectRequest {
   customerId: string | null;
-  seoTaskId: string | null;
   name: string;
   defaultRegion: string;
   defaultLanguage: string;
@@ -909,21 +902,6 @@ export interface GeoQueryPlatformRequest {
   status: GeoQueryPlatform["status"];
 }
 
-export interface GeoScheduleResource extends GeoSchedule {
-  lastScheduledAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface GeoScheduleRequest {
-  platformId: string;
-  frequency: GeoSchedule["frequency"];
-  priority: GeoSchedule["priority"];
-  timezone: string;
-  nextRunAt: string | null;
-  status: GeoSchedule["status"];
-}
-
 export interface GeoJobResource extends GeoJob {
   dispatchBackend: string | null;
   dispatchMessageId: string | null;
@@ -985,7 +963,6 @@ export interface GeoQueryResearchRunResource {
 }
 
 export interface GeoQueryGenerationRunRequest {
-  seoTaskId?: string | null;
   provider: GeoQueryProvider;
   brandName: string;
   competitorBrands: string[];

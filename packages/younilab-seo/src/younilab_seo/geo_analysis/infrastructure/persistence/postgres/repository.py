@@ -1,17 +1,20 @@
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from younilab_seo.geo_analysis.application.contracts import (
     AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
+    DailyRunMaterializationResult,
     ExternalRunCallback,
+    GeoAiPlatformRecord,
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
@@ -64,6 +67,7 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
     GeoAiPlatformRow,
+    GeoDailyRunBatchRow,
     GeoEntityAliasRow,
     GeoEntityRow,
     GeoExternalRunReferenceRow,
@@ -100,6 +104,187 @@ class PostgresGeoAnalysisRepository:
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def materialize_daily_runs(
+        self,
+        *,
+        business_date: date,
+        scheduled_for: datetime,
+        occurred_at: datetime,
+    ) -> DailyRunMaterializationResult:
+        batch_count = 0
+        job_count = 0
+        async with self._session_scope() as session:
+            active_platforms = (
+                await session.scalars(
+                    select(GeoAiPlatformRow).where(
+                        GeoAiPlatformRow.status == "active"
+                    )
+                )
+            ).all()
+            projects = (
+                await session.scalars(
+                    select(GeoProjectRow).where(GeoProjectRow.status == "active")
+                )
+            ).all()
+            for project in projects:
+                batch_id = await session.scalar(
+                    pg_insert(GeoDailyRunBatchRow)
+                    .values(
+                        id=uuid4(),
+                        project_id=project.id,
+                        business_date=business_date,
+                        scheduled_for=scheduled_for,
+                        status="no_candidates",
+                        candidate_count=0,
+                        job_count=0,
+                        budget_enforced=False,
+                        created_at=occurred_at,
+                        updated_at=occurred_at,
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=["project_id", "business_date"]
+                    )
+                    .returning(GeoDailyRunBatchRow.id)
+                )
+                if batch_id is None:
+                    continue
+                batch_count += 1
+                queries = (
+                    await session.execute(
+                        select(
+                            GeoQueryRow,
+                            GeoTopicRow.name,
+                        )
+                        .outerjoin(GeoTopicRow, GeoTopicRow.id == GeoQueryRow.topic_id)
+                        .where(
+                            GeoQueryRow.project_id == project.id,
+                            GeoQueryRow.status == "active",
+                        )
+                    )
+                ).all()
+                created_for_batch = 0
+                for query, topic_name in queries:
+                    for platform in active_platforms:
+                        job_id = uuid4()
+                        dedupe_key = (
+                            f"{project.id}:{query.id}:{platform.id}:"
+                            f"{scheduled_for.isoformat()}"
+                        )
+                        inserted = await session.scalar(
+                            pg_insert(GeoQueryRunJobRow)
+                            .values(
+                                id=job_id,
+                                project_id=project.id,
+                                query_id=query.id,
+                                platform_id=platform.id,
+                                batch_id=batch_id,
+                                schedule_id=None,
+                                source="scheduled",
+                                job_type="scheduled_run",
+                                priority=query.priority,
+                                scheduled_for=scheduled_for,
+                                status=JobStatus.PENDING.value,
+                                attempt_count=0,
+                                max_attempts=3,
+                                next_retry_at=None,
+                                dedupe_key=dedupe_key,
+                                execution_snapshot={
+                                    "queryId": str(query.id),
+                                    "queryText": query.query_text,
+                                    "topicName": topic_name or "",
+                                    "platform": platform.code,
+                                    "model": platform.default_model,
+                                    "region": query.region,
+                                    "language": query.language,
+                                    "marketType": query.market_type,
+                                    "isBranded": query.is_branded,
+                                },
+                                created_at=occurred_at,
+                                updated_at=occurred_at,
+                            )
+                            .on_conflict_do_nothing()
+                            .returning(GeoQueryRunJobRow.id)
+                        )
+                        if inserted is not None:
+                            created_for_batch += 1
+                candidate_count = len(queries) * len(active_platforms)
+                batch = await session.get(GeoDailyRunBatchRow, batch_id)
+                if batch is not None:
+                    batch.status = (
+                        "materialized" if candidate_count else "no_candidates"
+                    )
+                    batch.candidate_count = candidate_count
+                    batch.job_count = created_for_batch
+                    batch.updated_at = occurred_at
+                job_count += created_for_batch
+        return DailyRunMaterializationResult(
+            business_date=business_date,
+            scheduled_for=scheduled_for,
+            batch_count=batch_count,
+            job_count=job_count,
+            budget_enforced=False,
+        )
+
+    async def list_dispatchable_scheduled_job_ids(
+        self,
+        *,
+        occurred_at: datetime,
+        limit: int,
+    ) -> list[UUID]:
+        statement = (
+            select(GeoQueryRunJobRow.id)
+            .where(
+                GeoQueryRunJobRow.source == "scheduled",
+                GeoQueryRunJobRow.scheduled_for <= occurred_at,
+                or_(
+                    GeoQueryRunJobRow.status == JobStatus.PENDING.value,
+                    and_(
+                        GeoQueryRunJobRow.status == JobStatus.DELAYED.value,
+                        GeoQueryRunJobRow.next_retry_at <= occurred_at,
+                    ),
+                ),
+            )
+            .order_by(GeoQueryRunJobRow.scheduled_for, GeoQueryRunJobRow.created_at)
+            .limit(limit)
+        )
+        async with self._session_scope() as session:
+            return list((await session.scalars(statement)).all())
+
+    async def reconcile_stale_jobs(
+        self,
+        *,
+        stale_before: datetime,
+        occurred_at: datetime,
+    ) -> int:
+        async with self._session_scope() as session:
+            reconciled_ids: list[UUID] = []
+            for status, error_code, scheduled_only in (
+                (JobStatus.PUBLISHING, "publish_state_stale", True),
+                (JobStatus.RUNNING_EXTERNAL, "execution_outcome_unknown", False),
+            ):
+                filters = [
+                    GeoQueryRunJobRow.status == status.value,
+                    GeoQueryRunJobRow.updated_at <= stale_before,
+                ]
+                if scheduled_only:
+                    filters.append(GeoQueryRunJobRow.source == "scheduled")
+                statement = (
+                    update(GeoQueryRunJobRow)
+                    .where(*filters)
+                    .values(
+                        last_error_code=error_code,
+                        last_error_message=error_code,
+                        next_retry_at=None,
+                        status=JobStatus.FAILED.value,
+                        updated_at=occurred_at,
+                    )
+                    .returning(GeoQueryRunJobRow.id)
+                )
+                reconciled_ids.extend(
+                    (await session.scalars(statement)).all()
+                )
+            return len(reconciled_ids)
 
     async def list_projects(
         self,
@@ -429,7 +614,6 @@ class PostgresGeoAnalysisRepository:
             id=uuid4(),
             tenant_id=command.tenant_id,
             customer_id=command.customer_id,
-            seo_task_id=command.seo_task_id,
             name=command.name,
             default_region=command.default_region,
             default_language=command.default_language,
@@ -454,7 +638,6 @@ class PostgresGeoAnalysisRepository:
                 return None
             row.tenant_id = tenant_id
             row.customer_id = command.customer_id
-            row.seo_task_id = command.seo_task_id
             row.name = command.name
             row.default_region = command.default_region
             row.default_language = command.default_language
@@ -838,6 +1021,22 @@ class PostgresGeoAnalysisRepository:
             await session.delete(row)
             return True
 
+    async def list_ai_platforms(self) -> list[GeoAiPlatformRecord]:
+        statement = select(GeoAiPlatformRow).order_by(GeoAiPlatformRow.display_name)
+        async with self._session_scope() as session:
+            rows = (await session.scalars(statement)).all()
+            return [
+                GeoAiPlatformRecord(
+                    id=row.id,
+                    code=row.code,
+                    display_name=row.display_name,
+                    provider_type=row.provider_type,
+                    default_model=row.default_model,
+                    status=row.status,
+                )
+                for row in rows
+            ]
+
     async def list_query_platforms(
         self,
         tenant_id: UUID,
@@ -995,7 +1194,9 @@ class PostgresGeoAnalysisRepository:
             project_id=query.project_id,
             query_id=query_id,
             platform_id=command.platform_id,
+            batch_id=None,
             schedule_id=None,
+            source="manual",
             job_type=command.job_type,
             priority=command.priority,
             scheduled_for=scheduled_for,
@@ -1006,6 +1207,7 @@ class PostgresGeoAnalysisRepository:
                 f"{query.project_id}:{query_id}:{command.platform_id}:"
                 f"{scheduled_for.isoformat()}"
             ),
+            execution_snapshot={},
             created_at=now,
             updated_at=now,
         )
@@ -1045,6 +1247,36 @@ class PostgresGeoAnalysisRepository:
                 .where(GeoQueryRunJobRow.id == job_id)
             )
 
+    async def claim_job_for_execution(
+        self,
+        *,
+        job_id: UUID,
+        tenant_id: UUID,
+        external_run_id: str,
+        occurred_at: datetime,
+    ) -> bool:
+        project_ids = select(GeoProjectRow.id).where(
+            GeoProjectRow.tenant_id == tenant_id
+        )
+        statement = (
+            update(GeoQueryRunJobRow)
+            .where(
+                GeoQueryRunJobRow.id == job_id,
+                GeoQueryRunJobRow.project_id.in_(project_ids),
+                GeoQueryRunJobRow.status.in_(
+                    [JobStatus.PUBLISHING.value, JobStatus.PUBLISHED.value]
+                ),
+            )
+            .values(
+                status=JobStatus.RUNNING_EXTERNAL.value,
+                external_run_id=external_run_id,
+                updated_at=occurred_at,
+            )
+            .returning(GeoQueryRunJobRow.id)
+        )
+        async with self._session_scope() as session:
+            return await session.scalar(statement) is not None
+
     async def get_job_dispatch_context(
         self,
         job_id: UUID,
@@ -1062,20 +1294,20 @@ class PostgresGeoAnalysisRepository:
             if query.topic_id is not None:
                 topic = await session.get(GeoTopicRow, query.topic_id)
                 topic_name = topic.name if topic is not None else ""
+            snapshot = row.execution_snapshot or {}
             return GeoQueryRunJobDispatchContext(
                 job_id=row.id,
                 tenant_id=project.tenant_id,
                 project_id=row.project_id,
-                seo_task_id=project.seo_task_id,
                 query_id=row.query_id,
-                query_text=query.query_text,
-                topic_name=topic_name,
-                platform=platform.code,
-                model=platform.default_model,
-                region=query.region,
-                language=query.language,
-                market_type=query.market_type,
-                is_branded=query.is_branded,
+                query_text=snapshot.get("queryText", query.query_text),
+                topic_name=snapshot.get("topicName", topic_name),
+                platform=snapshot.get("platform", platform.code),
+                model=snapshot.get("model", platform.default_model),
+                region=snapshot.get("region", query.region),
+                language=snapshot.get("language", query.language),
+                market_type=snapshot.get("marketType", query.market_type),
+                is_branded=snapshot.get("isBranded", query.is_branded),
                 scheduled_for=row.scheduled_for,
             )
 
@@ -1088,6 +1320,35 @@ class PostgresGeoAnalysisRepository:
             else:
                 _apply_job(row, job)
 
+    async def claim_job_for_publish(
+        self,
+        *,
+        job_id: UUID,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob | None:
+        statement = (
+            update(GeoQueryRunJobRow)
+            .where(
+                GeoQueryRunJobRow.id == job_id,
+                or_(
+                    GeoQueryRunJobRow.status == JobStatus.PENDING.value,
+                    and_(
+                        GeoQueryRunJobRow.status == JobStatus.DELAYED.value,
+                        GeoQueryRunJobRow.next_retry_at <= occurred_at,
+                    ),
+                ),
+            )
+            .values(
+                status=JobStatus.PUBLISHING.value,
+                attempt_count=GeoQueryRunJobRow.attempt_count + 1,
+                updated_at=occurred_at,
+            )
+            .returning(GeoQueryRunJobRow)
+        )
+        async with self._session_scope() as session:
+            row = (await session.execute(statement)).scalar_one_or_none()
+            return _job_from_row(row) if row is not None else None
+
     async def record_dispatch(
         self,
         *,
@@ -1095,8 +1356,8 @@ class PostgresGeoAnalysisRepository:
         result: PublishResult,
         payload: QueryRunJobMessage,
         occurred_at: datetime,
-    ) -> None:
-        row = GeoMessageDispatchLogRow(
+    ) -> GeoQueryRunJob:
+        dispatch_log = GeoMessageDispatchLogRow(
             id=uuid4(),
             job_id=job_id,
             message_backend=result.backend,
@@ -1117,8 +1378,35 @@ class PostgresGeoAnalysisRepository:
             metadata_json={"destination": result.destination},
         )
         async with self._session_scope() as session:
-            session.add(row)
+            job_row = await session.get(GeoQueryRunJobRow, job_id)
+            if job_row is None:
+                raise KeyError(job_id)
+            if job_row.status == JobStatus.PUBLISHING.value:
+                job = _job_from_row(job_row)
+                if result.status == "published":
+                    job.mark_published(
+                        backend=result.backend,
+                        message_id=result.message_id,
+                        now=occurred_at,
+                    )
+                else:
+                    retry_index = job.attempt_count - 1
+                    retry_delays = (5, 15)
+                    next_retry_at = (
+                        occurred_at + timedelta(minutes=retry_delays[retry_index])
+                        if retry_index < len(retry_delays)
+                        else None
+                    )
+                    job.mark_publish_failed(
+                        error_code="publish_failed",
+                        error_message=result.error_message or "message publish failed",
+                        next_retry_at=next_retry_at,
+                        now=occurred_at,
+                    )
+                _apply_job(job_row, job)
+            session.add(dispatch_log)
             session.add(event)
+            return _job_from_row(job_row)
 
     async def record_external_callback(
         self,
@@ -1883,7 +2171,6 @@ def _project_record(row: GeoProjectRow) -> GeoProjectRecord:
         id=row.id,
         tenant_id=row.tenant_id,
         customer_id=row.customer_id,
-        seo_task_id=row.seo_task_id,
         name=row.name,
         default_region=row.default_region,
         default_language=row.default_language,
@@ -2171,7 +2458,9 @@ def _job_row(job: GeoQueryRunJob) -> GeoQueryRunJobRow:
         project_id=job.project_id,
         query_id=job.query_id,
         platform_id=job.platform_id,
+        batch_id=job.batch_id,
         schedule_id=job.schedule_id,
+        source=job.source,
         job_type=job.job_type,
         priority=job.priority,
         scheduled_for=job.scheduled_for,
@@ -2180,6 +2469,7 @@ def _job_row(job: GeoQueryRunJob) -> GeoQueryRunJobRow:
         max_attempts=job.max_attempts,
         next_retry_at=job.next_retry_at,
         dedupe_key=job.dedupe_key,
+        execution_snapshot=job.execution_snapshot or {},
         dispatch_backend=job.dispatch_backend,
         dispatch_message_id=job.dispatch_message_id,
         external_run_id=job.external_run_id,
@@ -2247,7 +2537,6 @@ def _run_request_row(
         id=uuid4(),
         job_id=command.message.job_id,
         tracking_run_request_id=response.id if response is not None else "unknown",
-        seo_task_id=command.message.seo_task_id,
         provider=command.message.platform,
         timing=response.timing if response is not None else "run_now",
         status=command.status,
@@ -3043,7 +3332,9 @@ def _job_from_row(row: GeoQueryRunJobRow) -> GeoQueryRunJob:
         project_id=row.project_id,
         query_id=row.query_id,
         platform_id=row.platform_id,
+        batch_id=row.batch_id,
         schedule_id=row.schedule_id,
+        source=row.source,
         job_type=row.job_type,
         priority=row.priority,
         scheduled_for=row.scheduled_for,
@@ -3051,6 +3342,7 @@ def _job_from_row(row: GeoQueryRunJobRow) -> GeoQueryRunJob:
         attempt_count=row.attempt_count,
         max_attempts=row.max_attempts,
         dedupe_key=row.dedupe_key,
+        execution_snapshot=row.execution_snapshot,
         created_at=row.created_at,
         updated_at=row.updated_at,
         next_retry_at=row.next_retry_at,
@@ -3066,7 +3358,9 @@ def _apply_job(row: GeoQueryRunJobRow, job: GeoQueryRunJob) -> None:
     row.project_id = job.project_id
     row.query_id = job.query_id
     row.platform_id = job.platform_id
+    row.batch_id = job.batch_id
     row.schedule_id = job.schedule_id
+    row.source = job.source
     row.job_type = job.job_type
     row.priority = job.priority
     row.scheduled_for = job.scheduled_for
@@ -3075,6 +3369,7 @@ def _apply_job(row: GeoQueryRunJobRow, job: GeoQueryRunJob) -> None:
     row.max_attempts = job.max_attempts
     row.next_retry_at = job.next_retry_at
     row.dedupe_key = job.dedupe_key
+    row.execution_snapshot = job.execution_snapshot or {}
     row.dispatch_backend = job.dispatch_backend
     row.dispatch_message_id = job.dispatch_message_id
     row.external_run_id = job.external_run_id
