@@ -13,6 +13,7 @@ from younilab_seo.geo_analysis.application import (
 )
 
 MessageHandler = Callable[[QueryRunJobMessage], Awaitable[None]]
+ConnectionFactory = Callable[[str], Awaitable]
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,10 @@ class RabbitMqQueryRunJobConsumer:
     queue_name: str
     prefetch_count: int = 1
     max_delivery_attempts: int = 3
+    connection_factory: ConnectionFactory = aio_pika.connect_robust
 
     async def run(self, handler: MessageHandler) -> None:
-        connection = await aio_pika.connect_robust(self.url)
+        connection = await self.connection_factory(self.url)
         async with connection:
             channel = await connection.channel()
             await channel.set_qos(prefetch_count=self.prefetch_count)

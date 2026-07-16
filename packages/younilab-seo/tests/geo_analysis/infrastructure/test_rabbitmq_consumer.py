@@ -1,16 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-import sys
-import types
 from uuid import uuid4
-
-fake_aio_pika = types.SimpleNamespace(
-    DeliveryMode=types.SimpleNamespace(PERSISTENT=2),
-    ExchangeType=types.SimpleNamespace(DIRECT="direct"),
-    Message=lambda body, **kwargs: types.SimpleNamespace(body=body, **kwargs),
-    connect_robust=None,
-)
-sys.modules["aio_pika"] = fake_aio_pika
 
 from younilab_seo.geo_analysis.application import (
     QueryRunJobMessage,
@@ -85,10 +75,10 @@ def test_rabbitmq_consumer_republishes_unhandled_failure_with_bounded_attempt() 
         async def connect_robust(url: str):
             return connection
 
-        fake_aio_pika.connect_robust = connect_robust
         consumer = RabbitMqQueryRunJobConsumer(
             url="amqp://example",
             queue_name="geo.query-runs.gemini",
+            connection_factory=connect_robust,
         )
 
         async def handler(message: QueryRunJobMessage) -> None:
@@ -138,10 +128,10 @@ def test_rabbitmq_consumer_acks_result_persistence_failure_without_requeue() -> 
         async def connect_robust(url: str):
             return connection
 
-        fake_aio_pika.connect_robust = connect_robust
         consumer = RabbitMqQueryRunJobConsumer(
             url="amqp://example",
             queue_name="geo.query-runs.gemini",
+            connection_factory=connect_robust,
         )
 
         async def handler(message: QueryRunJobMessage) -> None:
