@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
@@ -62,6 +62,20 @@ class FakeRepository:
     async def save(self, job: GeoQueryRunJob) -> None:
         self.job = job
 
+    async def claim_job_for_publish(
+        self,
+        *,
+        job_id: UUID,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob | None:
+        if job_id != self.job.id or self.job.status not in {
+            JobStatus.PENDING,
+            JobStatus.DELAYED,
+        }:
+            return None
+        self.job.mark_publishing(occurred_at)
+        return self.job
+
     async def get_job_dispatch_context(
         self,
         job_id: UUID,
@@ -76,8 +90,9 @@ class FakeRepository:
         result: PublishResult,
         payload: QueryRunJobMessage,
         occurred_at: datetime,
-    ) -> None:
+    ) -> GeoQueryRunJob:
         self.dispatches.append(result)
+        return self.job
 
     async def record_external_callback(
         self,
@@ -129,7 +144,6 @@ def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:
         job_id=job.id,
         tenant_id=TENANT_ID,
         project_id=job.project_id,
-        seo_task_id=uuid4(),
         query_id=job.query_id,
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",
@@ -148,7 +162,6 @@ def make_context(job: GeoQueryRunJob) -> GeoQueryRunJobDispatchContext:
         job_id=job.id,
         tenant_id=TENANT_ID,
         project_id=job.project_id,
-        seo_task_id=uuid4(),
         query_id=job.query_id,
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",
@@ -197,11 +210,10 @@ def test_dispatch_records_successful_publish() -> None:
     asyncio.run(run())
 
 
-def test_dispatch_allows_missing_project_seo_task_id() -> None:
+def test_dispatch_does_not_require_seo_task_id() -> None:
     async def run() -> None:
         job = make_job()
-        context = make_context(job).model_copy(update={"seo_task_id": None})
-        repository = FakeRepository(job, context)
+        repository = FakeRepository(job, make_context(job))
         publisher = FakePublisher(
             PublishResult(
                 backend="fake",
@@ -218,7 +230,6 @@ def test_dispatch_allows_missing_project_seo_task_id() -> None:
 
         assert result.status is JobStatus.PUBLISHED
         assert len(publisher.messages) == 1
-        assert publisher.messages[0].seo_task_id is None
         assert len(repository.dispatches) == 1
         assert repository.job.status is JobStatus.PUBLISHED
 
@@ -268,6 +279,60 @@ def test_dispatch_exception_delays_job_and_records_dispatch() -> None:
         assert repository.dispatches[0].backend == "unknown"
         assert repository.dispatches[0].destination == ""
         assert repository.dispatches[0].status == "failed"
+
+    asyncio.run(run())
+
+
+def test_dispatch_uses_five_then_fifteen_minute_retries_and_stops() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job, make_context(job))
+        publisher = FakePublisher(
+            PublishResult(
+                backend="fake",
+                destination="geo-jobs",
+                status="failed",
+                error_message="broker unavailable",
+            )
+        )
+        clock = FakeClock()
+        dispatcher = DispatchQueryRunJob(repository, publisher, clock)
+
+        await dispatcher.execute(job.id, "https://example.test")
+        assert repository.job.next_retry_at == clock.current + timedelta(minutes=5)
+
+        clock.current = repository.job.next_retry_at
+        await dispatcher.execute(job.id, "https://example.test")
+        assert repository.job.next_retry_at == clock.current + timedelta(minutes=15)
+
+        clock.current = repository.job.next_retry_at
+        await dispatcher.execute(job.id, "https://example.test")
+        assert repository.job.status is JobStatus.FAILED
+        assert repository.job.next_retry_at is None
+        assert len(publisher.messages) == 3
+
+    asyncio.run(run())
+
+
+def test_dispatch_does_not_publish_job_claimed_by_another_scheduler() -> None:
+    async def run() -> None:
+        job = make_job()
+        repository = FakeRepository(job, make_context(job))
+        publisher = FakePublisher(
+            PublishResult(
+                backend="fake",
+                destination="geo-jobs",
+                message_id="message-1",
+                status="published",
+            )
+        )
+        dispatcher = DispatchQueryRunJob(repository, publisher, FakeClock())
+
+        await dispatcher.execute(job.id, "https://example.test")
+        second = await dispatcher.execute(job.id, "https://example.test")
+
+        assert second.status is JobStatus.PUBLISHED
+        assert len(publisher.messages) == 1
 
     asyncio.run(run())
 

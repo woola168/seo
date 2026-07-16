@@ -76,7 +76,12 @@ class RunEngineService:
                     )
                 )
             except ProviderRequestError as exc:
-                logger.warning(
+                log_provider_failure = (
+                    logger.error
+                    if exc.code == "serpapi_api_key_missing"
+                    else logger.warning
+                )
+                log_provider_failure(
                     (
                         "Geo tracking provider request failed: "
                         "runRequestId=%s queryId=%s provider=%s region=%s "
@@ -97,6 +102,11 @@ class RunEngineService:
                         "language": query.language,
                         "error_code": exc.code,
                         "exception_type": exc.__class__.__name__,
+                        "alert_category": (
+                            "provider_configuration_missing"
+                            if exc.code == "serpapi_api_key_missing"
+                            else None
+                        ),
                     },
                 )
                 results.append(
@@ -161,7 +171,6 @@ class RunEngineService:
                 )
         return RunRequestResult(
             id=run_request_id,
-            seo_task_id=command.seo_task_id,
             timing=command.timing,
             results=results,
         )

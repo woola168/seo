@@ -12,6 +12,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoProjectRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
+    GeoAiPlatformRecord,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
     GeoQueryScheduleCommand,
@@ -365,6 +366,9 @@ class ManageGeoSetup:
             return False
         return await self.repository.delete_query(principal.tenant_id, query_id)
 
+    async def list_ai_platforms(self) -> list[GeoAiPlatformRecord]:
+        return await self.repository.list_ai_platforms()
+
     async def list_query_platforms(
         self,
         principal: AuthorizedPrincipal,
@@ -487,22 +491,10 @@ class ManageGeoSetup:
                 raise GeoProjectReferenceError(
                     "customerId is not available in current tenant"
                 )
-        if command.seo_task_id is not None:
-            task = await self.reference_verifier.get_task(
-                access_token=access_token,
-                task_id=command.seo_task_id,
-            )
-            if task is None:
-                raise GeoProjectReferenceError(
-                    "seoTaskId is not available in current tenant"
-                )
-            if command.customer_id is not None and task.customer_id != command.customer_id:
-                raise GeoProjectReferenceError("seoTaskId does not belong to customerId")
 
 
 def _validate_project_reference(command: GeoProjectCommand) -> None:
-    if command.customer_id is None and command.seo_task_id is not None:
-        raise GeoProjectReferenceError("seoTaskId requires customerId")
+    return None
 
 
 def _can_access_project_reference(
@@ -513,4 +505,4 @@ def _can_access_project_reference(
         return True
     if command.customer_id is not None and command.customer_id in principal.customer_ids:
         return True
-    return command.seo_task_id is not None and command.seo_task_id in principal.task_ids
+    return False

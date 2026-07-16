@@ -74,6 +74,21 @@ services:
       - web_network
       - kmindhub
 
+  geo-analysis-scheduler:
+    container_name: geo-analysis-scheduler
+    build:
+      context: ..
+      dockerfile: apps/geo-analysis-scheduler/Dockerfile
+    image: younilab-seo-geo-analysis-scheduler:${DEPLOY_IMAGE_TAG:-latest}
+    restart: always
+    env_file:
+      - ${DEPLOY_ENV_FILE}
+    depends_on:
+      - rabbitmq
+      - geo-analysis-api
+    networks:
+      - web_network
+
   geo-analysis-worker-gemini:
     container_name: geo-analysis-worker-gemini
     build:

@@ -15,6 +15,7 @@ from younilab_seo.geo_analysis.application import (
     CalculateGeoReportMetrics,
     EvidenceTextRepairCommand,
     EvidenceTextRepairResult,
+    GeoAiPlatformRecord,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
@@ -105,6 +106,37 @@ def test_permission_denial_returns_forbidden() -> None:
     assert response.status_code == 403
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["detail"] == "access denied"
+
+
+def test_list_ai_platforms_returns_persisted_status() -> None:
+    store = GeoApiStore()
+    platform_id = uuid4()
+    store.ai_platforms[platform_id] = GeoAiPlatformRecord(
+        id=platform_id,
+        code="google_aio",
+        display_name="Google AIO",
+        provider_type="serpapi",
+        default_model="ai-overview",
+        status="paused",
+    )
+    client = _client(repository=store)
+
+    response = client.get("/api/geo/platforms")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {
+                "id": str(platform_id),
+                "code": "google_aio",
+                "displayName": "Google AIO",
+                "providerType": "serpapi",
+                "defaultModel": "ai-overview",
+                "status": "paused",
+            }
+        ],
+        "total": 1,
+    }
 
 
 def test_project_topic_query_and_job_crud_flow() -> None:
@@ -478,42 +510,22 @@ def test_validation_error_returns_problem_details() -> None:
     assert _invalid_param_names(body) == {"body.name"}
 
 
-def test_project_allows_empty_customer_but_rejects_task_without_customer() -> None:
+def test_project_accepts_and_ignores_deprecated_seo_task_id() -> None:
     client = _client()
 
     response = client.post("/api/geo/projects", json={"name": "Draft GEO"})
 
     assert response.status_code == 201
     assert response.json()["customerId"] is None
-    assert response.json()["seoTaskId"] is None
+    assert "seoTaskId" not in response.json()
 
-    invalid = client.post(
+    compatible = client.post(
         "/api/geo/projects",
-        json={"name": "Broken GEO", "seoTaskId": str(uuid4())},
+        json={"name": "Compatible GEO", "seoTaskId": str(uuid4())},
     )
 
-    assert invalid.status_code == 422
-    assert invalid.headers["content-type"] == "application/problem+json"
-    assert invalid.json()["detail"] == "seoTaskId requires customerId"
-
-
-def test_project_rejects_task_from_different_customer() -> None:
-    client = _client(
-        reference_verifier=FakeReferenceVerifier(fixed_task_customer_id=uuid4())
-    )
-
-    response = client.post(
-        "/api/geo/projects",
-        json={
-            "customerId": str(uuid4()),
-            "seoTaskId": str(uuid4()),
-            "name": "Broken GEO",
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.headers["content-type"] == "application/problem+json"
-    assert response.json()["detail"] == "seoTaskId does not belong to customerId"
+    assert compatible.status_code == 201
+    assert "seoTaskId" not in compatible.json()
 
 
 def test_project_reference_verification_denied_returns_forbidden() -> None:
@@ -577,7 +589,6 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
         "/api/geo/projects",
         json={
             "customerId": str(uuid4()),
-            "seoTaskId": str(uuid4()),
             "name": "Acme GEO",
         },
     )
@@ -615,7 +626,6 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     generation_response = client.post(
         f"/api/geo/projects/{project_id}/query-generation-runs",
         json={
-            "seoTaskId": project_response.json()["seoTaskId"],
             "provider": "gemini",
             "brandName": "Acme",
             "keywords": ["erp"],
@@ -821,7 +831,7 @@ def test_dispatch_publishes_job_message_through_application_use_case() -> None:
     assert message.platform == "gemini"
     assert message.model == "gemini-2.5-flash"
     assert message.query_id == UUID(query_id)
-    assert message.seo_task_id is not None
+    assert not hasattr(message, "seo_task_id")
     assert message.topic_name == ""
     assert message.market_type == "b2b_procurement"
     assert message.is_branded is False
@@ -851,11 +861,35 @@ def test_dispatch_google_aio_job_records_provider_queue_destination() -> None:
     assert store.dispatches[0][1].destination == "geo.query-runs.google_aio"
 
 
-def test_dispatch_without_project_seo_task_id_publishes_job() -> None:
+def test_dispatch_uses_job_snapshot_after_query_is_modified() -> None:
     publisher = FakePublisher()
     client, store, query_id = _client_with_query(publisher=publisher)
-    query = store.queries[UUID(query_id)]
-    store.projects[query.project_id].seo_task_id = None
+    platform_id = uuid4()
+    store.platform_codes[platform_id] = "gemini"
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={"platformId": str(platform_id)},
+    )
+    job_id = UUID(job_response.json()["id"])
+    store.jobs[job_id].execution_snapshot = {
+        "queryText": "建立 job 時的 query",
+        "platform": "gemini",
+        "region": "TW",
+        "language": "zh-TW",
+        "marketType": "b2b_procurement",
+        "isBranded": False,
+    }
+    store.queries[UUID(query_id)].query_text = "建立 job 後修改的 query"
+
+    response = client.post(f"/api/geo/jobs/{job_id}/dispatch")
+
+    assert response.status_code == 200
+    assert publisher.messages[0].query_text == "建立 job 時的 query"
+
+
+def test_dispatch_does_not_require_project_seo_task_id() -> None:
+    publisher = FakePublisher()
+    client, store, query_id = _client_with_query(publisher=publisher)
     platform_id = uuid4()
     store.platform_codes[platform_id] = "gemini"
     job_response = client.post(
@@ -870,7 +904,7 @@ def test_dispatch_without_project_seo_task_id_publishes_job() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "published"
     assert len(publisher.messages) == 1
-    assert publisher.messages[0].seo_task_id is None
+    assert not hasattr(publisher.messages[0], "seo_task_id")
 
 
 def test_create_query_accepts_market_type() -> None:
@@ -1532,7 +1566,6 @@ def _client_with_query(
         "/api/geo/projects",
         json={
             "customerId": str(uuid4()),
-            "seoTaskId": str(uuid4()),
             "name": "Acme GEO",
             "defaultRegion": "US",
             "defaultLanguage": "en-US",
@@ -1578,7 +1611,6 @@ def _create_project(client: TestClient) -> str:
         "/api/geo/projects",
         json={
             "customerId": str(uuid4()),
-            "seoTaskId": str(uuid4()),
             "name": "Acme GEO",
         },
     )
@@ -1866,9 +1898,6 @@ class FakePlanningClient:
             "queries": [
                 {
                     "id": str(uuid4()),
-                    "seoTaskId": str(command.seo_task_id)
-                    if command.seo_task_id is not None
-                    else None,
                     "queryText": "Acme ERP 適合哪些 B2B 採購情境?",
                     "keywords": command.keywords,
                     "topicId": None,

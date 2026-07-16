@@ -81,8 +81,6 @@ def _run_request_payload(message: QueryRunJobMessage) -> dict[str, Any]:
             }
         ],
     }
-    if message.seo_task_id is not None:
-        payload["seoTaskId"] = str(message.seo_task_id)
     return payload
 
 

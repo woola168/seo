@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -39,6 +39,9 @@ class GeoQueryRunJob:
     dedupe_key: str
     created_at: datetime
     updated_at: datetime
+    batch_id: UUID | None = None
+    source: str = "manual"
+    execution_snapshot: dict | None = None
     next_retry_at: datetime | None = None
     dispatch_backend: str | None = None
     dispatch_message_id: str | None = None
@@ -86,6 +89,14 @@ class GeoQueryRunJob:
         )
         self.updated_at = now
 
+    def mark_stale(self, *, error_code: str, now: datetime) -> None:
+        self._require_status(JobStatus.PUBLISHING, JobStatus.RUNNING_EXTERNAL)
+        self.status = JobStatus.FAILED
+        self.last_error_code = error_code
+        self.last_error_message = error_code
+        self.next_retry_at = None
+        self.updated_at = now
+
     def mark_external_status(
         self,
         *,
@@ -122,6 +133,22 @@ class GeoQueryRunJob:
             raise QueryRunJobStatusError(
                 f"expected job status {expected}, got {self.status}"
             )
+
+
+@dataclass(frozen=True)
+class GeoDailyRunBatch:
+    """單一 Project 每日排程展開後的批次結果。"""
+
+    id: UUID
+    project_id: UUID
+    business_date: date
+    scheduled_for: datetime
+    status: str
+    candidate_count: int
+    job_count: int
+    budget_enforced: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 def _external_status_to_job_status(external_status: str) -> JobStatus:

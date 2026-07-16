@@ -1,5 +1,6 @@
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
     GeoAiPlatformRow,
+    GeoDailyRunBatchRow,
     GeoEntityAliasRow,
     GeoEntityRow,
     GeoExternalRunReferenceRow,
@@ -41,6 +42,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository im
 
 __all__ = [
     "GeoAiPlatformRow",
+    "GeoDailyRunBatchRow",
     "GeoEntityAliasRow",
     "GeoEntityRow",
     "GeoExternalRunReferenceRow",

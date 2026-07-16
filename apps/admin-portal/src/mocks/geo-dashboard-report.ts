@@ -9,7 +9,6 @@ import type {
 export const mockGeoDashboardReportProject: GeoProjectResource = {
   id: "11111111-2222-4333-8444-555555555555",
   customerId: "customer-kinsan",
-  seoTaskId: "seo-task-kinsan-content",
   name: "金山旅宿 GEO 報表設計",
   defaultRegion: "TW",
   defaultLanguage: "zh-TW",

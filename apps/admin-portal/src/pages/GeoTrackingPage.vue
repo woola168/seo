@@ -38,7 +38,6 @@ const intentCategoryOptions = [
 ];
 
 const form = reactive({
-  seoTaskId: "11111111-1111-4111-8111-111111111111",
   brandName: "Shan Hua Plastic Industrial Co., Ltd. (SHPI)",
   competitorBrands: "CEJN Industrial Corporation",
   keywords: "pneumatic tubing\nair brake hose",
@@ -94,7 +93,6 @@ onMounted(() => {
 async function loadExample(): Promise<void> {
   await run(async () => {
     const example = await api.geoDummyProject();
-    form.seoTaskId = example.seoTaskId;
     form.brandName = example.brandName;
     form.competitorBrands = example.competitorBrands.join("\n");
     form.keywords = example.keywords.join("\n");
@@ -135,7 +133,6 @@ async function generateQueries(): Promise<void> {
   if (!canSubmit()) return;
   await run(async () => {
     const result = await api.generateGeoQueries({
-      seoTaskId: form.seoTaskId,
       provider: queryGenerationProvider.value,
       brandName: form.brandName,
       competitorBrands: lines(form.competitorBrands),
@@ -176,11 +173,7 @@ async function runSelectedQueries(): Promise<void> {
     return;
   }
   await run(async () => {
-    const result = await api.runGeoQueries(
-      form.seoTaskId,
-      provider.value,
-      selectedQueries.value,
-    );
+    const result = await api.runGeoQueries(provider.value, selectedQueries.value);
     runResults.value = result.results;
   });
 }
@@ -219,10 +212,6 @@ function normalizedTopics(): GeoTopicInput[] {
 
 function canSubmit(): boolean {
   const keywords = lines(form.keywords);
-  if (!form.seoTaskId.trim()) {
-    error.value = "請填寫 SEO 任務 ID。";
-    return false;
-  }
   if (!form.brandName.trim()) {
     error.value = "請填寫品牌名稱。";
     return false;
@@ -423,10 +412,6 @@ async function run(action: () => Promise<void>): Promise<void> {
 
           <fieldset class="geo-fieldset">
             <legend>專案與品牌</legend>
-            <label>
-              <span>SEO 任務 ID</span>
-              <input v-model="form.seoTaskId" type="text" />
-            </label>
             <label>
               <span>自身品牌</span>
               <input v-model="form.brandName" type="text" />

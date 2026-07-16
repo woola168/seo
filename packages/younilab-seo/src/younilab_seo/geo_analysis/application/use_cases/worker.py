@@ -4,7 +4,6 @@ from typing import Protocol
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
-    ExternalRunCallback,
     QueryRunJobMessage,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
@@ -28,6 +27,10 @@ class RunResultPipelineStep(Protocol):
 
 class QueryRunJobMessageRejected(ValueError):
     """已消費 message 無法套用且不應重試時使用的錯誤。"""
+
+
+class QueryRunJobResultPersistenceFailed(RuntimeError):
+    """Provider 執行後的結果無法保存，consumer 必須停止後續處理。"""
 
 
 @dataclass(frozen=True)
@@ -84,19 +87,16 @@ class ProcessQueryRunJobMessage:
                 ),
             )
         request_payload = self.tracking_client.build_request_payload(message)
-        try:
-            await self.repository.apply_external_callback(
-                callback=ExternalRunCallback(
-                    job_id=message.job_id,
-                    external_run_id=worker_run_id,
-                    status="running",
-                ),
-                occurred_at=self.clock.now(),
-            )
-        except QueryRunJobStatusError as exc:
+        claimed = await self.repository.claim_job_for_execution(
+            job_id=message.job_id,
+            tenant_id=message.tenant_id,
+            external_run_id=worker_run_id,
+            occurred_at=self.clock.now(),
+        )
+        if not claimed:
             raise QueryRunJobMessageRejected(
-                f"job {message.job_id} rejected message: {exc}"
-            ) from exc
+                f"job {message.job_id} was already claimed or is not dispatchable"
+            )
         try:
             response = await self.tracking_client.run(message)
         except Exception as exc:
@@ -108,6 +108,7 @@ class ProcessQueryRunJobMessage:
                     error_message=str(exc),
                     request_payload=request_payload,
                 ),
+                provider_started=True,
             )
         return await self._save_response(message, response, request_payload)
 
@@ -144,7 +145,7 @@ class ProcessQueryRunJobMessage:
                 error_message=error_message,
                 request_payload=request_payload,
             ),
-            reject_unexpected_errors=True,
+            provider_started=True,
         )
         if (
             status == "succeeded"
@@ -192,9 +193,9 @@ class ProcessQueryRunJobMessage:
         self,
         command: SaveTrackingRunResultCommand,
         *,
-        reject_unexpected_errors: bool = False,
+        provider_started: bool = False,
     ) -> GeoQueryRunJob:
-        """保存 worker 結果，若 job 狀態已不接受回寫則轉為 poison message rejection。"""
+        """保存 worker 結果，並依 provider 是否已執行決定失敗語意。"""
 
         try:
             return await self.repository.save_tracking_run_result(
@@ -202,36 +203,48 @@ class ProcessQueryRunJobMessage:
                 occurred_at=self.clock.now(),
             )
         except QueryRunJobStatusError as exc:
+            if provider_started:
+                self._log_result_persistence_failure(command, exc)
+                raise QueryRunJobResultPersistenceFailed(
+                    f"job {command.message.job_id} result could not be persisted"
+                ) from exc
             raise QueryRunJobMessageRejected(
                 f"job {command.message.job_id} rejected message: {exc}"
             ) from exc
         except Exception as exc:
-            if not reject_unexpected_errors:
+            if not provider_started:
                 raise
-            logger.exception(
+            self._log_result_persistence_failure(command, exc)
+            raise QueryRunJobResultPersistenceFailed(
                 (
-                    "GEO tracking result persistence failed after provider response: "
-                    "jobId=%s tenantId=%s provider=%s status=%s errorCode=%s "
-                    "exceptionType=%s"
-                ),
-                command.message.job_id,
-                command.message.tenant_id,
-                command.message.platform,
-                command.status,
-                command.error_code,
-                exc.__class__.__name__,
-                extra={
-                    "job_id": str(command.message.job_id),
-                    "tenant_id": str(command.message.tenant_id),
-                    "provider": command.message.platform,
-                    "status": command.status,
-                    "error_code": command.error_code,
-                    "exception_type": exc.__class__.__name__,
-                },
-            )
-            raise QueryRunJobMessageRejected(
-                (
-                    f"job {command.message.job_id} rejected message: "
+                    f"job {command.message.job_id} stopped after provider execution: "
                     f"tracking result persistence failed: {exc.__class__.__name__}"
                 )
             ) from exc
+
+    @staticmethod
+    def _log_result_persistence_failure(
+        command: SaveTrackingRunResultCommand,
+        error: Exception,
+    ) -> None:
+        logger.exception(
+            (
+                "GEO tracking result persistence failed after provider execution: "
+                "jobId=%s tenantId=%s provider=%s status=%s errorCode=%s "
+                "exceptionType=%s"
+            ),
+            command.message.job_id,
+            command.message.tenant_id,
+            command.message.platform,
+            command.status,
+            command.error_code,
+            error.__class__.__name__,
+            extra={
+                "job_id": str(command.message.job_id),
+                "tenant_id": str(command.message.tenant_id),
+                "provider": command.message.platform,
+                "status": command.status,
+                "error_code": command.error_code,
+                "exception_type": error.__class__.__name__,
+            },
+        )

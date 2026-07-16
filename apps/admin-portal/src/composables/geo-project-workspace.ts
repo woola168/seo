@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import {
   createGeoMockState,
-  geoPlatformCatalog,
+  geoPlatformCatalog as mockGeoPlatformCatalog,
 } from "../mocks/geo-analysis";
 import { api } from "../services/api";
 import type {
@@ -10,12 +10,13 @@ import type {
   GeoEntityAliasResource,
   GeoEntityResource,
   GeoJobResource,
+  GeoPlatform,
+  GeoPlatformResource,
   GeoProject,
   GeoProjectRequest,
   GeoProjectResource,
   GeoQueryPlatformResource,
   GeoQueryResource,
-  GeoScheduleResource,
   GeoTopicResource,
   TaskSummary,
 } from "../types";
@@ -39,20 +40,13 @@ function customerName(customers: CustomerSummary[], customerId: string | null): 
   return customers.find((customer) => customer.id === customerId)?.name ?? `Customer ${shortId(customerId)}`;
 }
 
-function taskName(tasks: TaskSummary[], taskId: string | null): string | null {
-  if (!taskId) return null;
-  return tasks.find((task) => task.id === taskId)?.name ?? `Task ${shortId(taskId)}`;
-}
-
 function enrichProject(
   project: GeoProjectResource,
   customers: CustomerSummary[],
-  tasks: TaskSummary[],
 ): GeoProject {
   return {
     ...project,
     customerName: customerName(customers, project.customerId),
-    seoTaskName: taskName(tasks, project.seoTaskId),
   };
 }
 
@@ -89,8 +83,8 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
   const aliases = ref<GeoEntityAliasResource[]>([]);
   const topics = ref<GeoTopicResource[]>([]);
   const queries = ref<GeoQueryResource[]>([]);
+  const platforms = ref<GeoPlatform[]>([]);
   const queryPlatforms = ref<GeoQueryPlatformResource[]>([]);
-  const schedules = ref<GeoScheduleResource[]>([]);
   const jobs = ref<GeoJobResource[]>([]);
   let projectDetailsRequestId = 0;
 
@@ -140,7 +134,7 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
       const response = await api.geoAnalysis.projects();
       usingMockData.value = false;
       projects.value = response.items.map((project) =>
-        enrichProject(project, customers.value, tasks.value),
+        enrichProject(project, customers.value),
       );
       const nextProjectId = resolveStoredGeoProjectId(projects.value);
       if (!projects.value.length) {
@@ -203,26 +197,27 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
         queries.value = settledItems(queryResult, "Queries", failures);
         setPartialLoadError(failures);
       } else if (profile === "platforms-schedules") {
-        const [queryResult, platformResult, scheduleResult] = await Promise.allSettled([
+        const [queryResult, platformResult] = await Promise.allSettled([
           api.geoAnalysis.queries(projectId),
-          api.geoAnalysis.projectQueryPlatforms(projectId),
-          api.geoAnalysis.projectSchedules(projectId),
+          api.geoAnalysis.platforms(),
         ]);
         if (!isCurrentProjectRequest(requestId, projectId)) return;
         const failures: string[] = [];
         queries.value = settledItems(queryResult, "Queries", failures);
-        queryPlatforms.value = settledItems(platformResult, "Query Platforms", failures);
-        schedules.value = settledItems(scheduleResult, "Schedules", failures);
+        platforms.value = platformItems(platformResult, failures);
+        queryPlatforms.value = [];
         setPartialLoadError(failures);
       } else if (profile === "run-jobs") {
-        const [queryResult, jobResult] = await Promise.allSettled([
+        const [queryResult, jobResult, platformResult] = await Promise.allSettled([
           api.geoAnalysis.queries(projectId),
           api.geoAnalysis.jobs(projectId),
+          api.geoAnalysis.platforms(),
         ]);
         if (!isCurrentProjectRequest(requestId, projectId)) return;
         const failures: string[] = [];
         queries.value = settledItems(queryResult, "Queries", failures);
         jobs.value = settledItems(jobResult, "Jobs", failures);
+        platforms.value = platformItems(platformResult, failures);
         setPartialLoadError(failures);
       }
     } catch (error) {
@@ -251,6 +246,18 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
     return [];
   }
 
+  function platformItems(
+    result: PromiseSettledResult<CollectionResponse<GeoPlatformResource>>,
+    failures: string[],
+  ): GeoPlatform[] {
+    return settledItems(result, "Platforms", failures).map((platform) => ({
+      id: platform.id,
+      name: platform.displayName,
+      model: platform.defaultModel ?? "-",
+      status: platform.status,
+    }));
+  }
+
   function setPartialLoadError(failures: string[]): void {
     errorMessage.value = failures.length
       ? `部分資料載入失敗：${failures.join("、")}。請稍後重新整理。`
@@ -262,8 +269,8 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
     aliases.value = [];
     topics.value = [];
     queries.value = [];
+    platforms.value = [];
     queryPlatforms.value = [];
-    schedules.value = [];
     jobs.value = [];
   }
 
@@ -287,11 +294,11 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
       queries.value = mockQueries;
     } else if (profile === "platforms-schedules") {
       queries.value = mockQueries;
-      schedules.value = (fallback.schedules as GeoScheduleResource[]).filter((schedule) =>
-        mockQueries.some((query) => query.id === schedule.queryId),
-      );
+      platforms.value = [...mockGeoPlatformCatalog];
+      queryPlatforms.value = [];
     } else if (profile === "run-jobs") {
       queries.value = mockQueries;
+      platforms.value = [...mockGeoPlatformCatalog];
       jobs.value = fallback.jobs
         .filter((job) => job.projectId === projectId)
         .map((job) => ({
@@ -319,7 +326,7 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
     await runAction(async () => {
       if (usingMockData.value) throw new Error("目前使用示意資料，未呼叫 API。");
       const project = await api.geoAnalysis.createProject(input);
-      projects.value.unshift(enrichProject(project, customers.value, tasks.value));
+      projects.value.unshift(enrichProject(project, customers.value));
       setStoredGeoProjectId(project.id);
       selectedProjectId.value = project.id;
       setMessage("已建立 GEO project。");
@@ -359,7 +366,6 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
     queryPlatforms,
     refreshProjectDetails,
     runAction,
-    schedules,
     selectedProject,
     selectedProjectId,
     selectedProjectJobs,
@@ -369,6 +375,6 @@ export function useGeoProjectWorkspace(profile: GeoWorkspaceProfile) {
     topics,
     usingMockData,
     createProject,
-    geoPlatformCatalog,
+    platforms,
   };
 }

@@ -30,7 +30,10 @@ class DispatchQueryRunJob:
     repository: GeoQueryRunJobRepository
     publisher: MessagePublisher
     clock: Clock
-    retry_delay: timedelta = timedelta(minutes=5)
+    retry_delays: tuple[timedelta, ...] = (
+        timedelta(minutes=5),
+        timedelta(minutes=15),
+    )
 
     async def execute(
         self,
@@ -46,15 +49,19 @@ class DispatchQueryRunJob:
             )
             if project is None or not can_access_project(principal, project):
                 raise KeyError(job_id)
-        job = await self.repository.get(job_id)
         context = await self.repository.get_job_dispatch_context(job_id)
         if context is None:
             raise KeyError(job_id)
+        job = await self.repository.claim_job_for_publish(
+            job_id=job_id,
+            occurred_at=now,
+        )
+        if job is None:
+            return await self.repository.get(job_id)
         message = QueryRunJobMessage(
             job_id=context.job_id,
             tenant_id=context.tenant_id,
             project_id=context.project_id,
-            seo_task_id=context.seo_task_id,
             query_id=context.query_id,
             query_text=context.query_text,
             topic_name=context.topic_name,
@@ -67,9 +74,6 @@ class DispatchQueryRunJob:
             scheduled_for=context.scheduled_for,
             callback_url=_callback_url(callback_base_url, job_id),
         )
-        job.mark_publishing(now)
-        await self.repository.save(job)
-
         try:
             result = await self.publisher.publish(message)
         except Exception as exc:
@@ -87,20 +91,25 @@ class DispatchQueryRunJob:
                 now=now,
             )
         else:
+            retry_index = job.attempt_count - 1
+            next_retry_at = (
+                now + self.retry_delays[retry_index]
+                if retry_index < len(self.retry_delays)
+                else None
+            )
             job.mark_publish_failed(
                 error_code="publish_failed",
                 error_message=result.error_message or "message publish failed",
-                next_retry_at=now + self.retry_delay,
+                next_retry_at=next_retry_at,
                 now=now,
             )
-        await self.repository.save(job)
-        await self.repository.record_dispatch(
+        persisted = await self.repository.record_dispatch(
             job_id=job_id,
             result=result,
             payload=message,
             occurred_at=now,
         )
-        return job
+        return persisted
 
 
 @dataclass(frozen=True)

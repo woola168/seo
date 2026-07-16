@@ -29,6 +29,7 @@
   GeoOverviewReport,
   GeoOverviewResponsePage,
   GeoOverviewResponseQuery,
+  GeoPlatformResource,
   GeoProvider,
   GeoProjectInspectionRequest,
   GeoProjectInspectionResult,
@@ -46,8 +47,6 @@
   GeoRegion,
   GeoRunRequestResult,
   GeoRunResultSemanticAnalysis,
-  GeoScheduleRequest,
-  GeoScheduleResource,
   GeoTopicRequest,
   GeoTopicResource,
   GeoTopicInput,
@@ -268,6 +267,8 @@ export const api = {
       body: JSON.stringify({ userId, permission, resource }),
     }),
   geoAnalysis: {
+    platforms: () =>
+      request<CollectionResponse<GeoPlatformResource>>("/api/geo/platforms"),
     projects: (customerId = "") =>
       request<CollectionResponse<GeoProjectResource>>(
         `/api/geo/projects${customerId ? `?customerId=${customerId}` : ""}`,
@@ -396,26 +397,6 @@ export const api = {
           body: JSON.stringify(input),
         },
       ),
-    schedules: (queryId: string) =>
-      request<CollectionResponse<GeoScheduleResource>>(
-        `/api/geo/queries/${queryId}/schedules`,
-      ),
-    projectSchedules: (projectId: string) =>
-      request<CollectionResponse<GeoScheduleResource>>(
-        `/api/geo/projects/${projectId}/schedules`,
-      ),
-    createSchedule: (queryId: string, input: GeoScheduleRequest) =>
-      request<GeoScheduleResource>(`/api/geo/queries/${queryId}/schedules`, {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-    updateSchedule: (scheduleId: string, input: GeoScheduleRequest) =>
-      request<GeoScheduleResource>(`/api/geo/schedules/${scheduleId}`, {
-        method: "PATCH",
-        body: JSON.stringify(input),
-      }),
-    deleteSchedule: (scheduleId: string) =>
-      request<void>(`/api/geo/schedules/${scheduleId}`, { method: "DELETE" }),
     createJob: (queryId: string, input: GeoJobRequest) =>
       request<GeoJobResource>(`/api/geo/queries/${queryId}/jobs`, {
         method: "POST",
@@ -499,7 +480,6 @@ export const api = {
       body: JSON.stringify(input),
     }),
   generateGeoQueries: (input: {
-    seoTaskId?: string | null;
     provider: GeoQueryProvider;
     brandName: string;
     competitorBrands: string[];
@@ -522,15 +502,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  runGeoQueries: (
-    seoTaskId: string | null,
-    provider: GeoProvider,
-    queries: GeoGeneratedQuery[],
-  ) =>
+  runGeoQueries: (provider: GeoProvider, queries: GeoGeneratedQuery[]) =>
     request<GeoRunRequestResult>("/api/v1/geo-tracking/run-requests", {
       method: "POST",
       body: JSON.stringify({
-        ...(seoTaskId ? { seoTaskId } : {}),
         provider,
         timing: "run_now",
         queries: queries.map((query) => ({

@@ -7,6 +7,7 @@ from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
+    GeoAiPlatformRecord,
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
@@ -66,6 +67,7 @@ class GeoApiStore:
     aliases: dict[UUID, GeoEntityAliasRecord] = field(default_factory=dict)
     topics: dict[UUID, GeoTopicRecord] = field(default_factory=dict)
     queries: dict[UUID, GeoQueryRecord] = field(default_factory=dict)
+    ai_platforms: dict[UUID, GeoAiPlatformRecord] = field(default_factory=dict)
     query_platforms: dict[UUID, GeoQueryPlatformRecord] = field(default_factory=dict)
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
@@ -590,6 +592,12 @@ class GeoApiStore:
             return False
         return self.queries.pop(query_id, None) is not None
 
+    async def list_ai_platforms(self) -> list[GeoAiPlatformRecord]:
+        return sorted(
+            self.ai_platforms.values(),
+            key=lambda platform: platform.display_name,
+        )
+
     async def list_query_platforms(
         self,
         tenant_id: UUID,
@@ -781,25 +789,44 @@ class GeoApiStore:
         if query.topic_id is not None:
             topic = self.topics.get(query.topic_id)
             topic_name = topic.name if topic is not None else ""
+        snapshot = job.execution_snapshot or {}
         return GeoQueryRunJobDispatchContext(
             job_id=job.id,
             tenant_id=project.tenant_id,
             project_id=job.project_id,
-            seo_task_id=project.seo_task_id,
             query_id=job.query_id,
-            query_text=query.query_text,
-            topic_name=topic_name,
-            platform=self.platform_codes.get(job.platform_id, str(job.platform_id)),
-            model=self.platform_models.get(job.platform_id),
-            region=query.region,
-            language=query.language,
-            market_type=query.market_type,
-            is_branded=query.is_branded,
+            query_text=snapshot.get("queryText", query.query_text),
+            topic_name=snapshot.get("topicName", topic_name),
+            platform=snapshot.get(
+                "platform",
+                self.platform_codes.get(job.platform_id, str(job.platform_id)),
+            ),
+            model=snapshot.get("model", self.platform_models.get(job.platform_id)),
+            region=snapshot.get("region", query.region),
+            language=snapshot.get("language", query.language),
+            market_type=snapshot.get("marketType", query.market_type),
+            is_branded=snapshot.get("isBranded", query.is_branded),
             scheduled_for=job.scheduled_for,
         )
 
     async def save(self, job: GeoQueryRunJob) -> None:
         self.jobs[job.id] = job
+
+    async def claim_job_for_publish(
+        self,
+        *,
+        job_id: UUID,
+        occurred_at: datetime,
+    ) -> GeoQueryRunJob | None:
+        job = self.jobs.get(job_id)
+        if job is None or job.status not in {JobStatus.PENDING, JobStatus.DELAYED}:
+            return None
+        if job.status is JobStatus.DELAYED and (
+            job.next_retry_at is None or job.next_retry_at > occurred_at
+        ):
+            return None
+        job.mark_publishing(occurred_at)
+        return job
 
     async def record_dispatch(
         self,
@@ -808,8 +835,9 @@ class GeoApiStore:
         result: PublishResult,
         payload: QueryRunJobMessage,
         occurred_at: datetime,
-    ) -> None:
+    ) -> GeoQueryRunJob:
         self.dispatches.append((job_id, result, payload, occurred_at))
+        return self.jobs[job_id]
 
     async def record_external_callback(
         self,
@@ -837,6 +865,32 @@ class GeoApiStore:
         )
         await self.record_external_callback(callback=callback, occurred_at=occurred_at)
         return job
+
+    async def claim_job_for_execution(
+        self,
+        *,
+        job_id: UUID,
+        tenant_id: UUID,
+        external_run_id: str,
+        occurred_at: datetime,
+    ) -> bool:
+        job = self.jobs.get(job_id)
+        project = self.projects.get(job.project_id) if job is not None else None
+        if (
+            job is None
+            or project is None
+            or project.tenant_id != tenant_id
+            or job.status not in {JobStatus.PUBLISHING, JobStatus.PUBLISHED}
+        ):
+            return False
+        job.mark_external_status(
+            external_run_id=external_run_id,
+            external_status="running",
+            error_code=None,
+            error_message=None,
+            now=occurred_at,
+        )
+        return True
 
     async def save_tracking_run_result(
         self,

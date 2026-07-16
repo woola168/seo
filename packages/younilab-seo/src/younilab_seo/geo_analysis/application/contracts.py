@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -27,7 +27,6 @@ class QueryRunJobMessage(ContractModel):
     job_id: UUID
     tenant_id: UUID
     project_id: UUID
-    seo_task_id: UUID | None = None
     query_id: UUID
     query_text: str
     topic_name: str
@@ -47,7 +46,6 @@ class GeoQueryRunJobDispatchContext(ContractModel):
     job_id: UUID
     tenant_id: UUID
     project_id: UUID
-    seo_task_id: UUID | None
     query_id: UUID
     query_text: str
     topic_name: str
@@ -99,7 +97,6 @@ class TrackingRunResponse(ContractModel):
     """geo-tracking /run-requests 的完整 response。"""
 
     id: str
-    seo_task_id: UUID | None = None
     timing: str
     results: list[TrackingRunResultItem] = Field(default_factory=list)
 
@@ -833,7 +830,6 @@ class GeoRunRequestRecord(ContractModel):
     id: UUID
     job_id: UUID
     tracking_run_request_id: str
-    seo_task_id: UUID | None = None
     provider: str
     timing: str
     status: str
@@ -895,7 +891,6 @@ class GeoProjectCommand(ContractModel):
 
     tenant_id: UUID
     customer_id: UUID | None = None
-    seo_task_id: UUID | None = None
     name: str
     default_region: str = "TW"
     default_language: str = "zh-TW"
@@ -1057,7 +1052,6 @@ class QueryResearchRunRecord(ContractModel):
 
 
 class QueryGenerationCommand(ContractModel):
-    seo_task_id: UUID | None = None
     provider: str = "dummy"
     brand_name: str
     competitor_brands: list[str] = Field(default_factory=list)
@@ -1133,6 +1127,17 @@ class GeoQueryPlatformRecord(GeoQueryPlatformCommand):
     updated_at: datetime
 
 
+class GeoAiPlatformRecord(ContractModel):
+    """可供排程與管理介面判斷是否啟用的 GEO AI Platform。"""
+
+    id: UUID
+    code: str
+    display_name: str
+    provider_type: str
+    default_model: str | None = None
+    status: str
+
+
 class GeoQueryScheduleCommand(ContractModel):
     """建立或更新 query/platform schedule 的 application input。"""
 
@@ -1161,3 +1166,25 @@ class CreateQueryRunJobCommand(ContractModel):
     scheduled_for: datetime | None = None
     priority: str = "normal"
     job_type: str = "manual_run"
+
+
+class DailyRunMaterializationResult(ContractModel):
+    """單一營業日排程工作經冪等展開後的結果。"""
+
+    business_date: date
+    scheduled_for: datetime
+    batch_count: int
+    job_count: int
+    budget_enforced: bool = False
+
+
+class DailySchedulerTickResult(ContractModel):
+    """Scheduler 完成一次輪詢後的可觀測結果。"""
+
+    due: bool
+    business_date: date
+    materialized_batches: int = 0
+    materialized_jobs: int = 0
+    dispatched_jobs: int = 0
+    reconciled_jobs: int = 0
+    budget_enforced: bool = False

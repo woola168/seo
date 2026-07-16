@@ -24,6 +24,8 @@ services:
       - resource-catalog-postgresql-data:/var/lib/postgresql
       - ./postgresql/001_resource_catalog_schema.sql:/docker-entrypoint-initdb.d/001_resource_catalog_schema.sql:ro
       - ./postgresql/004_geo_analysis_schema.sql:/docker-entrypoint-initdb.d/004_geo_analysis_schema.sql:ro
+      - ./postgresql/015_geo_analysis_daily_scheduler.sql:/docker-entrypoint-initdb.d/015_geo_analysis_daily_scheduler.sql:ro
+      - ./postgresql/016_geo_analysis_remove_seo_task_contract.sql:/docker-entrypoint-initdb.d/016_geo_analysis_remove_seo_task_contract.sql:ro
 
 volumes:
   access-control-postgresql-data:

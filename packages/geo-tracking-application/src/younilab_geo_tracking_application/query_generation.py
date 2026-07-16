@@ -52,7 +52,6 @@ class QueryGenerationService:
             queries.append(
                 GeneratedQuery(
                     id=self._id_generator.new_id(),
-                    seo_task_id=command.seo_task_id,
                     text=draft.query,
                     keywords=_draft_keywords(draft, command.keywords),
                     topic_id=topic.id,

@@ -26,6 +26,26 @@ describe("api.geoAnalysis.dashboardReport", () => {
     });
   });
 
+  it("loads the persisted GEO Platform catalog", async () => {
+    let requestedPath = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        requestedPath = String(path);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0 }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+
+    await api.geoAnalysis.platforms();
+
+    expect(requestedPath).toBe("/api/geo/platforms");
+  });
+
   it("posts Project inspection inputs without market research settings", async () => {
     let requestedPath = "";
     let requestedBody = "";
@@ -243,13 +263,11 @@ describe("api.geoAnalysis.dashboardReport", () => {
     await Promise.all([
       api.geoAnalysis.projectAliases("project-1"),
       api.geoAnalysis.projectQueryPlatforms("project-1"),
-      api.geoAnalysis.projectSchedules("project-1"),
     ]);
 
     expect(requestedPaths).toEqual([
       "/api/geo/projects/project-1/entity-aliases",
       "/api/geo/projects/project-1/query-platforms",
-      "/api/geo/projects/project-1/schedules",
     ]);
   });
 

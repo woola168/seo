@@ -61,13 +61,29 @@ GEO_ANALYSIS_ACCESS_CONTROL_URL=http://access-control-api:8000
 GEO_ANALYSIS_RESOURCE_CATALOG_URL=http://resource-catalog-api:8001
 ```
 
-GEO Analysis API 會透過 Access Control `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。`customer_id` / `seo_task_id` 仍是 reference-only 欄位，但建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同一個 tenant。
+GEO Analysis API 會透過 Access Control `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。`customer_id` 是 reference-only 欄位，建立或更新 Project 時會透過 Resource Catalog 驗證 reference 屬於同一個 tenant。過渡期間仍接受舊版 request 的 `seoTaskId`，但會忽略該值，Scheduler 與 Worker 都不再使用它。
 
 Queue 依 provider 拆分：
 
 - `geo.query-runs.gemini`
 - `geo.query-runs.openai`
 - `geo.query-runs.perplexity`
+
+## GEO Analysis Scheduler
+
+`geo-analysis-scheduler` 是單一 instance 的常駐服務，每 60 秒檢查一次，並在每日 `03:00 Asia/Taipei` 依 active Project × active Query × active Platform 建立當日 job snapshot。任何非 active Platform 都不參與排程；既有 query-platform assignment 不影響 daily scheduler。它不回補歷史日期，正確性由 daily batch 與 scheduled job 的資料庫唯一索引保證。
+
+```env
+GEO_SCHEDULER_TIMEZONE=Asia/Taipei
+GEO_SCHEDULER_DAILY_TIME=03:00
+GEO_SCHEDULER_POLL_SECONDS=60
+```
+
+部署前需執行 expand migration `deploy/local/postgresql/015_geo_analysis_daily_scheduler.sql`。它會先嘗試由既有 SEO Task 補齊 Project 的 `customer_id`；仍無法補齊時會中止，且不會刪除 `seo_task_id`。確認所有舊版 API 與 worker replicas 下線後，才手動執行 contract migration `016_geo_analysis_remove_seo_task_contract.sql`。
+
+Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。
+
+Provider 已執行但結果保存失敗時，Worker 只記錄 structured exception 並 ack message；Job 後續由 reconciliation 標記為 `execution_outcome_unknown`，不會重新呼叫 Provider 或送入 DLQ。DLQ 僅保留給 Provider 尚未開始前且超過 delivery 次數的 message。
 
 ## GEO Analysis Worker
 

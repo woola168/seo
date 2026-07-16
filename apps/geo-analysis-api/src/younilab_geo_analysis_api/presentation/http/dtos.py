@@ -25,7 +25,11 @@ class ProjectRequest(ApiModel):
     )
 
     customer_id: UUID | None = None
-    seo_task_id: UUID | None = None
+    seo_task_id: UUID | None = Field(
+        default=None,
+        deprecated=True,
+        exclude=True,
+    )
     name: str = Field(min_length=1, max_length=200)
     default_region: str = Field(default="TW", min_length=1, max_length=16)
     default_language: str = Field(default="zh-TW", min_length=1, max_length=16)
@@ -222,7 +226,6 @@ class QueryResearchRunResponse(ApiModel):
 
 
 class QueryGenerationRunRequest(ApiModel):
-    seo_task_id: UUID | None = None
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
     competitor_brands: list[str] = Field(default_factory=list)
@@ -298,6 +301,17 @@ class QueryPlatformRequest(ApiModel):
     status: str = Field(default="active", max_length=32)
 
 
+class AiPlatformResponse(ApiModel):
+    """每日排程候選所使用的 GEO AI Platform 狀態。"""
+
+    id: UUID
+    code: str
+    display_name: str
+    provider_type: str
+    default_model: str | None
+    status: str
+
+
 class QueryPlatformResponse(QueryPlatformRequest):
     """回傳給 setup UI 的 platform assignment。"""
 
@@ -308,7 +322,7 @@ class QueryPlatformResponse(QueryPlatformRequest):
 
 
 class ScheduleRequest(ApiModel):
-    """單一 query/platform pair 的週期性派送排程。"""
+    """舊版 Portal 使用的 query/platform schedule 相容 request。"""
 
     platform_id: UUID
     frequency: str = Field(min_length=1, max_length=32)
@@ -319,7 +333,7 @@ class ScheduleRequest(ApiModel):
 
 
 class ScheduleResponse(ScheduleRequest):
-    """用來建立未來 query run job 的 schedule resource。"""
+    """舊版 Portal 使用的 schedule 相容 resource。"""
 
     id: UUID
     query_id: UUID
@@ -344,7 +358,9 @@ class JobResponse(ApiModel):
     project_id: UUID
     query_id: UUID
     platform_id: UUID
+    batch_id: UUID | None
     schedule_id: UUID | None
+    source: str
     job_type: str
     priority: str
     scheduled_for: datetime

@@ -20,7 +20,6 @@ def test_tracking_client_posts_run_request_payload() -> None:
                 200,
                 json={
                     "id": "tracking-run-1",
-                    "seoTaskId": str(_SEO_TASK_ID),
                     "timing": "run_now",
                     "results": [_result_payload(status="completed")],
                 },
@@ -38,7 +37,7 @@ def test_tracking_client_posts_run_request_payload() -> None:
         assert captured["path"] == "/api/v1/geo-tracking/run-requests"
         payload = captured["payload"]
         assert payload == built_payload
-        assert payload["seoTaskId"] == str(_SEO_TASK_ID)
+        assert "seoTaskId" not in payload
         assert payload["provider"] == "gemini"
         assert payload["timing"] == "run_now"
         assert payload["queries"][0]["topicName"] == "Supplier evaluation"
@@ -62,7 +61,6 @@ def test_tracking_client_maps_failed_result() -> None:
                 200,
                 json={
                     "id": "tracking-run-1",
-                    "seoTaskId": str(_SEO_TASK_ID),
                     "timing": "run_now",
                     "results": [_result_payload(status="failed", error="timeout")],
                 },
@@ -85,11 +83,9 @@ def test_tracking_client_maps_failed_result() -> None:
     asyncio.run(run())
 
 
-def test_tracking_client_omits_missing_seo_task_id() -> None:
-    message = _message(seo_task_id=None)
-
+def test_tracking_client_does_not_send_seo_task_id() -> None:
     client = HttpTrackingRunClient("https://tracking.test")
-    payload = client.build_request_payload(message)
+    payload = client.build_request_payload(_message())
 
     assert "seoTaskId" not in payload
     assert payload["queries"][0]["id"] == str(_QUERY_ID)
@@ -98,20 +94,14 @@ def test_tracking_client_omits_missing_seo_task_id() -> None:
 _JOB_ID = uuid4()
 _TENANT_ID = uuid4()
 _PROJECT_ID = uuid4()
-_SEO_TASK_ID = uuid4()
 _QUERY_ID = uuid4()
-_DEFAULT_SEO_TASK_ID = object()
 
 
-def _message(*, seo_task_id=_DEFAULT_SEO_TASK_ID) -> QueryRunJobMessage:
-    normalized_seo_task_id = (
-        _SEO_TASK_ID if seo_task_id is _DEFAULT_SEO_TASK_ID else seo_task_id
-    )
+def _message() -> QueryRunJobMessage:
     return QueryRunJobMessage(
         job_id=_JOB_ID,
         tenant_id=_TENANT_ID,
         project_id=_PROJECT_ID,
-        seo_task_id=normalized_seo_task_id,
         query_id=_QUERY_ID,
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",

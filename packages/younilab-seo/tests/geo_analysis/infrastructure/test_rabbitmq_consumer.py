@@ -15,6 +15,7 @@ sys.modules["aio_pika"] = fake_aio_pika
 from younilab_seo.geo_analysis.application import (
     QueryRunJobMessage,
     QueryRunJobMessageRejected,
+    QueryRunJobResultPersistenceFailed,
 )
 from younilab_seo.geo_analysis.infrastructure.messaging import RabbitMqQueryRunJobConsumer
 
@@ -76,7 +77,7 @@ def test_rabbitmq_consumer_drops_non_retryable_handler_failure() -> None:
     asyncio.run(run())
 
 
-def test_rabbitmq_consumer_requeues_unhandled_processing_failure() -> None:
+def test_rabbitmq_consumer_republishes_unhandled_failure_with_bounded_attempt() -> None:
     async def run() -> None:
         incoming = FakeIncoming(_message_body())
         connection = FakeConnection(incoming)
@@ -93,14 +94,64 @@ def test_rabbitmq_consumer_requeues_unhandled_processing_failure() -> None:
         async def handler(message: QueryRunJobMessage) -> None:
             raise RuntimeError("database unavailable")
 
-        try:
-            await consumer.run(handler)
-        except RuntimeError:
-            pass
-        else:
-            raise AssertionError("expected processing failure to leave consumer run")
+        await consumer.run(handler)
 
-        assert incoming.process_context.requeue is True
+        assert incoming.acked is True
+        assert connection.channel_instance.default_exchange.messages[0][1] == (
+            "geo.query-runs.gemini"
+        )
+        retried = connection.channel_instance.default_exchange.messages[0][0]
+        assert retried.headers["x-delivery-attempt"] == 2
+
+    asyncio.run(run())
+
+
+def test_rabbitmq_consumer_dead_letters_third_failed_delivery() -> None:
+    async def run() -> None:
+        incoming = FakeIncoming(_message_body())
+        incoming.headers = {"x-delivery-attempt": 3}
+        channel = FakeChannel(incoming)
+        consumer = RabbitMqQueryRunJobConsumer(
+            url="amqp://example",
+            queue_name="geo.query-runs.gemini",
+        )
+
+        await consumer._retry_or_dead_letter(
+            incoming,
+            channel,
+            "geo.query-runs.gemini.dlq",
+        )
+
+        assert incoming.acked is True
+        assert channel.default_exchange.messages[0][1] == (
+            "geo.query-runs.gemini.dlq"
+        )
+
+    asyncio.run(run())
+
+
+def test_rabbitmq_consumer_acks_result_persistence_failure_without_requeue() -> None:
+    async def run() -> None:
+        incoming = FakeIncoming(_message_body())
+        connection = FakeConnection(incoming)
+
+        async def connect_robust(url: str):
+            return connection
+
+        fake_aio_pika.connect_robust = connect_robust
+        consumer = RabbitMqQueryRunJobConsumer(
+            url="amqp://example",
+            queue_name="geo.query-runs.gemini",
+        )
+
+        async def handler(message: QueryRunJobMessage) -> None:
+            raise QueryRunJobResultPersistenceFailed("result persistence failed")
+
+        await consumer.run(handler)
+
+        assert incoming.acked is True
+        assert incoming.nacked is False
+        assert connection.channel_instance.default_exchange.messages == []
 
     asyncio.run(run())
 
@@ -108,7 +159,18 @@ def test_rabbitmq_consumer_requeues_unhandled_processing_failure() -> None:
 class FakeIncoming:
     def __init__(self, body: bytes) -> None:
         self.body = body
+        self.headers = {}
+        self.content_type = "application/json"
+        self.message_id = "message-1"
+        self.acked = False
+        self.nacked = False
         self.process_context = FakeProcessContext()
+
+    async def ack(self) -> None:
+        self.acked = True
+
+    async def nack(self, *, requeue: bool) -> None:
+        self.nacked = requeue
 
     def process(self, *, requeue: bool):
         self.process_context.requeue = requeue
@@ -159,6 +221,7 @@ class FakeChannel:
     def __init__(self, incoming: FakeIncoming) -> None:
         self.incoming = incoming
         self.prefetch_count: int | None = None
+        self.default_exchange = FakeExchange()
 
     async def set_qos(self, *, prefetch_count: int) -> None:
         self.prefetch_count = prefetch_count
@@ -170,6 +233,7 @@ class FakeChannel:
 class FakeConnection:
     def __init__(self, incoming: FakeIncoming) -> None:
         self.incoming = incoming
+        self.channel_instance = FakeChannel(incoming)
 
     async def __aenter__(self):
         return self
@@ -178,7 +242,15 @@ class FakeConnection:
         return False
 
     async def channel(self):
-        return FakeChannel(self.incoming)
+        return self.channel_instance
+
+
+class FakeExchange:
+    def __init__(self) -> None:
+        self.messages: list[tuple[object, str]] = []
+
+    async def publish(self, message, *, routing_key: str) -> None:
+        self.messages.append((message, routing_key))
 
 
 def _message_body() -> bytes:
@@ -186,7 +258,6 @@ def _message_body() -> bytes:
         job_id=uuid4(),
         tenant_id=uuid4(),
         project_id=uuid4(),
-        seo_task_id=uuid4(),
         query_id=uuid4(),
         query_text="Which suppliers are recommended?",
         topic_name="Supplier evaluation",

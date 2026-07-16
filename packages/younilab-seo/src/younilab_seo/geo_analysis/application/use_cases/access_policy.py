@@ -14,13 +14,13 @@ def can_access_project(
         return True
     if project.customer_id is not None and project.customer_id in principal.customer_ids:
         return True
-    return project.seo_task_id is not None and project.seo_task_id in principal.task_ids
+    return False
 
 
 def filter_accessible_projects(
     principal: AuthorizedPrincipal,
     projects: list[GeoProjectRecord],
 ) -> list[GeoProjectRecord]:
-    """依 tenant 與 customer/task grants 過濾可見的 GEO projects。"""
+    """依 tenant 與 customer grants 過濾可見的 GEO projects。"""
 
     return [project for project in projects if can_access_project(principal, project)]

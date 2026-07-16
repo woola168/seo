@@ -46,7 +46,9 @@ from younilab_seo.geo_analysis.application.use_cases.setup import ManageGeoSetup
 from younilab_seo.geo_analysis.application.use_cases.worker import (
     ProcessQueryRunJobMessage,
     QueryRunJobMessageRejected,
+    QueryRunJobResultPersistenceFailed,
 )
+from younilab_seo.geo_analysis.application.use_cases.scheduler import RunDailySchedulerTick
 
 __all__ = [
     "DispatchQueryRunJob",
@@ -69,9 +71,11 @@ __all__ = [
     "ListGeoOverviewResponses",
     "ProcessQueryRunJobMessage",
     "QueryRunJobMessageRejected",
+    "QueryRunJobResultPersistenceFailed",
     "ReceiveExternalRunCallback",
     "RunKMindHubAnalysisExtraction",
     "RunResultAnalysisNotFound",
     "RunResultCitationNormalizationNotFound",
     "RunResultSemanticAnalysisNotFound",
+    "RunDailySchedulerTick",
 ]
