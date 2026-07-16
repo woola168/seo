@@ -1,16 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-import sys
-import types
 from uuid import uuid4
-
-fake_aio_pika = types.SimpleNamespace(
-    DeliveryMode=types.SimpleNamespace(PERSISTENT=2),
-    ExchangeType=types.SimpleNamespace(DIRECT="direct"),
-    Message=lambda body, **kwargs: types.SimpleNamespace(body=body, **kwargs),
-    connect_robust=None,
-)
-sys.modules["aio_pika"] = fake_aio_pika
 
 from younilab_seo.geo_analysis.application import QueryRunJobMessage
 from younilab_seo.geo_analysis.infrastructure.messaging import RabbitMqMessagePublisher
