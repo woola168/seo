@@ -4,6 +4,8 @@ export type PageId =
   | "permissions-roles"
   | "permissions-departments"
   | "permissions-authorization"
+  | "geo-overview"
+  | "geo-projects"
   | "geo-analysis-overview"
   | "geo-analysis-projects"
   | "geo-analysis-entities"

@@ -1,10 +1,21 @@
 import asyncio
+import logging
 import os
+import random
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
+import httpx
+from google.genai.errors import APIError
 from pydantic import BaseModel, Field
+from younilab_provider_request_audit import (
+    ProviderRequestContext,
+    ProviderRequestExecutor,
+    ProviderRequestFailure,
+    ProviderRequestRecorder,
+)
 from younilab_geo_tracking_application import (
     AnswerProvider,
     AnswerRequest,
@@ -29,6 +40,137 @@ from younilab_geo_tracking_infrastructure.config import (
     GeoTrackingSettings,
     SerpApiLocaleProfile,
 )
+
+
+logger = logging.getLogger(__name__)
+
+_GEMINI_MAX_API_CALLS = 3
+_GEMINI_RETRYABLE_STATUS_CODES = frozenset({408, 429})
+_GEMINI_RETRY_INITIAL_DELAY_SECONDS = 1.0
+_GEMINI_HTTP_TIMEOUT_MILLISECONDS = 60_000
+_GEMINI_ERROR_CODES = {
+    400: "gemini_invalid_argument",
+    401: "gemini_unauthenticated",
+    403: "gemini_permission_denied",
+    404: "gemini_not_found",
+    408: "gemini_request_timeout",
+    429: "gemini_resource_exhausted",
+    499: "gemini_client_closed_request",
+    500: "gemini_internal_error",
+    502: "gemini_bad_gateway",
+    503: "gemini_unavailable",
+    504: "gemini_deadline_exceeded",
+}
+_GEMINI_RETRYABLE_TRANSPORT_ERRORS = (
+    httpx.TimeoutException,
+    httpx.NetworkError,
+    httpx.RemoteProtocolError,
+)
+
+
+@dataclass
+class _GeminiApiCallBudget:
+    _generate: Callable[[str], Awaitable[Any]]
+    _executor: ProviderRequestExecutor
+    _call_count: int = 0
+
+    def has_remaining_calls(self) -> bool:
+        return self._call_count < _GEMINI_MAX_API_CALLS
+
+    async def generate(self, contents: str, request_kind: str = "initial") -> Any:
+        first_attempt = True
+        while self.has_remaining_calls():
+            self._call_count += 1
+            try:
+                return await self._executor.execute(
+                    lambda: self._generate(contents),
+                    request_kind=(
+                        request_kind if first_attempt else "transient_retry"
+                    ),
+                    classify_failure=_classify_gemini_failure,
+                )
+            except APIError as exc:
+                await self._retry_or_raise(
+                    exc,
+                    error_code=_gemini_api_error_code(exc.code),
+                    retryable=_is_retryable_gemini_api_error(exc.code),
+                    status_code=exc.code,
+                )
+            except _GEMINI_RETRYABLE_TRANSPORT_ERRORS as exc:
+                await self._retry_or_raise(
+                    exc,
+                    error_code=(
+                        "gemini_request_timeout"
+                        if isinstance(exc, httpx.TimeoutException)
+                        else "gemini_network_error"
+                    ),
+                    retryable=True,
+                )
+            first_attempt = False
+        raise ProviderRequestError("gemini_retry_budget_exhausted")
+
+    async def _retry_or_raise(
+        self,
+        error: Exception,
+        *,
+        error_code: str,
+        retryable: bool,
+        status_code: int | None = None,
+    ) -> None:
+        if not retryable or not self.has_remaining_calls():
+            raise ProviderRequestError(error_code) from error
+        base_delay = _GEMINI_RETRY_INITIAL_DELAY_SECONDS * (
+            2 ** (self._call_count - 1)
+        )
+        delay = base_delay + random.uniform(0, base_delay)
+        logger.warning(
+            (
+                "Retrying Gemini API request after transient failure: "
+                "attempt=%s statusCode=%s exceptionType=%s delaySeconds=%.3f"
+            ),
+            self._call_count,
+            status_code,
+            error.__class__.__name__,
+            delay,
+            extra={
+                "attempt": self._call_count,
+                "status_code": status_code,
+                "exception_type": error.__class__.__name__,
+                "delay_seconds": delay,
+            },
+        )
+        await asyncio.sleep(delay)
+
+
+def _is_retryable_gemini_api_error(status_code: int | None) -> bool:
+    return status_code in _GEMINI_RETRYABLE_STATUS_CODES or (
+        isinstance(status_code, int) and 500 <= status_code <= 599
+    )
+
+
+def _gemini_api_error_code(status_code: int | None) -> str:
+    if status_code in _GEMINI_ERROR_CODES:
+        return _GEMINI_ERROR_CODES[status_code]
+    if isinstance(status_code, int) and 500 <= status_code <= 599:
+        return "gemini_server_error"
+    if isinstance(status_code, int) and 400 <= status_code <= 499:
+        return "gemini_client_error"
+    return "gemini_request_failed"
+
+
+def _classify_gemini_failure(error: Exception) -> ProviderRequestFailure:
+    status_code = error.code if isinstance(error, APIError) else None
+    if isinstance(error, httpx.TimeoutException):
+        error_code = "gemini_request_timeout"
+    elif isinstance(error, _GEMINI_RETRYABLE_TRANSPORT_ERRORS):
+        error_code = "gemini_network_error"
+    else:
+        error_code = _gemini_api_error_code(status_code)
+    return ProviderRequestFailure(
+        http_status=status_code,
+        error_code=error_code,
+        error_type=error.__class__.__name__,
+    )
 
 
 class _GeminiIntent(BaseModel):
@@ -130,10 +272,12 @@ class SerpApiGoogleAioAnswerProvider:
     def __init__(
         self,
         settings: GeoTrackingSettings,
+        recorder: ProviderRequestRecorder,
         fetch_json: Callable[[Mapping[str, str]], Awaitable[dict[str, Any]]]
         | None = None,
     ) -> None:
         self._settings = settings
+        self._recorder = recorder
         self._fetch_json = fetch_json
         self._session: aiohttp.ClientSession | None = None
 
@@ -143,6 +287,22 @@ class SerpApiGoogleAioAnswerProvider:
 
         profile = _serpapi_locale_profile(request.region)
         language = request.language or profile.default_language
+        operation = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="google_aio",
+                provider_code="serpapi",
+                provider_operation="search",
+                use_case="google_ai_overview",
+                source_service="geo-tracking-api",
+                model="serpapi-google-ai-overview",
+                query_id=request.query_id,
+                run_request_id=request.run_request_id,
+                tenant_id=request.tenant_id,
+                project_id=request.project_id,
+                job_id=request.job_id,
+            ),
+        )
         search_payload = await self._request_serpapi(
             {
                 "engine": "google",
@@ -150,9 +310,11 @@ class SerpApiGoogleAioAnswerProvider:
                 "hl": _serpapi_hl(language, profile),
                 "gl": profile.gl,
                 "location": profile.location,
-            }
+            },
+            operation,
+            request_kind="initial",
         )
-        ai_overview = await self._resolve_ai_overview(search_payload)
+        ai_overview = await self._resolve_ai_overview(search_payload, operation)
         raw_response = _ai_overview_text(ai_overview)
         references = _ai_overview_references(ai_overview)
         if not raw_response:
@@ -175,6 +337,7 @@ class SerpApiGoogleAioAnswerProvider:
     async def _resolve_ai_overview(
         self,
         search_payload: dict[str, Any],
+        operation: ProviderRequestExecutor,
     ) -> dict[str, Any]:
         ai_overview = _payload_ai_overview(search_payload)
         if _has_ai_overview_content(ai_overview):
@@ -186,7 +349,9 @@ class SerpApiGoogleAioAnswerProvider:
                 {
                     "engine": "google_ai_overview",
                     "page_token": page_token,
-                }
+                },
+                operation,
+                request_kind="page_token",
             )
             ai_overview = _payload_ai_overview(ai_overview_payload)
             if _has_ai_overview_content(ai_overview):
@@ -197,26 +362,44 @@ class SerpApiGoogleAioAnswerProvider:
     async def _request_serpapi(
         self,
         params: Mapping[str, str],
+        operation: ProviderRequestExecutor,
+        *,
+        request_kind: str,
     ) -> dict[str, Any]:
         request_params = {**params, "api_key": self._settings.serpapi_api_key}
         if self._fetch_json is not None:
-            return await self._fetch_json(request_params)
+            return await operation.execute(
+                lambda: self._fetch_json(request_params),
+                request_kind=request_kind,
+            )
 
-        session = self._client_session()
-        try:
-            async with session.get(
-                "https://serpapi.com/search.json",
-                params=request_params,
-            ) as response:
-                payload = await response.json(content_type=None)
-        except aiohttp.ClientError as exc:
-            raise ProviderRequestError("serpapi_request_failed") from exc
+        async def send() -> dict[str, Any]:
+            session = self._client_session()
+            try:
+                async with session.get(
+                    "https://serpapi.com/search.json",
+                    params=request_params,
+                ) as response:
+                    payload = await response.json(content_type=None)
+            except aiohttp.ClientError as exc:
+                raise ProviderRequestError("serpapi_request_failed") from exc
+            if response.status >= 400 or not isinstance(payload, dict):
+                raise ProviderRequestError(
+                    "serpapi_request_failed",
+                    status_code=response.status,
+                )
+            if payload.get("error"):
+                raise ProviderRequestError(
+                    "serpapi_request_failed",
+                    status_code=response.status,
+                )
+            return payload
 
-        if response.status >= 400 or not isinstance(payload, dict):
-            raise ProviderRequestError("serpapi_request_failed")
-        if payload.get("error"):
-            raise ProviderRequestError("serpapi_request_failed")
-        return payload
+        return await operation.execute(
+            send,
+            request_kind=request_kind,
+            read_http_status=lambda _: 200,
+        )
 
     def _client_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -313,8 +496,13 @@ def _ai_overview_references(ai_overview: dict[str, Any]) -> list[Reference]:
 
 
 class GeminiVertexAnswerProvider:
-    def __init__(self, settings: GeoTrackingSettings) -> None:
+    def __init__(
+        self,
+        settings: GeoTrackingSettings,
+        recorder: ProviderRequestRecorder,
+    ) -> None:
         self._settings = settings
+        self._recorder = recorder
 
     async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
         from google import genai
@@ -334,6 +522,10 @@ class GeminiVertexAnswerProvider:
             vertexai=True,
             project=project_id,
             location=self._settings.vertex_location,
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1),
+                timeout=_GEMINI_HTTP_TIMEOUT_MILLISECONDS,
+            ),
         )
         config = types.GenerateContentConfig(
             temperature=self._settings.gemini_temperature,
@@ -343,11 +535,36 @@ class GeminiVertexAnswerProvider:
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
         )
-        response, references = await _generate_with_reference_retry(
-            lambda contents: self._generate_content(client, contents, config),
-            request.query_text,
-            request.language,
+        executor = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="geo_query_answer",
+                source_service="geo-tracking-api",
+                model=self._settings.gemini_model,
+                uses_grounding=True,
+                tenant_id=request.tenant_id,
+                project_id=request.project_id,
+                job_id=request.job_id,
+                query_id=request.query_id,
+                run_request_id=request.run_request_id,
+            ),
         )
+        api_call_budget = _GeminiApiCallBudget(
+            lambda contents: self._generate_content(client, contents, config),
+            executor,
+        )
+        try:
+            response, references = await _generate_with_reference_retry(
+                api_call_budget.generate,
+                request.query_text,
+                request.language,
+                has_remaining_calls=api_call_budget.has_remaining_calls,
+            )
+        finally:
+            client.close()
         return AnswerResponse(
             provider=ProviderCode.GEMINI,
             surface="Gemini",
@@ -372,8 +589,9 @@ class GeminiVertexAnswerProvider:
 
 
 class GeminiQueryGenerationProvider:
-    def __init__(self, settings: GeoTrackingSettings) -> None:
+    def __init__(self, settings: GeoTrackingSettings, recorder: ProviderRequestRecorder) -> None:
         self._settings = settings
+        self._recorder = recorder
 
     async def generate_drafts(
         self,
@@ -396,6 +614,9 @@ class GeminiQueryGenerationProvider:
             vertexai=True,
             project=project_id,
             location=self._settings.vertex_location,
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
         language = _effective_language(command.language, command.region)
         config = types.GenerateContentConfig(
@@ -407,12 +628,30 @@ class GeminiQueryGenerationProvider:
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
         )
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=self._settings.gemini_model,
-            contents=_query_generation_prompt(command, language),
-            config=config,
+        operation = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="query_generation",
+                source_service="geo-tracking-api",
+                model=self._settings.gemini_model,
+            ),
         )
+        try:
+            response = await operation.execute(
+                lambda: asyncio.to_thread(
+                    client.models.generate_content,
+                    model=self._settings.gemini_model,
+                    contents=_query_generation_prompt(command, language),
+                    config=config,
+                ),
+                request_kind="initial",
+                classify_failure=_classify_gemini_failure,
+            )
+        finally:
+            client.close()
         parsed = response.parsed
         if not isinstance(parsed, _GeminiQueryDraftList):
             parsed = _GeminiQueryDraftList.model_validate_json(response.text or "{}")
@@ -420,8 +659,9 @@ class GeminiQueryGenerationProvider:
 
 
 class GeminiQueryResearchProvider:
-    def __init__(self, settings: GeoTrackingSettings) -> None:
+    def __init__(self, settings: GeoTrackingSettings, recorder: ProviderRequestRecorder) -> None:
         self._settings = settings
+        self._recorder = recorder
 
     async def research(self, command: QueryResearchCommand) -> QueryResearchResult:
         from google import genai
@@ -441,6 +681,9 @@ class GeminiQueryResearchProvider:
             vertexai=True,
             project=project_id,
             location=self._settings.vertex_location,
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
         language = _effective_language(command.language, command.region)
         config = types.GenerateContentConfig(
@@ -453,12 +696,31 @@ class GeminiQueryResearchProvider:
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
         )
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=self._settings.gemini_model,
-            contents=_query_research_prompt(command, language),
-            config=config,
+        operation = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="query_research",
+                source_service="geo-tracking-api",
+                model=self._settings.gemini_model,
+                uses_grounding=True,
+            ),
         )
+        try:
+            response = await operation.execute(
+                lambda: asyncio.to_thread(
+                    client.models.generate_content,
+                    model=self._settings.gemini_model,
+                    contents=_query_research_prompt(command, language),
+                    config=config,
+                ),
+                request_kind="initial",
+                classify_failure=_classify_gemini_failure,
+            )
+        finally:
+            client.close()
         parsed = response.parsed
         if not isinstance(parsed, _GeminiQueryResearchOutput):
             parsed = _GeminiQueryResearchOutput.model_validate_json(
@@ -474,39 +736,45 @@ class GeminiQueryResearchProvider:
         )
 
 
-def build_answer_provider(settings: GeoTrackingSettings) -> AnswerProvider:
+def build_answer_provider(
+    settings: GeoTrackingSettings,
+    recorder: ProviderRequestRecorder,
+) -> AnswerProvider:
     if settings.provider == ProviderCode.GEMINI:
-        return GeminiVertexAnswerProvider(settings)
+        return GeminiVertexAnswerProvider(settings, recorder)
     if settings.provider == ProviderCode.GOOGLE_AIO:
-        return SerpApiGoogleAioAnswerProvider(settings)
+        return SerpApiGoogleAioAnswerProvider(settings, recorder)
     return DummyAnswerProvider()
 
 
 def build_answer_providers(
     settings: GeoTrackingSettings,
+    recorder: ProviderRequestRecorder,
 ) -> dict[ProviderCode, AnswerProvider]:
     return {
         ProviderCode.DUMMY: DummyAnswerProvider(),
-        ProviderCode.GEMINI: GeminiVertexAnswerProvider(settings),
-        ProviderCode.GOOGLE_AIO: SerpApiGoogleAioAnswerProvider(settings),
+        ProviderCode.GEMINI: GeminiVertexAnswerProvider(settings, recorder),
+        ProviderCode.GOOGLE_AIO: SerpApiGoogleAioAnswerProvider(settings, recorder),
     }
 
 
 def build_query_research_providers(
     settings: GeoTrackingSettings,
+    recorder: ProviderRequestRecorder,
 ) -> dict[ProviderCode, QueryResearchProvider]:
     return {
         ProviderCode.DUMMY: DummyQueryResearchProvider(),
-        ProviderCode.GEMINI: GeminiQueryResearchProvider(settings),
+        ProviderCode.GEMINI: GeminiQueryResearchProvider(settings, recorder),
     }
 
 
 def build_query_generation_providers(
     settings: GeoTrackingSettings,
+    recorder: ProviderRequestRecorder,
 ) -> dict[ProviderCode, QueryGenerationProvider]:
     return {
         ProviderCode.DUMMY: DummyQueryGenerationProvider(),
-        ProviderCode.GEMINI: GeminiQueryGenerationProvider(settings),
+        ProviderCode.GEMINI: GeminiQueryGenerationProvider(settings, recorder),
     }
 
 
@@ -700,16 +968,23 @@ def _query_research_intents(command: QueryResearchCommand) -> str:
 
 
 async def _generate_with_reference_retry(
-    generate: Callable[[str], Awaitable[Any]],
+    generate: Callable[[str, str], Awaitable[Any]],
     query_text: str,
     language: str,
+    *,
+    has_remaining_calls: Callable[[], bool] | None = None,
 ) -> tuple[Any, list[Reference]]:
-    response = await generate(query_text)
+    response = await generate(query_text, "initial")
     references = _grounding_references(response)
     if references:
         return response, references
+    if has_remaining_calls is not None and not has_remaining_calls():
+        return response, references
 
-    retry_response = await generate(_reference_retry_prompt(query_text, language))
+    retry_response = await generate(
+        _reference_retry_prompt(query_text, language),
+        "reference_retry",
+    )
     retry_references = _grounding_references(retry_response)
     if retry_references:
         return retry_response, retry_references

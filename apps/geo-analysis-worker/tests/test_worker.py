@@ -15,7 +15,10 @@ fake_aio_pika = types.SimpleNamespace(
 )
 sys.modules["aio_pika"] = fake_aio_pika
 
-from younilab_geo_analysis_worker.composition import build_dependencies
+from younilab_geo_analysis_worker.composition import (
+    _build_tracking_client,
+    build_dependencies,
+)
 from younilab_geo_analysis_worker.worker import GeoAnalysisWorker
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
@@ -121,6 +124,16 @@ def test_composition_builds_provider_queue_from_environment(monkeypatch) -> None
     asyncio.run(dependencies.close())
 
     assert repairer.close_calls == 1
+
+
+def test_worker_uses_fixed_tracking_run_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("GEO_TRACKING_BASE_URL", "http://tracking.example")
+    monkeypatch.setenv("GEO_TRACKING_TIMEOUT_SECONDS", "1")
+
+    client = _build_tracking_client()
+
+    assert client.base_url == "http://tracking.example"
+    assert client.timeout_seconds == 210.0
 
 
 def test_composition_builds_google_aio_provider_queue(monkeypatch) -> None:

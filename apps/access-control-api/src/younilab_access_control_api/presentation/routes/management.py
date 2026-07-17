@@ -22,7 +22,7 @@ from younilab_access_control_api.presentation.dtos import (
     UserAccessResponse,
     UserInvitationResponse,
 )
-from younilab_seo.access_control.domain import PERMISSIONS
+from younilab_seo.access_control.domain import ASSIGNABLE_PERMISSIONS
 
 
 router = APIRouter(prefix="/api", tags=["access-management"])
@@ -34,7 +34,7 @@ async def list_permissions(
     principal: CurrentPrincipal = Depends(current_principal),
 ) -> list[str]:
     await require_permission(request, principal, "permissions.read")
-    return sorted(PERMISSIONS)
+    return sorted(ASSIGNABLE_PERMISSIONS)
 
 
 @router.get("/roles", response_model=list[RoleResponse])

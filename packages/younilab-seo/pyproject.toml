@@ -18,7 +18,11 @@ dependencies = [
     "sqlalchemy>=2.0.14,<2.1",
     "sqlmodel>=0.0.38,<0.1",
     "tzdata>=2025.2",
+    "younilab-provider-request-audit",
 ]
+
+[tool.uv.sources]
+younilab-provider-request-audit = { workspace = true }
 
 [dependency-groups]
 dev = ["aiosqlite>=0.21.0,<1", "pytest>=8.0"]

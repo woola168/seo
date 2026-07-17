@@ -17,6 +17,7 @@ members = [
     "younilab-geo-tracking-application",
     "younilab-geo-tracking-domain",
     "younilab-geo-tracking-infrastructure",
+    "younilab-provider-request-audit",
     "younilab-resource-catalog-api",
     "younilab-seo",
     "younilab-seo-python-workspace",
@@ -2150,6 +2151,7 @@ version = "0.1.0"
 source = { editable = "apps/geo-analysis-api" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
+    { name = "younilab-provider-request-audit" },
     { name = "younilab-seo" },
 ]
 
@@ -2162,6 +2164,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
+    { name = "younilab-provider-request-audit", editable = "packages/provider-request-audit" },
     { name = "younilab-seo", editable = "packages/younilab-seo" },
 ]
 
@@ -2195,6 +2198,7 @@ name = "younilab-geo-analysis-worker"
 version = "0.1.0"
 source = { editable = "apps/geo-analysis-worker" }
 dependencies = [
+    { name = "younilab-provider-request-audit" },
     { name = "younilab-seo" },
 ]
 
@@ -2204,7 +2208,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "younilab-seo", editable = "packages/younilab-seo" }]
+requires-dist = [
+    { name = "younilab-provider-request-audit", editable = "packages/provider-request-audit" },
+    { name = "younilab-seo", editable = "packages/younilab-seo" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
@@ -2218,6 +2225,7 @@ dependencies = [
     { name = "younilab-geo-tracking-application" },
     { name = "younilab-geo-tracking-domain" },
     { name = "younilab-geo-tracking-infrastructure" },
+    { name = "younilab-provider-request-audit" },
 ]
 
 [package.dev-dependencies]
@@ -2232,6 +2240,7 @@ requires-dist = [
     { name = "younilab-geo-tracking-application", editable = "packages/geo-tracking-application" },
     { name = "younilab-geo-tracking-domain", editable = "packages/geo-tracking-domain" },
     { name = "younilab-geo-tracking-infrastructure", editable = "packages/geo-tracking-infrastructure" },
+    { name = "younilab-provider-request-audit", editable = "packages/provider-request-audit" },
 ]
 
 [package.metadata.requires-dev]
@@ -2286,8 +2295,10 @@ dependencies = [
     { name = "aiohttp" },
     { name = "beautifulsoup4" },
     { name = "google-genai", extra = ["aiohttp"] },
+    { name = "httpx" },
     { name = "younilab-geo-tracking-application" },
     { name = "younilab-geo-tracking-domain" },
+    { name = "younilab-provider-request-audit" },
 ]
 
 [package.dev-dependencies]
@@ -2300,9 +2311,30 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.12,<4" },
     { name = "beautifulsoup4", specifier = ">=4.13,<5" },
     { name = "google-genai", extras = ["aiohttp"], specifier = ">=1.0" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "younilab-geo-tracking-application", editable = "packages/geo-tracking-application" },
     { name = "younilab-geo-tracking-domain", editable = "packages/geo-tracking-domain" },
+    { name = "younilab-provider-request-audit", editable = "packages/provider-request-audit" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
+
+[[package]]
+name = "younilab-provider-request-audit"
+version = "0.1.0"
+source = { editable = "packages/provider-request-audit" }
+dependencies = [
+    { name = "asyncpg" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "asyncpg", specifier = ">=0.30.0,<1" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
@@ -2352,6 +2384,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "sqlmodel" },
     { name = "tzdata" },
+    { name = "younilab-provider-request-audit" },
 ]
 
 [package.dev-dependencies]
@@ -2375,6 +2408,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.14,<2.1" },
     { name = "sqlmodel", specifier = ">=0.0.38,<0.1" },
     { name = "tzdata", specifier = ">=2025.2" },
+    { name = "younilab-provider-request-audit", editable = "packages/provider-request-audit" },
 ]
 
 [package.metadata.requires-dev]

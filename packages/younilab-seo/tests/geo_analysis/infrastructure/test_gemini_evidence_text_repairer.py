@@ -14,11 +14,13 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeminiEvidenceTextRepairSettings,
     evidence_repair,
 )
+from younilab_provider_request_audit import MemoryProviderRequestRecorder
 
 
 def test_gemini_evidence_repairer_resolves_block_id_to_untouched_source_text() -> None:
     async def run() -> None:
         requests: list[dict[str, Any]] = []
+        recorder = MemoryProviderRequestRecorder()
 
         async def generate_content(prompt: str) -> dict[str, Any]:
             requests.append(json.loads(prompt))
@@ -33,6 +35,8 @@ def test_gemini_evidence_repairer_resolves_block_id_to_untouched_source_text() -
 
         repairer = GeminiEvidenceTextRepairer(
             GeminiEvidenceTextRepairSettings(vertex_project="test-project"),
+            recorder,
+            "test",
             generate_content=generate_content,
         )
 
@@ -74,6 +78,10 @@ def test_gemini_evidence_repairer_resolves_block_id_to_untouched_source_text() -
                 ],
             }
         ]
+        recorded = next(iter(recorder.requests.values()))
+        assert recorded.context.use_case == "evidence_repair"
+        assert recorded.context.source_service == "test"
+        assert recorder.outcomes[recorded.id] == "succeeded"
 
     asyncio.run(run())
 
@@ -92,6 +100,8 @@ def test_gemini_evidence_repairer_returns_none_for_unknown_source_block() -> Non
 
         repairer = GeminiEvidenceTextRepairer(
             GeminiEvidenceTextRepairSettings(vertex_project="test-project"),
+            MemoryProviderRequestRecorder(),
+            "test",
             generate_content=generate_content,
         )
 
@@ -120,6 +130,8 @@ def test_gemini_evidence_repairer_rejects_malformed_structured_output() -> None:
 
         repairer = GeminiEvidenceTextRepairer(
             GeminiEvidenceTextRepairSettings(vertex_project="test-project"),
+            MemoryProviderRequestRecorder(),
+            "test",
             generate_content=generate_content,
         )
 
@@ -163,7 +175,9 @@ def test_gemini_evidence_repairer_reuses_client_without_search_tool(
 
         monkeypatch.setattr(evidence_repair.genai, "Client", FakeClient)
         repairer = GeminiEvidenceTextRepairer(
-            GeminiEvidenceTextRepairSettings(vertex_project="test-project")
+            GeminiEvidenceTextRepairSettings(vertex_project="test-project"),
+            MemoryProviderRequestRecorder(),
+            "test",
         )
         command = EvidenceTextRepairCommand(
             raw_response="**Acme ERP** 適合製造業。",

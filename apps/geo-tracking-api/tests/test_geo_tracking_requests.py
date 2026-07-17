@@ -60,6 +60,15 @@ class GeminiAnswerStubProvider:
         )
 
 
+class CapturingAnswerStubProvider(GeminiAnswerStubProvider):
+    def __init__(self) -> None:
+        self.requests: list[AnswerRequest] = []
+
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
+        self.requests.append(request)
+        return await super().generate_answer(request)
+
+
 class GoogleAioAnswerStubProvider:
     async def generate_answer(self, request: AnswerRequest) -> AnswerResponse:
         return AnswerResponse(
@@ -664,6 +673,48 @@ def test_run_request_does_not_require_or_return_seo_task_id() -> None:
     body = response.json()
     assert "seoTaskId" not in body
     assert body["results"][0]["status"] == "completed"
+
+
+def test_run_request_does_not_trust_metadata_for_audit_attribution() -> None:
+    provider = CapturingAnswerStubProvider()
+    client = TestClient(
+        create_app(
+            answer_providers={
+                ProviderCode.DUMMY: DummyAnswerProvider(),
+                ProviderCode.GEMINI: provider,
+            }
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/run-requests",
+        json={
+            "provider": "gemini",
+            "timing": "run_now",
+            "queries": [
+                {
+                    "id": "44444444-4444-4444-8444-444444444444",
+                    "text": "audit attribution test",
+                    "topicName": "topic",
+                    "region": "TW",
+                    "language": "zh-TW",
+                    "marketType": "b2c",
+                    "isBranded": False,
+                    "metadata": {
+                        "tenantId": "11111111-1111-4111-8111-111111111111",
+                        "projectId": "22222222-2222-4222-8222-222222222222",
+                        "geoJobId": "33333333-3333-4333-8333-333333333333",
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    request = provider.requests[0]
+    assert request.tenant_id is None
+    assert request.project_id is None
+    assert request.job_id is None
 
 
 def test_run_request_uses_provider_from_request_body() -> None:

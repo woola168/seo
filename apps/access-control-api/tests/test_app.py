@@ -109,6 +109,20 @@ def test_login_me_refresh_and_admin_role_management() -> None:
     assert me_response.status_code == 200
     assert me_response.json()["tenantId"] == "00000000-0000-4000-8000-000000000001"
     assert me_response.json()["tenantName"] == "Default Tenant"
+    capabilities_response = client.get("/api/me/capabilities", headers=headers)
+    assert capabilities_response.status_code == 200
+    assert "geo.admin.access" in capabilities_response.json()["permissions"]
+
+    permissions_response = client.get("/api/permissions", headers=headers)
+    assert permissions_response.status_code == 200
+    assert "geo.admin.access" not in permissions_response.json()
+
+    reserved_role_response = client.post(
+        "/api/roles",
+        headers=headers,
+        json={"name": "RD Admin", "permissions": ["geo.admin.access"]},
+    )
+    assert reserved_role_response.status_code == 409
 
     create_role_response = client.post(
         "/api/roles",
@@ -121,9 +135,26 @@ def test_login_me_refresh_and_admin_role_management() -> None:
         "tasks.read",
     ]
 
+    reserved_update_response = client.put(
+        f"/api/roles/{create_role_response.json()['id']}/permissions",
+        headers=headers,
+        json={"permissions": ["customers.read", "geo.admin.access"]},
+    )
+    assert reserved_update_response.status_code == 409
+
     refresh_response = client.post("/api/auth/refresh")
     assert refresh_response.status_code == 200
     assert refresh_response.json()["accessToken"] != access_token
+
+    update_admin_response = client.put(
+        f"/api/roles/{role_id}/permissions",
+        headers={
+            "Authorization": f"Bearer {refresh_response.json()['accessToken']}"
+        },
+        json={"permissions": sorted(PERMISSIONS)},
+    )
+    assert update_admin_response.status_code == 200
+    assert update_admin_response.json()["permissions"] == sorted(PERMISSIONS)
 
 
 def test_refresh_cookie_samesite_can_support_cross_site_requests() -> None:

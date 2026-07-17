@@ -23,6 +23,10 @@ from younilab_seo.geo_analysis.infrastructure import (
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
+from younilab_provider_request_audit import PostgresProviderRequestRecorder
+
+
+_TRACKING_RUN_TIMEOUT_SECONDS = 210.0
 
 
 @dataclass(frozen=True)
@@ -124,7 +128,7 @@ def _build_tracking_client() -> TrackingRunClient:
 
     return HttpTrackingRunClient(
         base_url=os.getenv("GEO_TRACKING_BASE_URL", "http://geo-tracking-api:8003"),
-        timeout_seconds=float(os.getenv("GEO_TRACKING_TIMEOUT_SECONDS", "60")),
+        timeout_seconds=_TRACKING_RUN_TIMEOUT_SECONDS,
     )
 
 
@@ -141,8 +145,13 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
 
 
 def _build_evidence_text_repairer() -> EvidenceTextRepairer:
+    recorder = PostgresProviderRequestRecorder(
+        _required_env("GEO_ANALYSIS_DATABASE_URL")
+    )
     return GeminiEvidenceTextRepairer(
-        GeminiEvidenceTextRepairSettings.from_environment()
+        GeminiEvidenceTextRepairSettings.from_environment(),
+        recorder,
+        "geo-analysis-worker",
     )
 
 

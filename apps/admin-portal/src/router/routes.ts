@@ -7,6 +7,8 @@ import {
 
 import type { PageId } from "../types";
 
+type PermissionLoader = () => Promise<readonly string[]>;
+
 function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
   const defaultRoute = () => (hasSession() ? "/dashboard" : "/login");
 
@@ -80,6 +82,30 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       meta: { requiresAuth: true, page: "permissions-authorization" },
     },
     {
+      path: "/geo",
+      redirect: "/geo/overview",
+    },
+    {
+      path: "/geo/overview",
+      name: "geo-overview",
+      component: () => import("../pages/GeoStandardOverviewPage.vue"),
+      meta: {
+        requiresAuth: true,
+        requiredPermission: "geo.projects.read",
+        page: "geo-overview",
+      },
+    },
+    {
+      path: "/geo/projects",
+      name: "geo-projects",
+      component: () => import("../pages/GeoStandardProjectsPage.vue"),
+      meta: {
+        requiresAuth: true,
+        requiredPermission: "geo.projects.read",
+        page: "geo-projects",
+      },
+    },
+    {
       path: "/geo-analysis",
       redirect: "/geo-analysis/overview",
     },
@@ -87,55 +113,55 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       path: "/geo-analysis/overview",
       name: "geo-analysis-overview",
       component: () => import("../pages/GeoOverviewPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-overview" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-overview" },
     },
     {
       path: "/geo-analysis/projects",
       name: "geo-analysis-projects",
       component: () => import("../pages/GeoProjectsPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-projects" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-projects" },
     },
     {
       path: "/geo-analysis/entities",
       name: "geo-analysis-entities",
       component: () => import("../pages/GeoEntitiesPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-entities" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-entities" },
     },
     {
       path: "/geo-analysis/topics-queries",
       name: "geo-analysis-queries",
       component: () => import("../pages/GeoTopicsQueriesPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-queries" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-queries" },
     },
     {
       path: "/geo-analysis/platforms-schedules",
       name: "geo-analysis-schedules",
       component: () => import("../pages/GeoPlatformsSchedulesPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-schedules" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-schedules" },
     },
     {
       path: "/geo-analysis/run-jobs",
       name: "geo-analysis-jobs",
       component: () => import("../pages/GeoRunJobsPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-jobs" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-jobs" },
     },
     {
       path: "/geo-analysis/report-design",
       name: "geo-analysis-report-design",
       component: () => import("../pages/GeoDashboardReportDesignPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-report-design" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-report-design" },
     },
     {
       path: "/geo-analysis/flow-check",
       name: "geo-analysis-flow-check",
       component: () => import("../pages/GeoFlowCheckPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-flow-check" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-flow-check" },
     },
     {
       path: "/geo-analysis/query-research",
       name: "geo-analysis-query-research",
       component: () => import("../pages/GeoTrackingPage.vue"),
-      meta: { requiresAuth: true, page: "geo-analysis-query-research" },
+      meta: { requiresAuth: true, requiredPermission: "geo.admin.access", page: "geo-analysis-query-research" },
     },
     {
       path: "/permissions/users/new",
@@ -159,13 +185,14 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
 export function createPortalRouter(
   history: RouterHistory,
   hasSession: () => boolean,
+  loadPermissions: PermissionLoader = async () => [],
 ): Router {
   const router = createRouter({
     history,
     routes: createRoutes(hasSession),
   });
 
-  router.beforeEach((to) => {
+  router.beforeEach(async (to) => {
     if (to.meta.requiresAuth && !hasSession()) {
       return {
         name: "login",
@@ -175,6 +202,20 @@ export function createPortalRouter(
 
     if (to.name === "login" && hasSession()) {
       return { name: "dashboard" };
+    }
+
+    const requiredPermission = to.meta.requiredPermission;
+    if (typeof requiredPermission === "string") {
+      try {
+        const permissions = await loadPermissions();
+        if (!permissions.includes(requiredPermission)) {
+          return { name: "dashboard" };
+        }
+      } catch {
+        return hasSession()
+          ? { name: "dashboard" }
+          : { name: "login", query: { redirect: to.fullPath } };
+      }
     }
 
     return true;
@@ -190,6 +231,8 @@ export function getRoutePage(page: unknown): PageId {
   if (page === "permissions-authorization") {
     return "permissions-authorization";
   }
+  if (page === "geo-overview") return "geo-overview";
+  if (page === "geo-projects") return "geo-projects";
   if (page === "geo-analysis-overview") return "geo-analysis-overview";
   if (page === "geo-analysis-projects") return "geo-analysis-projects";
   if (page === "geo-analysis-entities") return "geo-analysis-entities";

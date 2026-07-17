@@ -13,6 +13,7 @@ from younilab_geo_tracking_application import (
 )
 from younilab_geo_tracking_domain import ProviderCode
 from younilab_geo_tracking_infrastructure import GeoTrackingSettings
+from younilab_provider_request_audit import ProviderRequestRecorder
 
 from younilab_geo_tracking_api.presentation.http.composition import (
     build_dependencies,
@@ -31,6 +32,7 @@ def create_app(
     query_research_providers: Mapping[ProviderCode, QueryResearchProvider]
     | None = None,
     project_discovery_provider: ProjectDiscoveryProvider | None = None,
+    provider_request_recorder: ProviderRequestRecorder | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
         settings=settings,
@@ -39,6 +41,7 @@ def create_app(
         query_generation_providers=query_generation_providers,
         query_research_providers=query_research_providers,
         project_discovery_provider=project_discovery_provider,
+        provider_request_recorder=provider_request_recorder,
     )
 
     @asynccontextmanager

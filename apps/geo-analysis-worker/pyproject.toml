@@ -5,10 +5,12 @@ description = "GEO analysis queue worker."
 requires-python = ">=3.12"
 dependencies = [
     "younilab-seo",
+    "younilab-provider-request-audit",
 ]
 
 [tool.uv.sources]
 younilab-seo = { workspace = true }
+younilab-provider-request-audit = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

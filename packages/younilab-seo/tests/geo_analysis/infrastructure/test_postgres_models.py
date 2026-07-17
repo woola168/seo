@@ -168,7 +168,12 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "execution_snapshot jsonb NOT NULL" in scheduler_patch
     assert "budget_enforced boolean NOT NULL DEFAULT false" in scheduler_patch
     assert "WHERE code = 'google_aio'" in scheduler_patch
+    assert "seo_task" not in scheduler_patch
     assert "DROP COLUMN IF EXISTS seo_task_id" not in scheduler_patch
+    assert "FROM seo_task" not in seo_task_contract
+    assert "customer_id must be backfilled" in seo_task_contract
+    assert seo_task_contract.startswith("BEGIN;")
+    assert seo_task_contract.rstrip().endswith("COMMIT;")
     assert seo_task_contract.count("DROP COLUMN IF EXISTS seo_task_id") == 2
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema

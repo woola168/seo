@@ -270,6 +270,10 @@ class AnswerRequest(ContractModel):
     market_type: MarketType
     is_branded: bool
     system_prompt: str
+    tenant_id: UUID | None = None
+    project_id: UUID | None = None
+    job_id: UUID | None = None
+    run_request_id: UUID | None = None
 
 
 class Reference(ContractModel):
