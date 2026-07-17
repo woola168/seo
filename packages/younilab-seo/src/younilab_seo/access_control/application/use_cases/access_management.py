@@ -10,8 +10,9 @@ from younilab_seo.access_control.application.interfaces import (
     ResourceGrantVerifier,
 )
 from younilab_seo.access_control.domain import (
+    ASSIGNABLE_PERMISSIONS,
     DEFAULT_TENANT_ID,
-    PERMISSIONS,
+    INTERNAL_PERMISSIONS,
     AccountStatus,
     Department,
     Role,
@@ -129,7 +130,7 @@ class AccessManagementService:
         tenant_id: UUID = DEFAULT_TENANT_ID,
     ) -> Role:
         """只使用已知 access-control permissions 建立 role。"""
-        self._validate_permissions(permissions)
+        self._validate_assignable_permissions(permissions)
         if any(
             role.name.lower() == name.strip().lower()
             for role in await self.list_roles(tenant_id)
@@ -152,16 +153,28 @@ class AccessManagementService:
         tenant_id: UUID | None = None,
     ) -> Role:
         """替換 role 的 permissions，但不改變 identity 或 flags。"""
-        self._validate_permissions(permissions)
         roles = await self._repository.get_roles({role_id}, tenant_id)
         if not roles:
             raise ResourceNotFound
         current = roles[0]
+        current_internal_permissions = current.permissions & INTERNAL_PERMISSIONS
+        added_internal_permissions = (
+            permissions & INTERNAL_PERMISSIONS
+        ) - current_internal_permissions
+        if added_internal_permissions:
+            raise Conflict(
+                "unknown permissions: "
+                f"{', '.join(sorted(added_internal_permissions))}"
+            )
+        self._validate_assignable_permissions(permissions - INTERNAL_PERMISSIONS)
         role = Role(
             id=current.id,
             name=current.name,
             tenant_id=current.tenant_id,
-            permissions=frozenset(permissions),
+            permissions=(
+                frozenset(permissions - INTERNAL_PERMISSIONS)
+                | current_internal_permissions
+            ),
             is_system=current.is_system,
             has_global_resource_access=current.has_global_resource_access,
         )
@@ -319,8 +332,8 @@ class AccessManagementService:
         return await self.get_user(user_id, tenant_id)
 
     @staticmethod
-    def _validate_permissions(permissions: set[str]) -> None:
-        unknown = permissions - PERMISSIONS
+    def _validate_assignable_permissions(permissions: set[str]) -> None:
+        unknown = permissions - ASSIGNABLE_PERMISSIONS
         if unknown:
             raise Conflict(f"unknown permissions: {', '.join(sorted(unknown))}")
 

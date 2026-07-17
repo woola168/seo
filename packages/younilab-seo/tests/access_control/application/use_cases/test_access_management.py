@@ -31,6 +31,101 @@ def test_delete_role_removes_unused_non_system_role() -> None:
     asyncio.run(scenario())
 
 
+def test_internal_permission_cannot_be_assigned_to_a_new_role() -> None:
+    async def scenario() -> None:
+        service = AccessManagementService(MemoryAccessControlRepository())
+
+        with pytest.raises(Conflict, match="unknown permissions: geo.admin.access"):
+            await service.create_role(
+                role_id=UUID("11111111-1111-4111-8111-111111111111"),
+                name="RD Admin",
+                permissions={"geo.admin.access"},
+            )
+
+    asyncio.run(scenario())
+
+
+def test_replacing_role_permissions_preserves_internal_permissions() -> None:
+    async def scenario() -> None:
+        role_id = UUID("11111111-1111-4111-8111-111111111111")
+        repository = MemoryAccessControlRepository(
+            roles=[
+                Role(
+                    id=role_id,
+                    name="admin",
+                    permissions=frozenset(
+                        {"geo.admin.access", "geo.projects.read"}
+                    ),
+                    is_system=True,
+                )
+            ],
+        )
+        service = AccessManagementService(repository)
+
+        updated = await service.replace_role_permissions(
+            role_id=role_id,
+            permissions={"customers.read"},
+        )
+
+        assert updated.permissions == frozenset(
+            {"geo.admin.access", "customers.read"}
+        )
+
+    asyncio.run(scenario())
+
+
+def test_replacing_role_permissions_accepts_existing_internal_permissions() -> None:
+    async def scenario() -> None:
+        role_id = UUID("11111111-1111-4111-8111-111111111111")
+        repository = MemoryAccessControlRepository(
+            roles=[
+                Role(
+                    id=role_id,
+                    name="admin",
+                    permissions=frozenset(
+                        {"geo.admin.access", "geo.projects.read"}
+                    ),
+                    is_system=True,
+                )
+            ],
+        )
+        service = AccessManagementService(repository)
+
+        updated = await service.replace_role_permissions(
+            role_id=role_id,
+            permissions={"geo.admin.access", "customers.read"},
+        )
+
+        assert updated.permissions == frozenset(
+            {"geo.admin.access", "customers.read"}
+        )
+
+    asyncio.run(scenario())
+
+
+def test_replacing_role_permissions_rejects_new_internal_permissions() -> None:
+    async def scenario() -> None:
+        role_id = UUID("11111111-1111-4111-8111-111111111111")
+        repository = MemoryAccessControlRepository(
+            roles=[
+                Role(
+                    id=role_id,
+                    name="viewer",
+                    permissions=frozenset({"geo.projects.read"}),
+                )
+            ],
+        )
+        service = AccessManagementService(repository)
+
+        with pytest.raises(Conflict, match="unknown permissions: geo.admin.access"):
+            await service.replace_role_permissions(
+                role_id=role_id,
+                permissions={"geo.admin.access", "geo.projects.read"},
+            )
+
+    asyncio.run(scenario())
+
+
 def test_delete_role_rejects_missing_system_and_used_roles() -> None:
     async def scenario() -> None:
         system_role_id = UUID("11111111-1111-4111-8111-111111111111")

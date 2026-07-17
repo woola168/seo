@@ -86,6 +86,10 @@ async def bootstrap_admin(
                 has_global_resource_access=True,
             )
             session.add(role)
+        else:
+            role.permissions = sorted(set(role.permissions) | PERMISSIONS)
+            role.is_system = True
+            role.has_global_resource_access = True
 
         user = await session.scalar(
             select(UserRow).where(UserRow.email == normalized_email)

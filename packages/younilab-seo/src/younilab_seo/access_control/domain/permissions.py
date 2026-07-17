@@ -17,6 +17,7 @@ PERMISSIONS = frozenset(
         "tasks.create",
         "tasks.update",
         "tasks.delete",
+        "geo.admin.access",
         "geo.projects.read",
         "geo.projects.create",
         "geo.projects.update",
@@ -29,3 +30,6 @@ PERMISSIONS = frozenset(
         "audit-events.read",
     }
 )
+
+INTERNAL_PERMISSIONS = frozenset({"geo.admin.access"})
+ASSIGNABLE_PERMISSIONS = PERMISSIONS - INTERNAL_PERMISSIONS

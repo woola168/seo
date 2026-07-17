@@ -5,7 +5,11 @@ from younilab_seo.access_control.domain.policy import (
     AuthorizationReason,
     PolicyDecision,
 )
-from younilab_seo.access_control.domain.permissions import PERMISSIONS
+from younilab_seo.access_control.domain.permissions import (
+    ASSIGNABLE_PERMISSIONS,
+    INTERNAL_PERMISSIONS,
+    PERMISSIONS,
+)
 from younilab_seo.access_control.domain.resources import (
     Customer,
     ProtectedResource,
@@ -24,12 +28,14 @@ from younilab_seo.access_control.domain.tenants import (
 __all__ = [
     "AccessPolicy",
     "AccountStatus",
+    "ASSIGNABLE_PERMISSIONS",
     "AuthorizationReason",
     "Customer",
     "DEFAULT_TENANT_CODE",
     "DEFAULT_TENANT_ID",
     "DEFAULT_TENANT_NAME",
     "Department",
+    "INTERNAL_PERMISSIONS",
     "PolicyDecision",
     "PERMISSIONS",
     "ProtectedResource",

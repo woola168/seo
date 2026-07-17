@@ -50,6 +50,7 @@ VALUES
         "customers.update",
         "departments.manage",
         "departments.read",
+        "geo.admin.access",
         "geo.jobs.cancel",
         "geo.jobs.read",
         "geo.jobs.run",
