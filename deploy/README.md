@@ -79,7 +79,9 @@ GEO_SCHEDULER_DAILY_TIME=03:00
 GEO_SCHEDULER_POLL_SECONDS=60
 ```
 
-部署前需執行 expand migration `deploy/local/postgresql/015_geo_analysis_daily_scheduler.sql`。它會先嘗試由既有 SEO Task 補齊 Project 的 `customer_id`；仍無法補齊時會中止，且不會刪除 `seo_task_id`。確認所有舊版 API 與 worker replicas 下線後，才手動執行 contract migration `016_geo_analysis_remove_seo_task_contract.sql`。
+部署前需執行 expand migration `deploy/local/postgresql/015_geo_analysis_daily_scheduler.sql`，建立每日 batch、scheduled job 欄位與索引。此 migration 不再依賴 SEO Task。確認所有舊版 API 與 worker replicas 下線後，才手動執行 contract migration `016_geo_analysis_remove_seo_task_contract.sql`。Resource Catalog 與 GEO Analysis 使用不同 database，無法在 migration 內直接 join `seo_task`；執行 `016` 前必須先補齊 Project 的 `customer_id`，仍有缺漏時 migration 會中止且不會刪除 `seo_task_id`。
+
+部署 provider request 稽核功能前，需先執行 `deploy/local/postgresql/018_provider_request_audit.sql`。`geo-tracking-api`、`geo-analysis-api` 與 GEO worker 會在呼叫 Gemini 或 SerpApi 前先寫入 `provider_request`；若 migration 尚未套用，provider request 會依 fail-closed 規則停止，不會在沒有稽核紀錄的情況下繼續呼叫。
 
 Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。
 
@@ -94,8 +96,9 @@ GEO_ANALYSIS_WORKER_PROVIDER=gemini
 GEO_ANALYSIS_WORKER_QUEUE=geo.query-runs.gemini
 GEO_ANALYSIS_WORKER_PREFETCH=1
 GEO_TRACKING_BASE_URL=http://geo-tracking-api:8003
-GEO_TRACKING_TIMEOUT_SECONDS=60
 ```
+
+Scheduler Worker 對單次 geo-tracking run request 使用固定 210 秒 timeout，涵蓋最多三次、每次 60 秒的 Gemini API 呼叫與 backoff；不讀取 `GEO_TRACKING_TIMEOUT_SECONDS`。該環境設定仍供 `geo-analysis-api` 的互動式 planning request 使用。
 
 `geo-analysis-worker-google-aio` 使用同一個 worker image，設定為：
 
@@ -152,6 +155,22 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 ```
 
 這份 patch 會建立 `tenant` 表、seed `code='default'` 的 default tenant，並將既有 `user_account`、`role`、`department` 回填到 default tenant。第一批 tenant foundation 仍維持 `user_account.email` 全系統唯一；若資料庫已存在重複 email，patch 會在建立 global unique constraint 時失敗，需先人工清理。新環境可直接使用更新後的 `deploy/local/postgresql/001_access_control_schema.sql` 初始化。
+
+## GEO分析-RD Admin 權限 Patch
+
+既有 Access Control PostgreSQL 需為 system admin role 補上 Portal 的 RD 入口權限：
+
+```powershell
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/017_access_control_geo_admin_access_patch.sql
+```
+
+此 patch 可重複執行，只會為 `is_system = true` 且名稱為 `admin` 的角色加入 `geo.admin.access`，不會修改其他角色。可於執行前後查詢確認：
+
+```sql
+SELECT id, name, permissions
+FROM role
+WHERE is_system = true AND lower(name) = 'admin';
+```
 
 ## Resource Catalog Tenant DB Patch
 
