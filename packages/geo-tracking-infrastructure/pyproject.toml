@@ -7,13 +7,16 @@ dependencies = [
     "aiohttp>=3.12,<4",
     "beautifulsoup4>=4.13,<5",
     "google-genai[aiohttp]>=1.0",
+    "httpx>=0.28,<1",
     "younilab-geo-tracking-application",
     "younilab-geo-tracking-domain",
+    "younilab-provider-request-audit",
 ]
 
 [tool.uv.sources]
 younilab-geo-tracking-application = { workspace = true }
 younilab-geo-tracking-domain = { workspace = true }
+younilab-provider-request-audit = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

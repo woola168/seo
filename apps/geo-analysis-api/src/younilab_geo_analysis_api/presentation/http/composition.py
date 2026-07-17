@@ -34,6 +34,10 @@ from younilab_seo.geo_analysis.infrastructure import (
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
+from younilab_provider_request_audit import (
+    PostgresProviderRequestRecorder,
+    UnconfiguredProviderRequestRecorder,
+)
 
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 
@@ -218,8 +222,16 @@ def _build_kmindhub_client() -> KMindHubWorkspaceClient:
 
 
 def _build_evidence_text_repairer() -> EvidenceTextRepairer:
+    database_url = os.getenv("GEO_ANALYSIS_DATABASE_URL")
+    recorder = (
+        PostgresProviderRequestRecorder(database_url)
+        if database_url
+        else UnconfiguredProviderRequestRecorder()
+    )
     return GeminiEvidenceTextRepairer(
-        GeminiEvidenceTextRepairSettings.from_environment()
+        GeminiEvidenceTextRepairSettings.from_environment(),
+        recorder,
+        "geo-analysis-api",
     )
 
 

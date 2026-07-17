@@ -6,7 +6,10 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from younilab_geo_analysis_api.presentation.http import create_app
-from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
+from younilab_geo_analysis_api.presentation.http.composition import (
+    _build_planning_client,
+    build_dependencies,
+)
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
@@ -344,6 +347,16 @@ def test_composition_builds_report_semantic_analysis_dependency() -> None:
     asyncio.run(dependencies.close())
 
     assert repairer.close_calls == 1
+
+
+def test_api_planning_client_keeps_environment_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("GEO_TRACKING_BASE_URL", "http://tracking.example")
+    monkeypatch.setenv("GEO_TRACKING_TIMEOUT_SECONDS", "37")
+
+    client = _build_planning_client()
+
+    assert client.base_url == "http://tracking.example"
+    assert client.timeout_seconds == 37.0
 
 
 def test_app_state_exposes_report_semantic_analysis_dependency() -> None:

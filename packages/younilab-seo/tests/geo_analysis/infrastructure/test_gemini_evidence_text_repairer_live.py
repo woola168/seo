@@ -14,6 +14,7 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeminiEvidenceTextRepairer,
     GeminiEvidenceTextRepairSettings,
 )
+from younilab_provider_request_audit import MemoryProviderRequestRecorder
 
 EXPECTED_CASE_COUNT = 23
 EXPECTED_FAILURE_COUNT = 46
@@ -42,7 +43,9 @@ def test_gemini_evidence_repairer_live_historical_regression() -> None:
 
     async def run() -> None:
         repairer = GeminiEvidenceTextRepairer(
-            GeminiEvidenceTextRepairSettings.from_environment()
+            GeminiEvidenceTextRepairSettings.from_environment(),
+            MemoryProviderRequestRecorder(),
+            "live-test",
         )
         semaphore = asyncio.Semaphore(3)
 

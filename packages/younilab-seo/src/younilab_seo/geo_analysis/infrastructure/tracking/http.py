@@ -62,7 +62,11 @@ class HttpTrackingRunClient:
 
 
 def _run_request_payload(message: QueryRunJobMessage) -> dict[str, Any]:
-    metadata = {"geoJobId": str(message.job_id)}
+    metadata = {
+        "geoJobId": str(message.job_id),
+        "tenantId": str(message.tenant_id),
+        "projectId": str(message.project_id),
+    }
     if message.model:
         metadata["model"] = message.model
     payload: dict[str, Any] = {

@@ -25,6 +25,7 @@ members = [
     "packages/geo-tracking-domain",
     "packages/geo-tracking-application",
     "packages/geo-tracking-infrastructure",
+    "packages/provider-request-audit",
 ]
 
 [tool.pytest.ini_options]

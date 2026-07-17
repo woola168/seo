@@ -6,10 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.0,<1",
     "younilab-seo",
+    "younilab-provider-request-audit",
 ]
 
 [tool.uv.sources]
 younilab-seo = { workspace = true }
+younilab-provider-request-audit = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.0", "httpx>=0.27"]

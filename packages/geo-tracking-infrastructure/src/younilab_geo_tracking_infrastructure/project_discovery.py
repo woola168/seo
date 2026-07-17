@@ -12,6 +12,12 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
+from younilab_provider_request_audit import (
+    ProviderRequestContext,
+    ProviderRequestExecutor,
+    ProviderRequestFailure,
+    ProviderRequestRecorder,
+)
 from younilab_geo_tracking_application import (
     ProjectDiscoveryIdentity,
     ProjectDiscoveryInspection,
@@ -165,10 +171,12 @@ class GeminiProjectDiscoveryProvider:
     def __init__(
         self,
         settings: GeoTrackingSettings,
+        recorder: ProviderRequestRecorder,
         generate_content: GenerateContent | None = None,
         fetch_page: FetchPage | None = None,
     ) -> None:
         self._settings = settings
+        self._recorder = recorder
         self._generate_content = generate_content
         self._fetch_page = fetch_page
         self._session: aiohttp.ClientSession | None = None
@@ -200,6 +208,17 @@ class GeminiProjectDiscoveryProvider:
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
         )
+        operation = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="project_inspection",
+                source_service="geo-tracking-api",
+                model=self._settings.gemini_model,
+            ),
+        )
         response = await self._generate(
             json.dumps(
                 {
@@ -213,6 +232,7 @@ class GeminiProjectDiscoveryProvider:
                 ensure_ascii=False,
             ),
             config,
+            operation,
         )
         parsed = response.parsed
         if not isinstance(parsed, _GeminiProjectIdentity):
@@ -313,9 +333,22 @@ class GeminiProjectDiscoveryProvider:
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
         )
+        operation = ProviderRequestExecutor(
+            self._recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="project_suggestions",
+                source_service="geo-tracking-api",
+                model=self._settings.gemini_model,
+                uses_grounding=True,
+            ),
+        )
         response = await self._generate(
             _research_prompt(command, identity),
             config,
+            operation,
         )
         parsed = response.parsed
         if not isinstance(parsed, _GeminiProjectSuggestions):
@@ -341,13 +374,25 @@ class GeminiProjectDiscoveryProvider:
             await self._session.close()
         self._session = None
 
-    async def _generate(self, contents: str, config: Any) -> Any:
-        if self._generate_content is not None:
-            return await self._generate_content(contents, config)
-        return await self._get_client().aio.models.generate_content(
-            model=self._settings.gemini_model,
-            contents=contents,
-            config=config,
+    async def _generate(
+        self,
+        contents: str,
+        config: Any,
+        operation: ProviderRequestExecutor,
+    ) -> Any:
+        async def send() -> Any:
+            if self._generate_content is not None:
+                return await self._generate_content(contents, config)
+            return await self._get_client().aio.models.generate_content(
+                model=self._settings.gemini_model,
+                contents=contents,
+                config=config,
+            )
+
+        return await operation.execute(
+            send,
+            request_kind="initial",
+            classify_failure=_classify_gemini_failure,
         )
 
     def _get_client(self) -> genai.Client:
@@ -367,7 +412,10 @@ class GeminiProjectDiscoveryProvider:
             vertexai=True,
             project=project_id,
             location=self._settings.vertex_location,
-            http_options=types.HttpOptions(aiohttp_client=self._get_session()),
+            http_options=types.HttpOptions(
+                aiohttp_client=self._get_session(),
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
         return self._client
 
@@ -378,6 +426,19 @@ class GeminiProjectDiscoveryProvider:
                 timeout=aiohttp.ClientTimeout(total=60),
             )
         return self._session
+
+
+def _classify_gemini_failure(error: Exception) -> ProviderRequestFailure:
+    status = getattr(error, "code", None)
+    return ProviderRequestFailure(
+        http_status=status if isinstance(status, int) else None,
+        error_code=(
+            f"gemini_http_{status}"
+            if isinstance(status, int)
+            else "gemini_request_failed"
+        ),
+        error_type=error.__class__.__name__,
+    )
 
 
 def _parse_page_metadata(

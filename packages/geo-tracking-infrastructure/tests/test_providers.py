@@ -1,26 +1,179 @@
 import json
 from typing import Any
+from uuid import UUID
 
+import httpx
 import pytest
+from google import genai
+from google.genai.errors import APIError, ClientError
 import younilab_geo_tracking_infrastructure.project_discovery as discovery_module
+import younilab_geo_tracking_infrastructure.providers as providers_module
 from younilab_geo_tracking_application import (
     AnswerRequest,
     ConfirmedProjectIdentity,
     ProjectInspectionCommand,
     ProjectSuggestionCommand,
     ProviderRequestError,
+    QueryGenerationCommand,
+    QueryResearchCommand,
     VerifiedProjectIdentity,
 )
 from younilab_geo_tracking_domain import MarketType, ProviderCode, RegionCode
 from younilab_geo_tracking_infrastructure import (
     GeminiProjectDiscoveryProvider,
+    GeminiQueryGenerationProvider,
+    GeminiQueryResearchProvider,
+    GeminiVertexAnswerProvider,
     GeoTrackingSettings,
     SerpApiGoogleAioAnswerProvider,
 )
 from younilab_geo_tracking_infrastructure.providers import (
+    _GeminiApiCallBudget,
     _generate_with_reference_retry,
     _reference_retry_prompt,
 )
+from younilab_provider_request_audit import (
+    MemoryProviderRequestRecorder,
+    ProviderRequestContext,
+    ProviderRequestExecutor,
+)
+
+
+def _recorder() -> MemoryProviderRequestRecorder:
+    return MemoryProviderRequestRecorder()
+
+
+def _gemini_executor() -> ProviderRequestExecutor:
+    return ProviderRequestExecutor(
+        _recorder(),
+        ProviderRequestContext(
+            platform_code="gemini",
+            provider_code="google_vertex_ai",
+            provider_operation="generate_content",
+            use_case="test",
+            source_service="test",
+        ),
+    )
+
+
+@pytest.mark.anyio
+async def test_query_planning_records_each_gemini_request_and_disables_sdk_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_arguments: list[dict[str, Any]] = []
+    responses = iter(
+        [
+            {
+                "items": [
+                    {
+                        "attributes": {
+                            "intent": {
+                                "category": "informational",
+                                "description": "Understand options",
+                            },
+                            "keyword": "erp",
+                            "topicName": "ERP",
+                            "topicDescription": "ERP selection",
+                            "audience": {
+                                "name": "Buyer",
+                                "description": "Software buyer",
+                            },
+                            "brandMentionRules": {
+                                "shouldMentionOwnBrand": False,
+                                "shouldMentionCompetitor": False,
+                            },
+                        },
+                        "query": "Which ERP fits a manufacturer?",
+                        "keywords": ["erp"],
+                    }
+                ]
+            },
+            {
+                "researchContext": "ERP buyers compare implementation support.",
+                "searchedKeywords": ["erp"],
+                "sourceUrls": ["https://example.com/erp"],
+            },
+        ]
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> Any:
+            return type(
+                "Response",
+                (),
+                {
+                    "parsed": None,
+                    "text": json.dumps(next(responses)),
+                    "candidates": [],
+                },
+            )()
+
+    class FakeClient:
+        def __init__(self, **kwargs: Any) -> None:
+            client_arguments.append(kwargs)
+            self.models = FakeModels()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+    generation_recorder = _recorder()
+    research_recorder = _recorder()
+    generation_provider = GeminiQueryGenerationProvider(
+        GeoTrackingSettings(vertex_project="test-project"),
+        generation_recorder,
+    )
+    research_provider = GeminiQueryResearchProvider(
+        GeoTrackingSettings(vertex_project="test-project"),
+        research_recorder,
+    )
+    shared = {
+        "provider": "gemini",
+        "brandName": "Acme",
+        "competitorBrands": [],
+        "keywords": ["erp"],
+        "region": "TW",
+        "language": "en-US",
+        "marketType": "b2b_procurement",
+        "intents": [
+            {
+                "category": "informational",
+                "description": "Understand options",
+            }
+        ],
+        "audience": {"name": "Buyer", "description": "Software buyer"},
+        "brandMentionRules": {
+            "shouldMentionOwnBrand": False,
+            "shouldMentionCompetitor": False,
+        },
+    }
+
+    drafts = await generation_provider.generate_drafts(
+        QueryGenerationCommand.model_validate(
+            {
+                **shared,
+                "topics": [{"name": "ERP", "description": "ERP selection"}],
+                "topicNames": ["ERP"],
+                "maxQueries": 1,
+            }
+        )
+    )
+    research = await research_provider.research(
+        QueryResearchCommand.model_validate(shared)
+    )
+
+    assert len(drafts) == 1
+    assert research.research_context.startswith("ERP buyers")
+    assert next(iter(generation_recorder.requests.values())).context.use_case == (
+        "query_generation"
+    )
+    assert next(iter(research_recorder.requests.values())).context.use_case == (
+        "query_research"
+    )
+    assert all(
+        arguments["http_options"].retry_options.attempts == 1
+        for arguments in client_arguments
+    )
 
 
 class FakeResponse:
@@ -95,6 +248,7 @@ class FakeProjectDiscoveryResponse:
 @pytest.mark.anyio
 async def test_project_discovery_inspects_url_with_url_context_only() -> None:
     calls: list[tuple[str, Any]] = []
+    recorder = _recorder()
 
     async def generate(contents: str, config: Any) -> FakeProjectDiscoveryResponse:
         calls.append((contents, config))
@@ -119,6 +273,7 @@ async def test_project_discovery_inspects_url_with_url_context_only() -> None:
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        recorder,
         generate_content=generate,
         fetch_page=_no_fetched_page,
     )
@@ -133,6 +288,9 @@ async def test_project_discovery_inspects_url_with_url_context_only() -> None:
     assert json.loads(prompt)["projectUrl"] == "https://www.kaiser.com.tw/"
     assert config.tools[0].url_context is not None
     assert config.tools[0].google_search is None
+    recorded = next(iter(recorder.requests.values()))
+    assert recorded.context.use_case == "project_inspection"
+    assert recorded.request_kind == "initial"
     assert "不得只依 domain" in config.system_instruction
     assert "工具結果本身不是最終答案" in config.system_instruction
     assert "sufficientContext=false" in config.system_instruction
@@ -192,6 +350,7 @@ async def test_project_discovery_uses_page_metadata_when_url_context_fails() -> 
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        _recorder(),
         generate_content=generate,
         fetch_page=fetch_page,
     )
@@ -243,6 +402,7 @@ async def test_project_discovery_passes_title_only_metadata_to_stage_one() -> No
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        _recorder(),
         generate_content=generate,
         fetch_page=fetch_page,
     )
@@ -323,6 +483,7 @@ async def test_project_discovery_researches_with_verified_identity_and_search() 
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        _recorder(),
         generate_content=generate,
         fetch_page=_no_fetched_page,
     )
@@ -386,6 +547,7 @@ async def test_project_discovery_falls_back_to_search_entry_point() -> None:
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        _recorder(),
         generate_content=generate,
         fetch_page=_no_fetched_page,
     )
@@ -422,6 +584,7 @@ async def test_project_discovery_maps_vertex_inspection_failure() -> None:
 
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(),
+        _recorder(),
         generate_content=generate,
         fetch_page=_no_fetched_page,
     )
@@ -493,6 +656,7 @@ async def test_project_discovery_reuses_and_closes_gemini_client(
     monkeypatch.setattr(discovery_module.genai, "Client", create_client)
     provider = GeminiProjectDiscoveryProvider(
         GeoTrackingSettings(vertex_project="test-project"),
+        _recorder(),
         fetch_page=_no_fetched_page,
     )
 
@@ -521,7 +685,7 @@ async def test_reference_retry_runs_when_first_response_has_no_references() -> N
         FakeResponse("Grounded answer", "https://example.com/reference"),
     ]
 
-    async def generate(contents: str) -> FakeResponse:
+    async def generate(contents: str, request_kind: str) -> FakeResponse:
         calls.append(contents)
         return responses[len(calls) - 1]
 
@@ -544,7 +708,7 @@ async def test_reference_retry_runs_when_first_response_has_no_references() -> N
 async def test_reference_retry_keeps_first_response_when_references_exist() -> None:
     calls: list[str] = []
 
-    async def generate(contents: str) -> FakeResponse:
+    async def generate(contents: str, request_kind: str) -> FakeResponse:
         calls.append(contents)
         return FakeResponse("Grounded answer", "https://example.com/reference")
 
@@ -559,6 +723,305 @@ async def test_reference_retry_keeps_first_response_when_references_exist() -> N
         "https://example.com/reference"
     ]
     assert calls == ["clear supplier query"]
+
+
+@pytest.mark.anyio
+async def test_gemini_api_retries_resource_exhausted_with_fixed_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    delays: list[float] = []
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise ClientError(
+                429,
+                {"status": "RESOURCE_EXHAUSTED", "message": "try again later"},
+            )
+        return FakeResponse("Grounded answer", "https://example.com/reference")
+
+    async def sleep(delay: float) -> None:
+        delays.append(delay)
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(providers_module.random, "uniform", lambda start, end: 0.0)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+    response = await budget.generate("supplier query")
+
+    assert response.text == "Grounded answer"
+    assert calls == 3
+    assert delays == [1.0, 2.0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status_code", "error_code"),
+    [
+        (400, "gemini_invalid_argument"),
+        (401, "gemini_unauthenticated"),
+        (403, "gemini_permission_denied"),
+        (404, "gemini_not_found"),
+        (499, "gemini_client_closed_request"),
+    ],
+)
+async def test_gemini_api_does_not_retry_permanent_error(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: int,
+    error_code: str,
+) -> None:
+    calls = 0
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        raise APIError(
+            status_code,
+            {"status": "PERMANENT_ERROR", "message": "request rejected"},
+        )
+
+    async def unexpected_sleep(delay: float) -> None:
+        raise AssertionError("permanent Gemini errors must not be retried")
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", unexpected_sleep)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+
+    with pytest.raises(ProviderRequestError) as exc_info:
+        await budget.generate("supplier query")
+
+    assert exc_info.value.code == error_code
+    assert calls == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status_code", "error_code"),
+    [
+        (408, "gemini_request_timeout"),
+        (429, "gemini_resource_exhausted"),
+        (500, "gemini_internal_error"),
+        (502, "gemini_bad_gateway"),
+        (503, "gemini_unavailable"),
+        (504, "gemini_deadline_exceeded"),
+        (599, "gemini_server_error"),
+    ],
+)
+async def test_gemini_api_reports_transient_error_after_retry_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: int,
+    error_code: str,
+) -> None:
+    calls = 0
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        raise APIError(
+            status_code,
+            {"status": "TRANSIENT_ERROR", "message": "try again later"},
+        )
+
+    async def sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(providers_module.random, "uniform", lambda start, end: 0.0)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+
+    with pytest.raises(ProviderRequestError) as exc_info:
+        await budget.generate("supplier query")
+
+    assert exc_info.value.code == error_code
+    assert calls == 3
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("error", "error_code"),
+    [
+        (httpx.ReadTimeout("request timed out"), "gemini_request_timeout"),
+        (httpx.ConnectError("connection failed"), "gemini_network_error"),
+        (httpx.RemoteProtocolError("connection closed"), "gemini_network_error"),
+    ],
+)
+async def test_gemini_api_retries_temporary_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    error_code: str,
+) -> None:
+    calls = 0
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        raise error
+
+    async def sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(providers_module.random, "uniform", lambda start, end: 0.0)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+
+    with pytest.raises(ProviderRequestError) as exc_info:
+        await budget.generate("supplier query")
+
+    assert exc_info.value.code == error_code
+    assert calls == 3
+
+
+@pytest.mark.anyio
+async def test_gemini_api_does_not_retry_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        raise ValueError("invalid response")
+
+    async def unexpected_sleep(delay: float) -> None:
+        raise AssertionError("unexpected errors must not be retried")
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", unexpected_sleep)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+
+    with pytest.raises(ValueError, match="invalid response"):
+        await budget.generate("supplier query")
+
+    assert calls == 1
+
+
+@pytest.mark.anyio
+async def test_gemini_api_does_not_retry_non_transient_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    async def generate(contents: str) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        raise httpx.UnsupportedProtocol("unsupported protocol")
+
+    async def unexpected_sleep(delay: float) -> None:
+        raise AssertionError("non-transient transport errors must not be retried")
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", unexpected_sleep)
+
+    budget = _GeminiApiCallBudget(generate, _gemini_executor())
+
+    with pytest.raises(httpx.UnsupportedProtocol):
+        await budget.generate("supplier query")
+
+    assert calls == 1
+
+
+@pytest.mark.anyio
+async def test_grounding_fallback_shares_gemini_api_call_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def generate(contents: str) -> FakeResponse:
+        calls.append(contents)
+        if len(calls) < 3:
+            raise ClientError(
+                429,
+                {"status": "RESOURCE_EXHAUSTED", "message": "try again later"},
+            )
+        return FakeResponse("Answer without references")
+
+    async def sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(providers_module.asyncio, "sleep", sleep)
+    monkeypatch.setattr(providers_module.random, "uniform", lambda start, end: 0.0)
+
+    recorder = _recorder()
+    executor = ProviderRequestExecutor(
+        recorder,
+        ProviderRequestContext(
+            platform_code="gemini",
+            provider_code="google_vertex_ai",
+            provider_operation="generate_content",
+            use_case="geo_query_answer",
+            source_service="test",
+        ),
+    )
+    budget = _GeminiApiCallBudget(generate, executor)
+    response, references = await _generate_with_reference_retry(
+        budget.generate,
+        "supplier query",
+        "en-US",
+        has_remaining_calls=budget.has_remaining_calls,
+    )
+
+    assert response.text == "Answer without references"
+    assert references == []
+    assert len(calls) == 3
+    assert [item.request_kind for item in recorder.requests.values()] == [
+        "initial",
+        "transient_retry",
+        "transient_retry",
+    ]
+
+
+@pytest.mark.anyio
+async def test_gemini_answer_provider_disables_sdk_retry_and_sets_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_arguments: dict[str, Any] = {}
+    clients: list[Any] = []
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> FakeResponse:
+            return FakeResponse(
+                "Grounded answer",
+                "https://example.com/reference",
+            )
+
+    class FakeClient:
+        def __init__(self, **kwargs: Any) -> None:
+            client_arguments.update(kwargs)
+            self.models = FakeModels()
+            self.closed = False
+            clients.append(self)
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+
+    recorder = _recorder()
+    provider = GeminiVertexAnswerProvider(
+        GeoTrackingSettings(vertex_project="test-project"),
+        recorder,
+    )
+    run_request_id = UUID("11111111-1111-4111-8111-111111111111")
+
+    response = await provider.generate_answer(
+        _answer_request().model_copy(update={"run_request_id": run_request_id})
+    )
+    await provider.generate_answer(
+        _answer_request().model_copy(update={"run_request_id": run_request_id})
+    )
+
+    http_options = client_arguments["http_options"]
+    assert http_options.retry_options.attempts == 1
+    assert http_options.timeout == 60_000
+    assert response.raw_response == "Grounded answer"
+    assert all(client.closed for client in clients)
+    requests = list(recorder.requests.values())
+    assert [request.request_number for request in requests] == [1, 1]
+    assert len({request.operation_id for request in requests}) == 2
+    assert {request.context.run_request_id for request in requests} == {run_request_id}
 
 
 def test_reference_retry_prompt_uses_traditional_chinese_for_zh_tw() -> None:
@@ -603,6 +1066,7 @@ async def test_google_aio_provider_uses_direct_ai_overview_content() -> None:
 
     provider = SerpApiGoogleAioAnswerProvider(
         GeoTrackingSettings(serpapi_api_key="test-key"),
+        _recorder(),
         fetch_json=fetch_json,
     )
 
@@ -623,8 +1087,42 @@ async def test_google_aio_provider_uses_direct_ai_overview_content() -> None:
 
 
 @pytest.mark.anyio
+async def test_google_aio_provider_uses_distinct_operations_for_queries_in_same_run(
+) -> None:
+    recorder = _recorder()
+
+    async def fetch_json(params: dict[str, str]) -> dict[str, object]:
+        return {
+            "ai_overview": {
+                "text_blocks": [{"type": "paragraph", "snippet": "answer"}],
+                "references": [],
+            }
+        }
+
+    provider = SerpApiGoogleAioAnswerProvider(
+        GeoTrackingSettings(serpapi_api_key="test-key"),
+        recorder,
+        fetch_json=fetch_json,
+    )
+    run_request_id = UUID("11111111-1111-4111-8111-111111111111")
+
+    await provider.generate_answer(
+        _answer_request().model_copy(update={"run_request_id": run_request_id})
+    )
+    await provider.generate_answer(
+        _answer_request().model_copy(update={"run_request_id": run_request_id})
+    )
+
+    requests = list(recorder.requests.values())
+    assert [request.request_number for request in requests] == [1, 1]
+    assert len({request.operation_id for request in requests}) == 2
+    assert {request.context.run_request_id for request in requests} == {run_request_id}
+
+
+@pytest.mark.anyio
 async def test_google_aio_provider_uses_page_token_second_request() -> None:
     calls: list[dict[str, str]] = []
+    recorder = _recorder()
 
     async def fetch_json(params: dict[str, str]) -> dict[str, object]:
         calls.append(params)
@@ -644,6 +1142,7 @@ async def test_google_aio_provider_uses_page_token_second_request() -> None:
 
     provider = SerpApiGoogleAioAnswerProvider(
         GeoTrackingSettings(serpapi_api_key="test-key"),
+        recorder,
         fetch_json=fetch_json,
     )
 
@@ -651,6 +1150,13 @@ async def test_google_aio_provider_uses_page_token_second_request() -> None:
 
     assert [call["engine"] for call in calls] == ["google", "google_ai_overview"]
     assert calls[1]["page_token"] == "token-123"
+    assert [item.request_kind for item in recorder.requests.values()] == [
+        "initial",
+        "page_token",
+    ]
+    assert {
+        item.context.use_case for item in recorder.requests.values()
+    } == {"google_ai_overview"}
     assert response.raw_response == "第二段 AIO 回答。"
     assert response.reference_urls == ["https://example.com/second-source"]
 
@@ -662,6 +1168,7 @@ async def test_google_aio_provider_reports_no_aio_result() -> None:
 
     provider = SerpApiGoogleAioAnswerProvider(
         GeoTrackingSettings(serpapi_api_key="test-key"),
+        _recorder(),
         fetch_json=fetch_json,
     )
 
@@ -673,7 +1180,10 @@ async def test_google_aio_provider_reports_no_aio_result() -> None:
 
 @pytest.mark.anyio
 async def test_google_aio_provider_requires_api_key() -> None:
-    provider = SerpApiGoogleAioAnswerProvider(GeoTrackingSettings(serpapi_api_key=""))
+    provider = SerpApiGoogleAioAnswerProvider(
+        GeoTrackingSettings(serpapi_api_key=""),
+        _recorder(),
+    )
 
     with pytest.raises(ProviderRequestError) as exc_info:
         await provider.generate_answer(_answer_request())
@@ -684,7 +1194,8 @@ async def test_google_aio_provider_requires_api_key() -> None:
 @pytest.mark.anyio
 async def test_google_aio_provider_reuses_aiohttp_session() -> None:
     provider = SerpApiGoogleAioAnswerProvider(
-        GeoTrackingSettings(serpapi_api_key="test-key")
+        GeoTrackingSettings(serpapi_api_key="test-key"),
+        _recorder(),
     )
 
     first_session = provider._client_session()

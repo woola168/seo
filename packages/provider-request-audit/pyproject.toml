@@ -1,0 +1,15 @@
+[project]
+name = "younilab-provider-request-audit"
+version = "0.1.0"
+description = "Durable audit records for outbound provider requests."
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.30.0,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.7.12,<0.8.0"]
+build-backend = "uv_build"

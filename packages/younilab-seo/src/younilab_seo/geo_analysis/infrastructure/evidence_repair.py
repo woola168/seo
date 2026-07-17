@@ -9,6 +9,12 @@ import aiohttp
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
+from younilab_provider_request_audit import (
+    ProviderRequestContext,
+    ProviderRequestExecutor,
+    ProviderRequestFailure,
+    ProviderRequestRecorder,
+)
 
 from younilab_seo.geo_analysis.application import (
     EvidenceTextRepair,
@@ -113,6 +119,8 @@ GenerateContent = Callable[[str], Awaitable[dict[str, Any]]]
 @dataclass
 class GeminiEvidenceTextRepairer:
     settings: GeminiEvidenceTextRepairSettings
+    recorder: ProviderRequestRecorder
+    source_service: str
     generate_content: GenerateContent | None = None
     _session: aiohttp.ClientSession | None = field(default=None, init=False, repr=False)
     _client: genai.Client | None = field(default=None, init=False, repr=False)
@@ -142,31 +150,49 @@ class GeminiEvidenceTextRepairer:
         if self._session is not None and not self._session.closed:
             await self._session.close()
         self._session = None
+        await self.recorder.close()
 
     async def _generate_output(self, prompt: str) -> _GeminiEvidenceRepairOutput:
-        if self.generate_content is not None:
-            try:
-                return _GeminiEvidenceRepairOutput.model_validate(
-                    await self.generate_content(prompt)
-                )
-            except (TypeError, ValueError) as exc:
-                raise EvidenceTextRepairUnavailable(
-                    "Gemini evidence repair returned invalid structured output"
-                ) from exc
-
-        try:
-            response = await self._get_client().aio.models.generate_content(
+        operation = ProviderRequestExecutor(
+            self.recorder,
+            ProviderRequestContext(
+                platform_code="gemini",
+                provider_code="google_vertex_ai",
+                provider_operation="generate_content",
+                use_case="evidence_repair",
+                source_service=self.source_service,
                 model=self.settings.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=self.settings.temperature,
-                    system_instruction=EVIDENCE_REPAIR_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    response_schema=_GeminiEvidenceRepairOutput,
-                    thinking_config=types.ThinkingConfig(
-                        thinking_level=self.settings.thinking_level.upper(),
+            ),
+        )
+        try:
+            if self.generate_content is not None:
+                response = await operation.execute(
+                    lambda: self.generate_content(prompt),
+                    request_kind="initial",
+                    classify_failure=_classify_gemini_failure,
+                )
+                try:
+                    return _GeminiEvidenceRepairOutput.model_validate(response)
+                except (TypeError, ValueError) as exc:
+                    raise EvidenceTextRepairUnavailable(
+                        "Gemini evidence repair returned invalid structured output"
+                    ) from exc
+            response = await operation.execute(
+                lambda: self._get_client().aio.models.generate_content(
+                    model=self.settings.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=self.settings.temperature,
+                        system_instruction=EVIDENCE_REPAIR_SYSTEM_PROMPT,
+                        response_mime_type="application/json",
+                        response_schema=_GeminiEvidenceRepairOutput,
+                        thinking_config=types.ThinkingConfig(
+                            thinking_level=self.settings.thinking_level.upper(),
+                        ),
                     ),
                 ),
+                request_kind="initial",
+                classify_failure=_classify_gemini_failure,
             )
             if isinstance(response.parsed, _GeminiEvidenceRepairOutput):
                 return response.parsed
@@ -201,9 +227,25 @@ class GeminiEvidenceTextRepairer:
             vertexai=True,
             project=project_id,
             location=self.settings.vertex_location,
-            http_options=types.HttpOptions(aiohttp_client=self._session),
+            http_options=types.HttpOptions(
+                aiohttp_client=self._session,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
         return self._client
+
+
+def _classify_gemini_failure(error: Exception) -> ProviderRequestFailure:
+    status = getattr(error, "code", None)
+    return ProviderRequestFailure(
+        http_status=status if isinstance(status, int) else None,
+        error_code=(
+            f"gemini_http_{status}"
+            if isinstance(status, int)
+            else "gemini_request_failed"
+        ),
+        error_type=error.__class__.__name__,
+    )
 
 
 def _source_blocks(raw_response: str) -> list[dict[str, str]]:
