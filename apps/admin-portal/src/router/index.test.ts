@@ -81,7 +81,11 @@ describe("portal router", () => {
   });
 
   it("keeps the GEO analysis route under GEO navigation", async () => {
-    const router = createPortalRouter(createMemoryHistory(), () => true);
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.admin.access"],
+    );
 
     await router.push("/geo-analysis");
     await router.isReady();
@@ -94,7 +98,11 @@ describe("portal router", () => {
   });
 
   it("keeps GEO query research under GEO navigation", async () => {
-    const router = createPortalRouter(createMemoryHistory(), () => true);
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.admin.access"],
+    );
 
     await router.push("/geo-analysis/query-research");
     await router.isReady();
@@ -116,7 +124,11 @@ describe("portal router", () => {
       "/geo-analysis/flow-check",
     );
 
-    const authenticated = createPortalRouter(createMemoryHistory(), () => true);
+    const authenticated = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.admin.access"],
+    );
 
     await authenticated.push("/geo-analysis/flow-check");
     await authenticated.isReady();
@@ -138,7 +150,11 @@ describe("portal router", () => {
       "/geo-analysis/report-design",
     );
 
-    const authenticated = createPortalRouter(createMemoryHistory(), () => true);
+    const authenticated = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.admin.access"],
+    );
 
     await authenticated.push("/geo-analysis/report-design");
     await authenticated.isReady();
@@ -161,6 +177,51 @@ describe("portal router", () => {
     expect(router.currentRoute.value.query.redirect).toBe(
       "/permissions/users/new",
     );
+  });
+
+  it("keeps standard GEO on separate pages for project readers", async () => {
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.read"],
+    );
+
+    await router.push("/geo/overview");
+    await router.isReady();
+    expect(router.currentRoute.value.name).toBe("geo-overview");
+    expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
+      "geo-overview",
+    );
+
+    const rdComponent = router
+      .getRoutes()
+      .find((item) => item.name === "geo-analysis-overview")?.components
+      ?.default;
+    const standardComponent = router
+      .getRoutes()
+      .find((item) => item.name === "geo-overview")?.components?.default;
+    expect(standardComponent).not.toBe(rdComponent);
+    expect(router.hasRoute("geo-query-research")).toBe(false);
+  });
+
+  it("redirects users without the required GEO capability", async () => {
+    const standardRouter = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => [],
+    );
+    await standardRouter.push("/geo/projects");
+    await standardRouter.isReady();
+    expect(standardRouter.currentRoute.value.name).toBe("dashboard");
+
+    const rdRouter = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.read"],
+    );
+    await rdRouter.push("/geo-analysis/projects");
+    await rdRouter.isReady();
+    expect(rdRouter.currentRoute.value.name).toBe("dashboard");
   });
 
   it("redirects the permissions root to member management", async () => {
@@ -264,6 +325,8 @@ describe("route helpers", () => {
     expect(getRoutePage("permissions-authorization")).toBe(
       "permissions-authorization",
     );
+    expect(getRoutePage("geo-overview")).toBe("geo-overview");
+    expect(getRoutePage("geo-projects")).toBe("geo-projects");
     expect(getRoutePage("geo-analysis-overview")).toBe(
       "geo-analysis-overview",
     );

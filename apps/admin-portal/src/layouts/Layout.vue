@@ -36,7 +36,7 @@ const commandEscapeButton = ref<HTMLButtonElement | null>(null);
 const commandQuickActions = ref<HTMLButtonElement[]>([]);
 const commandNavigationButtons = ref<HTMLButtonElement[]>([]);
 const expandedNavigationIds = ref<Set<string>>(
-  new Set(["geo-analysis", "permissions"]),
+  new Set(["geo-standard", "permissions"]),
 );
 
 const primaryNavigation = computed(() =>
@@ -52,8 +52,8 @@ const navigationGroups = computed(() => {
 });
 const commandNavigationItems = computed(() =>
   props.navigation.flatMap((item) => [
-    ...(item.page ? [item] : []),
-    ...(item.children?.filter((child) => child.page) ?? []),
+    ...(item.page && !item.disabled ? [item] : []),
+    ...(item.children?.filter((child) => child.page && !child.disabled) ?? []),
   ]),
 );
 const breadcrumbSegments = computed(() => {
@@ -61,7 +61,10 @@ const breadcrumbSegments = computed(() => {
     return ["系統", "權限管理", props.currentTitle];
   }
   if (props.activePage.startsWith("geo-analysis-")) {
-    return ["分析工具", "GEO 分析", props.currentTitle];
+    return ["分析工具", "GEO分析-RD", props.currentTitle];
+  }
+  if (props.activePage.startsWith("geo-")) {
+    return ["分析工具", "GEO分析", props.currentTitle];
   }
   return [props.currentTitle];
 });
@@ -243,6 +246,8 @@ function logout(): void {
                 class="navigation-subitem"
                 :class="{ active: child.page === activePage, disabled: child.disabled }"
                 type="button"
+                :aria-disabled="child.disabled || undefined"
+                :title="child.disabled ? '尚未開放' : undefined"
                 @click="selectNavigation(child)"
               >
                 <span>{{ child.label }}</span>

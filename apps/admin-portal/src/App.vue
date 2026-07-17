@@ -12,6 +12,7 @@ import GeoFlowCheckPage from "./pages/GeoFlowCheckPage.vue";
 import GeoPlatformsSchedulesPage from "./pages/GeoPlatformsSchedulesPage.vue";
 import GeoProjectsPage from "./pages/GeoProjectsPage.vue";
 import GeoRunJobsPage from "./pages/GeoRunJobsPage.vue";
+import GeoStandardProjectsPage from "./pages/GeoStandardProjectsPage.vue";
 import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
 import GeoTopicsQueriesPage from "./pages/GeoTopicsQueriesPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
@@ -20,6 +21,12 @@ import RoleCreationPage from "./pages/RoleCreationPage.vue";
 import SessionLoadingPage from "./pages/SessionLoadingPage.vue";
 import { getLoginRedirect, getRoutePage } from "./router/routes";
 import { ApiError, api } from "./services/api";
+import {
+  clearSessionCapabilities,
+  getSessionCapabilities,
+  refreshSessionCapabilities,
+  sessionHasRole,
+} from "./services/session-capabilities";
 import type {
   AuthorizationDecision,
   Capabilities,
@@ -35,16 +42,21 @@ import type {
   ToastTone,
   UserAccess,
 } from "./types";
-
-const GeoOverviewPage = defineAsyncComponent(
-  () => import("./pages/GeoOverviewPage.vue"),
-);
+import { buildGeoNavigation } from "./utils/geo-navigation";
+import { filterAssignablePermissions } from "./utils/internal-permissions";
 import { hasPermission } from "./utils/permissions";
+import { removeRoleById } from "./utils/role-state";
 import {
   shouldRestoreSession,
   type RecoveryMode,
 } from "./utils/session-bootstrap";
-import { removeRoleById } from "./utils/role-state";
+
+const GeoOverviewPage = defineAsyncComponent(
+  () => import("./pages/GeoOverviewPage.vue"),
+);
+const GeoStandardOverviewPage = defineAsyncComponent(
+  () => import("./pages/GeoStandardOverviewPage.vue"),
+);
 
 const route = useRoute();
 const router = useRouter();
@@ -96,6 +108,8 @@ const activePermissionTab = computed<PermissionTab>(() => {
   return "members";
 });
 const geoPageTitles: Partial<Record<PageId, string>> = {
+  "geo-overview": "GEO Overview",
+  "geo-projects": "GEO Projects",
   "geo-analysis-overview": "GEO Overview",
   "geo-analysis-projects": "GEO Projects",
   "geo-analysis-entities": "GEO Entities",
@@ -142,68 +156,7 @@ const navigation = computed<NavigationItem[]>(() => [
     badge: "9",
     disabled: true,
   },
-  {
-    id: "geo-analysis",
-    label: "GEO 分析",
-    icon: "activity",
-    group: "分析工具",
-    children: [
-      {
-        id: "geo-analysis-overview",
-        label: "Overview",
-        icon: "grid",
-        page: "geo-analysis-overview",
-      },
-      {
-        id: "geo-analysis-projects",
-        label: "Projects",
-        icon: "briefcase",
-        page: "geo-analysis-projects",
-      },
-      {
-        id: "geo-analysis-entities",
-        label: "Entities",
-        icon: "users",
-        page: "geo-analysis-entities",
-      },
-      {
-        id: "geo-analysis-queries",
-        label: "Topics & Queries",
-        icon: "list",
-        page: "geo-analysis-queries",
-      },
-      {
-        id: "geo-analysis-schedules",
-        label: "Platforms & Schedules",
-        icon: "calendar",
-        page: "geo-analysis-schedules",
-      },
-      {
-        id: "geo-analysis-jobs",
-        label: "Run Jobs",
-        icon: "activity",
-        page: "geo-analysis-jobs",
-      },
-      {
-        id: "geo-analysis-report-design",
-        label: "Report Design",
-        icon: "eye",
-        page: "geo-analysis-report-design",
-      },
-      {
-        id: "geo-analysis-flow-check",
-        label: "Flow Check",
-        icon: "check-circle",
-        page: "geo-analysis-flow-check",
-      },
-      {
-        id: "geo-analysis-query-research",
-        label: "Query Research",
-        icon: "sparkles",
-        page: "geo-analysis-query-research",
-      },
-    ],
-  },
+  ...buildGeoNavigation(capabilities.value?.permissions ?? []),
   {
     id: "strategy",
     label: "策略分析",
@@ -333,6 +286,7 @@ async function login(email: string, password: string): Promise<void> {
   const redirect = getLoginRedirect(route.query.redirect);
   await run(
     async () => {
+      clearSessionCapabilities();
       await api.login(email, password);
       await loadSessionData();
       await router.replace(redirect);
@@ -369,7 +323,7 @@ async function loadSession(): Promise<void> {
 async function loadSessionData(): Promise<void> {
   const [currentUser, currentCapabilities] = await Promise.all([
     api.me(),
-    api.capabilities(),
+    getSessionCapabilities(),
   ]);
   user.value = currentUser;
   capabilities.value = currentCapabilities;
@@ -473,7 +427,9 @@ async function fetchPortalDataItem(key: PortalDataKey): Promise<void> {
   if (key === "permissions") {
     if (!capabilities.value) return;
     if (!hasCapability("permissions.read")) {
-      permissions.value = [...capabilities.value.permissions];
+      permissions.value = filterAssignablePermissions(
+        capabilities.value.permissions,
+      );
       return;
     }
     permissions.value = await api.permissions();
@@ -518,10 +474,15 @@ function hasCapability(permission: string): boolean {
   );
 }
 
+async function reloadSessionCapabilities(): Promise<void> {
+  capabilities.value = null;
+  capabilities.value = await refreshSessionCapabilities();
+}
+
 async function refresh(): Promise<void> {
   await run(async () => {
     if (!user.value) return;
-    const currentCapabilities = await api.capabilities();
+    const currentCapabilities = await getSessionCapabilities(true);
     capabilities.value = currentCapabilities;
     forgetLoadedData([
       "roles",
@@ -553,6 +514,7 @@ async function updateRole(
   roleId: string,
   selectedPermissions: string[],
 ): Promise<void> {
+  const affectsCurrentSession = sessionHasRole(user.value, roleId);
   await run(async () => {
     const updated = await api.updateRolePermissions(
       roleId,
@@ -561,6 +523,9 @@ async function updateRole(
     roles.value = roles.value.map((role) =>
       role.id === updated.id ? updated : role,
     );
+    if (affectsCurrentSession) {
+      await reloadSessionCapabilities();
+    }
     notify("角色權限已更新", "success");
   });
 }
@@ -688,6 +653,10 @@ async function updateUser(
     users.value = users.value.map((item) =>
       item.id === updated.id ? updated : item,
     );
+    if (user.value?.id === updated.id) {
+      user.value = updated;
+      await reloadSessionCapabilities();
+    }
     notify(successMessage, "success");
   });
 }
@@ -722,6 +691,7 @@ async function run(
 }
 
 function clearSession(): void {
+  clearSessionCapabilities();
   user.value = null;
   capabilities.value = null;
   roles.value = [];
@@ -836,6 +806,8 @@ function unavailable(label: string): void {
     />
     <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
     <GeoProjectsPage v-else-if="activePage === 'geo-analysis-projects'" />
+    <GeoStandardOverviewPage v-else-if="activePage === 'geo-overview'" />
+    <GeoStandardProjectsPage v-else-if="activePage === 'geo-projects'" />
     <GeoEntitiesPage v-else-if="activePage === 'geo-analysis-entities'" />
     <GeoTopicsQueriesPage v-else-if="activePage === 'geo-analysis-queries'" />
     <GeoPlatformsSchedulesPage v-else-if="activePage === 'geo-analysis-schedules'" />

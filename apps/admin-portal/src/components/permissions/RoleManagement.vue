@@ -4,6 +4,7 @@ import AppIcon from "../ui/AppIcon.vue";
 import PermissionGroupSelector from "./PermissionGroupSelector.vue";
 import type { Role } from "../../types";
 import { getFocusTargetIndex } from "../../utils/focus-trap";
+import { filterAssignablePermissions } from "../../utils/internal-permissions";
 
 type DialogFocusElement = HTMLButtonElement;
 
@@ -30,12 +31,14 @@ const deleteConfirmButton = ref<HTMLButtonElement | null>(null);
 const selectedRole = computed(
   () => props.roles.find((role) => role.id === editingRoleId.value) ?? null,
 );
+const rolePermissions = (role: Role): string[] =>
+  filterAssignablePermissions(role.permissions);
 const filteredRoles = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   if (!keyword) return props.roles;
   return props.roles.filter((role) =>
     role.name.toLowerCase().includes(keyword) ||
-    role.permissions.some((permission) =>
+    rolePermissions(role).some((permission) =>
       permission.toLowerCase().includes(keyword),
     ),
   );
@@ -46,7 +49,7 @@ watch(
   (roles) => {
     const current = roles.find((role) => role.id === editingRoleId.value);
     if (current) {
-      editingPermissions.value = [...current.permissions];
+      editingPermissions.value = rolePermissions(current);
     } else {
       editingRoleId.value = "";
       editingPermissions.value = [];
@@ -63,7 +66,7 @@ watch(
 
 function selectRole(role: Role): void {
   editingRoleId.value = role.id;
-  editingPermissions.value = [...role.permissions];
+  editingPermissions.value = rolePermissions(role);
 }
 
 function closeEditor(): void {
@@ -167,7 +170,7 @@ function trapDeleteDialogFocus(event: KeyboardEvent): void {
           {{ role.isSystem ? "系統內建角色，保留核心管理權限。" : "自訂角色，可依職責調整權限範圍。" }}
         </p>
         <footer>
-          <span>{{ role.permissions.length }} 項權限</span>
+          <span>{{ rolePermissions(role).length }} 項權限</span>
           <button
             class="button button-secondary"
             type="button"
