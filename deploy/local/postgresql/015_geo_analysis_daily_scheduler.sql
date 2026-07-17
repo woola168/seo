@@ -1,24 +1,3 @@
-UPDATE geo_project AS project
-SET customer_id = task.customer_id,
-    updated_at = now()
-FROM seo_task AS task
-WHERE project.seo_task_id = task.id
-  AND project.customer_id IS NULL
-  AND project.tenant_id = task.tenant_id;
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM geo_project
-        WHERE seo_task_id IS NOT NULL
-          AND customer_id IS NULL
-    ) THEN
-        RAISE EXCEPTION
-            'geo_project customer_id backfill is required before removing seo_task_id';
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS geo_daily_run_batch (
     id uuid PRIMARY KEY,
     project_id uuid NOT NULL REFERENCES geo_project(id) ON DELETE CASCADE,
