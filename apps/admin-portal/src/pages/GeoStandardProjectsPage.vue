@@ -197,12 +197,12 @@ async function updateProjectStatus(): Promise<void> {
     <Teleport to="body">
       <div
         v-if="statusUpdateState.updatingId"
-        class="geo-project-status-loading-overlay"
+        class="geo-operation-loading-overlay"
         role="status"
         aria-live="polite"
         aria-label="正在更新 Project 狀態"
       >
-        <div class="geo-project-status-loading-card">
+        <div class="geo-operation-loading-card">
           <span class="session-loading-spinner" aria-hidden="true"></span>
           <strong>正在更新 Project 狀態…</strong>
         </div>
