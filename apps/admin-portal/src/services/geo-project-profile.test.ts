@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
   GeoEntityAliasResource,
   GeoEntityResource,
@@ -8,7 +8,9 @@ import type {
 } from "../types";
 
 let buildGeoProjectProfile: typeof import("./geo-project-profile")["buildGeoProjectProfile"];
+let createGeoProjectWithQuerySettings: typeof import("./geo-project-profile")["createGeoProjectWithQuerySettings"];
 let normalizeValues: typeof import("./geo-project-profile")["normalizeValues"];
+let apiModule: typeof import("./api");
 
 beforeAll(async () => {
   const values = new Map<string, string>();
@@ -20,8 +22,12 @@ beforeAll(async () => {
   });
   const profileModule = await import("./geo-project-profile");
   buildGeoProjectProfile = profileModule.buildGeoProjectProfile;
+  createGeoProjectWithQuerySettings = profileModule.createGeoProjectWithQuerySettings;
   normalizeValues = profileModule.normalizeValues;
+  apiModule = await import("./api");
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("GEO Project profile", () => {
   it("aggregates own-brand, aliases and competitors for the standard pages", () => {
@@ -88,7 +94,125 @@ describe("GEO Project profile", () => {
   it("normalizes tags without empty or duplicate values", () => {
     expect(normalizeValues([" GNC ", "", "GNC", "DHC"])).toEqual(["GNC", "DHC"]);
   });
+
+  it("saves Query Settings after the Project profile and Topics", async () => {
+    const calls = mockProjectCreation();
+
+    const result = await createGeoProjectWithQuerySettings(
+      projectInput(),
+      querySettingsRequest(),
+      true,
+    );
+
+    expect(result.querySettingsStatus).toBe("saved");
+    expect(calls.createProject).toHaveBeenCalledTimes(1);
+    expect(calls.updateQuerySettings).toHaveBeenCalledWith("project-1", querySettingsRequest());
+    expect(calls.createProject.mock.invocationCallOrder[0]).toBeLessThan(
+      calls.createEntity.mock.invocationCallOrder[0]!,
+    );
+    expect(calls.createEntity.mock.invocationCallOrder[0]).toBeLessThan(
+      calls.createTopic.mock.invocationCallOrder[0]!,
+    );
+    expect(calls.createTopic.mock.invocationCallOrder[0]).toBeLessThan(
+      calls.updateQuerySettings.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("keeps the created Project when Query Settings saving fails", async () => {
+    const calls = mockProjectCreation();
+    calls.updateQuerySettings.mockRejectedValue(new Error("settings unavailable"));
+
+    const result = await createGeoProjectWithQuerySettings(
+      projectInput(),
+      querySettingsRequest(),
+      true,
+    );
+
+    expect(result).toMatchObject({
+      project: { id: "project-1" },
+      querySettingsStatus: "failed",
+      querySettingsError: "settings unavailable",
+    });
+    expect(calls.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips Query Settings when the user cannot update Projects", async () => {
+    const calls = mockProjectCreation();
+
+    const result = await createGeoProjectWithQuerySettings(
+      projectInput(),
+      querySettingsRequest(),
+      false,
+    );
+
+    expect(result.querySettingsStatus).toBe("skipped");
+    expect(calls.createProject).toHaveBeenCalledTimes(1);
+    expect(calls.updateQuerySettings).not.toHaveBeenCalled();
+  });
 });
+
+function mockProjectCreation() {
+  const project = projectResource();
+  const createProject = vi.spyOn(apiModule.api.geoAnalysis, "createProject").mockResolvedValue(project);
+  const createEntity = vi.spyOn(apiModule.api.geoAnalysis, "createEntity").mockResolvedValue(
+    entity("own-1", "own_brand", project.name, "https://example.com"),
+  );
+  const createTopic = vi.spyOn(apiModule.api.geoAnalysis, "createTopic").mockResolvedValue({
+    id: "topic-1",
+    projectId: project.id,
+    name: "採購評估",
+    description: "比較方案",
+    status: "active",
+    createdAt: "2026-07-19T00:00:00Z",
+    updatedAt: "2026-07-19T00:00:00Z",
+  });
+  const updateQuerySettings = vi.spyOn(apiModule.api.geoAnalysis, "updateQuerySettings").mockResolvedValue({
+    projectId: project.id,
+    ...querySettingsRequest(),
+    updatedAt: "2026-07-19T00:00:00Z",
+  });
+  return { createProject, createEntity, createTopic, updateQuerySettings };
+}
+
+function projectInput() {
+  return {
+    project: {
+      customerId: "customer-1",
+      name: "範例 Project",
+      defaultRegion: "TW",
+      defaultLanguage: "zh-TW",
+      status: "active" as const,
+      dailyRunBudget: 200,
+    },
+    websiteUrl: "https://example.com",
+    aliases: [],
+    competitors: [],
+    topics: [{ name: "採購評估", description: "比較方案" }],
+  };
+}
+
+function querySettingsRequest() {
+  return {
+    researchProvider: "gemini" as const,
+    runProvider: "gemini" as const,
+    keywords: ["ERP"],
+    marketType: "b2b_procurement" as const,
+    maxQueries: 8,
+    audience: { name: "B2B 採購", description: "採購決策者" },
+    intent: { category: "商業評估", description: "比較方案" },
+    shouldMentionOwnBrand: true,
+    shouldMentionCompetitor: true,
+  };
+}
+
+function projectResource(): GeoProjectResource {
+  return {
+    id: "project-1",
+    ...projectInput().project,
+    createdAt: "2026-07-19T00:00:00Z",
+    updatedAt: "2026-07-19T00:00:00Z",
+  };
+}
 
 function entity(
   id: string,

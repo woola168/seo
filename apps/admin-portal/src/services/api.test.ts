@@ -463,4 +463,102 @@ describe("api.geoAnalysis.dashboardReport", () => {
     expect(refreshCalls).toBe(0);
     expect(sessionStorage.getItem("accessToken")).toBe("valid-token");
   });
+
+  it("uses the Project Query Settings and status subresources", async () => {
+    const requests: Array<{ path: string; method: string; body: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({
+          path: String(path),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        const isStatus = String(path).endsWith("/status");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => isStatus
+            ? { projectId: "project-1", status: "paused", updatedAt: "2026-07-19T00:00:00Z" }
+            : {
+                projectId: "project-1",
+                researchProvider: "gemini",
+                runProvider: "gemini",
+                keywords: ["ERP"],
+                marketType: "b2b_procurement",
+                maxQueries: 8,
+                audience: { name: "採購", description: "採購主管" },
+                intent: { category: "商業評估", description: "比較供應商" },
+                shouldMentionOwnBrand: true,
+                shouldMentionCompetitor: false,
+                updatedAt: "2026-07-19T00:00:00Z",
+              },
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+    const settings = {
+      researchProvider: "gemini" as const,
+      runProvider: "gemini" as const,
+      keywords: ["ERP"],
+      marketType: "b2b_procurement" as const,
+      maxQueries: 8,
+      audience: { name: "採購", description: "採購主管" },
+      intent: { category: "商業評估", description: "比較供應商" },
+      shouldMentionOwnBrand: true,
+      shouldMentionCompetitor: false,
+    };
+
+    await api.geoAnalysis.querySettings("project-1");
+    await api.geoAnalysis.updateQuerySettings("project-1", settings);
+    await api.geoAnalysis.updateProjectStatus("project-1", { status: "paused" });
+
+    expect(requests).toEqual([
+      {
+        path: "/api/geo/projects/project-1/query-settings",
+        method: "GET",
+        body: null,
+      },
+      {
+        path: "/api/geo/projects/project-1/query-settings",
+        method: "PUT",
+        body: settings,
+      },
+      {
+        path: "/api/geo/projects/project-1/status",
+        method: "PATCH",
+        body: { status: "paused" },
+      },
+    ]);
+  });
+
+  it("keeps RFC 7807 invalidParams on ApiError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          detail: "validation failed",
+          invalidParams: [{ name: "body.maxQueries", reason: "must be less than 40", type: "less_than_equal" }],
+        }),
+      }) as Promise<Response>),
+    );
+    const { api } = await import("./api");
+
+    await expect(api.geoAnalysis.updateQuerySettings("project-1", {
+      researchProvider: "gemini",
+      runProvider: "gemini",
+      keywords: [],
+      marketType: "b2c",
+      maxQueries: 41,
+      audience: { name: "採購", description: "採購主管" },
+      intent: { category: "商業評估", description: "比較供應商" },
+      shouldMentionOwnBrand: true,
+      shouldMentionCompetitor: false,
+    })).rejects.toMatchObject({
+      status: 422,
+      invalidParams: [{ name: "body.maxQueries", reason: "must be less than 40" }],
+    });
+  });
 });

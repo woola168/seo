@@ -376,6 +376,37 @@
   gap: 0;
 }
 
+.geo-project-status-loading-overlay {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.28);
+  cursor: wait;
+}
+
+.geo-project-status-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 240px;
+  padding: 18px 22px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(10, 43, 65, 0.2);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.geo-project-status-loading-card .session-loading-spinner {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
 .geo-project-list-page .geo-filter-button {
   min-width: 72px;
   gap: 6px;

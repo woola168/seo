@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { problemMessage } from "./problem-details";
+import { problemInvalidParams, problemMessage } from "./problem-details";
 
 describe("problemMessage", () => {
   it("returns the Problem Details detail message", () => {
@@ -32,5 +32,20 @@ describe("problemMessage", () => {
 
   it("uses a fallback for unknown payloads", () => {
     expect(problemMessage(null)).toBe("API request failed");
+  });
+
+  it("extracts RFC 7807 invalid parameters", () => {
+    expect(problemInvalidParams({
+      invalidParams: [
+        { name: "body.maxQueries", reason: "must be less than or equal to 40", type: "less_than_equal" },
+        { name: 123, reason: "ignored" },
+      ],
+    })).toEqual([
+      {
+        name: "body.maxQueries",
+        reason: "must be less than or equal to 40",
+        type: "less_than_equal",
+      },
+    ]);
   });
 });
