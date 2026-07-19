@@ -12,6 +12,12 @@ import {
 } from "../services/geo-project-query-settings";
 import { loadGeoProjectProfile, type GeoProjectProfile } from "../services/geo-project-profile";
 import {
+  generationRunsForResearch,
+  latestGeoQueryRun,
+  restoredDraftIds,
+  runsStartedAtOrAfter,
+} from "../services/geo-query-recovery";
+import {
   reconcileAcceptedQueries,
   runAcceptedQueriesOnce,
   type GeoQueryFirstRunSummary,
@@ -26,10 +32,29 @@ import type {
 } from "../types";
 
 const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
-const props = defineProps<{ permissions: readonly string[] }>();
+const props = withDefaults(
+  defineProps<{
+    permissions: readonly string[];
+    projectId?: string;
+    autoRun?: boolean;
+    recoverable?: boolean;
+    researchRunId?: string;
+    generationRunId?: string;
+  }>(),
+  {
+    projectId: "",
+    autoRun: false,
+    recoverable: false,
+    researchRunId: "",
+    generationRunId: "",
+  },
+);
 const route = useRoute();
 const router = useRouter();
-const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
+const projectId = computed(() =>
+  props.projectId ||
+  (typeof route.params.projectId === "string" ? route.params.projectId : ""),
+);
 const profile = ref<GeoProjectProfile | null>(null);
 const loading = ref(false);
 const operationLoadingMessage = ref("");
@@ -37,7 +62,18 @@ const errorMessage = ref("");
 const step = ref<1 | 2>(1);
 const researchRun = ref<GeoQueryResearchRunResource | null>(null);
 const generationRun = ref<GeoQueryGenerationRunResource | null>(null);
+const researchStartedAt = ref(
+  typeof route.query.researchStartedAt === "string"
+    ? route.query.researchStartedAt
+    : "",
+);
+const generationStartedAt = ref(
+  typeof route.query.generationStartedAt === "string"
+    ? route.query.generationStartedAt
+    : "",
+);
 const selectedDraftIds = ref<string[]>([]);
+const selectionUpdatingIds = ref<Set<string>>(new Set());
 const showEmptyAlert = ref(false);
 const topics = ref<Array<{ name: string; description: string }>>([]);
 const form = reactive({
@@ -48,6 +84,7 @@ const drafts = computed(() => generationRun.value?.drafts ?? []);
 const selectableDrafts = computed(() => drafts.value.filter((draft) => !draft.acceptedQueryId));
 const allChecked = computed(() => selectableDrafts.value.length > 0 && selectableDrafts.value.every((draft) => selectedDraftIds.value.includes(draft.id)));
 const someChecked = computed(() => selectedDraftIds.value.length > 0 && !allChecked.value);
+const selectionUpdating = computed(() => selectionUpdatingIds.value.size > 0);
 const brandName = computed(() => profile.value?.ownBrand.name || profile.value?.project.name || "");
 const competitorNames = computed(() => profile.value?.competitors.map((competitor) => competitor.name) ?? []);
 const keywords = computed(() => normalizeQuerySettingsKeywords(form.keywords));
@@ -72,6 +109,8 @@ async function load(): Promise<void> {
     Object.assign(form, settings.form);
     if (settings.warning) emit("notify", settings.warning, "warning");
     topics.value = profile.value.topics.map((topic) => ({ name: topic.name, description: topic.description }));
+    if (props.autoRun) await executeSearch();
+    else if (props.recoverable) await restorePersistedRuns();
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "無法載入 Project。";
   } finally {
@@ -109,19 +148,19 @@ async function executeSearch(): Promise<void> {
   startOperationLoading("正在執行 Query Research 與生成 Query…");
   errorMessage.value = "";
   try {
+    researchRun.value = null;
+    generationRun.value = null;
+    selectedDraftIds.value = [];
+    researchStartedAt.value = new Date().toISOString();
+    generationStartedAt.value = "";
+    await persistRecoveryRoute("researching");
     researchRun.value = await api.geoAnalysis.runQueryResearch(projectId.value, researchPayload());
     if (!researchRun.value.result?.researchContext) {
+      await persistRecoveryRoute("research-failed");
       throw new Error(researchRun.value.errorMessage || "Query Research 未產生可用結果。");
     }
-    generationRun.value = await api.geoAnalysis.runQueryGeneration(
-      projectId.value,
-      generationPayload(researchRun.value.result.researchContext),
-    );
-    if (generationRun.value.status === "failed") {
-      throw new Error(generationRun.value.errorMessage || "Query Generation 失敗。");
-    }
-    selectedDraftIds.value = [];
-    step.value = 2;
+    await persistRecoveryRoute("research-complete");
+    await generateQueries(researchRun.value.result.researchContext);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "Query Search 執行失敗。";
   } finally {
@@ -135,12 +174,135 @@ async function regenerate(): Promise<void> {
   startOperationLoading("正在重新生成 Query…");
   errorMessage.value = "";
   try {
-    generationRun.value = await api.geoAnalysis.runQueryGeneration(projectId.value, generationPayload(context));
-    selectedDraftIds.value = [];
+    await generateQueries(context);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "重新生成失敗。";
   } finally {
     stopOperationLoading();
+  }
+}
+
+async function generateQueries(researchContext: string): Promise<void> {
+  generationRun.value = null;
+  selectedDraftIds.value = [];
+  generationStartedAt.value = new Date().toISOString();
+  await persistRecoveryRoute("generating");
+  generationRun.value = await api.geoAnalysis.runQueryGeneration(
+    projectId.value,
+    generationPayload(researchContext),
+  );
+  await persistRecoveryRoute(
+    generationRun.value.status === "failed" ? "generation-failed" : "drafts",
+  );
+  if (generationRun.value.status === "failed") {
+    throw new Error(generationRun.value.errorMessage || "Query Generation 失敗。");
+  }
+  restoreDraftSelection();
+  step.value = 2;
+}
+
+async function restorePersistedRuns(): Promise<void> {
+  const persistedResearchRun = await loadPersistedResearchRun();
+  researchRun.value = persistedResearchRun;
+  const persistedGenerationRun = await loadPersistedGenerationRun(
+    persistedResearchRun?.result?.researchContext ?? "",
+  );
+  generationRun.value = persistedGenerationRun;
+
+  if (generationRun.value) {
+    await persistRecoveryRoute(
+      generationRun.value.status === "failed" ? "generation-failed" : "drafts",
+    );
+    if (generationRun.value.status === "failed") {
+      errorMessage.value = generationRun.value.errorMessage || "Query Generation 失敗，可重新執行。";
+      return;
+    }
+    restoreDraftSelection();
+    step.value = 2;
+    return;
+  }
+
+  const researchContext = researchRun.value?.result?.researchContext;
+  if (researchRun.value?.status === "failed") {
+    errorMessage.value = researchRun.value.errorMessage || "Query Research 失敗，可重新執行。";
+    return;
+  }
+  if (!researchContext) {
+    errorMessage.value = "尚未找到可恢復的 Query Research 結果，請稍後重新整理。";
+    return;
+  }
+  if (route.query.phase === "generating") {
+    errorMessage.value = "Query Generation 可能仍在執行，請稍後重新整理，避免重複生成。";
+    return;
+  }
+
+  startOperationLoading("正在從已保存的 Research 結果繼續生成 Query…");
+  try {
+    await generateQueries(researchContext);
+  } finally {
+    stopOperationLoading();
+  }
+}
+
+async function loadPersistedResearchRun(): Promise<GeoQueryResearchRunResource | null> {
+  const [explicitRun, runs] = await Promise.all([
+    props.researchRunId
+      ? api.geoAnalysis.queryResearchRun(props.researchRunId).catch(() => null)
+      : Promise.resolve(null),
+    api.geoAnalysis.queryResearchRuns(projectId.value),
+  ]);
+  return latestGeoQueryRun(runsStartedAtOrAfter([
+    ...(explicitRun ? [explicitRun] : []),
+    ...runs.items,
+  ], researchStartedAt.value));
+}
+
+async function loadPersistedGenerationRun(
+  researchContext: string,
+): Promise<GeoQueryGenerationRunResource | null> {
+  const [explicitRun, runs] = await Promise.all([
+    props.generationRunId
+      ? api.geoAnalysis.queryGenerationRun(props.generationRunId).catch(() => null)
+      : Promise.resolve(null),
+    api.geoAnalysis.queryGenerationRuns(projectId.value),
+  ]);
+  const candidates = generationRunsForResearch(
+    runsStartedAtOrAfter([
+      ...(explicitRun ? [explicitRun] : []),
+      ...runs.items,
+    ], generationStartedAt.value),
+    researchContext,
+  );
+  const latest = latestGeoQueryRun(candidates);
+  if (!latest) return null;
+  return explicitRun?.id === latest.id
+    ? explicitRun
+    : api.geoAnalysis.queryGenerationRun(latest.id);
+}
+
+function restoreDraftSelection(): void {
+  selectedDraftIds.value = generationRun.value
+    ? restoredDraftIds(generationRun.value)
+    : [];
+}
+
+async function persistRecoveryRoute(phase: string): Promise<void> {
+  if (!props.recoverable) return;
+  try {
+    await router.replace({
+      name: "geo-project-edit",
+      params: { projectId: projectId.value },
+      query: {
+        mode: "query-research",
+        phase,
+        ...(researchRun.value ? { researchRunId: researchRun.value.id } : {}),
+        ...(generationRun.value ? { generationRunId: generationRun.value.id } : {}),
+        ...(researchStartedAt.value ? { researchStartedAt: researchStartedAt.value } : {}),
+        ...(generationStartedAt.value ? { generationStartedAt: generationStartedAt.value } : {}),
+      },
+    });
+  } catch {
+    emit("notify", "執行結果已保存，但瀏覽器恢復狀態更新失敗。", "warning");
   }
 }
 
@@ -276,15 +438,48 @@ function generationPayload(researchContext: string) {
   };
 }
 
-function toggleDraft(draft: GeoQueryDraftResource): void {
-  if (draft.acceptedQueryId) return;
-  selectedDraftIds.value = selectedDraftIds.value.includes(draft.id)
+async function toggleDraft(draft: GeoQueryDraftResource): Promise<void> {
+  if (draft.acceptedQueryId || selectionUpdatingIds.value.has(draft.id)) return;
+  const wasSelected = selectedDraftIds.value.includes(draft.id);
+  selectedDraftIds.value = wasSelected
     ? selectedDraftIds.value.filter((id) => id !== draft.id)
     : [...selectedDraftIds.value, draft.id];
+  selectionUpdatingIds.value = new Set(selectionUpdatingIds.value).add(draft.id);
+  try {
+    const updated = await api.geoAnalysis.updateQueryDraftSelection(draft.id, {
+      selectionStatus: wasSelected ? "rejected" : "shortlisted",
+    });
+    if (generationRun.value) {
+      generationRun.value = {
+        ...generationRun.value,
+        drafts: generationRun.value.drafts.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      };
+    }
+  } catch (error) {
+    selectedDraftIds.value = wasSelected
+      ? [...selectedDraftIds.value, draft.id]
+      : selectedDraftIds.value.filter((id) => id !== draft.id);
+    emit(
+      "notify",
+      error instanceof Error ? error.message : "Draft 選取狀態保存失敗。",
+      "error",
+    );
+  } finally {
+    const pending = new Set(selectionUpdatingIds.value);
+    pending.delete(draft.id);
+    selectionUpdatingIds.value = pending;
+  }
 }
 
 function toggleAll(): void {
-  selectedDraftIds.value = allChecked.value ? [] : selectableDrafts.value.map((draft) => draft.id);
+  const shouldClear = allChecked.value;
+  for (const draft of selectableDrafts.value) {
+    if (selectedDraftIds.value.includes(draft.id) === shouldClear) {
+      void toggleDraft(draft);
+    }
+  }
 }
 </script>
 
@@ -300,7 +495,7 @@ function toggleAll(): void {
         <div><h1>Query Search</h1><p>設定並生成 Query</p></div>
         <span class="geo-header-spacer"></span>
         <template v-if="step === 1"><button class="button button-secondary" type="button" @click="router.push({ name: 'geo-projects' })">返回</button><button class="button button-primary" type="button" :disabled="loading" @click="executeSearch">執行 Query Search</button></template>
-        <template v-else><button class="button button-secondary" type="button" @click="step = 1">返回</button><button class="button button-primary" type="button" :disabled="loading" @click="confirmDrafts">確認生成 Query</button></template>
+        <template v-else><button class="button button-secondary" type="button" @click="step = 1">返回</button><button class="button button-primary" type="button" :disabled="loading || selectionUpdating" @click="confirmDrafts">確認生成 Query</button></template>
       </header>
       <div v-if="errorMessage" class="geo-error-message">{{ errorMessage }}</div>
       <div v-if="loading && !profile" class="geo-form-loading">正在載入 Project…</div>
@@ -314,7 +509,7 @@ function toggleAll(): void {
           <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-form-grid"><GeoFormField label="Intent 分類"><select v-model="form.intentCategory"><option v-if="!standardIntentCategories.includes(form.intentCategory)" :value="form.intentCategory">{{ form.intentCategory }}</option><option v-for="category in standardIntentCategories" :key="category" :value="category">{{ category }}</option></select></GeoFormField><GeoFormField label="Intent 描述"><input v-model="form.intentDescription" type="text" /></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>提示詞風格</strong></header><div class="geo-toggle-list"><label><span class="geo-toggle-copy"><strong>提及自身品牌</strong><small>生成的 query 需包含自家品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionOwnBrand" type="checkbox" /><span aria-hidden="true"></span></span></label><label><span class="geo-toggle-copy"><strong>提及競品</strong><small>生成的 query 需包含競爭品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionCompetitor" type="checkbox" /><span aria-hidden="true"></span></span></label></div></section>
         </template>
-        <section v-else class="geo-form-card geo-generation-results"><header><strong>生成結果</strong><div><span>已選 {{ selectedDraftIds.length }} / {{ selectableDrafts.length }}</span><button class="button button-secondary button-small" type="button" :disabled="loading" @click="regenerate">重新生成</button></div></header><div class="geo-result-head"><input type="checkbox" :checked="allChecked" :indeterminate.prop="someChecked" @change="toggleAll" /><span>Query list</span></div><button v-for="draft in drafts" :key="draft.id" class="geo-result-row" :class="{ selected: selectedDraftIds.includes(draft.id), accepted: draft.acceptedQueryId }" type="button" :disabled="Boolean(draft.acceptedQueryId)" @click="toggleDraft(draft)"><input type="checkbox" :checked="selectedDraftIds.includes(draft.id)" :disabled="Boolean(draft.acceptedQueryId)" tabindex="-1" /><span><strong>{{ draft.queryText }}</strong><small>{{ draft.region }}/{{ draft.language }}<template v-if="draft.acceptedQueryId"> · 已建立</template></small></span></button><div v-if="!drafts.length" class="geo-table-empty">沒有生成結果</div></section>
+        <section v-else class="geo-form-card geo-generation-results"><header><strong>生成結果</strong><div><span>已選 {{ selectedDraftIds.length }} / {{ selectableDrafts.length }}</span><button class="button button-secondary button-small" type="button" :disabled="loading || selectionUpdating" @click="regenerate">重新生成</button></div></header><div class="geo-result-head"><input type="checkbox" :checked="allChecked" :indeterminate.prop="someChecked" :disabled="selectionUpdating" @change="toggleAll" /><span>Query list</span></div><button v-for="draft in drafts" :key="draft.id" class="geo-result-row" :class="{ selected: selectedDraftIds.includes(draft.id), accepted: draft.acceptedQueryId }" type="button" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" @click="toggleDraft(draft)"><input type="checkbox" :checked="selectedDraftIds.includes(draft.id)" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" tabindex="-1" /><span><strong>{{ draft.queryText }}</strong><small>{{ draft.region }}/{{ draft.language }}<template v-if="draft.acceptedQueryId"> · 已建立</template></small></span></button><div v-if="!drafts.length" class="geo-table-empty">沒有生成結果</div></section>
       </div>
     </div>
     <GeoConfirmDialog :open="showEmptyAlert" single title="尚未選擇 Query" message="請至少勾選一筆 Query，再進行生成。" confirm-label="我知道了" @cancel="showEmptyAlert = false" @confirm="showEmptyAlert = false" />

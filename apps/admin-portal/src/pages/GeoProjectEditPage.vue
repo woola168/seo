@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
 import GeoTagInput from "../components/geo/GeoTagInput.vue";
+import GeoQueryResearchPage from "./GeoQueryResearchPage.vue";
 import { api } from "../services/api";
 import {
   createDefaultQuerySettingsForm,
@@ -35,11 +36,21 @@ const route = useRoute();
 const router = useRouter();
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
+const isRecoveringQueryResearch = computed(
+  () =>
+    route.query.mode === "query-research" &&
+    Boolean(projectId.value) &&
+    hasPermission(props.permissions, "geo.queries.manage"),
+);
 const step = ref<1 | 2>(1);
 const loading = ref(false);
 const errorMessage = ref("");
 const customers = ref<CustomerSummary[]>([]);
 const currentProfile = ref<GeoProjectProfile | null>(null);
+const queryResearchProjectId = ref(
+  isRecoveringQueryResearch.value ? projectId.value : "",
+);
+const autoRunQueryResearch = ref(false);
 const errors = reactive<Record<string, string>>({});
 const competitors = ref<CompetitorDraft[]>([]);
 const competitorNames = computed<string[]>({
@@ -77,6 +88,7 @@ const form = reactive({
 onMounted(() => void load());
 
 async function load(): Promise<void> {
+  if (queryResearchProjectId.value) return;
   loading.value = true;
   errorMessage.value = "";
   try {
@@ -144,6 +156,13 @@ function secondaryAction(): void {
   void router.push({ name: "geo-projects" });
 }
 
+function forwardQueryResearchNotification(
+  message: string,
+  tone?: ToastTone,
+): void {
+  emit("notify", message, tone);
+}
+
 async function save(): Promise<void> {
   loading.value = true;
   errorMessage.value = "";
@@ -186,7 +205,24 @@ async function save(): Promise<void> {
         await router.push({ name: "geo-projects" });
         return;
       }
-      emit("notify", "Project 與 Query Research 預設設定已建立。", "success");
+      if (!hasPermission(props.permissions, "geo.queries.manage")) {
+        emit(
+          "notify",
+          "Project 與 Query Research 預設設定已建立，但目前權限無法執行 Query Research。",
+          "warning",
+        );
+        await router.push({ name: "geo-projects" });
+        return;
+      }
+      emit("notify", "Project 與 Query Research 預設設定已建立，正在執行 Query Research。", "success");
+      await router.replace({
+        name: "geo-project-edit",
+        params: { projectId: result.project.id },
+        query: { mode: "query-research", phase: "researching" },
+      });
+      autoRunQueryResearch.value = true;
+      queryResearchProjectId.value = result.project.id;
+      return;
     }
     await router.push({ name: "geo-projects" });
   } catch (error) {
@@ -234,14 +270,24 @@ function addTopic(): void {
 </script>
 
 <template>
-  <main class="geo-form-page">
+  <GeoQueryResearchPage
+    v-if="queryResearchProjectId"
+    :permissions="permissions"
+    :project-id="queryResearchProjectId"
+    :auto-run="autoRunQueryResearch"
+    recoverable
+    :research-run-id="typeof route.query.researchRunId === 'string' ? route.query.researchRunId : ''"
+    :generation-run-id="typeof route.query.generationRunId === 'string' ? route.query.generationRunId : ''"
+    @notify="forwardQueryResearchNotification"
+  />
+  <main v-else class="geo-form-page">
     <div class="geo-form-shell">
       <header class="geo-form-page-header">
         <button class="geo-back-button" type="button" :title="!isEdit && step === 2 ? '上一步' : '返回'" @click="secondaryAction"><AppIcon name="chevron-left" :size="16" /></button>
         <div><h1>{{ isEdit ? "編輯 Project" : "新增 Project" }}</h1><p>{{ isEdit ? "修改專案基本資料與 Query list" : "填寫專案基本資料與 Query list" }}</p></div>
         <span class="geo-header-spacer"></span>
         <button class="button button-secondary" type="button" @click="secondaryAction">{{ !isEdit && step === 2 ? "上一步" : "取消" }}</button>
-        <button class="button button-primary" type="button" :disabled="loading" @click="primaryAction">{{ isEdit ? "儲存" : step === 1 ? "下一步" : "儲存" }}</button>
+        <button class="button button-primary" type="button" :disabled="loading" @click="primaryAction">{{ isEdit ? "儲存" : step === 1 ? "下一步" : "Query Research" }}</button>
       </header>
 
       <div v-if="errorMessage" class="geo-error-message">{{ errorMessage }}</div>

@@ -390,6 +390,14 @@ export const api = {
           body: JSON.stringify(input),
         },
       ),
+    queryResearchRuns: (projectId: string) =>
+      request<CollectionResponse<GeoQueryResearchRunResource>>(
+        `/api/geo/projects/${projectId}/query-research-runs`,
+      ),
+    queryResearchRun: (runId: string) =>
+      request<GeoQueryResearchRunResource>(
+        `/api/geo/query-research-runs/${runId}`,
+      ),
     runQueryGeneration: (
       projectId: string,
       input: GeoQueryGenerationRunRequest,
@@ -404,6 +412,10 @@ export const api = {
     queryGenerationRun: (runId: string) =>
       request<GeoQueryGenerationRunResource>(
         `/api/geo/query-generation-runs/${runId}`,
+      ),
+    queryGenerationRuns: (projectId: string) =>
+      request<CollectionResponse<GeoQueryGenerationRunResource>>(
+        `/api/geo/projects/${projectId}/query-generation-runs`,
       ),
     updateQueryDraftSelection: (
       draftId: string,

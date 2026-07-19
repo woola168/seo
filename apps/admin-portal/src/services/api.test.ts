@@ -564,6 +564,28 @@ describe("api.geoAnalysis.dashboardReport", () => {
     );
   });
 
+  it("loads persisted Query Research and Generation runs", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [], total: 0 }),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const { api } = await import("./api");
+
+    await api.geoAnalysis.queryResearchRuns("project-1");
+    await api.geoAnalysis.queryResearchRun("research-1");
+    await api.geoAnalysis.queryGenerationRuns("project-1");
+    await api.geoAnalysis.queryGenerationRun("generation-1");
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/api/geo/projects/project-1/query-research-runs",
+      "/api/geo/query-research-runs/research-1",
+      "/api/geo/projects/project-1/query-generation-runs",
+      "/api/geo/query-generation-runs/generation-1",
+    ]);
+  });
+
   it("keeps RFC 7807 invalidParams on ApiError", async () => {
     vi.stubGlobal(
       "fetch",
