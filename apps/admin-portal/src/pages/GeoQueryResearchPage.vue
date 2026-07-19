@@ -16,6 +16,7 @@ import {
   runAcceptedQueriesOnce,
   type GeoQueryFirstRunSummary,
 } from "../services/geo-query-first-run";
+import { setStoredGeoProjectId } from "../utils/geo-project-selection-storage";
 import type {
   GeoQueryDraftResource,
   GeoQueryGenerationRunResource,
@@ -220,7 +221,8 @@ async function confirmDrafts(): Promise<void> {
     `${resultParts.join("；")}${runFailures.length ? `：${runFailures.join("；")}` : "。"}`,
     firstRunError || firstRunSummary?.retryScheduled || runFailures.length ? "warning" : "success",
   );
-  await router.push({ name: "geo-project-edit", params: { projectId: projectId.value } });
+  setStoredGeoProjectId(projectId.value);
+  await router.push({ name: "geo-overview" });
 }
 
 function startOperationLoading(message: string): void {
