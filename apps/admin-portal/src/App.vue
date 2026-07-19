@@ -13,6 +13,8 @@ import GeoPlatformsSchedulesPage from "./pages/GeoPlatformsSchedulesPage.vue";
 import GeoProjectsPage from "./pages/GeoProjectsPage.vue";
 import GeoRunJobsPage from "./pages/GeoRunJobsPage.vue";
 import GeoStandardProjectsPage from "./pages/GeoStandardProjectsPage.vue";
+import GeoProjectEditPage from "./pages/GeoProjectEditPage.vue";
+import GeoQueryResearchPage from "./pages/GeoQueryResearchPage.vue";
 import GeoTrackingPage from "./pages/GeoTrackingPage.vue";
 import GeoTopicsQueriesPage from "./pages/GeoTopicsQueriesPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
@@ -807,7 +809,21 @@ function unavailable(label: string): void {
     <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
     <GeoProjectsPage v-else-if="activePage === 'geo-analysis-projects'" />
     <GeoStandardOverviewPage v-else-if="activePage === 'geo-overview'" />
-    <GeoStandardProjectsPage v-else-if="activePage === 'geo-projects'" />
+    <GeoProjectEditPage
+      v-else-if="route.name === 'geo-project-new' || route.name === 'geo-project-edit'"
+      :permissions="capabilities.permissions"
+      @notify="notify"
+    />
+    <GeoQueryResearchPage
+      v-else-if="route.name === 'geo-query-research'"
+      :permissions="capabilities.permissions"
+      @notify="notify"
+    />
+    <GeoStandardProjectsPage
+      v-else-if="activePage === 'geo-projects'"
+      :permissions="capabilities.permissions"
+      @notify="notify"
+    />
     <GeoEntitiesPage v-else-if="activePage === 'geo-analysis-entities'" />
     <GeoTopicsQueriesPage v-else-if="activePage === 'geo-analysis-queries'" />
     <GeoPlatformsSchedulesPage v-else-if="activePage === 'geo-analysis-schedules'" />

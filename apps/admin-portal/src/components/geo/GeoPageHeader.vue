@@ -9,6 +9,7 @@ defineProps<{
   selectedProjectId: string;
   loading: boolean;
   actionLabel?: string;
+  actionDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -25,7 +26,7 @@ const emit = defineEmits<{
       <p>{{ description }}</p>
     </div>
     <div class="page-actions geo-kinsan-header-actions">
-      <button v-if="actionLabel" class="button button-primary" type="button" @click="emit('action')">
+      <button v-if="actionLabel" class="button button-primary" type="button" :disabled="actionDisabled" @click="emit('action')">
         <AppIcon name="plus" :size="14" />{{ actionLabel }}
       </button>
     </div>

@@ -81,6 +81,7 @@ const FI_PATHS = {
   /* ── Feather extensions (per spec 新增規範: feathericons.com source, same SVG rules) ── */
   "monitor":       "<rect x='2' y='3' width='20' height='14' rx='2' ry='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>",
   "zap":           "<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>",
+  "sparkles":      "<path d='M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z'/><path d='M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z'/><path d='M5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14z'/>",
   "box":           "<path d='M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z'/><polyline points='3.27 6.96 12 12.01 20.73 6.96'/><line x1='12' y1='22.08' x2='12' y2='12'/>",
   "trending-up":   "<polyline points='23 6 13.5 15.5 8.5 10.5 1 18'/><polyline points='17 6 23 6 23 12'/>",
 };
@@ -464,7 +465,7 @@ const REGION_OPTIONS = ["TW","US","JP","EU","Others"];
 const LANG_OPTIONS   = ["zh-TW","en-US","ja-JP","en-GB"];
 
 /* ── 共用確認彈窗（navy 主按鈕，禁紅，文案明示後果）── */
-function ConfirmDialog({title,message,onCancel,onConfirm,confirmLabel="確定刪除"}){
+function ConfirmDialog({title,message,onCancel,onConfirm,confirmLabel="確定刪除",single=false}){
   useEffect(()=>{
     const h=e=>{if(e.key==="Escape")onCancel();};
     window.addEventListener("keydown",h);
@@ -480,10 +481,12 @@ function ConfirmDialog({title,message,onCancel,onConfirm,confirmLabel="確定刪
           <div style={{fontSize:14,color:"#595959",lineHeight:1.6}}>{message}</div>
         </div>
         <div style={{padding:"12px 24px 20px",display:"flex",justifyContent:"flex-end",gap:8}}>
-          <button onClick={onCancel}
-            style={{height:40,padding:"0 16px",borderRadius:8,fontSize:14,fontWeight:500,fontFamily:"var(--font)",
-              border:"1px solid #D9D9D9",background:"#fff",color:"#434343",cursor:"pointer"}}>取消</button>
-          <button onClick={onConfirm}
+          {!single&&(
+            <button onClick={onCancel}
+              style={{height:40,padding:"0 16px",borderRadius:8,fontSize:14,fontWeight:500,fontFamily:"var(--font)",
+                border:"1px solid #D9D9D9",background:"#fff",color:"#434343",cursor:"pointer"}}>取消</button>
+          )}
+          <button onClick={single?onCancel:onConfirm}
             style={{height:40,padding:"0 16px",borderRadius:8,fontSize:14,fontWeight:500,fontFamily:"var(--font)",
               border:"none",background:"#0A2B41",color:"#fff",cursor:"pointer"}}>{confirmLabel}</button>
         </div>
@@ -686,7 +689,7 @@ function SectionDivider(){
   return <div style={{height:1,background:"#F0F0F0",margin:"20px 0"}}/>;
 }
 
-/* ── Field wrapper ── 
+/* ── Field wrapper ──
    marginBottom 20px 為統一垂直節奏
    noGap=true：grid 容器內的子 Field，外層 grid 已用 gap 控制，內部不再加 mb */
 function Field({label,required,hint,error,children,noGap}){
@@ -724,16 +727,39 @@ const inputStyle=(error)=>({
 /* ── Native-styled Select ── */
 function Select({value,onChange,options,labels,renderOption}){
   const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState(null);
   const ref=useRef(null);
-  useEffect(()=>{
-    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
-    document.addEventListener("mousedown",h);
-    return()=>document.removeEventListener("mousedown",h);
-  },[]);
+  const btnRef=useRef(null);
+  const menuRef=useRef(null);
   const disp=(o)=>renderOption?renderOption(o):(labels?(labels[o]||o):o);
+  const openMenu=()=>{
+    const r=btnRef.current?.getBoundingClientRect();
+    if(r) setPos({left:r.left,top:r.bottom+4,width:r.width});
+    setOpen(true);
+  };
+  useEffect(()=>{
+    if(!open) return;
+    const close=e=>{
+      if(ref.current&&ref.current.contains(e.target)) return;
+      if(menuRef.current&&menuRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const reposition=()=>{
+      const r=btnRef.current?.getBoundingClientRect();
+      if(r) setPos({left:r.left,top:r.bottom+4,width:r.width});
+    };
+    document.addEventListener("mousedown",close);
+    window.addEventListener("scroll",reposition,true);
+    window.addEventListener("resize",reposition);
+    return()=>{
+      document.removeEventListener("mousedown",close);
+      window.removeEventListener("scroll",reposition,true);
+      window.removeEventListener("resize",reposition);
+    };
+  },[open]);
   return(
     <div ref={ref} style={{position:"relative",width:"100%"}}>
-      <button type="button" onClick={()=>setOpen(!open)}
+      <button ref={btnRef} type="button" onClick={()=>open?setOpen(false):openMenu()}
         style={{width:"100%",height:40,padding:"0 36px 0 12px",fontSize:14,fontFamily:"var(--font)",
           color:value?"#1F1F1F":"#BFBFBF",textAlign:"left",cursor:"pointer",
           border:"1px solid "+(open?"#0A2B41":"#D9D9D9"),borderRadius:8,background:"#fff",outline:"none",
@@ -743,9 +769,9 @@ function Select({value,onChange,options,labels,renderOption}){
       <div style={{position:"absolute",right:12,top:"50%",transform:`translateY(-50%) rotate(${open?180:0}deg)`,pointerEvents:"none",transition:"transform .15s"}}>
         <FI name="chevron-down" size={14} color="#8C8C8C"/>
       </div>
-      {open&&(
-        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",
-          border:"1px solid #D9D9D9",borderRadius:10,padding:4,zIndex:100,
+      {open&&pos&&ReactDOM.createPortal(
+        <div ref={menuRef} style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,background:"#fff",
+          border:"1px solid #D9D9D9",borderRadius:10,padding:4,zIndex:9999,
           boxShadow:"0 4px 16px rgba(0,0,0,0.08)",maxHeight:240,overflowY:"auto"}}>
           {options.map(o=>{
             const s=o===value;
@@ -760,8 +786,7 @@ function Select({value,onChange,options,labels,renderOption}){
               </div>
             );
           })}
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }
@@ -773,24 +798,15 @@ function Select({value,onChange,options,labels,renderOption}){
 ─────────────────────────────────────────────── */
 function RowAction({name,label,onClick,disabled=false}){
   const [hov,setHov]=useState(false);
-  const btnRef=useRef(null);
-  const [tip,setTip]=useState(null);
-  const showTip=()=>{
-    setHov(true);
-    const r=btnRef.current?.getBoundingClientRect();
-    if(r) setTip({left:r.left+r.width/2, top:r.top-8});
-  };
-  const hideTip=()=>{setHov(false);setTip(null);};
   return(
     <div style={{position:"relative",flexShrink:0}}>
-      {hov&&tip&&ReactDOM.createPortal(
-        <div style={{position:"fixed",left:tip.left,top:tip.top,transform:"translate(-50%,-100%)",
-          background:"#1F1F1F",color:"#fff",fontSize:12,padding:"5px 10px",borderRadius:6,
-          whiteSpace:"nowrap",zIndex:99999,pointerEvents:"none"}}>
+      {hov&&(
+        <div style={{position:"absolute",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#1F1F1F",color:"#fff",fontSize:12,padding:"5px 10px",borderRadius:6,whiteSpace:"nowrap",zIndex:60,pointerEvents:"none"}}>
           {label}
-        </div>, document.body)}
-      <div ref={btnRef} onClick={e=>{e.stopPropagation();if(!disabled&&onClick)onClick(e);}}
-        onMouseEnter={showTip} onMouseLeave={hideTip}
+        </div>
+      )}
+      <div onClick={e=>{e.stopPropagation();if(!disabled&&onClick)onClick(e);}}
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
         style={{width:24,height:24,borderRadius:"50%",
           background:disabled?"#F5F5F5":(hov?"#E5E5E5":"#F0F0F0"),
           display:"flex",alignItems:"center",justifyContent:"center",
@@ -808,19 +824,18 @@ function ProjectRow({project,isLast,selected,onSelect,onEdit,onQuerySearch,onArc
   return(
     <tr onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{background:hov?"#FAFAFA":"#fff",transition:"background .1s",height:56}}>
-      {/* Project: name + domain */}
-      <td style={{padding:"8px 16px",borderBottom:bb,verticalAlign:"middle",overflow:"hidden"}}>
-        <div style={{fontSize:14,fontWeight:600,color:"var(--fg)",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{project.name}</div>
-        <div style={{fontSize:12,color:"var(--fg-3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{project.domain}</div>
+      {/* Project: name */}
+      <td style={{padding:"8px 16px",borderBottom:bb,whiteSpace:"nowrap",verticalAlign:"middle"}}>
+        <div style={{fontSize:14,fontWeight:600,color:"var(--fg)"}}>{project.name}</div>
       </td>
       {/* Customer */}
-      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",verticalAlign:"middle"}}>
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap",verticalAlign:"middle"}}>
         {project.customer}
       </td>
       {/* Locale */}
-      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,fontFamily:"var(--mono)",color:"var(--fg-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",verticalAlign:"middle"}}>{project.locale}</td>
-      {/* 別名 */}
-      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,color:"var(--fg-2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",verticalAlign:"middle"}}>{project.alias}</td>
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:13,fontFamily:"var(--mono)",color:"var(--fg-2)",whiteSpace:"nowrap",verticalAlign:"middle"}}>{project.locale}</td>
+      {/* Budget */}
+      <td style={{padding:"8px 16px",borderBottom:bb,fontSize:14,fontFamily:"var(--mono)",color:"var(--fg)",whiteSpace:"nowrap",verticalAlign:"middle",textAlign:"right"}}>{project.budget}</td>
       {/* Status */}
       <td style={{padding:"8px 16px",borderBottom:bb,whiteSpace:"nowrap",verticalAlign:"middle"}}><ProjStatusBadge status={project.status}/></td>
       {/* Actions — sticky right per spec */}
@@ -843,29 +858,65 @@ function ProjectRow({project,isLast,selected,onSelect,onEdit,onQuerySearch,onArc
    Query list 因 7 欄，卡片內表格橫向捲動 + 操作欄凍結
 ══════════════════════════════════════════════════════════ */
 /* 表單欄位容器（label + 選填 helper；half=半寬並排、否則整行） */
-function FField({label,required,children,half,helper}){
+function FField({label,required,children,half,helper,error,action}){
   return(
-    <div style={half?{minWidth:0}:{gridColumn:"1 / -1",minWidth:0}}>
-      <label style={{display:"block",fontSize:13,fontWeight:500,color:"#1F1F1F",marginBottom:6}}>
-        {label}{required&&<span style={{color:"#CF1322",marginLeft:4}}>*</span>}
-      </label>
+    <div data-err={error?"1":undefined} style={half?{minWidth:0}:{gridColumn:"1 / -1",minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,minHeight:24,marginBottom:6}}>
+        <label style={{fontSize:13,fontWeight:500,color:"#1F1F1F"}}>
+          {label}{required&&<span style={{color:"#CF1322",marginLeft:4}}>*</span>}
+        </label>
+        {action}
+      </div>
       {children}
-      {helper&&<div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>{helper}</div>}
+      {error
+        ? <div style={{fontSize:12,color:"#CF1322",marginTop:4}}>{error}</div>
+        : helper&&<div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>{helper}</div>}
     </div>
   );
 }
-/* 文字輸入（focus navy 邊框 + ring，對齊範本 Txt 規格） */
-function Txt({placeholder,value,onChange}){
+/* Checkbox — 依 younilab 頁面範本規格（16×16、radius4、navy 底白勾、半選白橫槓） */
+function Cb({checked,indeterminate,onChange}){
+  return <div onClick={e=>{e.stopPropagation();onChange&&onChange();}}
+    style={{width:16,height:16,borderRadius:4,border:"1.5px solid "+(checked||indeterminate?"var(--primary)":"var(--border)"),
+      background:checked||indeterminate?"var(--primary)":"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+      cursor:"pointer",transition:"all .12s",flexShrink:0}}>
+    {checked&&<FI name="check" size={11} color="#fff"/>}
+    {!checked&&indeterminate&&<div style={{width:8,height:2,background:"#fff",borderRadius:1}}/>}
+  </div>;
+}
+/* Toggle 開關（navy 開 / 灰關） */
+function Toggle({checked,onChange}){
+  return(
+    <div onClick={()=>onChange(!checked)}
+      style={{width:40,height:22,borderRadius:11,background:checked?"#0A2B41":"#D9D9D9",
+        position:"relative",cursor:"pointer",flexShrink:0,transition:"background .15s"}}>
+      <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:2,
+        left:checked?20:2,transition:"left .15s",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}}/>
+    </div>
+  );
+}
+/* 唯讀欄位展示（label + 純文字值；不可編輯，用於步驟2 回顯步驟1 資料） */
+function ReadField({label,value,half,children}){
+  return(
+    <div style={half?{minWidth:0}:{gridColumn:"1 / -1",minWidth:0}}>
+      <div style={{fontSize:13,fontWeight:500,color:"#8C8C8C",marginBottom:6}}>{label}</div>
+      {children||<div style={{fontSize:14,color:"#1F1F1F",lineHeight:"22px",wordBreak:"break-all"}}>{value||<span style={{color:"#BFBFBF"}}>—</span>}</div>}
+    </div>
+  );
+}
+/* 文字輸入（focus navy 邊框 + ring；error 紅框） */
+function Txt({placeholder,value,onChange,error}){
   const [f,setF]=useState(false);
+  const bc=error?"#CF1322":(f?"#0A2B41":"#D9D9D9");
+  const ring=error?"0 0 0 3px rgba(207,19,34,0.08)":(f?"0 0 0 3px rgba(10,43,65,0.08)":"none");
   return <input value={value||""} placeholder={placeholder}
     onChange={e=>onChange&&onChange(e.target.value)}
     onFocus={()=>setF(true)} onBlur={()=>setF(false)}
     style={{width:"100%",boxSizing:"border-box",height:40,padding:"0 12px",fontSize:14,fontFamily:"var(--font)",color:"#1F1F1F",background:"#fff",outline:"none",borderRadius:8,
-      border:"1px solid "+(f?"#0A2B41":"#D9D9D9"),
-      boxShadow:f?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}/>;
+      border:"1px solid "+bc,boxShadow:ring,transition:"all .15s"}}/>;
 }
-/* 競爭品牌 tag 輸入：Enter 或逗號新增、× 刪除、Backspace 刪末項 */
-function TagInput({value=[],onChange,placeholder}){
+/* 競爭品牌 tag 輸入：Enter 或逗號新增、× 刪除、Backspace 刪末項；error 紅框 */
+function TagInput({value=[],onChange,placeholder,error}){
   const [draft,setDraft]=useState("");
   const [f,setF]=useState(false);
   const add=(raw)=>{
@@ -878,11 +929,12 @@ function TagInput({value=[],onChange,placeholder}){
     if(e.key==="Enter"||e.key===","){e.preventDefault();add(draft);}
     else if(e.key==="Backspace"&&!draft&&value.length){removeAt(value.length-1);}
   };
+  const bc=error?"#CF1322":(f?"#0A2B41":"#D9D9D9");
+  const ring=error?"0 0 0 3px rgba(207,19,34,0.08)":(f?"0 0 0 3px rgba(10,43,65,0.08)":"none");
   return(
-    <div onClick={()=>{}} style={{width:"100%",boxSizing:"border-box",minHeight:40,padding:"5px 8px",
+    <div style={{width:"100%",boxSizing:"border-box",minHeight:40,padding:"5px 8px",
       display:"flex",flexWrap:"wrap",gap:6,alignItems:"center",background:"#fff",borderRadius:8,
-      border:"1px solid "+(f?"#0A2B41":"#D9D9D9"),
-      boxShadow:f?"0 0 0 3px rgba(10,43,65,0.08)":"none",transition:"all .15s"}}>
+      border:"1px solid "+bc,boxShadow:ring,transition:"all .15s"}}>
       {value.map((tag,i)=>(
         <span key={tag} style={{display:"inline-flex",alignItems:"center",gap:4,height:26,padding:"0 6px 0 10px",
           background:"#F5F7F8",border:"1px solid #E7EAEC",borderRadius:6,fontSize:13,color:"#1F1F1F",whiteSpace:"nowrap"}}>
@@ -907,163 +959,423 @@ const INTENT_OPTIONS   = ["Informational","Commercial","Transactional","Navigati
 const STAGE_OPTIONS    = ["Awareness","Consideration","Decision"];
 const PRIORITY_OPTIONS = ["高","中","低"];
 
-/* Query list 單列（純文字顯示，非輸入框） */
-function QueryRow({row,onDelete,isLast}){
+/* Query Search 結果清單（附件 8 筆示意，預設不勾選） */
+const QS_RESULTS = [
+  {id:"r1", checked:false, query:"企業採購維生素與營養素時，善存與克補、萊萃美等品牌的規格與價格如何比較"},
+  {id:"r2", checked:false, query:"在晶亮保健產品的採購中，善存與 GNC、DHC 相比有哪些成分與劑量差異"},
+  {id:"r3", checked:false, query:"善存銀寶善存與一般善存在熟齡與專屬配方上的差異為何"},
+  {id:"r4", checked:false, query:"B2B 採購決策者如何評估善存女性配方價格與萊萃美的成本效益"},
+  {id:"r5", checked:false, query:"企業採購綜合維他命評估：善存與 DHC、GNC、克補的整體比較"},
+  {id:"r6", checked:false, query:"善存與銀寶善存規格差異及 B2B 導入分析：比較 DHC 與 GNC"},
+  {id:"r7", checked:false, query:"B2B 採購決策指南：善存相較於 DHC、GNC 與克補的優劣勢"},
+  {id:"r8", checked:false, query:"企業批量採購基準評估：以好市多價格為基點，比較各保健品牌"},
+];
+
+/* Query list 示意資料（編輯模式，10 筆保健食品情境） */
+const QUERY_SAMPLE = [
+  {id:"q1", query:"最好的益生菌推薦",     topic:"益生菌",     intent:"Commercial",    stage:"Consideration", branded:false, priority:"高"},
+  {id:"q2", query:"善存維他命有效嗎",     topic:"綜合維他命", intent:"Informational", stage:"Awareness",     branded:true,  priority:"中"},
+  {id:"q3", query:"哪裡買得到 GNC",       topic:"通路",       intent:"Transactional", stage:"Decision",      branded:true,  priority:"低"},
+  {id:"q4", query:"魚油什麼時候吃最好",   topic:"魚油",       intent:"Informational", stage:"Awareness",     branded:false, priority:"中"},
+  {id:"q5", query:"葉黃素品牌比較",       topic:"葉黃素",     intent:"Commercial",    stage:"Consideration", branded:false, priority:"高"},
+  {id:"q6", query:"維他命 C 推薦劑量",    topic:"維他命 C",   intent:"Informational", stage:"Awareness",     branded:false, priority:"中"},
+  {id:"q7", query:"酷彭益生菌評價",       topic:"品牌口碑",   intent:"Commercial",    stage:"Consideration", branded:true,  priority:"高"},
+  {id:"q8", query:"膠原蛋白粉哪裡買便宜", topic:"膠原蛋白",   intent:"Transactional", stage:"Decision",      branded:false, priority:"低"},
+  {id:"q9", query:"孕婦可以吃葉酸嗎",     topic:"葉酸",       intent:"Informational", stage:"Awareness",     branded:false, priority:"中"},
+  {id:"q10",query:"善存和挺立哪個好",     topic:"品牌比較",   intent:"Commercial",    stage:"Consideration", branded:true,  priority:"高"},
+];
+
+/* ── 第二步表單元件與選項 ── */
+const PROVIDER_OPTIONS = ["Gemini"];
+const MARKET_OPTIONS   = ["B2B 採購","B2C 消費"];
+const INTENT_CAT_OPTIONS = ["導航型","資訊型","商業評估"];
+
+/* 多行文字框（focus navy；error 紅框） */
+function TextArea({placeholder,value,onChange,rows=4,error}){
+  const [f,setF]=useState(false);
+  const bc=error?"#CF1322":(f?"#0A2B41":"#D9D9D9");
+  const ring=error?"0 0 0 3px rgba(207,19,34,0.08)":(f?"0 0 0 3px rgba(10,43,65,0.08)":"none");
+  return <textarea value={value||""} placeholder={placeholder} rows={rows}
+    onChange={e=>onChange&&onChange(e.target.value)}
+    onFocus={()=>setF(true)} onBlur={()=>setF(false)}
+    style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",fontSize:14,fontFamily:"var(--font)",
+      color:"#1F1F1F",background:"#fff",outline:"none",borderRadius:8,resize:"vertical",lineHeight:"20px",
+      border:"1px solid "+bc,boxShadow:ring,transition:"all .15s"}}/>;
+}
+
+/* Topics 子列表：可增刪，每項含名稱 + 描述 */
+/* Topics 列表：整張卡片寬度，每列 名稱 + 描述 + 移除（新增鈕在卡片標題列） */
+function TopicsList({topics,onChange}){
+  const upd=(id,k,v)=>onChange(topics.map(t=>t.id===id?{...t,[k]:v}:t));
+  const del=(id)=>onChange(topics.filter(t=>t.id!==id));
+  if(!topics.length){
+    return <div style={{fontSize:13,color:"#BFBFBF",textAlign:"center",padding:"24px 0",
+      border:"1px dashed #E7EAEC",borderRadius:8}}>尚未新增 Topic，點右上「新增 Topic」開始</div>;
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {topics.map(t=>(
+        <div key={t.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1.6fr) auto",gap:12,alignItems:"end"}}>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:4}}>Topic 名稱</div>
+            <Txt placeholder="例如 產品、採購評估、供應商" value={t.name} onChange={v=>upd(t.id,"name",v)}/>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:"#8C8C8C",marginBottom:4}}>Topic 描述</div>
+            <Txt placeholder="描述此 Topic" value={t.desc} onChange={v=>upd(t.id,"desc",v)}/>
+          </div>
+          <Btn variant="secondary" size="sm" onClick={()=>del(t.id)}>移除</Btn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* 競品新增/編輯彈窗（名稱必填） */
+function CompetitorModal({competitor,onCancel,onSave}){
+  const isEdit=!!competitor;
+  const [name,setName]=useState(competitor?.name||"");
+  const [url,setUrl]=useState(competitor?.url||"");
+  const [aliases,setAliases]=useState(competitor?.aliases||[]);
+  const [err,setErr]=useState("");
+  useEffect(()=>{
+    const h=e=>{if(e.key==="Escape")onCancel();};
+    window.addEventListener("keydown",h);
+    return()=>window.removeEventListener("keydown",h);
+  },[]);
+  const save=()=>{
+    if(!name.trim()){setErr("請輸入競品名稱");return;}
+    onSave({id:competitor?.id||("c"+Date.now()),name:name.trim(),url:url.trim(),aliases});
+  };
+  return(
+    <>
+      <div onClick={onCancel} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:400}}/>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:401,
+        width:"min(480px,calc(100vw - 32px))",background:"#fff",borderRadius:12,boxShadow:"0 12px 32px rgba(0,0,0,0.16)"}}>
+        <div style={{padding:"18px 24px",borderBottom:"1px solid #F0F0F0"}}>
+          <span style={{fontSize:16,fontWeight:600,color:"#1F1F1F"}}>{isEdit?"編輯競品":"新增競品"}</span>
+        </div>
+        <div style={{padding:24,display:"flex",flexDirection:"column",gap:18}}>
+          <FField label="競品名稱" required error={err}>
+            <Txt placeholder="請輸入競品名稱" value={name} onChange={v=>{setName(v);if(err)setErr("");}} error={err}/>
+          </FField>
+          <FField label="網址">
+            <Txt placeholder="https://example.com" value={url} onChange={setUrl}/>
+          </FField>
+          <FField label="別名" helper="輸入別名後按 Enter 或逗號新增，可加入多組">
+            <TagInput value={aliases} onChange={setAliases} placeholder="請輸入別名"/>
+          </FField>
+        </div>
+        <div style={{padding:"16px 24px",borderTop:"1px solid #F0F0F0",display:"flex",justifyContent:"flex-end",gap:8}}>
+          <Btn variant="secondary" onClick={onCancel}>取消</Btn>
+          <Btn variant="primary" onClick={save}>{isEdit?"儲存":"新增"}</Btn>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* 競品列表單列（名稱+網址 / 別名 tags / 編輯+刪除） */
+function CompetitorRow({row,isLast,onEdit,onDelete}){
   const [hov,setHov]=useState(false);
   const bb=isLast?"none":"1px solid #F5F5F5";
-  const cell={padding:"12px 12px",borderBottom:bb,verticalAlign:"middle",fontSize:13,color:"#1F1F1F"};
-  const sub={color:"#8C8C8C"};
   return(
     <tr onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{background:hov?"#FAFAFA":"#fff",transition:"background .1s"}}>
-      <td style={{...cell,fontWeight:500}}>{row.query||<span style={sub}>—</span>}</td>
-      <td style={{...cell,...sub}}>{row.topic||"—"}</td>
-      <td style={cell}>{row.intent||<span style={sub}>—</span>}</td>
-      <td style={cell}>{row.stage||<span style={sub}>—</span>}</td>
-      <td style={{...cell,textAlign:"center"}}>{row.branded?"是":<span style={sub}>否</span>}</td>
-      <td style={cell}>{row.priority||<span style={sub}>—</span>}</td>
-      <td style={{...cell,textAlign:"right",position:"sticky",right:0,background:hov?"#FAFAFA":"#fff",boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.06)"}}>
-        <RowAction name="trash-2" label="刪除" onClick={onDelete}/>
+      <td style={{padding:"12px 12px",paddingLeft:24,borderBottom:bb,verticalAlign:"middle"}}>
+        <div style={{fontSize:14,fontWeight:600,color:"#1F1F1F",marginBottom:2}}>{row.name}</div>
+        <div style={{fontSize:12,color:"#8C8C8C"}}>{row.url||"—"}</div>
+      </td>
+      <td style={{padding:"12px 12px",borderBottom:bb,verticalAlign:"middle"}}>
+        {row.aliases&&row.aliases.length
+          ? <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {row.aliases.map(a=>(
+                <span key={a} style={{display:"inline-flex",alignItems:"center",height:24,padding:"0 8px",
+                  background:"#F5F7F8",border:"1px solid #E7EAEC",borderRadius:6,fontSize:12,color:"#1F1F1F"}}>{a}</span>
+              ))}
+            </div>
+          : <span style={{fontSize:13,color:"#BFBFBF"}}>—</span>}
+      </td>
+      <td style={{padding:"12px 12px",paddingRight:24,borderBottom:bb,verticalAlign:"middle",textAlign:"right",whiteSpace:"nowrap"}}>
+        <div style={{display:"inline-flex",gap:8}}>
+          <RowAction name="edit-2" label="編輯" onClick={onEdit}/>
+          <RowAction name="trash-2" label="刪除" onClick={onDelete}/>
+        </div>
       </td>
     </tr>
   );
 }
 
-function GeoProjectEditPage({windowWidth,project,onCancel,onSave}){
+/* Query list 單列（純文字顯示，6 欄無操作；首末欄水平 padding 歸零對齊容器內距） */
+function QueryRow({row,isLast}){
+  const [hov,setHov]=useState(false);
+  const bb=isLast?"none":"1px solid #F5F5F5";
+  const cell={padding:"12px 12px",borderBottom:bb,verticalAlign:"middle",fontSize:13,color:"#1F1F1F",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"};
+  const sub={color:"#8C8C8C"};
+  return(
+    <tr onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:hov?"#FAFAFA":"#fff",transition:"background .1s"}}>
+      <td style={{...cell,fontWeight:500,paddingLeft:24}}>{row.query||<span style={sub}>—</span>}</td>
+      <td style={{...cell,...sub}}>{row.topic||"—"}</td>
+      <td style={cell}>{row.intent||<span style={sub}>—</span>}</td>
+      <td style={cell}>{row.stage||<span style={sub}>—</span>}</td>
+      <td style={{...cell,textAlign:"center"}}>{row.branded?"是":<span style={sub}>否</span>}</td>
+      <td style={{...cell,paddingRight:24}}>{row.priority||<span style={sub}>—</span>}</td>
+    </tr>
+  );
+}
+
+function QuerySearchPage({windowWidth,project,onBack,onConfirm}){
   const isWide=windowWidth>=1024;
   const pad=isWide?"24px 32px":"16px 20px";
-  const isEdit=!!project;
   const formCols=windowWidth>=768?"minmax(0,1fr) minmax(0,1fr)":"minmax(0,1fr)";
+  const localeParts=(project?.locale||"").split("/").map(s=>s.trim());
 
-  /* 基本資料 state */
-  const [name,setName]=useState(project?.name||"");
-  const [domain,setDomain]=useState(project?.domain||"");
-  const [customer,setCustomer]=useState(project?.customer||"");
-  const [region,setRegion]=useState(project?.region||"");
-  const [lang,setLang]=useState(project?.lang||"");
-  const [alias,setAlias]=useState(project?.alias||"");
-  const [brands,setBrands]=useState(project?.competitors||[]);
+  /* 帶入該專案已有設定 */
+  const name=project?.name||"";
+  const domain=project?.domain||"";
+  const customer=project?.customer||"";
+  const region=project?.region||localeParts[0]||"TW";
+  const lang=project?.lang||localeParts[1]||"zh-TW";
+  const alias=project?.alias||"";
+  const brands=project?.competitors||["善存","DHC","GNC"];
 
-  /* Query list state */
-  const [queries,setQueries]=useState(project?.queries||[
-    {id:"q1",query:"最好的益生菌推薦",topic:"益生菌",intent:"Commercial",stage:"Consideration",branded:false,priority:"高"},
-    {id:"q2",query:"善存維他命有效嗎",topic:"綜合維他命",intent:"Informational",stage:"Awareness",branded:true,priority:"中"},
-    {id:"q3",query:"哪裡買得到 GNC",topic:"通路",intent:"Transactional",stage:"Decision",branded:true,priority:"低"},
+  /* 第一步設定欄位（帶入專案已有設定） */
+  const [genProvider,setGenProvider]=useState("Gemini");
+  const [runProvider,setRunProvider]=useState("Gemini");
+  const [keywords,setKeywords]=useState("維他命, 益生菌, 保健食品, 綜合維他命");
+  const [topics,setTopics]=useState([
+    {id:"t1",name:"產品採購",desc:"B2B 採購決策相關查詢"},
+    {id:"t2",name:"規格比較",desc:"競品規格與價格比較"},
   ]);
-  const addQuery=()=>setQueries(qs=>[...qs,{id:"q"+Date.now(),query:"",topic:"",intent:"",stage:"",branded:false,priority:""}]);
-  const updateQuery=(id,upd)=>setQueries(qs=>qs.map(q=>q.id===id?upd:q));
-  const deleteQuery=(id)=>setQueries(qs=>qs.filter(q=>q.id!==id));
+  const [marketType,setMarketType]=useState("B2B 採購");
+  const [maxQueries,setMaxQueries]=useState("8");
+  const [audience,setAudience]=useState("B2B 採購");
+  const [audienceDesc,setAudienceDesc]=useState("正在評估供應商、產品規格與導入風險的採購或決策者");
+  const [intentCat,setIntentCat]=useState("商業評估");
+  const [intentDesc,setIntentDesc]=useState("比較供應商、產品方案或導入條件");
+  const [mentionBrand,setMentionBrand]=useState(true);
+  const [mentionCompetitor,setMentionCompetitor]=useState(true);
 
   const card={background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,overflow:"hidden"};
   const cardHead={padding:"16px 24px",borderBottom:"1px solid #F0F0F0",display:"flex",alignItems:"center",justifyContent:"space-between"};
   const cardTitle={fontSize:15,fontWeight:600,color:"#1F1F1F"};
 
-  const handleSave=()=>{
-    onSave&&onSave({...(project||{}),name,domain,customer,region,lang,alias,competitors:brands,queries});
+  /* 兩步驟：1=設定 / 2=結果清單 */
+  const [step,setStep]=useState(1);
+
+  /* 第二步結果清單（附件 8 筆示意），checked 記錄勾選 */
+  const [results,setResults]=useState(QS_RESULTS);
+  const [showEmptyAlert,setShowEmptyAlert]=useState(false);
+  const allChecked=results.length>0&&results.every(r=>r.checked);
+  const someChecked=results.some(r=>r.checked);
+  const selectedCount=results.filter(r=>r.checked).length;
+  const toggleAll=()=>setResults(rs=>rs.map(r=>({...r,checked:!allChecked})));
+  const toggleOne=(id)=>setResults(rs=>rs.map(r=>r.id===id?{...r,checked:!r.checked}:r));
+  const handleConfirm=()=>{
+    if(selectedCount===0){ setShowEmptyAlert(true); return; }
+    onConfirm&&onConfirm();
   };
+
+  const locale=`${region}/${lang}`;
 
   return(
     <main style={{padding:pad,background:"var(--bg-page)",minHeight:"calc(100vh - 56px)"}}>
-      <div style={{maxWidth:720,margin:"0 auto"}}>
+      <div style={{maxWidth:1200,margin:"0 auto"}}>
 
-        {/* Page Header（返回 + 標題 + 取消/儲存） */}
+        {/* Page Header */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-          <div onClick={onCancel} title="返回"
+          <div onClick={()=>step===2?setStep(1):onBack()} title="返回"
             style={{width:36,height:36,borderRadius:8,border:"1px solid #D9D9D9",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
             onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
             <FI name="chevron-right" size={16} color="#595959" style={{transform:"rotate(180deg)"}}/>
           </div>
           <div style={{minWidth:0}}>
-            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>{isEdit?"編輯 Project":"新增 Project"}</h1>
-            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>{isEdit?"修改專案基本資料與 Query list":"填寫專案基本資料與 Query list"}</p>
+            <h1 style={{fontSize:20,fontWeight:600,margin:0,color:"var(--fg)",lineHeight:"28px"}}>Query Search</h1>
+            <p style={{fontSize:13,color:"var(--fg-3)",margin:"4px 0 0",lineHeight:"20px"}}>{name?`專案：${name}`:"設定並生成 Query"}</p>
           </div>
           <div style={{flex:1}}/>
-          <Btn variant="secondary" onClick={onCancel}>取消</Btn>
-          <Btn variant="primary" onClick={handleSave}>{isEdit?"儲存變更":"建立"}</Btn>
+          {step===1 ? (
+            <>
+              <Btn variant="secondary" onClick={onBack}>返回</Btn>
+              <Btn variant="primary" onClick={()=>setStep(2)}>執行 Query Search</Btn>
+            </>
+          ) : (
+            <>
+              <Btn variant="secondary" onClick={()=>setStep(1)}>返回</Btn>
+              <Btn variant="primary" onClick={handleConfirm}>確認生成 Query</Btn>
+            </>
+          )}
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
-          {/* 卡片一：基本資料 */}
-          <div style={card}>
-            <div style={cardHead}><span style={cardTitle}>基本資料</span></div>
-            <div style={{padding:24,display:"grid",gridTemplateColumns:formCols,gap:"20px 24px"}}>
-              <FField label="Project 名稱" required>
-                <Txt placeholder="請輸入名稱" value={name} onChange={setName}/>
-              </FField>
-              <FField label="網址/網域">
-                <Txt placeholder="請輸入網址/網域" value={domain} onChange={setDomain}/>
-              </FField>
-              <FField label="客戶" half>
-                <Select value={customer} onChange={setCustomer} options={CUSTOMER_OPTIONS}/>
-              </FField>
-              <FField label="地區" half>
-                <Txt placeholder="請輸入地區，例如：TW" value={region} onChange={setRegion}/>
-              </FField>
-              <FField label="語系" half>
-                <Txt placeholder="請輸入語系，例如：zh-TW" value={lang} onChange={setLang}/>
-              </FField>
-              <FField label="別名" half>
-                <Txt placeholder="請輸入別名" value={alias} onChange={setAlias}/>
-              </FField>
-              <FField label="競爭品牌" helper="輸入品牌名稱後按 Enter 或逗號新增，可加入多組">
-                <TagInput value={brands} onChange={setBrands} placeholder="請輸入競爭品牌"/>
-              </FField>
-            </div>
-          </div>
+        {step===1 && (<>
 
-          {/* 卡片二：Query list */}
-          <div style={card}>
-            <div style={cardHead}>
-              <span style={cardTitle}>Query list</span>
-              <Btn variant="secondary" size="sm" onClick={addQuery}>新增 Query</Btn>
+
+            {/* ① 品牌基本資料（唯讀，回顯步驟1） */}
+            <div style={card}>
+              <div style={cardHead}><span style={cardTitle}>品牌基本資料</span></div>
+              <div style={{padding:24,display:"grid",gridTemplateColumns:formCols,gap:"20px 24px"}}>
+                <ReadField label="Project 名稱" half value={name}/>
+                <ReadField label="網址/網域" half value={domain}/>
+                <ReadField label="客戶" half value={customer}/>
+                <ReadField label="地區" half value={region}/>
+                <ReadField label="語系" half value={lang}/>
+                <ReadField label="別名" half value={alias}/>
+                <ReadField label="競品">
+                  {brands.length
+                    ? <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {brands.map(b=>(
+                          <span key={b} style={{display:"inline-flex",alignItems:"center",height:26,padding:"0 10px",
+                            background:"#F5F7F8",border:"1px solid #E7EAEC",borderRadius:6,fontSize:13,color:"#1F1F1F"}}>{b}</span>
+                        ))}
+                      </div>
+                    : <div style={{fontSize:14,color:"#BFBFBF"}}>—</div>}
+                </ReadField>
+              </div>
             </div>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:720,tableLayout:"fixed"}}>
-                <colgroup>
-                  <col style={{width:"26%"}}/>{/* Query */}
-                  <col style={{width:"16%"}}/>{/* Topic */}
-                  <col style={{width:"16%"}}/>{/* Intent */}
-                  <col style={{width:"16%"}}/>{/* Stage */}
-                  <col style={{width:"9%"}}/> {/* Branded */}
-                  <col style={{width:"11%"}}/>{/* Priority */}
-                  <col style={{width:"6%"}}/> {/* 操作 */}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {[
-                      {l:"Query",a:"left"},{l:"Topic",a:"left"},{l:"Intent",a:"left"},
-                      {l:"Stage",a:"left"},{l:"Branded",a:"center"},{l:"Priority",a:"left"},
-                      {l:"操作",a:"right",sticky:true},
-                    ].map((h,i)=>(
-                      <th key={i} style={{
-                        textAlign:h.a,padding:"10px 12px",fontWeight:500,color:"var(--fg-3)",fontSize:12,
-                        borderBottom:"1px solid #F0F0F0",whiteSpace:"nowrap",background:"#FAFAFA",
-                        ...(h.sticky?{position:"sticky",right:0,zIndex:2,boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.06)"}:{})
-                      }}>{h.l}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {queries.length>0
-                    ? queries.map((q,i)=>(
-                        <QueryRow key={q.id} row={q} isLast={i===queries.length-1}
-                          onDelete={()=>deleteQuery(q.id)}/>
-                      ))
-                    : (
-                      <tr><td colSpan={7} style={{padding:"40px 24px",textAlign:"center"}}>
-                        <div style={{fontSize:13,color:"var(--fg-3)",marginBottom:16}}>尚未新增任何 Query</div>
-                        <Btn variant="secondary" size="sm" onClick={addQuery}>新增 Query</Btn>
-                      </td></tr>
-                    )
-                  }
-                </tbody>
-              </table>
+
+            {/* ② Provider */}
+            <div style={card}>
+              <div style={cardHead}><span style={cardTitle}>Provider</span></div>
+              <div style={{padding:24,display:"grid",gridTemplateColumns:formCols,gap:"20px 24px"}}>
+                <FField label="Research / Generation Provider" half>
+                  <Select value={genProvider} onChange={setGenProvider} options={PROVIDER_OPTIONS}/>
+                </FField>
+                <FField label="Run Provider" half>
+                  <Select value={runProvider} onChange={setRunProvider} options={PROVIDER_OPTIONS}/>
+                </FField>
+              </div>
+            </div>
+
+            {/* ③ Keywords */}
+            <div style={card}>
+              <div style={cardHead}>
+                <span style={cardTitle}>Keywords</span>
+                <Btn variant="secondary" size="sm"><FI name="sparkles" size={14} color="#0A2B41"/>AI生成</Btn>
+              </div>
+              <div style={{padding:24}}>
+                <TextArea rows={5} value={keywords} onChange={setKeywords} placeholder="一行一個 keyword"/>
+                <div style={{fontSize:12,color:"#8C8C8C",marginTop:6}}>一行一個 keyword，或用 AI 依專案資料自動生成。</div>
+              </div>
+            </div>
+
+            {/* ④ Topics */}
+            <div style={card}>
+              <div style={cardHead}>
+                <span style={cardTitle}>Topics</span>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn variant="secondary" size="sm"><FI name="sparkles" size={14} color="#0A2B41"/>AI生成</Btn>
+                  <Btn variant="secondary" size="sm" onClick={()=>setTopics([...topics,{id:"t"+Date.now(),name:"",desc:""}])}>新增 Topic</Btn>
+                </div>
+              </div>
+              <div style={{padding:24}}>
+                <TopicsList topics={topics} onChange={setTopics}/>
+              </div>
+            </div>
+
+            {/* ⑤ 市場與受眾 */}
+            <div style={card}>
+              <div style={cardHead}><span style={cardTitle}>市場與受眾</span></div>
+              <div style={{padding:24,display:"grid",gridTemplateColumns:formCols,gap:"20px 24px"}}>
+                <FField label="Market Type" half>
+                  <Select value={marketType} onChange={setMarketType} options={MARKET_OPTIONS}/>
+                </FField>
+                <FField label="Max Queries" half>
+                  <Txt placeholder="8" value={maxQueries} onChange={setMaxQueries}/>
+                </FField>
+                <FField label="Audience" half>
+                  <Txt placeholder="例如 B2B 採購" value={audience} onChange={setAudience}/>
+                </FField>
+                <FField label="Audience Description" half>
+                  <Txt placeholder="描述目標受眾" value={audienceDesc} onChange={setAudienceDesc}/>
+                </FField>
+              </div>
+            </div>
+
+            {/* ⑥ Intent 與提及規則 */}
+            <div style={card}>
+              <div style={cardHead}><span style={cardTitle}>Intent 與提及規則</span></div>
+              <div style={{padding:24,display:"grid",gridTemplateColumns:formCols,gap:"20px 24px"}}>
+                <FField label="Intent 分類" half>
+                  <Select value={intentCat} onChange={setIntentCat} options={INTENT_CAT_OPTIONS}/>
+                </FField>
+                <FField label="Intent 描述" half>
+                  <Txt placeholder="描述 intent" value={intentDesc} onChange={setIntentDesc}/>
+                </FField>
+              </div>
+            </div>
+
+            {/* ⑦ 提示詞風格 */}
+            <div style={card}>
+              <div style={cardHead}><span style={cardTitle}>提示詞風格</span></div>
+              <div style={{padding:"8px 24px"}}>
+                {[
+                  {on:mentionBrand,set:setMentionBrand,title:"提及自身品牌",desc:"生成的 query 需包含自家品牌名稱"},
+                  {on:mentionCompetitor,set:setMentionCompetitor,title:"提及競品",desc:"生成的 query 需包含競爭品牌名稱"},
+                ].map((r,i)=>(
+                  <div key={r.title} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,
+                    padding:"16px 0",borderTop:i>0?"1px solid #F0F0F0":"none"}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:500,color:"#1F1F1F",marginBottom:2}}>{r.title}</div>
+                      <div style={{fontSize:12,color:"#8C8C8C"}}>{r.desc}</div>
+                    </div>
+                    <Toggle checked={r.on} onChange={r.set}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+
+        </>)}
+
+        {step===2 && (
+          <div style={card}>
+            {/* 卡片標題列：生成結果 | 已選計數 + 重新生成 */}
+            <div style={cardHead}>
+              <span style={cardTitle}>生成結果</span>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:13,color:"var(--fg-3)"}}>已選 {selectedCount} / {results.length}</span>
+                <Btn variant="secondary" size="sm">重新生成</Btn>
+              </div>
+            </div>
+            {/* 表頭列：全選 + 欄位名稱 Query list（灰底） */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 24px",
+              background:"#FAFAFA",borderBottom:"1px solid #F0F0F0"}}>
+              <Cb checked={allChecked} indeterminate={someChecked&&!allChecked} onChange={toggleAll}/>
+              <span style={{fontSize:12,fontWeight:500,color:"var(--fg-3)"}}>Query list</span>
+            </div>
+            {/* 資料列 */}
+            <div>
+              {results.map((r,i)=>(
+                <div key={r.id} onClick={()=>toggleOne(r.id)}
+                  style={{display:"flex",alignItems:"flex-start",gap:12,padding:"14px 24px",cursor:"pointer",
+                    borderBottom:i===results.length-1?"none":"1px solid #F0F0F0",
+                    background:r.checked?"#E6F4FF":"#fff",transition:"background .1s"}}>
+                  <div style={{marginTop:2}}>
+                    <Cb checked={r.checked} onChange={()=>toggleOne(r.id)}/>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:500,color:"#1F1F1F",lineHeight:"20px"}}>{r.query}</div>
+                    <div style={{fontSize:12,color:"#8C8C8C",marginTop:2}}>{locale}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        )}
 
         </div>
       </div>
+
+      {/* 未勾選提示彈窗 */}
+      {showEmptyAlert && (
+        <ConfirmDialog single confirmLabel="我知道了"
+          title="尚未選擇 Query"
+          message="請至少勾選一筆 Query，再進行生成。"
+          onCancel={()=>setShowEmptyAlert(false)}/>
+      )}
     </main>
   );
 }
@@ -1091,7 +1403,7 @@ function GeoProjectsPage({windowWidth,onEdit,projects,setProjects}){
   const confirmDelete=()=>{ if(deleteTarget){ setProjects(prev=>prev.filter(p=>p.id!==deleteTarget.id)); setDeleteTarget(null); } };
   /* 下架 = 狀態改 archived（可復原、資料保留），非刪除 */
   const confirmArchive=()=>{ if(archiveTarget){ setProjects(prev=>prev.map(p=>p.id===archiveTarget.id?{...p,status:"archived"}:p)); setArchiveTarget(null); } };
-  const handleQuerySearch=(pr)=>{ window.location.href="kinsan-Projects-Query-Search.html"+(pr&&pr.id?("?id="+encodeURIComponent(pr.id)):""); };
+  const handleQuerySearch=(pr)=>{ /* Query Search 連結後續處理 */ };
   const handleCreate=(newProj)=>{
     setProjects(prev=>[newProj,...prev]);
     setPage(1);
@@ -1114,7 +1426,7 @@ function GeoProjectsPage({windowWidth,onEdit,projects,setProjects}){
   /* filter projects */
   const filtered=projects.filter(p=>{
     const q=search.toLowerCase();
-    if(q&&!p.name.toLowerCase().includes(q)&&!(p.domain||"").toLowerCase().includes(q)&&!(p.alias||"").toLowerCase().includes(q)&&!p.customer.toLowerCase().includes(q)) return false;
+    if(q&&!p.name.toLowerCase().includes(q)&&!p.slug.toLowerCase().includes(q)&&!p.customer.toLowerCase().includes(q)) return false;
     if(fStatus.length&&!fStatus.includes(p.status)) return false;
     if(fLocale.length&&!fLocale.includes(localeOf(p.locale))) return false;
     if(fCustomer.length&&!fCustomer.includes(p.customer)) return false;
@@ -1184,31 +1496,22 @@ function GeoProjectsPage({windowWidth,onEdit,projects,setProjects}){
 
           {/* Table — flex:1 撐滿、內部捲動；表頭 sticky 凍結 */}
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:920,tableLayout:"fixed"}}>
-              <colgroup>
-                <col/>{/* Project + 網域 — 吃彈性剩餘空間 */}
-                <col style={{width:140}}/>{/* 客戶 */}
-                <col style={{width:150}}/>{/* 地區 / 語系 */}
-                <col style={{width:160}}/>{/* 別名 */}
-                <col style={{width:110}}/>{/* 狀態 */}
-                <col style={{width:140}}/>{/* 操作 */}
-              </colgroup>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:920}}>
               <thead>
                 <tr>
                   {[
-                    {l:"Project",   a:"left"},
-                    {l:"客戶",      a:"left"},
-                    {l:"地區 / 語系", a:"left"},
-                    {l:"別名",      a:"left"},
-                    {l:"狀態",      a:"left"},
-                    {l:"操作",     a:"right", sticky:true},
+                    {l:"Project", a:"left"},
+                    {l:"客戶",    a:"left"},
+                    {l:"地區",    a:"left"},
+                    {l:"預算",    a:"right"},
+                    {l:"狀態",    a:"left"},
+                    {l:"操作",   a:"right", sticky:true},
                   ].map((h,i)=>(
                     /* Header row — 灰底；操作欄橫向凍結 */
                     <th key={i} style={{
                       textAlign:h.a,padding:"10px 16px",
                       fontWeight:500,color:"var(--fg-3)",fontSize:12,
                       borderBottom:"1px solid #F0F0F0",whiteSpace:"nowrap",
-                      overflow:"hidden",textOverflow:"ellipsis",
                       background:"#FAFAFA",
                       ...(h.sticky?{position:"sticky",right:0,zIndex:2,boxShadow:"-4px 0 8px -4px rgba(0,0,0,0.06)"}:{})
                     }}>
@@ -1313,9 +1616,12 @@ function App(){
   const [userMenu,setUserMenu]=useState(false);
   const [searchOpen,setSearchOpen]=useState(false);
   const [ww,setWw]=useState(window.innerWidth);
-  const [projects,setProjects]=useState(PROJECTS_DATA);
-  /* 編輯/新增 → 跳轉到獨立編輯頁（編輯帶 ?id） */
-  const goEdit=(pr)=>{ window.location.href="kinsan-Project-Edit.html"+(pr&&pr.id?("?id="+encodeURIComponent(pr.id)):""); };
+
+  /* 由 URL ?id 帶入該專案設定 */
+  const editId=new URLSearchParams(window.location.search).get("id");
+  const editingProject=editId?(PROJECTS_DATA.find(p=>p.id===editId)||null):null;
+  const backToList=()=>{ window.location.href="kinsan-Projects.html"; };
+  const toOverview=()=>{ window.location.href="kinsan-Overview.html"; };
 
   useEffect(()=>{
     const f=()=>{
@@ -1336,18 +1642,16 @@ function App(){
 
   const onSelect=id=>{
     const GEO_LINKS={"geo-overview":"kinsan-Overview.html","geo-projects":"kinsan-Projects.html","geo-query-search":"kinsan-Query-Search.html"};
-    if(GEO_LINKS[id] && GEO_LINKS[id]!=="kinsan-Projects.html"){ window.location.href=GEO_LINKS[id]; return; }
+    if(GEO_LINKS[id]){ window.location.href=GEO_LINKS[id]; return; }
     setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
   const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
-  const crumbs=CRUMBS[activeId]||[activeId];
+  /* 麵包屑：… / Projects / Query Search */
+  const crumbs=[...(CRUMBS["geo-projects"]||["Projects"]), "Query Search"];
 
-  const renderPage=()=>{
-    if(activeId==="geo-projects")
-      return <GeoProjectsPage windowWidth={ww} projects={projects} setProjects={setProjects}
-        onEdit={goEdit}/>;
-    const label=CRUMBS[activeId]?.slice(-1)[0]||activeId;
-    return <PlaceholderPage label={label} windowWidth={ww}/>;
-  };
+  const renderPage=()=>(
+    <QuerySearchPage windowWidth={ww} project={editingProject}
+      onBack={backToList} onConfirm={toOverview}/>
+  );
 
   /* Sidebar inner */
   const SidebarContent=()=>(

@@ -14,6 +14,8 @@
 
 ## 缺少或需改善欄位
 
+- 新增 Project 第二步的 Provider、Keywords、市場、受眾、Intent、最大 Query 數與品牌提及規則目前沒有 Project 層級保存 API。完整後端需求與建議契約見 [GEO Project Query Settings 後端需求](./geo-project-query-settings-backend-requirements.md)；API 完成前，前端只保留當次表單狀態並明確提示未保存。
+
 - `GET /api/geo/projects` 只回 `customerId` / `seoTaskId`，前端需再呼叫 `/api/customers` 與 `/api/tasks` 補 `customerName` / `seoTaskName`。
 - `GET /api/geo/projects/{projectId}/entities` 不包含 aliases，前端需逐一呼叫 `/api/geo/entities/{entityId}/aliases`。
 - Query platform assignment 只包含 `platformId` / `model`，缺少 platform display name、provider code、status metadata。

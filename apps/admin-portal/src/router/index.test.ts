@@ -201,7 +201,37 @@ describe("portal router", () => {
       .getRoutes()
       .find((item) => item.name === "geo-overview")?.components?.default;
     expect(standardComponent).not.toBe(rdComponent);
-    expect(router.hasRoute("geo-query-research")).toBe(false);
+    expect(router.hasRoute("geo-query-research")).toBe(true);
+  });
+
+  it("protects standard GEO write routes with their matching capabilities", async () => {
+    const createRouter = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.create"],
+    );
+    await createRouter.push("/geo/projects/new");
+    await createRouter.isReady();
+    expect(createRouter.currentRoute.value.name).toBe("geo-project-new");
+
+    const updateRouter = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.update"],
+    );
+    await updateRouter.push("/geo/projects/project-1/edit");
+    await updateRouter.isReady();
+    expect(updateRouter.currentRoute.value.name).toBe("geo-project-edit");
+
+    const researchRouter = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.queries.manage"],
+    );
+    await researchRouter.push("/geo/projects/project-1/query-research");
+    await researchRouter.isReady();
+    expect(researchRouter.currentRoute.value.name).toBe("geo-query-research");
+    expect(getRoutePage(researchRouter.currentRoute.value.meta.page)).toBe("geo-projects");
   });
 
   it("redirects users without the required GEO capability", async () => {

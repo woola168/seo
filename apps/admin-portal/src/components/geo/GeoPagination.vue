@@ -3,6 +3,7 @@ const props = defineProps<{
   page: number;
   perPage: number;
   total: number;
+  rangeSeparator?: string;
 }>();
 
 const emit = defineEmits<{
@@ -18,7 +19,7 @@ function setPage(page: number): void {
 <template>
   <footer class="geo-pagination">
     <span>
-      顯示 {{ total === 0 ? 0 : (page - 1) * perPage + 1 }}-{{ Math.min(page * perPage, total) }}，共 {{ total }} 筆
+      顯示 {{ total === 0 ? 0 : (page - 1) * perPage + 1 }}{{ rangeSeparator ?? "-" }}{{ Math.min(page * perPage, total) }}，共 {{ total }} 筆
     </span>
     <div class="geo-pagination-pages">
       <button type="button" :disabled="page <= 1" @click="setPage(page - 1)">‹</button>

@@ -25,6 +25,13 @@
   --kinsan-gold:#8B6500;
   /* Chart colours — Youni Lab spec */
   --viz-main:#1677FF;
+  /* icon box 底色階（語意主色 ≈10% 疊白；warning 因明度高補償至 12%）
+     僅供 stat-card 48px icon box 使用，勿與 *-light（Tag / Alert 大面積淡底）混用 */
+  --icon-bg-info:#E6F4FF; --icon-bg-primary:#E7EAEC; --icon-bg-success:#EBF5E7;
+  --icon-bg-warning:#FAF1E5; --icon-bg-neutral:#F5F5F5;
+  /* 分類色盤（categorical）— KPI icon 實心色塊用，白 icon 對比皆 ≥3:1（WCAG 非文字）
+     與狀態語意色（success/warning/error）分家，避免「綠＝好」的語意污染 */
+  --cat-blue:#1677FF; --cat-teal:#0D9488; --cat-purple:#6554C0; --cat-amber:#D97706;
 }
 *{box-sizing:border-box;}
 body{margin:0;font-family:var(--font);background:var(--bg-page);color:var(--fg);-webkit-font-smoothing:antialiased;}
@@ -130,13 +137,9 @@ const NAV = [
   {type:"item",    id:"battle-room",     icon:"bar-chart-2", label:"戰情室"},
   {type:"group",   id:"geo",             icon:"zap",         label:"GEO 分析",  /* ⚠️ Feather 擴充 */
     children:[
-      {id:"geo-overview",  label:"Overview"},
-      {id:"geo-projects",  label:"Projects"},
-      {id:"geo-entities",  label:"Entities"},
-      {id:"geo-topics",    label:"Topics & Queries"},
-      {id:"geo-platforms", label:"Platforms & Schedules"},
-      {id:"geo-jobs",      label:"Run Jobs"},
-      {id:"geo-reports",   label:"Reports"},
+      {id:"geo-overview",     label:"Overview"},
+      {id:"geo-projects",     label:"Projects"},
+      {id:"geo-query-search", label:"Query Search"},
     ]
   },
   {type:"item",    id:"strategy",        icon:"trending-up", label:"策略分析"}, /* ⚠️ Feather 擴充 */
@@ -153,11 +156,7 @@ const CRUMBS = {
   "battle-room":["分析工具","戰情室"],
   "geo-overview":["分析工具","GEO 分析","Overview"],
   "geo-projects":["分析工具","GEO 分析","Projects"],
-  "geo-entities":["分析工具","GEO 分析","Entities"],
-  "geo-topics":["分析工具","GEO 分析","Topics & Queries"],
-  "geo-platforms":["分析工具","GEO 分析","Platforms & Schedules"],
-  "geo-jobs":["分析工具","GEO 分析","Run Jobs"],
-  "geo-reports":["分析工具","GEO 分析","Reports"],
+  "geo-query-search":["分析工具","GEO 分析","Query Search"],
   strategy:["分析工具","策略分析"],
   notifications:["系統","通知"], profile:["系統","個人設定"],
   permissions:["系統","權限管理"], "system-settings":["系統","系統設定"],
@@ -625,6 +624,7 @@ function genData(timeId,region,customRange,topics,platforms,metas){
   });
   const kpi={
     mention:Math.round(80*filterFactor*(days/7)),
+    mentionDelta:Math.max(1,Math.round(6*filterFactor*(days/7))),
     mentionTotal:Math.round(217*filterFactor*(days/7)),
     rank:+(1.0+rnd()*1.2).toFixed(1),
     vis:+(brands[0].data.reduce((a,b)=>a+b,0)/labels.length).toFixed(1),
@@ -637,6 +637,17 @@ function genData(timeId,region,customRange,topics,platforms,metas){
     industryAvg:+(9+rnd()*5).toFixed(1),
     secondSov:+(10+rnd()*6).toFixed(1),
   };
+  /* 引用表現卡：sparkline 序列（隨機漫步、收斂於當期值）與較上期 delta */
+  const mkTrend=(final,vol)=>{
+    const arr=[final];
+    for(let i=1;i<Math.max(labels.length,7);i++)
+      arr.unshift(Math.max(0,+(arr[0]+(rnd()-0.55)*vol).toFixed(1)));
+    return arr;
+  };
+  kpi.citeShareTrend=mkTrend(kpi.citeShare,1.4);
+  kpi.citeCountTrend=mkTrend(kpi.citeCount,Math.max(4,kpi.citeCount*0.08));
+  kpi.citeShareDelta=+(kpi.citeShare-kpi.citeShareTrend[0]).toFixed(1);
+  kpi.citeCountDelta=Math.round(kpi.citeCount-kpi.citeCountTrend[0]);
   return {labels,pos,neg,posTotal,negTotal,brands,kpi,showDaily,days,traffic,platformDist,totalSessions,citations,monitored,empty:posTotal+negTotal===0};
 }
 
@@ -850,6 +861,65 @@ function MetricGroup({title,metrics}){
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ─── KPI Card（左四張）───
+   label 左上（13px fg-3 照規範）＋ 實心色塊 icon 右上（36×36 / r10、白 icon 19px、
+   底色取 --cat-* 分類色盤，白 icon 對比皆 ≥3:1）
+   數值區 marginTop:auto 靠底，五卡等高時基線對齊 */
+function KpiCard({card:k}){
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",minWidth:0,
+      display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:14}}>
+        <span style={{fontSize:13,color:"var(--fg-3)",lineHeight:"20px",paddingTop:2,
+          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.label}</span>
+        <div style={{width:36,height:36,borderRadius:10,background:k.accent,
+          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <FI name={k.icon} size={19} color="#FFFFFF"/>
+        </div>
+      </div>
+      <div style={{marginTop:"auto"}}>
+        <div style={{fontSize:28,fontWeight:600,color:"var(--fg)",lineHeight:"34px",marginBottom:2,fontVariantNumeric:"tabular-nums"}}>
+          {k.value}
+          {k.unit&&<span style={{fontSize:k.unitSize||16,color:k.unit.startsWith(" /")?"#BFBFBF":"inherit",fontWeight:k.unit.startsWith(" /")?400:600}}>{k.unit}</span>}
+        </div>
+        <div style={{fontSize:13,color:"var(--fg-3)",lineHeight:"20px",whiteSpace:"nowrap"}}>
+          {k.sub.l} <span style={{color:k.sub.c,fontWeight:600}}>{k.sub.v}{k.sub.u&&<span style={{fontSize:11}}>{k.sub.u}</span>}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 引用表現群組卡（第五欄）───
+   左對齊堆疊指標：label 上（13px fg-3）→ 數值（24px/600）與 delta（12px）同基線並排
+   兩指標間以 1px 分隔線區隔（標題已移除，指標填滿卡高） */
+function CiteListCard({metrics}){
+  return(
+    <div style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",minWidth:0,
+      display:"flex",flexDirection:"column",justifyContent:"space-evenly"}}>
+      {metrics.map((m,i)=>(
+        <React.Fragment key={m.label}>
+          {i>0&&<div style={{height:1,background:"#F0F0F0",margin:"4px 0"}}/>}
+          <div>
+            <div style={{fontSize:13,color:"var(--fg-3)",lineHeight:"20px",marginBottom:4,
+              whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.label}</div>
+            <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:24,fontWeight:600,color:"var(--fg)",lineHeight:"30px",fontVariantNumeric:"tabular-nums"}}>
+                {m.value}{m.unit&&<span style={{fontSize:15}}>{m.unit}</span>}
+              </span>
+              {m.delta&&(
+                <span style={{fontSize:12,color:"var(--fg-3)",lineHeight:"20px",whiteSpace:"nowrap"}}>
+                  {m.delta.l} <span style={{color:m.delta.c,fontWeight:600}}>{m.delta.v}</span>
+                </span>
+              )}
+            </div>
+          </div>
+        </React.Fragment>
+      ))}
     </div>
   );
 }
@@ -1651,29 +1721,35 @@ function GeoOverviewPage({windowWidth}){
     if(opt.id==="custom") setCalOpen(true);
   };
 
-  const statCols = windowWidth>=1024 ? "repeat(4,minmax(0,1fr))"
-                 : windowWidth>=640  ? "repeat(2,minmax(0,1fr))" : "1fr";
+  /* delta 格式化：正 = success、負 = error、零 = 中性（規範 trend 語意） */
+  const fmtDelta=(d,u="")=>({
+    l:"較上期",
+    v:(d>0?"+":"")+d+u,
+    c:d>0?"#389E0D":d<0?"#CF1322":"#8C8C8C",
+  });
 
+  /* 左四張：分類色盤（--cat-*）— 與狀態語意色分家，四色相異且白 icon 對比 ≥3:1 */
   const CARDS=[
     {label:"品牌提及",   value:String(data.kpi.mention), unit:" / "+data.kpi.mentionTotal, unitSize:15,
-     sub:{l:"覆蓋率",v:data.kpi.vis,u:"%",c:"#434343"},
-     icon:"user",        iconColor:"#1677FF", iconBg:"#E6F4FF"},
+     sub:fmtDelta(data.kpi.mentionDelta),
+     icon:"user",        accent:"var(--cat-blue)"},
     {label:"平均排名",   value:String(data.kpi.rank), unit:"",
      sub:{l:"競品最佳",v:String(data.kpi.competitorBest),u:"",c:"#434343"},
-     icon:"bar-chart-2", iconColor:"#389E0D", iconBg:"#F6FFED"},
+     icon:"bar-chart-2", accent:"var(--cat-teal)"},
     {label:"能見度",     value:String(data.kpi.vis), unit:"%", unitSize:16,
      sub:{l:"產業均值",v:String(data.kpi.industryAvg),u:"%",c:"#434343"},
-     icon:"eye",         iconColor:"#1677FF", iconBg:"#E6F4FF"},
+     icon:"eye",         accent:"var(--cat-purple)"},
     {label:"聲量佔有率", value:String(data.kpi.sov), unit:"%", unitSize:16,
      sub:{l:"次高",v:String(data.kpi.secondSov),u:"%",c:"#434343"},
-     icon:"pie-chart",   iconColor:"#D68C24", iconBg:"#FFFCF0"},
+     icon:"pie-chart",   accent:"var(--cat-amber)"},
   ];
 
+  /* 第五欄：引用表現列表卡 — 引用次數為計數、無單位 */
   const CITE_METRICS=[
-    {label:"自有引用份額", value:String(data.kpi.citeShare),  unit:"%"},
-    {label:"引用次數",     value:String(data.kpi.citeCount),  unit:""},
-    {label:"被引用網頁",   value:String(data.kpi.citePages),  unit:""},
-    {label:"平均引用率",   value:String(data.kpi.avgCiteRate),unit:"%"},
+    {label:"自有引用份額", value:String(data.kpi.citeShare), unit:"%",
+     delta:fmtDelta(data.kpi.citeShareDelta,"%")},
+    {label:"引用次數",     value:data.kpi.citeCount.toLocaleString(), unit:"",
+     delta:fmtDelta(data.kpi.citeCountDelta)},
   ];
 
   return(
@@ -1710,28 +1786,17 @@ function GeoOverviewPage({windowWidth}){
           </div>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:statCols,gap:16,marginBottom:16}}>
-          {CARDS.map(k=>(
-            <div key={k.label} style={{background:"#fff",border:"1px solid #E7EAEC",borderRadius:12,padding:"18px 20px",minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                <div style={{width:36,height:36,borderRadius:9,background:k.iconBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <FI name={k.icon} size={18} color={k.iconColor}/>
-                </div>
-                <span style={{fontSize:13,color:"var(--fg-3)"}}>{k.label}</span>
-              </div>
-              <div style={{fontSize:28,fontWeight:600,color:"var(--fg)",lineHeight:1.1,marginBottom:10}}>
-                {k.value}
-                {k.unit&&<span style={{fontSize:k.unitSize||16,color:k.unit.startsWith(" /")?"#BFBFBF":"inherit",fontWeight:k.unit.startsWith(" /")?400:600}}>{k.unit}</span>}
-              </div>
-              <div style={{fontSize:12,color:"var(--fg-3)"}}>
-                {k.sub.l} <span style={{color:k.sub.c,fontWeight:600}}>{k.sub.v}{k.sub.u&&<span style={{fontSize:10}}>{k.sub.u}</span>}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{marginBottom:16}}>
-          <MetricGroup metrics={CITE_METRICS}/>
+        {/* ── KPI 卡片區：單排五單元 ──
+            ≥1024：repeat(5) — 4 張 KPI 卡＋引用表現列表卡（卡內自帶標題即群組訊號）
+            640–1023：兩欄 — KPI 卡 2×2、引用卡末格半寬
+            <640：單欄
+            alignItems:stretch ＋ 卡內 marginTop:auto，五卡等高且數值靠底對齊 */}
+        <div style={{display:"grid",
+          gridTemplateColumns:isWide?"repeat(5,minmax(0,1fr))"
+            :windowWidth>=640?"repeat(2,minmax(0,1fr))":"1fr",
+          gap:16,alignItems:"stretch",marginBottom:16}}>
+          {CARDS.map(k=><KpiCard key={k.label} card={k}/>)}
+          <CiteListCard metrics={CITE_METRICS}/>
         </div>
 
         <div style={{marginBottom:16}}><TrendChart data={data}/></div>
@@ -1820,7 +1885,7 @@ function App(){
   const sw=isDrawerMode?0:(collapsed?56:240);
 
   const onSelect=id=>{
-    const GEO_LINKS={"geo-overview":"kinsan-Overview.html","geo-projects":"kinsan-Projects.html","geo-entities":"kinsan-Entities.html","geo-topics":"kinsan-Topics-Queries.html","geo-platforms":"kinsan-Platforms-Schedules.html","geo-jobs":"kinsan-Run-Jobs.html","geo-reports":"kinsan-Reports.html"};
+    const GEO_LINKS={"geo-overview":"kinsan-Overview.html","geo-projects":"kinsan-Projects.html","geo-query-search":"kinsan-Query-Search.html"};
     if(GEO_LINKS[id] && GEO_LINKS[id]!=="kinsan-Overview.html"){ window.location.href=GEO_LINKS[id]; return; }
     setActiveId(id);setUserMenu(false);if(isDrawerMode)setDrawer(false);};
   const onToggle=id=>setExpanded(e=>({...e,[id]:!e[id]}));
