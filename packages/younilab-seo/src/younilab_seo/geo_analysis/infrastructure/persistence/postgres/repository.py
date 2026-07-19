@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -234,7 +235,7 @@ class PostgresGeoAnalysisRepository:
             budget_enforced=False,
         )
 
-    async def list_dispatchable_scheduled_job_ids(
+    async def list_dispatchable_job_ids(
         self,
         *,
         occurred_at: datetime,
@@ -243,7 +244,10 @@ class PostgresGeoAnalysisRepository:
         statement = (
             select(GeoQueryRunJobRow.id)
             .where(
-                GeoQueryRunJobRow.source == "scheduled",
+                or_(
+                    GeoQueryRunJobRow.source == "scheduled",
+                    GeoQueryRunJobRow.job_type == "query_research_first_run",
+                ),
                 GeoQueryRunJobRow.scheduled_for <= occurred_at,
                 or_(
                     GeoQueryRunJobRow.status == JobStatus.PENDING.value,
@@ -267,7 +271,7 @@ class PostgresGeoAnalysisRepository:
     ) -> int:
         async with self._session_scope() as session:
             reconciled_ids: list[UUID] = []
-            for status, error_code, scheduled_only in (
+            for status, error_code, dispatch_managed_only in (
                 (JobStatus.PUBLISHING, "publish_state_stale", True),
                 (JobStatus.RUNNING_EXTERNAL, "execution_outcome_unknown", False),
             ):
@@ -275,8 +279,14 @@ class PostgresGeoAnalysisRepository:
                     GeoQueryRunJobRow.status == status.value,
                     GeoQueryRunJobRow.updated_at <= stale_before,
                 ]
-                if scheduled_only:
-                    filters.append(GeoQueryRunJobRow.source == "scheduled")
+                if dispatch_managed_only:
+                    filters.append(
+                        or_(
+                            GeoQueryRunJobRow.source == "scheduled",
+                            GeoQueryRunJobRow.job_type
+                            == "query_research_first_run",
+                        )
+                    )
                 statement = (
                     update(GeoQueryRunJobRow)
                     .where(*filters)
@@ -1316,7 +1326,7 @@ class PostgresGeoAnalysisRepository:
         tenant_id: UUID,
         query_id: UUID,
         command: CreateQueryRunJobCommand,
-    ) -> GeoQueryRunJob | None:
+    ) -> tuple[GeoQueryRunJob, bool] | None:
         query = await self.get_query(tenant_id, query_id)
         if query is None:
             return None
@@ -1345,8 +1355,36 @@ class PostgresGeoAnalysisRepository:
             updated_at=now,
         )
         async with self._session_scope() as session:
-            session.add(_job_row(job))
-        return job
+            inserted_id = await session.scalar(
+                pg_insert(GeoQueryRunJobRow)
+                .values(**_job_insert_values(job))
+                .on_conflict_do_nothing()
+                .returning(GeoQueryRunJobRow.id)
+            )
+            if inserted_id is not None:
+                return job, True
+            business_date = scheduled_for.astimezone(
+                ZoneInfo("Asia/Taipei")
+            ).date()
+            existing = await session.scalar(
+                select(GeoQueryRunJobRow).where(
+                    GeoQueryRunJobRow.query_id == query_id,
+                    GeoQueryRunJobRow.platform_id == command.platform_id,
+                    GeoQueryRunJobRow.business_date == business_date,
+                    GeoQueryRunJobRow.is_daily_slot_owner.is_(True),
+                ).with_for_update()
+            )
+            if existing is None:
+                raise RuntimeError("job insert conflicted without a daily slot owner")
+            if (
+                command.job_type == "query_research_first_run"
+                and existing.source == "manual"
+                and existing.job_type == "manual_run"
+                and existing.status in {JobStatus.PENDING, JobStatus.DELAYED}
+            ):
+                existing.job_type = "query_research_first_run"
+                existing.updated_at = now
+            return _job_from_row(existing), False
 
     async def list_jobs(self, tenant_id: UUID, project_id: UUID) -> list[GeoQueryRunJob]:
         if not await self._project_exists(tenant_id, project_id):
@@ -2685,6 +2723,15 @@ def _job_row(job: GeoQueryRunJob) -> GeoQueryRunJobRow:
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
+
+
+def _job_insert_values(job: GeoQueryRunJob) -> dict:
+    row = _job_row(job)
+    return {
+        column.name: getattr(row, column.name)
+        for column in GeoQueryRunJobRow.__table__.columns
+        if column.name not in {"business_date", "is_daily_slot_owner"}
+    }
 
 
 def _external_reference_row(

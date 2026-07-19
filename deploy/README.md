@@ -81,6 +81,8 @@ GEO_SCHEDULER_POLL_SECONDS=60
 
 部署前需執行 expand migration `deploy/local/postgresql/015_geo_analysis_daily_scheduler.sql`，建立每日 batch、scheduled job 欄位與索引。此 migration 不再依賴 SEO Task。確認所有舊版 API 與 worker replicas 下線後，才手動執行 contract migration `016_geo_analysis_remove_seo_task_contract.sql`。Resource Catalog 與 GEO Analysis 使用不同 database，無法在 migration 內直接 join `seo_task`；執行 `016` 前必須先補齊 Project 的 `customer_id`，仍有缺漏時 migration 會中止且不會刪除 `seo_task_id`。
 
+部署每日 Query／Platform 唯一執行限制時，不可讓舊版 Job writers 與 `020_geo_query_daily_run_uniqueness.sql` 的唯一索引同時運作。需先停止 Admin Portal 即時執行、GEO API create-job 流量與 scheduler，確認 writers 已停止後執行 migration，再部署新版 GEO API／scheduler；完成同日重複 create-job 回傳既有 Job、scheduler 不重複建立及 first-run pickup smoke test 後才恢復 writers，最後部署 Admin Portal。若維護期間無法完整停止 writers，不可執行 migration。
+
 部署 provider request 稽核功能前，需先執行 `deploy/local/postgresql/018_provider_request_audit.sql`。`geo-tracking-api`、`geo-analysis-api` 與 GEO worker 會在呼叫 Gemini 或 SerpApi 前先寫入 `provider_request`；若 migration 尚未套用，provider request 會依 fail-closed 規則停止，不會在沒有稽核紀錄的情況下繼續呼叫。
 
 Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。

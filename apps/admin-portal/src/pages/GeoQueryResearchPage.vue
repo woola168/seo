@@ -11,15 +11,21 @@ import {
   normalizeQuerySettingsKeywords,
 } from "../services/geo-project-query-settings";
 import { loadGeoProjectProfile, type GeoProjectProfile } from "../services/geo-project-profile";
+import {
+  reconcileAcceptedQueries,
+  runAcceptedQueriesOnce,
+  type GeoQueryFirstRunSummary,
+} from "../services/geo-query-first-run";
 import type {
   GeoQueryDraftResource,
   GeoQueryGenerationRunResource,
+  GeoQueryResource,
   GeoQueryResearchRunResource,
   ToastTone,
 } from "../types";
 
 const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
-defineProps<{ permissions: readonly string[] }>();
+const props = defineProps<{ permissions: readonly string[] }>();
 const route = useRoute();
 const router = useRouter();
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
@@ -45,6 +51,7 @@ const brandName = computed(() => profile.value?.ownBrand.name || profile.value?.
 const competitorNames = computed(() => profile.value?.competitors.map((competitor) => competitor.name) ?? []);
 const keywords = computed(() => normalizeQuerySettingsKeywords(form.keywords));
 const standardIntentCategories = ["導航型", "資訊型", "商業評估"];
+const canRunJobs = computed(() => props.permissions.includes("geo.jobs.run"));
 
 onMounted(() => void load());
 
@@ -141,33 +148,78 @@ async function confirmDrafts(): Promise<void> {
     showEmptyAlert.value = true;
     return;
   }
-  startOperationLoading("正在建立選取的 Query…");
+  startOperationLoading("正在建立 Query 並派送首次數據…");
   errorMessage.value = "";
-  const failures: string[] = [];
-  for (const draftId of selectedDraftIds.value) {
+  const attemptedDraftIds = [...selectedDraftIds.value];
+  const failuresByDraftId = new Map<string, string>();
+  const resolvedDraftIds = new Set<string>();
+  const acceptedQueriesById = new Map<string, GeoQueryResource>();
+  for (const draftId of attemptedDraftIds) {
     try {
-      await api.geoAnalysis.acceptQueryDraft(draftId, { createTopicIfMissing: true, status: "active" });
+      const query = await api.geoAnalysis.acceptQueryDraft(draftId, {
+        createTopicIfMissing: true,
+        status: "active",
+      });
+      acceptedQueriesById.set(query.id, query);
+      resolvedDraftIds.add(draftId);
     } catch (error) {
-      failures.push(error instanceof Error ? error.message : draftId);
+      failuresByDraftId.set(draftId, error instanceof Error ? error.message : draftId);
     }
   }
   try {
     if (generationRun.value) {
       generationRun.value = await api.geoAnalysis.queryGenerationRun(generationRun.value.id);
+      const reconciliation = await reconcileAcceptedQueries(
+        projectId.value,
+        attemptedDraftIds,
+        generationRun.value.drafts,
+        [...acceptedQueriesById.values()],
+      );
+      for (const query of reconciliation.queries) acceptedQueriesById.set(query.id, query);
+      for (const draftId of reconciliation.reconciledDraftIds) {
+        resolvedDraftIds.add(draftId);
+        failuresByDraftId.delete(draftId);
+      }
     }
   } catch {
-    // The accepted Query resources are authoritative even if reconciliation fails.
+    // Direct accept responses remain authoritative when reconciliation is unavailable.
   }
-  selectedDraftIds.value = selectedDraftIds.value.filter((id) =>
-    generationRun.value?.drafts.some((draft) => draft.id === id && !draft.acceptedQueryId),
-  );
+  selectedDraftIds.value = selectedDraftIds.value.filter((id) => !resolvedDraftIds.has(id));
+  const acceptedQueries = [...acceptedQueriesById.values()];
+  let firstRunSummary: GeoQueryFirstRunSummary | null = null;
+  let firstRunError = "";
+  if (!canRunJobs.value) {
+    firstRunError = "目前帳號沒有首次數據執行權限";
+  } else if (acceptedQueries.length) {
+    try {
+      firstRunSummary = await runAcceptedQueriesOnce(acceptedQueries);
+    } catch (error) {
+      firstRunError = error instanceof Error ? error.message : "首次數據派送失敗";
+    }
+  }
   stopOperationLoading();
+
+  const resultParts = [`${acceptedQueries.length} 筆 Query 已建立`];
+  if (firstRunSummary) {
+    resultParts.push(`${firstRunSummary.combinations} 個首次執行組合`);
+    resultParts.push(`${firstRunSummary.dispatched} 筆已派送`);
+    if (firstRunSummary.alreadyReserved) resultParts.push(`${firstRunSummary.alreadyReserved} 筆今日已執行或已排程`);
+    if (firstRunSummary.retryScheduled) resultParts.push(`${firstRunSummary.retryScheduled} 筆等待後端重試`);
+    if (firstRunSummary.failures.length) resultParts.push(`${firstRunSummary.failures.length} 筆派送失敗`);
+  }
+  if (firstRunError) resultParts.push(firstRunError);
+  const failures = [...failuresByDraftId.values()];
   if (failures.length) {
-    errorMessage.value = `部分 Query 已建立，${failures.length} 筆失敗：${failures.join("；")}`;
-    emit("notify", errorMessage.value, "error");
+    errorMessage.value = `部分 Query 已建立，${failures.length} 筆建立失敗：${failures.join("；")}`;
+    emit("notify", `${resultParts.join("；")}；${errorMessage.value}`, "error");
     return;
   }
-  emit("notify", "已將選取結果建立為正式 Query。", "success");
+  const runFailures = firstRunSummary?.failures ?? [];
+  emit(
+    "notify",
+    `${resultParts.join("；")}${runFailures.length ? `：${runFailures.join("；")}` : "。"}`,
+    firstRunError || firstRunSummary?.retryScheduled || runFailures.length ? "warning" : "success",
+  );
   await router.push({ name: "geo-project-edit", params: { projectId: projectId.value } });
 }
 

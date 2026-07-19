@@ -552,7 +552,7 @@ Problem Details 格式：
 | `POST` | `/api/geo/queries/{queryId}/schedules` | 舊版 schedule 相容 endpoint。 |
 | `PATCH` | `/api/geo/schedules/{scheduleId}` | 舊版 schedule 相容 endpoint。 |
 | `DELETE` | `/api/geo/schedules/{scheduleId}` | 舊版 schedule 相容 endpoint。 |
-| `POST` | `/api/geo/queries/{queryId}/jobs` | 建立手動 query run job。 |
+| `POST` | `/api/geo/queries/{queryId}/jobs` | 建立手動 query run job；同一 Query、Platform 與台北營業日只建立一次。 |
 | `GET` | `/api/geo/projects/{projectId}/jobs` | 列出 project 的 query run jobs。 |
 | `GET` | `/api/geo/projects/{projectId}/run-results` | 列出 project 的 run history raw results。 |
 | `GET` | `/api/geo/jobs/{jobId}` | 取得單一 job orchestration 狀態。 |
@@ -863,7 +863,7 @@ Problem Details 格式：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
-| `POST` | `/api/geo/queries/{queryId}/jobs` | `CreateJobRequest` | `201 JobResponse` |
+| `POST` | `/api/geo/queries/{queryId}/jobs` | `CreateJobRequest` | 新建時 `201 CreateJobResponse`；當日已存在時 `200 CreateJobResponse` |
 | `GET` | `/api/geo/projects/{projectId}/jobs` | 無 | `PageResponse<JobResponse>` |
 | `GET` | `/api/geo/jobs/{jobId}` | 無 | `JobResponse` |
 | `POST` | `/api/geo/jobs/{jobId}/dispatch` | 無 | `JobResponse`；未設定 publisher 時回 `501` |
@@ -888,7 +888,7 @@ Problem Details 格式：
   "errorMessage": null
 }
 
-// JobResponse
+// CreateJobResponse；一般 JobResponse 不包含 wasCreated
 {
   "id": "uuid",
   "projectId": "uuid",
@@ -908,11 +908,20 @@ Problem Details 格式：
   "lastErrorCode": null,
   "lastErrorMessage": null,
   "createdAt": "2026-06-22T10:00:00Z",
-  "updatedAt": "2026-06-22T10:00:00Z"
+  "updatedAt": "2026-06-22T10:00:00Z",
+  "wasCreated": true
 }
 ```
 
 Job status 目前由 orchestration 控制，常見值包含 `pending`、`publishing`、`published`、`running_external`、`succeeded`、`failed`、`delayed`、`cancelled`。已進入 `succeeded`、`failed`、`cancelled` 的 job 不接受 external callback 改寫，也不可再次 cancel。
+
+Job 建立以 `Query + Platform + businessDate` 占用每日執行額度，`businessDate` 固定由 `scheduledFor` 換算為 `Asia/Taipei` 日期。當日已有 Job 時回傳同一筆 Job 與 `wasCreated: false`，不得建立替代 Job。若既有 Job 已是 `query_research_first_run + pending`，呼叫端可 dispatch 同一個 `jobId`；`delayed` 應等待 scheduler 到期重試，其他狀態視為已執行或已排程。Job 即使進入 `failed`、`cancelled` 或 `delayed` 仍占用當日額度，後續只能沿用原 Job 的 retry／reconciliation。
+
+`jobType=query_research_first_run` 專供 Query Research 建立後的首次執行。若 daily slot 已由 `source=manual`、`jobType=manual_run` 且狀態為 `pending`／`delayed` 的 Job 占用，first-run create request 會鎖定並將同一筆 Job 升級為 `query_research_first_run`，回傳 `wasCreated: false`；scheduled 與 terminal Job 不會被改寫。scheduler 會接手 first-run Job 的到期 `pending`／`delayed` 狀態，一般 `manual_run` 不會自動派送。前端 dispatch 回應遺失或 publisher 暫時失敗時，後端仍會沿用同一筆 Job 重試。
+
+既有資料庫不可在舊版 API 或 scheduler writers 仍運作時直接套用 `deploy/local/postgresql/020_geo_query_daily_run_uniqueness.sql`。安全部署需進入維護窗口，先停止 Admin Portal 即時執行、GEO API create-job 流量與 scheduler，確認沒有 Job writer 後執行 migration，再部署新版 GEO API／scheduler；完成 create-job conflict 與 first-run pickup smoke test 後才恢復 writers，最後部署 Admin Portal。Migration 會保留歷史重複資料，只將每組最早 Job 設為 daily slot owner；fresh schema 已同步。
+
+安全 rollback 應先回退 Admin Portal 的即時執行功能，並保留 migration、每日唯一索引、create-job conflict handling 與 scheduler 相容程式。若只回退 scheduler 行為，可停止撿取 `query_research_first_run`，但不可回退 create-job conflict handling。若必須完整回退後端，需先停止 API 與 scheduler writers，再以受控 migration 移除 `ux_geo_query_run_job_daily_slot`、`business_date` 與 `is_daily_slot_owner`，最後才部署舊 API／scheduler；完整回退會恢復同日重複 Job 的風險。不可將舊版 API 與新版每日唯一索引併用，否則同日重複建立會因未處理的唯一衝突回 500。
 
 ## Health
 

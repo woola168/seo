@@ -45,7 +45,7 @@ class FakeRepository:
         self.reconciliation_calls += 1
         return 1
 
-    async def list_dispatchable_scheduled_job_ids(self, **kwargs) -> list[UUID]:
+    async def list_dispatchable_job_ids(self, **kwargs) -> list[UUID]:
         return self.dispatchable_ids
 
 

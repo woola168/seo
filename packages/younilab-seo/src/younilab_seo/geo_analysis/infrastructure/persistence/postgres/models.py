@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -453,6 +454,14 @@ class GeoQueryRunJobRow(SQLModel, table=True):
             unique=True,
             postgresql_where=text("source = 'scheduled'"),
         ),
+        Index(
+            "ux_geo_query_run_job_daily_slot",
+            "query_id",
+            "platform_id",
+            "business_date",
+            unique=True,
+            postgresql_where=text("is_daily_slot_owner = true"),
+        ),
     )
 
     id: UUID = Field(primary_key=True)
@@ -465,6 +474,18 @@ class GeoQueryRunJobRow(SQLModel, table=True):
     job_type: str = Field(default="scheduled_run", sa_column=Column(String(32), nullable=False))
     priority: str = Field(default="normal", sa_column=Column(String(32), nullable=False))
     scheduled_for: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    business_date: date | None = Field(
+        default=None,
+        sa_column=Column(
+            Date,
+            Computed("(scheduled_for AT TIME ZONE 'Asia/Taipei')::date", persisted=True),
+            nullable=False,
+        ),
+    )
+    is_daily_slot_owner: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default=text("true")),
+    )
     status: str = Field(sa_column=Column(String(32), nullable=False))
     attempt_count: int = Field(default=0, nullable=False)
     max_attempts: int = Field(default=3, nullable=False)

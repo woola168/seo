@@ -447,7 +447,7 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> "DailyRunMaterializationResult":
         raise NotImplementedError
 
-    async def list_dispatchable_scheduled_job_ids(
+    async def list_dispatchable_job_ids(
         self,
         *,
         occurred_at: datetime,
@@ -782,7 +782,7 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         tenant_id: UUID,
         query_id: UUID,
         command: CreateQueryRunJobCommand,
-    ) -> GeoQueryRunJob | None:
+    ) -> tuple[GeoQueryRunJob, bool] | None:
         raise NotImplementedError
 
     async def list_jobs(

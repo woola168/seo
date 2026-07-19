@@ -170,6 +170,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
         postgres_dir / "016_geo_analysis_remove_seo_task_contract.sql"
     )
     query_settings_path = postgres_dir / "019_geo_project_query_settings.sql"
+    daily_uniqueness_path = (
+        postgres_dir / "020_geo_query_daily_run_uniqueness.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -179,6 +182,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     scheduler_patch = scheduler_patch_path.read_text(encoding="utf-8")
     seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
     query_settings = query_settings_path.read_text(encoding="utf-8")
+    daily_uniqueness = daily_uniqueness_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -213,6 +217,18 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "jsonb_array_length(keywords) <= 10" in query_settings
     assert query_settings.startswith("BEGIN;")
     assert query_settings.rstrip().endswith("COMMIT;")
+    assert "business_date date GENERATED ALWAYS" in schema
+    assert "ux_geo_query_run_job_daily_slot" in schema
+    assert "PARTITION BY query_id, platform_id, business_date" in daily_uniqueness
+    assert "is_daily_slot_owner = ranked_jobs.daily_rank = 1" in daily_uniqueness
+    assert daily_uniqueness.startswith("BEGIN;")
+    assert daily_uniqueness.rstrip().endswith("COMMIT;")
+    daily_slot_index = next(
+        index
+        for index in GeoQueryRunJobRow.__table__.indexes
+        if index.name == "ux_geo_query_run_job_daily_slot"
+    )
+    assert daily_slot_index.unique is True
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
@@ -550,12 +566,14 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
                 assert legacy_assignment is not None
                 legacy_assignment.model = "gemini-2.5-pro"
 
-        job = await repository.create_job(
+        job_creation = await repository.create_job(
             TENANT_ID,
             query.id,
             CreateQueryRunJobCommand(platform_id=platform_id),
         )
-        assert job is not None
+        assert job_creation is not None
+        job, was_created = job_creation
+        assert was_created is True
         dispatch_context = await repository.get_job_dispatch_context(job.id)
         assert dispatch_context is not None
         assert dispatch_context.model == "gemini-3.1-flash-lite"
@@ -682,12 +700,142 @@ async def test_daily_materialization_uses_active_queries_and_active_platforms() 
         )
         assert active_platform_job.execution_snapshot["model"] == "active-default-model"
 
-        manual_job = await repository.create_job(
+        existing_daily_job = await repository.create_job(
             TENANT_ID,
             active_query.id,
-            CreateQueryRunJobCommand(platform_id=active_platform_id),
+            CreateQueryRunJobCommand(
+                platform_id=active_platform_id,
+                scheduled_for=now,
+                job_type="query_research_first_run",
+            ),
         )
-        assert manual_job is not None
+        assert existing_daily_job is not None
+        existing_job, was_created = existing_daily_job
+        assert was_created is False
+        assert existing_job.id == active_platform_job.id
+        assert existing_job.source == "scheduled"
+        assert existing_job.job_type == "scheduled_run"
+
+        first_run_creation = await repository.create_job(
+            TENANT_ID,
+            paused_query.id,
+            CreateQueryRunJobCommand(
+                platform_id=active_platform_id,
+                scheduled_for=now,
+                job_type="query_research_first_run",
+            ),
+        )
+        promotable_manual_creation = await repository.create_job(
+            TENANT_ID,
+            paused_query.id,
+            CreateQueryRunJobCommand(
+                platform_id=paused_platform_id,
+                scheduled_for=now,
+                job_type="manual_run",
+            ),
+        )
+        assert first_run_creation is not None
+        assert promotable_manual_creation is not None
+        promotable_manual_job, _ = promotable_manual_creation
+        promoted_creation = await repository.create_job(
+            TENANT_ID,
+            paused_query.id,
+            CreateQueryRunJobCommand(
+                platform_id=paused_platform_id,
+                scheduled_for=now,
+                job_type="query_research_first_run",
+            ),
+        )
+        normal_manual_creation = await repository.create_job(
+            TENANT_ID,
+            active_query.id,
+            CreateQueryRunJobCommand(
+                platform_id=paused_platform_id,
+                scheduled_for=now,
+                job_type="manual_run",
+            ),
+        )
+        assert promoted_creation is not None
+        assert normal_manual_creation is not None
+        first_run_job, _ = first_run_creation
+        promoted_job, promoted_was_created = promoted_creation
+        normal_manual_job, _ = normal_manual_creation
+        assert promoted_was_created is False
+        assert promoted_job.id == promotable_manual_job.id
+        assert promoted_job.job_type == "query_research_first_run"
+
+        dispatchable_ids = await repository.list_dispatchable_job_ids(
+            occurred_at=now,
+            limit=100,
+        )
+        assert active_platform_job.id in dispatchable_ids
+        assert first_run_job.id in dispatchable_ids
+        assert promoted_job.id in dispatchable_ids
+        assert normal_manual_job.id not in dispatchable_ids
+
+        async with session_factory() as session:
+            async with session.begin():
+                row = await session.get(GeoQueryRunJobRow, first_run_job.id)
+                assert row is not None
+                row.status = "delayed"
+                row.next_retry_at = now + timedelta(minutes=5)
+
+        assert first_run_job.id not in await repository.list_dispatchable_job_ids(
+            occurred_at=now,
+            limit=100,
+        )
+        assert first_run_job.id in await repository.list_dispatchable_job_ids(
+            occurred_at=now + timedelta(minutes=5),
+            limit=100,
+        )
+
+        async with session_factory() as session:
+            async with session.begin():
+                first_run_row = await session.get(
+                    GeoQueryRunJobRow,
+                    first_run_job.id,
+                )
+                normal_manual_row = await session.get(
+                    GeoQueryRunJobRow,
+                    normal_manual_job.id,
+                )
+                assert first_run_row is not None
+                assert normal_manual_row is not None
+                first_run_row.status = "publishing"
+                first_run_row.updated_at = now - timedelta(minutes=10)
+                normal_manual_row.status = "publishing"
+                normal_manual_row.updated_at = now - timedelta(minutes=10)
+
+        await repository.reconcile_stale_jobs(
+            stale_before=now - timedelta(minutes=5),
+            occurred_at=now,
+        )
+        async with session_factory() as session:
+            reconciled_first_run = await session.get(
+                GeoQueryRunJobRow,
+                first_run_job.id,
+            )
+            untouched_manual = await session.get(
+                GeoQueryRunJobRow,
+                normal_manual_job.id,
+            )
+            assert reconciled_first_run is not None
+            assert untouched_manual is not None
+            assert reconciled_first_run.status == "failed"
+            assert reconciled_first_run.last_error_code == "publish_state_stale"
+            assert untouched_manual.status == "publishing"
+
+        manual_job_creation = await repository.create_job(
+            TENANT_ID,
+            active_query.id,
+            CreateQueryRunJobCommand(
+                platform_id=active_platform_id,
+                scheduled_for=now + timedelta(days=1),
+            ),
+        )
+        assert manual_job_creation is not None
+        manual_job, was_created = manual_job_creation
+        assert was_created is True
 
         async with session_factory() as session:
             async with session.begin():

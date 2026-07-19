@@ -30,7 +30,7 @@ class ManageQueryRunJobs:
         principal: AuthorizedPrincipal,
         query_id: UUID,
         command: CreateQueryRunJobCommand,
-    ) -> GeoQueryRunJob | None:
+    ) -> tuple[GeoQueryRunJob, bool] | None:
         project = await self.repository.get_query_project(principal.tenant_id, query_id)
         if project is None or not can_access_project(principal, project):
             return None

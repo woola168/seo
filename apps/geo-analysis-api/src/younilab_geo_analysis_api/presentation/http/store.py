@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
@@ -813,12 +814,34 @@ class GeoApiStore:
         tenant_id: UUID,
         query_id: UUID,
         command: CreateQueryRunJobCommand,
-    ) -> GeoQueryRunJob | None:
+    ) -> tuple[GeoQueryRunJob, bool] | None:
         query = await self.get_query(tenant_id, query_id)
         if query is None:
             return None
         now = _now()
         scheduled_for = _normalize_datetime(command.scheduled_for or now)
+        business_date = scheduled_for.astimezone(ZoneInfo("Asia/Taipei")).date()
+        existing = next(
+            (
+                job
+                for job in self.jobs.values()
+                if job.query_id == query_id
+                and job.platform_id == command.platform_id
+                and job.scheduled_for.astimezone(ZoneInfo("Asia/Taipei")).date()
+                == business_date
+            ),
+            None,
+        )
+        if existing is not None:
+            if (
+                command.job_type == "query_research_first_run"
+                and existing.source == "manual"
+                and existing.job_type == "manual_run"
+                and existing.status in {JobStatus.PENDING, JobStatus.DELAYED}
+            ):
+                existing.job_type = "query_research_first_run"
+                existing.updated_at = now
+            return existing, False
         job = GeoQueryRunJob(
             id=uuid4(),
             project_id=query.project_id,
@@ -839,7 +862,7 @@ class GeoApiStore:
             updated_at=now,
         )
         self.jobs[job.id] = job
-        return job
+        return job, True
 
     async def list_jobs(
         self,

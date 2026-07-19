@@ -737,6 +737,7 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     projects = schema["paths"]["/api/geo/projects"]["get"]
     settings_path = schema["paths"]["/api/geo/projects/{project_id}/query-settings"]
     status_path = schema["paths"]["/api/geo/projects/{project_id}/status"]
+    create_job_path = schema["paths"]["/api/geo/queries/{query_id}/jobs"]["post"]
     assert projects["parameters"][0]["name"] == "customerId"
     assert "ProjectSummaryPageResponse" in str(projects["responses"]["200"])
     assert "ProblemDetailsResponse" in str(projects["responses"]["422"])
@@ -745,6 +746,8 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     assert "ProblemDetailsResponse" in str(settings_path["put"]["responses"]["422"])
     assert "ProjectStatusRequest" in str(status_path["patch"]["requestBody"])
     assert "ProjectStatusResponse" in str(status_path["patch"]["responses"]["200"])
+    assert "CreateJobResponse" in str(create_job_path["responses"]["200"])
+    assert "CreateJobResponse" in str(create_job_path["responses"]["201"])
 
 
 def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
@@ -1749,8 +1752,8 @@ def test_app_lifespan_closes_injected_publisher() -> None:
     assert publisher.closed is True
 
 
-def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
-    client, _, query_id = _client_with_query()
+def test_job_creation_reuses_the_daily_query_platform_slot() -> None:
+    client, store, query_id = _client_with_query()
     platform_id = str(uuid4())
 
     first_response = client.post(
@@ -1760,6 +1763,7 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
             "scheduledFor": "2026-06-22T00:00:00.123456+00:00",
         },
     )
+    store.jobs[UUID(first_response.json()["id"])].status = JobStatus.FAILED
     second_response = client.post(
         f"/api/geo/queries/{query_id}/jobs",
         json={
@@ -1769,11 +1773,102 @@ def test_job_dedupe_key_uses_normalized_utc_seconds() -> None:
     )
 
     assert first_response.status_code == 201
-    assert second_response.status_code == 201
+    assert second_response.status_code == 200
+    assert first_response.json()["wasCreated"] is True
+    assert second_response.json()["wasCreated"] is False
+    assert first_response.json()["id"] == second_response.json()["id"]
+    assert second_response.json()["status"] == "failed"
     assert first_response.json()["dedupeKey"] == second_response.json()["dedupeKey"]
     assert datetime.fromisoformat(first_response.json()["scheduledFor"]) == datetime(
         2026, 6, 22, tzinfo=UTC
     )
+
+
+@pytest.mark.parametrize("existing_status", [JobStatus.PENDING, JobStatus.DELAYED])
+def test_first_run_promotes_a_retryable_manual_daily_slot(
+    existing_status: JobStatus,
+) -> None:
+    client, store, query_id = _client_with_query()
+    platform_id = str(uuid4())
+    manual_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T00:00:00Z",
+            "jobType": "manual_run",
+        },
+    )
+    store.jobs[UUID(manual_response.json()["id"])].status = existing_status
+
+    first_run_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T08:00:00+08:00",
+            "jobType": "query_research_first_run",
+        },
+    )
+
+    assert first_run_response.status_code == 200
+    assert first_run_response.json()["wasCreated"] is False
+    assert first_run_response.json()["id"] == manual_response.json()["id"]
+    assert first_run_response.json()["jobType"] == "query_research_first_run"
+    assert first_run_response.json()["status"] == existing_status.value
+
+
+@pytest.mark.parametrize("existing_status", [JobStatus.FAILED, JobStatus.CANCELLED])
+def test_first_run_does_not_promote_a_terminal_manual_daily_slot(
+    existing_status: JobStatus,
+) -> None:
+    client, store, query_id = _client_with_query()
+    platform_id = str(uuid4())
+    manual_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T00:00:00Z",
+            "jobType": "manual_run",
+        },
+    )
+    store.jobs[UUID(manual_response.json()["id"])].status = existing_status
+
+    first_run_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T08:00:00+08:00",
+            "jobType": "query_research_first_run",
+        },
+    )
+
+    assert first_run_response.status_code == 200
+    assert first_run_response.json()["wasCreated"] is False
+    assert first_run_response.json()["jobType"] == "manual_run"
+    assert first_run_response.json()["status"] == existing_status.value
+
+
+def test_job_daily_slot_uses_the_taipei_business_date() -> None:
+    client, _, query_id = _client_with_query()
+    platform_id = str(uuid4())
+
+    before_midnight = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T15:59:59Z",
+        },
+    )
+    after_midnight = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": platform_id,
+            "scheduledFor": "2026-06-22T16:00:00Z",
+        },
+    )
+
+    assert before_midnight.status_code == 201
+    assert after_midnight.status_code == 201
+    assert before_midnight.json()["id"] != after_midnight.json()["id"]
 
 
 def test_overview_endpoints_return_stable_empty_read_models() -> None:

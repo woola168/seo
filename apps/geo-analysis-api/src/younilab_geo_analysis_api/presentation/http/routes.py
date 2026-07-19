@@ -2,7 +2,7 @@ from dataclasses import asdict
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from younilab_geo_analysis_api.presentation.http.dependencies import bearer_token
 from younilab_geo_analysis_api.presentation.http.dtos import (
@@ -11,6 +11,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     AcceptQueryDraftRequest,
     AiPlatformResponse,
     CreateJobRequest,
+    CreateJobResponse,
     DashboardReportResponse,
     EntityRequest,
     EntityResponse,
@@ -1081,21 +1082,29 @@ async def delete_schedule(request: Request, schedule_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="schedule not found")
 
 
-@router.post("/queries/{query_id}/jobs", response_model=JobResponse, status_code=201)
+@router.post(
+    "/queries/{query_id}/jobs",
+    response_model=CreateJobResponse,
+    status_code=201,
+    responses={200: {"model": CreateJobResponse}},
+)
 async def create_job(
     request: Request,
+    response: Response,
     query_id: UUID,
     payload: CreateJobRequest,
-) -> JobResponse:
+) -> CreateJobResponse:
     principal = await _principal(request, "geo.jobs.run")
-    job = await _jobs(request).create_job(
+    creation = await _jobs(request).create_job(
         principal,
         query_id,
         CreateQueryRunJobCommand(**payload.model_dump()),
     )
-    if job is None:
+    if creation is None:
         raise HTTPException(status_code=404, detail="query not found")
-    return JobResponse(**_job_data(job))
+    job, was_created = creation
+    response.status_code = status.HTTP_201_CREATED if was_created else status.HTTP_200_OK
+    return CreateJobResponse(**_job_data(job), was_created=was_created)
 
 
 @router.get("/projects/{project_id}/jobs", response_model=PageResponse)

@@ -522,6 +522,12 @@ class JobResponse(ApiModel):
     updated_at: datetime
 
 
+class CreateJobResponse(JobResponse):
+    """建立每日 query run job 後回報是否取得新的執行額度。"""
+
+    was_created: bool
+
+
 class ExternalCallbackRequest(ApiModel):
     """外部 runner 回報狀態用的 callback，不包含 result content。"""
 

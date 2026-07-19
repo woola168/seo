@@ -308,6 +308,9 @@ CREATE TABLE IF NOT EXISTS geo_query_run_job (
     job_type varchar(32) NOT NULL DEFAULT 'scheduled_run',
     priority varchar(32) NOT NULL DEFAULT 'normal',
     scheduled_for timestamptz NOT NULL,
+    business_date date GENERATED ALWAYS AS
+        ((scheduled_for AT TIME ZONE 'Asia/Taipei')::date) STORED,
+    is_daily_slot_owner boolean NOT NULL DEFAULT true,
     status varchar(32) NOT NULL,
     attempt_count integer NOT NULL DEFAULT 0,
     max_attempts integer NOT NULL DEFAULT 3,
@@ -327,6 +330,10 @@ CREATE INDEX IF NOT EXISTS ix_geo_query_run_job_pickup
 
 CREATE INDEX IF NOT EXISTS ix_geo_query_run_job_query_platform
     ON geo_query_run_job (query_id, platform_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_geo_query_run_job_daily_slot
+    ON geo_query_run_job (query_id, platform_id, business_date)
+    WHERE is_daily_slot_owner = true;
 
 CREATE TABLE IF NOT EXISTS geo_message_dispatch_log (
     id uuid PRIMARY KEY,

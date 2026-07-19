@@ -475,15 +475,17 @@ export interface GeoJob {
   batchId: string | null;
   scheduleId: string | null;
   source: "manual" | "scheduled";
-  jobType: "manual_run" | "scheduled_run";
+  jobType: "manual_run" | "query_research_first_run" | "scheduled_run";
   priority: "low" | "normal" | "high";
   scheduledFor: string;
   status:
     | "pending"
+    | "publishing"
     | "published"
     | "running_external"
     | "succeeded"
     | "failed"
+    | "delayed"
     | "cancelled";
   attemptCount: number;
   maxAttempts: number;
@@ -941,6 +943,10 @@ export interface GeoJobResource extends GeoJob {
   dispatchBackend: string | null;
   dispatchMessageId: string | null;
   lastErrorCode: string | null;
+}
+
+export interface GeoJobCreationResource extends GeoJobResource {
+  wasCreated: boolean;
 }
 
 export interface GeoJobRequest {

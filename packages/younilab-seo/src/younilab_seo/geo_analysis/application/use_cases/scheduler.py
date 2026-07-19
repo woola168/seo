@@ -46,7 +46,7 @@ class RunDailySchedulerTick:
             stale_before=now - self.stale_after,
             occurred_at=now,
         )
-        job_ids = await self.repository.list_dispatchable_scheduled_job_ids(
+        job_ids = await self.repository.list_dispatchable_job_ids(
             occurred_at=now,
             limit=self.dispatch_limit,
         )

@@ -4,6 +4,8 @@
 
 Scheduler 每 60 秒輪詢一次，只 materialize 當日批次，不回補歷史日期。批次與 scheduled job 的資料庫唯一索引是主要去重機制，因此重啟或誤開兩個 instance 仍不會建立重複工作；正式部署仍只啟動一個 instance。
 
+除 scheduled jobs 外，Scheduler 也會接手 `jobType=query_research_first_run` 的到期 `pending`／`delayed` Job，包含 daily slot 衝突後由普通 Manual Job 升級的 first-run Job，確保 Query Research 首次派送在前端斷線或 publisher 暫時失敗後仍能沿用原 Job 重試。一般 `manual_run` 不會自動派送。
+
 必要環境變數：
 
 - `GEO_ANALYSIS_DATABASE_URL`

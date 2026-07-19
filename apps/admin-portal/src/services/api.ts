@@ -17,6 +17,7 @@
   GeoEntityResource,
   GeoGeneratedQuery,
   GeoJobRequest,
+  GeoJobCreationResource,
   GeoJobResource,
   GeoKMindHubWorkspaceMapping,
   GeoQueryDraftResource,
@@ -437,7 +438,7 @@ export const api = {
         },
       ),
     createJob: (queryId: string, input: GeoJobRequest) =>
-      request<GeoJobResource>(`/api/geo/queries/${queryId}/jobs`, {
+      request<GeoJobCreationResource>(`/api/geo/queries/${queryId}/jobs`, {
         method: "POST",
         body: JSON.stringify(input),
       }),

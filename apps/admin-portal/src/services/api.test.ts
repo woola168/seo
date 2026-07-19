@@ -532,6 +532,38 @@ describe("api.geoAnalysis.dashboardReport", () => {
     ]);
   });
 
+  it("returns the daily-slot creation result when creating a GEO job", async () => {
+    const fetchMock = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "job-1", wasCreated: false }),
+      requestMethod: init?.method,
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const { api } = await import("./api");
+
+    const result = await api.geoAnalysis.createJob("query-1", {
+      platformId: "gemini-1",
+      scheduledFor: null,
+      priority: "normal",
+      jobType: "manual_run",
+    });
+
+    expect(result.wasCreated).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/geo/queries/query-1/jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          platformId: "gemini-1",
+          scheduledFor: null,
+          priority: "normal",
+          jobType: "manual_run",
+        }),
+      }),
+    );
+  });
+
   it("keeps RFC 7807 invalidParams on ApiError", async () => {
     vi.stubGlobal(
       "fetch",
