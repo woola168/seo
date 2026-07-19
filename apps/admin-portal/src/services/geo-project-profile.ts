@@ -4,6 +4,7 @@ import type {
   GeoEntityAliasResource,
   GeoEntityResource,
   GeoProjectRequest,
+  GeoProjectQuerySettingsRequest,
   GeoProjectResource,
   GeoQueryResource,
   GeoTopicResource,
@@ -50,6 +51,11 @@ export class GeoProjectProfileSaveError extends Error {
     super(message);
   }
 }
+
+export type GeoProjectCreationResult =
+  | { project: GeoProjectResource; querySettingsStatus: "saved" }
+  | { project: GeoProjectResource; querySettingsStatus: "skipped" }
+  | { project: GeoProjectResource; querySettingsStatus: "failed"; querySettingsError: string };
 
 export async function loadGeoProjectProfile(projectId: string): Promise<GeoProjectProfile> {
   const [project, customers, entities, aliases, topics, queries] = await Promise.all([
@@ -114,6 +120,27 @@ export async function createGeoProjectProfile(input: GeoProjectProfileInput): Pr
     throw new GeoProjectProfileSaveError(errorMessage(error), project);
   }
   return project;
+}
+
+export async function createGeoProjectWithQuerySettings(
+  input: GeoProjectProfileInput,
+  settings: GeoProjectQuerySettingsRequest,
+  canUpdateProject: boolean,
+): Promise<GeoProjectCreationResult> {
+  const project = await createGeoProjectProfile(input);
+  if (!canUpdateProject) {
+    return { project, querySettingsStatus: "skipped" };
+  }
+  try {
+    await api.geoAnalysis.updateQuerySettings(project.id, settings);
+    return { project, querySettingsStatus: "saved" };
+  } catch (error) {
+    return {
+      project,
+      querySettingsStatus: "failed",
+      querySettingsError: errorMessage(error),
+    };
+  }
 }
 
 export async function updateGeoProjectProfile(

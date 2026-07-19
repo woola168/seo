@@ -5,12 +5,15 @@ import AppIcon from "../components/ui/AppIcon.vue";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
 import { api } from "../services/api";
+import {
+  createDefaultQuerySettingsForm,
+  loadProjectQuerySettings,
+  normalizeQuerySettingsKeywords,
+} from "../services/geo-project-query-settings";
 import { loadGeoProjectProfile, type GeoProjectProfile } from "../services/geo-project-profile";
 import type {
-  GeoMarketType,
   GeoQueryDraftResource,
   GeoQueryGenerationRunResource,
-  GeoQueryProvider,
   GeoQueryResearchRunResource,
   ToastTone,
 } from "../types";
@@ -30,17 +33,7 @@ const selectedDraftIds = ref<string[]>([]);
 const showEmptyAlert = ref(false);
 const topics = ref<Array<{ name: string; description: string }>>([]);
 const form = reactive({
-  researchProvider: "gemini" as GeoQueryProvider,
-  runProvider: "gemini" as GeoQueryProvider,
-  keywords: "",
-  marketType: "b2b_procurement" as GeoMarketType,
-  maxQueries: 8,
-  audienceName: "B2B 採購",
-  audienceDescription: "正在評估供應商、產品規格與導入風險的採購或決策者",
-  intentCategory: "商業評估",
-  intentDescription: "比較供應商、產品方案或導入條件",
-  shouldMentionOwnBrand: true,
-  shouldMentionCompetitor: true,
+  ...createDefaultQuerySettingsForm(),
 });
 
 const drafts = computed(() => generationRun.value?.drafts ?? []);
@@ -49,7 +42,8 @@ const allChecked = computed(() => selectableDrafts.value.length > 0 && selectabl
 const someChecked = computed(() => selectedDraftIds.value.length > 0 && !allChecked.value);
 const brandName = computed(() => profile.value?.ownBrand.name || profile.value?.project.name || "");
 const competitorNames = computed(() => profile.value?.competitors.map((competitor) => competitor.name) ?? []);
-const keywords = computed(() => form.keywords.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean));
+const keywords = computed(() => normalizeQuerySettingsKeywords(form.keywords));
+const standardIntentCategories = ["導航型", "資訊型", "商業評估"];
 
 onMounted(() => void load());
 
@@ -61,7 +55,13 @@ async function load(): Promise<void> {
   loading.value = true;
   errorMessage.value = "";
   try {
-    profile.value = await loadGeoProjectProfile(projectId.value);
+    const [loadedProfile, settings] = await Promise.all([
+      loadGeoProjectProfile(projectId.value),
+      loadProjectQuerySettings(projectId.value),
+    ]);
+    profile.value = loadedProfile;
+    Object.assign(form, settings.form);
+    if (settings.warning) emit("notify", settings.warning, "warning");
     topics.value = profile.value.topics.map((topic) => ({ name: topic.name, description: topic.description }));
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "無法載入 Project。";
@@ -85,6 +85,10 @@ function validate(): boolean {
   }
   if (!form.audienceName.trim() || !form.audienceDescription.trim() || !form.intentDescription.trim()) {
     errorMessage.value = "請完整填寫受眾與 Intent。";
+    return false;
+  }
+  if (!Number.isInteger(Number(form.maxQueries)) || form.maxQueries < 1 || form.maxQueries > 40) {
+    errorMessage.value = "Max Queries 必須是 1–40 的整數。";
     return false;
   }
   errorMessage.value = "";
@@ -203,7 +207,7 @@ function generationPayload(researchContext: string) {
       shouldMentionCompetitor: form.shouldMentionCompetitor,
     },
     researchContext,
-    maxQueries: Math.max(1, Number(form.maxQueries) || 8),
+    maxQueries: Number(form.maxQueries),
   };
 }
 
@@ -237,8 +241,8 @@ function toggleAll(): void {
           <section class="geo-form-card"><header><strong>Provider</strong></header><div class="geo-form-grid"><GeoFormField label="Research / Generation Provider"><select v-model="form.researchProvider"><option value="gemini">Gemini</option></select></GeoFormField><GeoFormField label="Run Provider"><select v-model="form.runProvider"><option value="gemini">Gemini</option></select></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>Keywords</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header><div class="geo-card-body"><textarea v-model="form.keywords" rows="5" placeholder="一行一個 keyword"></textarea><small>一行一個 keyword，或用 AI 依專案資料自動生成。</small></div></section>
           <section class="geo-form-card"><header><strong>Topics</strong><div><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button><button class="button button-secondary button-small" type="button" @click="topics.push({ name: '', description: '' })">新增 Topic</button></div></header><div class="geo-card-body geo-topic-list"><div v-for="(topic, index) in topics" :key="index"><label><span>Topic 名稱</span><input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商" /></label><label><span>Topic 描述</span><input v-model="topic.description" type="text" placeholder="描述此 Topic" /></label><button class="button button-secondary button-small" type="button" @click="topics.splice(index, 1)">移除</button></div><p v-if="!topics.length">尚未新增 Topic，點右上「新增 Topic」開始</p></div></section>
-          <section class="geo-form-card"><header><strong>市場與受眾</strong></header><div class="geo-form-grid"><GeoFormField label="Market Type"><select v-model="form.marketType"><option value="b2b_procurement">B2B 採購</option><option value="b2c">B2C 消費</option></select></GeoFormField><GeoFormField label="Max Queries"><input v-model.number="form.maxQueries" type="number" min="1" /></GeoFormField><GeoFormField label="Audience"><input v-model="form.audienceName" type="text" /></GeoFormField><GeoFormField label="Audience Description"><input v-model="form.audienceDescription" type="text" /></GeoFormField></div></section>
-          <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-form-grid"><GeoFormField label="Intent 分類"><select v-model="form.intentCategory"><option>導航型</option><option>資訊型</option><option>商業評估</option></select></GeoFormField><GeoFormField label="Intent 描述"><input v-model="form.intentDescription" type="text" /></GeoFormField></div></section>
+          <section class="geo-form-card"><header><strong>市場與受眾</strong></header><div class="geo-form-grid"><GeoFormField label="Market Type"><select v-model="form.marketType"><option value="b2b_procurement">B2B 採購</option><option value="b2c">B2C 消費</option></select></GeoFormField><GeoFormField label="Max Queries"><input v-model.number="form.maxQueries" type="number" min="1" max="40" /></GeoFormField><GeoFormField label="Audience"><input v-model="form.audienceName" type="text" /></GeoFormField><GeoFormField label="Audience Description"><input v-model="form.audienceDescription" type="text" /></GeoFormField></div></section>
+          <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-form-grid"><GeoFormField label="Intent 分類"><select v-model="form.intentCategory"><option v-if="!standardIntentCategories.includes(form.intentCategory)" :value="form.intentCategory">{{ form.intentCategory }}</option><option v-for="category in standardIntentCategories" :key="category" :value="category">{{ category }}</option></select></GeoFormField><GeoFormField label="Intent 描述"><input v-model="form.intentDescription" type="text" /></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>提示詞風格</strong></header><div class="geo-toggle-list"><label><span class="geo-toggle-copy"><strong>提及自身品牌</strong><small>生成的 query 需包含自家品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionOwnBrand" type="checkbox" /><span aria-hidden="true"></span></span></label><label><span class="geo-toggle-copy"><strong>提及競品</strong><small>生成的 query 需包含競爭品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionCompetitor" type="checkbox" /><span aria-hidden="true"></span></span></label></div></section>
         </template>
         <section v-else class="geo-form-card geo-generation-results"><header><strong>生成結果</strong><div><span>已選 {{ selectedDraftIds.length }} / {{ selectableDrafts.length }}</span><button class="button button-secondary button-small" type="button" :disabled="loading" @click="regenerate">重新生成</button></div></header><div class="geo-result-head"><input type="checkbox" :checked="allChecked" :indeterminate.prop="someChecked" @change="toggleAll" /><span>Query list</span></div><button v-for="draft in drafts" :key="draft.id" class="geo-result-row" :class="{ selected: selectedDraftIds.includes(draft.id), accepted: draft.acceptedQueryId }" type="button" :disabled="Boolean(draft.acceptedQueryId)" @click="toggleDraft(draft)"><input type="checkbox" :checked="selectedDraftIds.includes(draft.id)" :disabled="Boolean(draft.acceptedQueryId)" tabindex="-1" /><span><strong>{{ draft.queryText }}</strong><small>{{ draft.region }}/{{ draft.language }}<template v-if="draft.acceptedQueryId"> · 已建立</template></small></span></button><div v-if="!drafts.length" class="geo-table-empty">沒有生成結果</div></section>

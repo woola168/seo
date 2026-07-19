@@ -829,6 +829,39 @@ export interface GeoProjectRequest {
   dailyRunBudget: number;
 }
 
+export interface GeoProjectStatusRequest {
+  status: "active" | "paused";
+}
+
+export interface GeoProjectStatusResource extends GeoProjectStatusRequest {
+  projectId: string;
+  updatedAt: string;
+}
+
+export interface GeoProjectQuerySettingsRequest {
+  researchProvider: "gemini";
+  runProvider: "gemini";
+  keywords: string[];
+  marketType: GeoMarketType;
+  maxQueries: number;
+  audience: {
+    name: string;
+    description: string;
+  };
+  intent: {
+    category: string;
+    description: string;
+  };
+  shouldMentionOwnBrand: boolean;
+  shouldMentionCompetitor: boolean;
+}
+
+export interface GeoProjectQuerySettingsResource
+  extends GeoProjectQuerySettingsRequest {
+  projectId: string;
+  updatedAt: string;
+}
+
 export interface GeoEntityResource extends GeoEntity {
   createdAt: string;
   updatedAt: string;

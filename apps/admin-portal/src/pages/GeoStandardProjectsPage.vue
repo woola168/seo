@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFilterDropdown from "../components/geo/GeoFilterDropdown.vue";
@@ -9,6 +9,11 @@ import AppIcon from "../components/ui/AppIcon.vue";
 import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
 import { api } from "../services/api";
 import { hasPermission } from "../utils/permissions";
+import {
+  applyGeoProjectStatusResponse,
+  geoProjectStatusAction,
+  updateGeoProjectStatus as updateGeoProjectStatusRequest,
+} from "../utils/geo-project-status";
 import type { GeoProject, ToastTone } from "../types";
 
 const props = defineProps<{ permissions: readonly string[] }>();
@@ -29,6 +34,7 @@ const localeFilters = ref<string[]>([]);
 const customerFilters = ref<string[]>([]);
 const projectDetails = ref<Record<string, { domain: string; alias: string }>>({});
 const archiveTarget = ref<GeoProject | null>(null);
+const statusUpdateState = reactive({ updatingId: "" });
 
 const canCreate = computed(() => hasPermission(props.permissions, "geo.projects.create"));
 const canUpdate = computed(() => hasPermission(props.permissions, "geo.projects.update"));
@@ -104,23 +110,25 @@ function clearFilters(): void {
   page.value = 1;
 }
 
-async function archiveProject(): Promise<void> {
+async function updateProjectStatus(): Promise<void> {
   const project = archiveTarget.value;
   if (!project) return;
-  try {
-    await api.geoAnalysis.updateProject(project.id, {
-      customerId: project.customerId,
-      name: project.name,
-      defaultRegion: project.defaultRegion,
-      defaultLanguage: project.defaultLanguage,
-      status: "archived",
-      dailyRunBudget: project.dailyRunBudget,
-    });
+  const result = await updateGeoProjectStatusRequest(
+    statusUpdateState,
+    project,
+    canUpdate.value,
+    (projectId, status) => api.geoAnalysis.updateProjectStatus(projectId, { status }),
+  );
+  if (result.status === "succeeded") {
+    workspace.projects.value = applyGeoProjectStatusResponse(
+      workspace.projects.value,
+      result.response,
+    );
     archiveTarget.value = null;
-    emit("notify", `「${project.name}」已下架。`, "success");
-    await refresh();
-  } catch (error) {
-    emit("notify", error instanceof Error ? error.message : "Project 下架失敗。", "error");
+    emit("notify", `「${project.name}」已${geoProjectStatusAction(project.status)}。`, "success");
+  } else if (result.status === "failed") {
+    const action = geoProjectStatusAction(project.status);
+    emit("notify", result.error instanceof Error ? result.error.message : `Project ${action}失敗。`, "error");
   }
 }
 </script>
@@ -168,7 +176,7 @@ async function archiveProject(): Promise<void> {
               <td class="sticky-action"><div class="geo-row-actions">
                 <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: 'geo-project-edit', params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>
                 <button class="geo-row-action" type="button" title="Query Search" :disabled="!canResearch" @click.stop="router.push({ name: 'geo-query-research', params: { projectId: project.id } })"><AppIcon name="search" :size="14" /></button>
-                <button class="geo-row-action" type="button" :title="project.status === 'archived' ? '已下架' : '下架'" :disabled="!canUpdate || project.status === 'archived'" @click.stop="archiveTarget = project"><AppIcon name="x" :size="14" /></button>
+                <button class="geo-row-action" type="button" :title="geoProjectStatusAction(project.status)" :disabled="!canUpdate || statusUpdateState.updatingId === project.id" @click.stop="archiveTarget = project"><AppIcon name="x" :size="14" /></button>
               </div></td>
             </tr>
             <tr v-if="filteredProjects.length === 0"><td class="geo-table-empty" colspan="6">找不到符合條件的 Project。</td></tr>
@@ -180,11 +188,25 @@ async function archiveProject(): Promise<void> {
 
     <GeoConfirmDialog
       :open="Boolean(archiveTarget)"
-      title="下架 Project"
-      :message="`確定要下架「${archiveTarget?.name ?? ''}」嗎？下架後資料仍會保留。`"
-      confirm-label="確定下架"
+      :title="archiveTarget?.status === 'active' ? '下架 Project' : '上架 Project'"
+      :message="archiveTarget?.status === 'active' ? `確定要下架「${archiveTarget?.name ?? ''}」嗎？下架後資料仍會保留。` : `確定要上架「${archiveTarget?.name ?? ''}」嗎？`"
+      :confirm-label="archiveTarget?.status === 'active' ? '確定下架' : '確定上架'"
       @cancel="archiveTarget = null"
-      @confirm="archiveProject"
+      @confirm="updateProjectStatus"
     />
+    <Teleport to="body">
+      <div
+        v-if="statusUpdateState.updatingId"
+        class="geo-project-status-loading-overlay"
+        role="status"
+        aria-live="polite"
+        aria-label="正在更新 Project 狀態"
+      >
+        <div class="geo-project-status-loading-card">
+          <span class="session-loading-spinner" aria-hidden="true"></span>
+          <strong>正在更新 Project 狀態…</strong>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>

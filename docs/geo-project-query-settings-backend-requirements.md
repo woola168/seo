@@ -1,10 +1,10 @@
 # GEO Project Query Settings 後端需求
 
-> 狀態（2026-07-19）：後端 API、persistence、migration、OpenAPI 與測試已完成；Admin Portal 的新增 Project、Project Edit 與 Query Research 預帶／更新串接仍待開發。正式環境需先執行 `019_geo_project_query_settings.sql`。
+> 狀態（2026-07-19）：後端 API、persistence、migration、OpenAPI 與測試已完成；Admin Portal 已串接新增 Project 保存與 Query Search 預帶。Project Edit 因新版參考稿未提供設定區塊，仍待後續產品設計確認。正式環境需先執行 `019_geo_project_query_settings.sql`。
 
 ## 目的
 
-標準版 GEO 分析的新增 Project 第二步可設定 Query Research 與 Generation 的預設值。後端目前除了 Project、品牌、競品、別名與 Topics，也已提供 Project Query Settings GET／PUT；Admin Portal 尚未串接，因此前端目前仍只在當次表單保留這些值，不會宣稱已保存。
+標準版 GEO 分析的新增 Project 第二步可設定 Query Research 與 Generation 的預設值。後端目前除了 Project、品牌、競品、別名與 Topics，也已提供 Project Query Settings GET／PUT；Admin Portal 已在新增 Project 時保存設定，並於 Query Search 載入設定作為可修改的初始值。Project Edit 的設定入口仍待產品設計確認。
 
 後端已讓每個 Project 可擁有一份 `GeoProjectQuerySettings`。保存設定不得觸發 Query Research、Query Generation 或建立正式 Query；使用者進入 Query Search 時才載入預設值並自行執行。
 
@@ -63,9 +63,9 @@ Topics 已由既有 `/api/geo/projects/{projectId}/topics` 管理，不應在 Qu
 
 ## 前端串接點
 
-- 新增 Project：Project、Entities、Aliases、Topics 成功後再 PUT Query Settings；設定保存失敗不得回滾已建立的核心資料，但必須顯示部分失敗。
-- Project Edit：GET 後預帶，使用者保存時更新。
-- Query Search：GET 後作為可修改的初始值；若回 `404`，沿用前端產品預設值。
+- 新增 Project：已在 Project、Entities、Aliases、Topics 成功後 PUT Query Settings；設定保存失敗不回滾已建立的核心資料，並顯示部分失敗。
+- Project Edit：待產品設計提供符合參考稿的設定編輯入口後，再串接 GET／PUT。
+- Query Search：已以 GET 結果作為可修改的初始值；若回 `404`，沿用前端產品預設值。本次操作中的修改不自動 PUT。
 - 設定 API 尚未部署或暫時失敗時，既有 Project 建立、編輯與 Query Search 手動輸入仍須可用。
 
 ## 後端驗收

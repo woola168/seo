@@ -37,6 +37,10 @@
   GeoProjectSuggestionsResult,
   GeoProjectRequest,
   GeoProjectResource,
+  GeoProjectQuerySettingsRequest,
+  GeoProjectQuerySettingsResource,
+  GeoProjectStatusRequest,
+  GeoProjectStatusResource,
   GeoQueryPlatformRequest,
   GeoQueryPlatformResource,
   GeoQueryResource,
@@ -57,7 +61,11 @@
   UserAccess,
   UserInvitation,
 } from "../types";
-import { problemMessage } from "./problem-details";
+import {
+  problemInvalidParams,
+  problemMessage,
+  type ProblemInvalidParam,
+} from "./problem-details";
 
 let accessToken = sessionStorage.getItem("accessToken") ?? "";
 let refreshPromise: Promise<boolean> | null = null;
@@ -67,6 +75,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly invalidParams: ProblemInvalidParam[] = [],
   ) {
     super(message);
   }
@@ -91,7 +100,11 @@ async function request<T>(
   }
   if (!response.ok) {
     const problem: unknown = await response.json().catch(() => null);
-    throw new ApiError(problemMessage(problem), response.status);
+    throw new ApiError(
+      problemMessage(problem),
+      response.status,
+      problemInvalidParams(problem),
+    );
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -285,6 +298,26 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(input),
       }),
+    updateProjectStatus: (projectId: string, input: GeoProjectStatusRequest) =>
+      request<GeoProjectStatusResource>(`/api/geo/projects/${projectId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    querySettings: (projectId: string) =>
+      request<GeoProjectQuerySettingsResource>(
+        `/api/geo/projects/${projectId}/query-settings`,
+      ),
+    updateQuerySettings: (
+      projectId: string,
+      input: GeoProjectQuerySettingsRequest,
+    ) =>
+      request<GeoProjectQuerySettingsResource>(
+        `/api/geo/projects/${projectId}/query-settings`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
     deleteProject: (projectId: string) =>
       request<void>(`/api/geo/projects/${projectId}`, { method: "DELETE" }),
     markets: (projectId: string) =>

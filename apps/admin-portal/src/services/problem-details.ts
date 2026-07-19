@@ -1,8 +1,29 @@
 type ProblemDetail = {
   detail?: unknown;
+  invalidParams?: unknown;
   message?: unknown;
   title?: unknown;
 };
+
+export interface ProblemInvalidParam {
+  name: string;
+  reason: string;
+  type?: string;
+}
+
+export function problemInvalidParams(payload: unknown): ProblemInvalidParam[] {
+  if (!isRecord(payload) || !Array.isArray(payload.invalidParams)) return [];
+  return payload.invalidParams.flatMap((item) => {
+    if (!isRecord(item) || typeof item.name !== "string" || typeof item.reason !== "string") {
+      return [];
+    }
+    return [{
+      name: item.name,
+      reason: item.reason,
+      ...(typeof item.type === "string" ? { type: item.type } : {}),
+    }];
+  });
+}
 
 type ValidationIssue = {
   loc?: unknown;
