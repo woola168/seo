@@ -11,9 +11,64 @@ from younilab_seo.geo_analysis.application import (
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoSentimentFact,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectStatusCommand,
     QueryIntent,
     QueryResearchCommand,
 )
+
+
+@pytest.mark.parametrize("status", ["active", "paused"])
+def test_project_status_command_accepts_supported_status(status: str) -> None:
+    assert GeoProjectStatusCommand(status=status).status == status
+
+
+def test_project_status_command_rejects_archived() -> None:
+    with pytest.raises(ValidationError):
+        GeoProjectStatusCommand(status="archived")
+
+
+def test_project_query_settings_normalizes_keywords() -> None:
+    command = GeoProjectQuerySettingsCommand(
+        researchProvider="gemini",
+        runProvider="gemini",
+        keywords=[" ERP ", "erp", "", "採購"],
+        marketType="b2b_procurement",
+        maxQueries=20,
+        audience={"name": "採購主管", "description": "負責供應商評估"},
+        intent={"category": "commercial", "description": "比較供應商"},
+        shouldMentionOwnBrand=True,
+        shouldMentionCompetitor=False,
+    )
+
+    assert command.keywords == ["ERP", "採購"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("researchProvider", "openai"),
+        ("marketType", "consumer"),
+        ("maxQueries", 0),
+        ("keywords", [str(index) for index in range(11)]),
+    ],
+)
+def test_project_query_settings_rejects_invalid_values(field: str, value: object) -> None:
+    payload = {
+        "researchProvider": "gemini",
+        "runProvider": "gemini",
+        "keywords": [],
+        "marketType": "b2c",
+        "maxQueries": 10,
+        "audience": {"name": "消費者", "description": "一般消費者"},
+        "intent": {"category": "informational", "description": "了解產品"},
+        "shouldMentionOwnBrand": True,
+        "shouldMentionCompetitor": False,
+    }
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        GeoProjectQuerySettingsCommand(**payload)
 
 
 def test_query_research_command_accepts_tracking_aligned_payload() -> None:

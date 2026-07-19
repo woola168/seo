@@ -21,6 +21,7 @@ from younilab_seo.geo_analysis.application import (
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     GeoProjectCommand,
+    GeoProjectQuerySettingsCommand,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
@@ -41,6 +42,7 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoAiPlatformRow,
     GeoMessageDispatchLogRow,
     GeoProjectRow,
+    GeoProjectQuerySettingsRow,
     GeoQueryDraftRow,
     GeoQueryDraftSelectionRow,
     GeoQueryGenerationRunRow,
@@ -62,6 +64,7 @@ from younilab_seo.geo_analysis.infrastructure import (
     build_postgres_session_factory,
 )
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository import (
+    _project_query_settings_upsert_statement,
     _run_result_record,
 )
 
@@ -98,6 +101,7 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
         GeoRunResultCitationNormalizationRow.__tablename__,
         GeoRunResultCitationRow.__tablename__,
         TenantKMindHubWorkspaceMappingRow.__tablename__,
+        GeoProjectQuerySettingsRow.__tablename__,
     }
 
     assert "geo_run_request" in defined_tables
@@ -111,6 +115,7 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
     assert "geo_response_semantic_fact" in defined_tables
     assert "geo_run_result_citation_normalization" in defined_tables
     assert "geo_run_result_citation" in defined_tables
+    assert "geo_project_query_settings" in defined_tables
     assert "geo_response_mention" not in defined_tables
     assert "geo_daily_query_metric" not in defined_tables
 
@@ -124,6 +129,30 @@ def test_postgres_repository_implements_job_repository_port() -> None:
 
     assert isinstance(repository, GeoQueryRunJobRepository)
     assert isinstance(repository, GeoAnalysisRepository)
+
+
+def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -> None:
+    statement = _project_query_settings_upsert_statement(
+        uuid4(),
+        GeoProjectQuerySettingsCommand(
+            researchProvider="gemini",
+            runProvider="gemini",
+            keywords=["ERP"],
+            marketType="b2b_procurement",
+            maxQueries=20,
+            audience={"name": "採購主管", "description": "負責供應商評估"},
+            intent={"category": "commercial", "description": "比較供應商"},
+            shouldMentionOwnBrand=True,
+            shouldMentionCompetitor=False,
+        ),
+        datetime.now(timezone.utc),
+    )
+
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+
+    assert "ON CONFLICT (project_id) DO UPDATE" in sql
+    assert "IS DISTINCT FROM excluded.research_provider" in sql
+    assert "IS DISTINCT FROM excluded.should_mention_competitor" in sql
 
 
 def test_local_schema_file_contains_geo_orchestration_tables() -> None:
@@ -140,6 +169,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     seo_task_contract_path = (
         postgres_dir / "016_geo_analysis_remove_seo_task_contract.sql"
     )
+    query_settings_path = postgres_dir / "019_geo_project_query_settings.sql"
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -148,6 +178,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     )
     scheduler_patch = scheduler_patch_path.read_text(encoding="utf-8")
     seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
+    query_settings = query_settings_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -175,6 +206,13 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert seo_task_contract.startswith("BEGIN;")
     assert seo_task_contract.rstrip().endswith("COMMIT;")
     assert seo_task_contract.count("DROP COLUMN IF EXISTS seo_task_id") == 2
+    assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in schema
+    assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in query_settings
+    assert "project_id uuid PRIMARY KEY" in query_settings
+    assert "ON DELETE CASCADE" in query_settings
+    assert "jsonb_array_length(keywords) <= 10" in query_settings
+    assert query_settings.startswith("BEGIN;")
+    assert query_settings.rstrip().endswith("COMMIT;")
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema

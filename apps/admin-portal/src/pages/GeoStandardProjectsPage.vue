@@ -1,34 +1,38 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import GeoActionDrawer from "../components/geo/GeoActionDrawer.vue";
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFilterDropdown from "../components/geo/GeoFilterDropdown.vue";
-import GeoFormField from "../components/geo/GeoFormField.vue";
 import GeoPageHeader from "../components/geo/GeoPageHeader.vue";
 import GeoPagination from "../components/geo/GeoPagination.vue";
-import GeoStatusBadge from "../components/geo/GeoStatusBadge.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
-import { useGeoFormErrors, type GeoFormValidationError } from "../composables/geo-form-errors";
 import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
-import type { GeoProject } from "../types";
+import { api } from "../services/api";
+import { hasPermission } from "../utils/permissions";
+import type { GeoProject, ToastTone } from "../types";
 
+const props = defineProps<{ permissions: readonly string[] }>();
+const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
+const router = useRouter();
 const workspace = useGeoProjectWorkspace("projects");
-const { formErrors, setFormErrors, clearFieldError, clearFormErrors } = useGeoFormErrors();
 const search = ref("");
-const drawerOpen = ref(false);
-const viewProject = ref<GeoProject | null>(null);
 const page = ref(1);
 const perPage = 10;
+const statusOptions = ["active", "paused", "archived"];
+const statusLabels: Record<string, string> = {
+  active: "進行中",
+  paused: "已暫停",
+  archived: "已下架",
+};
 const statusFilters = ref<string[]>([]);
 const localeFilters = ref<string[]>([]);
 const customerFilters = ref<string[]>([]);
-const form = reactive({
-  name: "",
-  customerId: "",
-  defaultRegion: "TW",
-  defaultLanguage: "zh-TW",
-  dailyRunBudget: 200,
-});
+const projectDetails = ref<Record<string, { domain: string; alias: string }>>({});
+const archiveTarget = ref<GeoProject | null>(null);
 
+const canCreate = computed(() => hasPermission(props.permissions, "geo.projects.create"));
+const canUpdate = computed(() => hasPermission(props.permissions, "geo.projects.update"));
+const canResearch = computed(() => hasPermission(props.permissions, "geo.queries.manage"));
 const localeOptions = computed(() =>
   Array.from(new Set(workspace.projects.value.map((project) => `${project.defaultRegion} / ${project.defaultLanguage}`))),
 );
@@ -39,18 +43,18 @@ const filteredProjects = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   return workspace.projects.value.filter((project) => {
     const locale = `${project.defaultRegion} / ${project.defaultLanguage}`;
+    const detail = projectDetails.value[project.id];
     const matchesKeyword =
       !keyword ||
-      [project.name, project.customerName]
+      [project.name, project.customerName, detail?.domain, detail?.alias]
+        .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(keyword);
-    return (
-      matchesKeyword &&
+    return matchesKeyword &&
       (!statusFilters.value.length || statusFilters.value.includes(project.status)) &&
       (!localeFilters.value.length || localeFilters.value.includes(locale)) &&
-      (!customerFilters.value.length || customerFilters.value.includes(project.customerName))
-    );
+      (!customerFilters.value.length || customerFilters.value.includes(project.customerName));
   });
 });
 const activeFilterCount = computed(
@@ -58,57 +62,38 @@ const activeFilterCount = computed(
 );
 const pageRows = computed(() => filteredProjects.value.slice((page.value - 1) * perPage, page.value * perPage));
 
-onMounted(() => {
-  void workspace.loadProjects();
-});
-
-function openCreate(): void {
-  resetForm();
-  drawerOpen.value = true;
+function displayDomain(value: string | undefined): string {
+  if (!value) return "—";
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).host;
+  } catch {
+    return value.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
 }
 
-function closeDrawer(): void {
-  drawerOpen.value = false;
-  clearFormErrors();
-}
+onMounted(() => void refresh());
 
-function openProjectView(project: GeoProject): void {
-  viewProject.value = project;
-}
-
-function closeProjectView(): void {
-  viewProject.value = null;
-}
-
-function resetForm(): void {
-  form.name = "";
-  form.customerId = workspace.customers.value[0]?.id ?? "";
-  form.defaultRegion = "TW";
-  form.defaultLanguage = "zh-TW";
-  form.dailyRunBudget = 200;
-  clearFormErrors();
-}
-
-function validate(): boolean {
-  const errors: GeoFormValidationError[] = [];
-  if (!form.name.trim()) errors.push({ field: "name", message: "請輸入 Project 名稱。" });
-  if (!form.customerId.trim()) errors.push({ field: "customerId", message: "請選擇或輸入 Customer。" });
-  if (!form.defaultRegion.trim()) errors.push({ field: "defaultRegion", message: "請輸入 Region。" });
-  if (!form.defaultLanguage.trim()) errors.push({ field: "defaultLanguage", message: "請輸入 Language。" });
-  return setFormErrors(errors);
-}
-
-async function submit(): Promise<void> {
-  if (!validate()) return;
-  const created = await workspace.createProject({
-    customerId: form.customerId.trim(),
-    name: form.name.trim(),
-    defaultRegion: form.defaultRegion.trim(),
-    defaultLanguage: form.defaultLanguage.trim(),
-    status: "active",
-    dailyRunBudget: Number(form.dailyRunBudget) || 0,
-  });
-  if (created) closeDrawer();
+async function refresh(): Promise<void> {
+  await workspace.loadProjects();
+  const results = await Promise.allSettled(
+    workspace.projects.value.map(async (project) => {
+      const [entities, aliases] = await Promise.all([
+        api.geoAnalysis.entities(project.id),
+        api.geoAnalysis.projectAliases(project.id),
+      ]);
+      const ownBrand = entities.items.find((entity) => entity.entityType === "own_brand");
+      return {
+        id: project.id,
+        domain: ownBrand?.websiteUrl ?? "",
+        alias: ownBrand
+          ? aliases.items.filter((alias) => alias.entityId === ownBrand.id).map((alias) => alias.alias).join("、")
+          : "",
+      };
+    }),
+  );
+  projectDetails.value = Object.fromEntries(
+    results.flatMap((result) => result.status === "fulfilled" ? [[result.value.id, result.value]] : []),
+  );
 }
 
 function clearFilters(): void {
@@ -119,136 +104,87 @@ function clearFilters(): void {
   page.value = 1;
 }
 
+async function archiveProject(): Promise<void> {
+  const project = archiveTarget.value;
+  if (!project) return;
+  try {
+    await api.geoAnalysis.updateProject(project.id, {
+      customerId: project.customerId,
+      name: project.name,
+      defaultRegion: project.defaultRegion,
+      defaultLanguage: project.defaultLanguage,
+      status: "archived",
+      dailyRunBudget: project.dailyRunBudget,
+    });
+    archiveTarget.value = null;
+    emit("notify", `「${project.name}」已下架。`, "success");
+    await refresh();
+  } catch (error) {
+    emit("notify", error instanceof Error ? error.message : "Project 下架失敗。", "error");
+  }
+}
 </script>
 
 <template>
-  <section class="page geo-page geo-kinsan-page">
+  <section class="page geo-page geo-kinsan-page geo-project-list-page">
     <GeoPageHeader
       title="Projects"
-      description="管理 GEO project 與客戶綁定。"
+      description="管理 GEO 分析的專案，含 locale、預算與狀態"
       :projects="workspace.projects.value"
       :selected-project-id="workspace.selectedProjectId.value"
       :loading="workspace.loading.value"
       action-label="新增專案"
+      :action-disabled="!canCreate"
       @update:selected-project-id="workspace.selectedProjectId.value = $event"
-      @refresh="workspace.loadProjects"
-      @action="openCreate"
+      @refresh="refresh"
+      @action="router.push({ name: 'geo-project-new' })"
     />
 
-    <div v-if="workspace.usingMockData.value" class="mock-notice subtle">
-      <AppIcon name="alert-circle" :size="17" />
-      API 無法使用，目前顯示示意資料；新增與刪除操作會提示未呼叫 API。
-    </div>
     <div v-if="workspace.errorMessage.value" class="geo-error-message">{{ workspace.errorMessage.value }}</div>
-    <div class="geo-local-message">{{ workspace.localMessage.value }}</div>
-
     <article class="card geo-kinsan-card">
-      <header class="geo-kinsan-card-header">
-        <strong>Projects</strong>
-        <span>共 {{ workspace.projects.value.length }} 筆</span>
-      </header>
       <div class="geo-kinsan-toolbar">
         <label class="geo-search-field">
           <AppIcon name="search" :size="16" />
           <input v-model="search" type="search" placeholder="搜尋專案、客戶…" @input="page = 1" />
         </label>
-        <GeoFilterDropdown label="Status" :options="['active', 'paused', 'archived']" :selected="statusFilters" @update:selected="statusFilters = $event; page = 1" />
-        <GeoFilterDropdown label="Locale" :options="localeOptions" :selected="localeFilters" @update:selected="localeFilters = $event; page = 1" />
-        <GeoFilterDropdown label="Customer" :options="customerOptions" :selected="customerFilters" @update:selected="customerFilters = $event; page = 1" />
-        <span v-if="activeFilterCount || search" class="geo-clear-filters" @click="clearFilters">清除全部</span>
+        <GeoFilterDropdown label="狀態" :options="statusOptions" :option-labels="statusLabels" :selected="statusFilters" show-select-all show-chevron @update:selected="statusFilters = $event; page = 1" />
+        <GeoFilterDropdown label="地區" :options="localeOptions" :selected="localeFilters" show-select-all show-chevron @update:selected="localeFilters = $event; page = 1" />
+        <GeoFilterDropdown label="客戶" :options="customerOptions" :selected="customerFilters" show-select-all show-chevron searchable @update:selected="customerFilters = $event; page = 1" />
+        <button v-if="activeFilterCount || search" class="geo-clear-filters" type="button" @click="clearFilters">清除全部</button>
+        <span class="geo-project-count">共 {{ filteredProjects.length }} 筆</span>
       </div>
 
       <div class="geo-kinsan-table-wrap">
-        <table class="data-table geo-table geo-kinsan-table">
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th>Customer</th>
-              <th>Locale</th>
-              <th>Budget</th>
-              <th>Status</th>
-              <th class="sticky-action">Actions</th>
-            </tr>
-          </thead>
+        <table class="data-table geo-table geo-kinsan-table geo-project-table">
+          <colgroup><col /><col class="customer-col" /><col class="locale-col" /><col class="alias-col" /><col class="status-col" /><col class="actions-col" /></colgroup>
+          <thead><tr><th>Project</th><th>客戶</th><th>地區 / 語系</th><th>別名</th><th>狀態</th><th class="sticky-action">操作</th></tr></thead>
           <tbody>
             <tr v-for="project in pageRows" :key="project.id">
-              <td><strong>{{ project.name }}</strong></td>
+              <td><strong>{{ project.name }}</strong><small>{{ displayDomain(projectDetails[project.id]?.domain) }}</small></td>
               <td>{{ project.customerName }}</td>
-              <td>{{ project.defaultRegion }} / {{ project.defaultLanguage }}</td>
-              <td>{{ project.dailyRunBudget }}</td>
-              <td><GeoStatusBadge :value="project.status" /></td>
-              <td class="sticky-action">
-                <div class="geo-row-actions">
-                  <button class="geo-row-action" type="button" title="檢視 Project" @click.stop="openProjectView(project)">
-                    <AppIcon name="edit" :size="14" />
-                  </button>
-                  <button class="geo-row-action danger" type="button" title="刪除" @click="workspace.deleteProject(project.id)">
-                    <AppIcon name="trash" :size="14" />
-                  </button>
-                </div>
-              </td>
+              <td>{{ project.defaultRegion }}/{{ project.defaultLanguage }}</td>
+              <td>{{ projectDetails[project.id]?.alias || '—' }}</td>
+              <td><span class="geo-project-status" :class="`is-${project.status}`"><i></i>{{ statusLabels[project.status] ?? project.status }}</span></td>
+              <td class="sticky-action"><div class="geo-row-actions">
+                <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: 'geo-project-edit', params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>
+                <button class="geo-row-action" type="button" title="Query Search" :disabled="!canResearch" @click.stop="router.push({ name: 'geo-query-research', params: { projectId: project.id } })"><AppIcon name="search" :size="14" /></button>
+                <button class="geo-row-action" type="button" :title="project.status === 'archived' ? '已下架' : '下架'" :disabled="!canUpdate || project.status === 'archived'" @click.stop="archiveTarget = project"><AppIcon name="x" :size="14" /></button>
+              </div></td>
             </tr>
-            <tr v-if="filteredProjects.length === 0"><td class="geo-table-empty" colspan="6">找不到符合條件的 project。</td></tr>
+            <tr v-if="filteredProjects.length === 0"><td class="geo-table-empty" colspan="6">找不到符合條件的 Project。</td></tr>
           </tbody>
         </table>
       </div>
-      <GeoPagination v-model:page="page" :per-page="perPage" :total="filteredProjects.length" />
+      <GeoPagination v-model:page="page" :per-page="perPage" :total="filteredProjects.length" range-separator="–" />
     </article>
 
-    <GeoActionDrawer :open="drawerOpen" title="建立 Project" description="建立要追蹤的 GEO 專案。" @close="closeDrawer">
-      <form class="geo-drawer-form" @submit.prevent="submit">
-        <GeoFormField label="Project 名稱" required :error="formErrors.name">
-          <input v-model="form.name" type="text" :class="{ invalid: formErrors.name }" placeholder="例如：品牌 GEO 追蹤" @input="clearFieldError('name')" />
-        </GeoFormField>
-        <GeoFormField label="Customer" required :error="formErrors.customerId">
-          <select v-if="workspace.customers.value.length" v-model="form.customerId" :class="{ invalid: formErrors.customerId }" @change="clearFieldError('customerId')">
-            <option value="">請選擇 customer</option>
-            <option v-for="customer in workspace.customers.value" :key="customer.id" :value="customer.id">{{ customer.name }}</option>
-          </select>
-          <input v-else v-model="form.customerId" type="text" :class="{ invalid: formErrors.customerId }" placeholder="customer UUID" @input="clearFieldError('customerId')" />
-        </GeoFormField>
-        <GeoFormField label="Region" required :error="formErrors.defaultRegion">
-          <input v-model="form.defaultRegion" type="text" :class="{ invalid: formErrors.defaultRegion }" @input="clearFieldError('defaultRegion')" />
-        </GeoFormField>
-        <GeoFormField label="Language" required :error="formErrors.defaultLanguage">
-          <input v-model="form.defaultLanguage" type="text" :class="{ invalid: formErrors.defaultLanguage }" @input="clearFieldError('defaultLanguage')" />
-        </GeoFormField>
-        <GeoFormField label="Daily Budget">
-          <input v-model.number="form.dailyRunBudget" type="number" min="0" />
-        </GeoFormField>
-        <div class="geo-drawer-actions">
-          <button class="button button-secondary" type="button" @click="closeDrawer">取消</button>
-          <button class="button button-primary" type="submit" :disabled="workspace.actionLoading.value">建立 Project</button>
-        </div>
-      </form>
-    </GeoActionDrawer>
-
-    <GeoActionDrawer
-      :open="Boolean(viewProject)"
-      title="Project 詳細資料"
-      description="目前為唯讀檢視，欄位配置與新增 Project 相同。"
-      @close="closeProjectView"
-    >
-      <div v-if="viewProject" class="geo-drawer-form">
-        <GeoFormField label="Project 名稱" required>
-          <input :value="viewProject.name" type="text" readonly />
-        </GeoFormField>
-        <GeoFormField label="Customer" required>
-          <input :value="viewProject.customerName" type="text" readonly />
-        </GeoFormField>
-        <GeoFormField label="Region" required>
-          <input :value="viewProject.defaultRegion" type="text" readonly />
-        </GeoFormField>
-        <GeoFormField label="Language" required>
-          <input :value="viewProject.defaultLanguage" type="text" readonly />
-        </GeoFormField>
-        <GeoFormField label="Daily Budget">
-          <input :value="viewProject.dailyRunBudget" type="number" readonly />
-        </GeoFormField>
-        <div class="geo-drawer-actions">
-          <button class="button button-secondary" type="button" @click="closeProjectView">關閉</button>
-        </div>
-      </div>
-    </GeoActionDrawer>
+    <GeoConfirmDialog
+      :open="Boolean(archiveTarget)"
+      title="下架 Project"
+      :message="`確定要下架「${archiveTarget?.name ?? ''}」嗎？下架後資料仍會保留。`"
+      confirm-label="確定下架"
+      @cancel="archiveTarget = null"
+      @confirm="archiveProject"
+    />
   </section>
 </template>

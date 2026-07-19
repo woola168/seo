@@ -614,7 +614,7 @@ function apiMessage(caught: unknown, fallback: string): string {
         <summary><span class="filter-menu-value">{{ selectedProjectLabel }}</span><AppIcon name="chevron-right" :size="13" /></summary>
         <div class="filter-menu-panel single-filter-options">
           <button v-for="project in projects" :key="project.id" :class="{ active: selectedProjectId === project.id }" type="button" @click="selectProject(project.id, $event)"><span>{{ project.name }}</span><AppIcon v-if="selectedProjectId === project.id" name="check" :size="13" /></button>
-          <p v-if="!projects.length">尚無可選擇的 Project</p>
+          <p v-if="!projects.length">尚無可檢視的 Project</p>
         </div>
       </details>
 
@@ -717,32 +717,30 @@ function apiMessage(caught: unknown, fallback: string): string {
     <template v-else-if="report">
       <section class="kpi-grid">
         <article class="kpi-card">
-          <div class="kpi-title"><span class="kpi-icon blue"><AppIcon name="user" /></span><span>品牌提及</span></div>
+          <div class="kpi-title"><span>品牌提及</span><span class="kpi-icon blue"><AppIcon name="user" /></span></div>
           <div class="kpi-value">{{ Math.round(kpi('mentions')?.value ?? 0) }}<small> / {{ Math.round(kpi('mentions')?.denominator ?? 0) }}</small></div>
           <div class="kpi-sub">覆蓋率 <strong>{{ secondaryValue(kpi('mentions')) }}</strong></div>
         </article>
         <article class="kpi-card">
-          <div class="kpi-title"><span class="kpi-icon green"><AppIcon name="activity" /></span><span>平均排名</span></div>
+          <div class="kpi-title"><span>平均排名</span><span class="kpi-icon green"><AppIcon name="activity" /></span></div>
           <div class="kpi-value">{{ kpiValue(kpi('average_position')) }}</div>
           <div class="kpi-sub">競品最佳 <strong>{{ secondaryValue(kpi('average_position')) }}</strong></div>
         </article>
         <article class="kpi-card">
-          <div class="kpi-title"><span class="kpi-icon cyan"><AppIcon name="eye" /></span><span>能見度</span></div>
+          <div class="kpi-title"><span>能見度</span><span class="kpi-icon purple"><AppIcon name="eye" /></span></div>
           <div class="kpi-value">{{ kpiValue(kpi('visibility')) }}</div>
           <div class="kpi-sub">產業均值 <strong>尚無資料</strong></div>
         </article>
         <article class="kpi-card">
-          <div class="kpi-title"><span class="kpi-icon gold"><AppIcon name="grid" /></span><span>聲量佔有率</span></div>
+          <div class="kpi-title"><span>聲量佔有率</span><span class="kpi-icon gold"><AppIcon name="grid" /></span></div>
           <div class="kpi-value">{{ kpiValue(kpi('sov')) }}</div>
           <div class="kpi-sub">次高 <strong>{{ secondaryValue(kpi('sov')) }}</strong></div>
         </article>
-      </section>
-
-      <section class="metric-group">
-        <div><span>自有引用份額</span><strong>{{ percent(report.citationSummary.ownedSharePercent) }}</strong></div>
-        <div><span>引用次數</span><strong>{{ report.citationSummary.citationCount.toLocaleString() }}</strong></div>
-        <div><span>被引用網頁</span><strong>{{ report.citationSummary.citedPageCount.toLocaleString() }}</strong></div>
-        <div><span>平均引用率</span><strong>{{ percent(report.citationSummary.citedResponsePercent) }}</strong></div>
+        <article class="kpi-card citation-kpi-card">
+          <div><span>自有引用份額</span><strong>{{ percent(report.citationSummary.ownedSharePercent) }}</strong></div>
+          <i></i>
+          <div><span>引用次數</span><strong>{{ report.citationSummary.citationCount.toLocaleString() }}</strong></div>
+        </article>
       </section>
 
       <section class="overview-card chart-card">
@@ -916,6 +914,16 @@ function apiMessage(caught: unknown, fallback: string): string {
 .filter-menu-panel{min-width:170px}.metadata-menu .filter-menu-panel{min-width:190px}.visibility-chart-frame{height:250px}
 .single-filter summary{box-sizing:border-box}.single-filter .filter-menu-value{min-width:0;height:auto;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0;background:transparent;color:#1f1f1f;font-size:13px;line-height:normal;text-align:left}.project-filter{width:220px;min-width:220px;max-width:260px}.time-filter{width:130px}.region-filter{width:120px}.single-filter .filter-menu-panel{min-width:100%;box-sizing:border-box}.single-filter-options button{width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:#1f1f1f;font-size:13px;text-align:left;cursor:pointer}.single-filter-options button:hover{background:#fafafa}.single-filter-options button.active{background:#e7eaec;color:#0a2b41;font-weight:500}.single-filter-options button span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.single-filter-options button .app-icon{flex:0 0 auto}
 .time-filter-wrap{position:relative}
-@media(max-width:1023px){.overview-toolbar{align-items:flex-start}.toolbar-actions{margin-left:0}.chart-frame{height:260px}.visibility-chart-frame{height:250px}}
-@media(max-width:639px){.filter-group,.filter-select,.filter-menu,.filter-menu summary,.time-filter-wrap{width:100%}.project-filter{max-width:none}.toolbar-actions{width:100%}.sentiment-totals{gap:16px}.sentiment-totals>i{display:none}.segmented-control{width:100%}.segmented-control button{flex:1}.response-controls>select{width:100%}}
+/* 新版 Overview KPI：四張主指標加一張引用表現卡。 */
+.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.kpi-card{display:flex;flex-direction:column}.kpi-title{align-items:flex-start;justify-content:space-between;gap:8px}.kpi-title>span:first-child{padding-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kpi-icon{border-radius:10px;color:#fff}.kpi-icon.blue{background:#1677ff;color:#fff}.kpi-icon.green{background:#0f8f83;color:#fff}.kpi-icon.purple{background:#7c3aed;color:#fff}.kpi-icon.gold{background:#d68c24;color:#fff}.kpi-value{margin-top:auto;margin-bottom:2px;line-height:34px}.kpi-sub{font-size:13px;line-height:20px}.citation-kpi-card{justify-content:space-evenly}.citation-kpi-card>div{display:flex;flex-direction:column;gap:4px}.citation-kpi-card span{overflow:hidden;color:#8c8c8c;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.citation-kpi-card strong{color:#1f1f1f;font-size:24px;line-height:30px}.citation-kpi-card>i{height:1px;margin:4px 0;background:#f0f0f0}
+@media(max-width:1023px){.overview-toolbar{align-items:flex-start}.toolbar-actions{margin-left:0}.chart-frame{height:260px}.visibility-chart-frame{height:250px}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:639px){.filter-group,.filter-select,.filter-menu,.filter-menu summary,.time-filter-wrap{width:100%}.project-filter{max-width:none}.toolbar-actions{width:100%}.sentiment-totals{gap:16px}.sentiment-totals>i{display:none}.segmented-control{width:100%}.segmented-control button{flex:1}.response-controls>select{width:100%}.kpi-grid{grid-template-columns:1fr}}
+.geo-overview-page{padding:0!important;background:transparent}
+.metadata-menu summary{min-width:120px}
+@media(max-width:1023px){.geo-overview-page{padding:0!important}}
+@media(max-width:639px){.geo-overview-page{padding:0!important}}
+.overview-heading h1{font-weight:600}
+.overview-heading p,.overview-card header p,.kpi-title,.citation-kpi-card span{line-height:20px}
+.overview-card h2{font-weight:600}
+.secondary-button{font-size:14px}
 </style>

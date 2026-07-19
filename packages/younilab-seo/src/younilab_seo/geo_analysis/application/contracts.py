@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _camel_case(value: str) -> str:
@@ -906,6 +906,27 @@ class GeoProjectRecord(GeoProjectCommand):
     updated_at: datetime
 
 
+class GeoProjectStatusCommand(ContractModel):
+    """切換 Project 是否參與後續排程。"""
+
+    status: Literal["active", "paused"]
+
+
+class GeoProjectOwnBrandSummary(ContractModel):
+    """Project 列表顯示所需的自有品牌摘要。"""
+
+    entity_id: UUID
+    website_url: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+
+
+class GeoProjectSummaryRecord(GeoProjectRecord):
+    """Project 列表使用的跨資源 read model。"""
+
+    customer_name: str | None = None
+    own_brand: GeoProjectOwnBrandSummary | None = None
+
+
 class GeoMarketCommand(ContractModel):
     """建立或更新 GEO market locale 的 application input。"""
 
@@ -1012,6 +1033,80 @@ class QueryAudience(ContractModel):
 class QueryIntent(ContractModel):
     category: str
     description: str
+
+
+class GeoProjectQuerySettingsAudience(ContractModel):
+    """Project Query 預設設定中的目標受眾。"""
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("name", "description")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
+
+
+class GeoProjectQuerySettingsIntent(ContractModel):
+    """Project Query 預設設定中的主要搜尋意圖。"""
+
+    category: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("category", "description")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
+
+
+class GeoProjectQuerySettingsCommand(ContractModel):
+    """完整替換一個 Project 的 Query Research 與 Generation 預設值。"""
+
+    research_provider: Literal["gemini"]
+    run_provider: Literal["gemini"]
+    keywords: list[str] = Field(default_factory=list, max_length=10)
+    market_type: Literal["b2c", "b2b_procurement"]
+    max_queries: int = Field(ge=1, le=40)
+    audience: GeoProjectQuerySettingsAudience
+    intent: GeoProjectQuerySettingsIntent
+    should_mention_own_brand: bool
+    should_mention_competitor: bool
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def normalize_keywords(cls, values: object) -> object:
+        if not isinstance(values, list):
+            return values
+        normalized: list[object] = []
+        seen: set[str] = set()
+        for value in values:
+            if not isinstance(value, str):
+                normalized.append(value)
+                continue
+            keyword = value.strip()
+            if not keyword:
+                continue
+            if len(keyword) > 200:
+                raise ValueError("keyword must contain at most 200 characters")
+            key = keyword.casefold()
+            if key not in seen:
+                seen.add(key)
+                normalized.append(keyword)
+        return normalized
+
+
+class GeoProjectQuerySettingsRecord(GeoProjectQuerySettingsCommand):
+    """已保存的 Project Query 預設設定。"""
+
+    project_id: UUID
+    created_at: datetime
+    updated_at: datetime
 
 
 class BrandMentionRules(ContractModel):

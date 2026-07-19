@@ -106,6 +106,36 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       },
     },
     {
+      path: "/geo/projects/new",
+      name: "geo-project-new",
+      component: () => import("../pages/GeoProjectEditPage.vue"),
+      meta: {
+        requiresAuth: true,
+        requiredPermission: "geo.projects.create",
+        page: "geo-projects",
+      },
+    },
+    {
+      path: "/geo/projects/:projectId/edit",
+      name: "geo-project-edit",
+      component: () => import("../pages/GeoProjectEditPage.vue"),
+      meta: {
+        requiresAuth: true,
+        requiredPermission: "geo.projects.update",
+        page: "geo-projects",
+      },
+    },
+    {
+      path: "/geo/projects/:projectId/query-research",
+      name: "geo-query-research",
+      component: () => import("../pages/GeoQueryResearchPage.vue"),
+      meta: {
+        requiresAuth: true,
+        requiredPermission: "geo.queries.manage",
+        page: "geo-projects",
+      },
+    },
+    {
       path: "/geo-analysis",
       redirect: "/geo-analysis/overview",
     },

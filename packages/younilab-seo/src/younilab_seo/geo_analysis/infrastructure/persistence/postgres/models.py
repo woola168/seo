@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -44,6 +45,70 @@ class GeoProjectRow(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True)),
     )
+
+
+class GeoProjectQuerySettingsRow(SQLModel, table=True):
+    """每個 GEO Project 一份的 Query Research 與 Generation 預設值。"""
+
+    __tablename__ = "geo_project_query_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "research_provider IN ('gemini')",
+            name="ck_geo_project_query_settings_research_provider",
+        ),
+        CheckConstraint(
+            "run_provider IN ('gemini')",
+            name="ck_geo_project_query_settings_run_provider",
+        ),
+        CheckConstraint(
+            "market_type IN ('b2c', 'b2b_procurement')",
+            name="ck_geo_project_query_settings_market_type",
+        ),
+        CheckConstraint(
+            "max_queries BETWEEN 1 AND 40",
+            name="ck_geo_project_query_settings_max_queries",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(keywords) = 'array' AND jsonb_array_length(keywords) <= 10",
+            name="ck_geo_project_query_settings_keywords",
+        ),
+        CheckConstraint(
+            "btrim(audience_name) <> ''",
+            name="ck_geo_project_query_settings_audience_name",
+        ),
+        CheckConstraint(
+            "btrim(audience_description) <> '' AND length(audience_description) <= 2000",
+            name="ck_geo_project_query_settings_audience_description",
+        ),
+        CheckConstraint(
+            "btrim(intent_category) <> ''",
+            name="ck_geo_project_query_settings_intent_category",
+        ),
+        CheckConstraint(
+            "btrim(intent_description) <> '' AND length(intent_description) <= 2000",
+            name="ck_geo_project_query_settings_intent_description",
+        ),
+    )
+
+    project_id: UUID = Field(
+        sa_column=Column(
+            ForeignKey("geo_project.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+    )
+    research_provider: str = Field(sa_column=Column(String(64), nullable=False))
+    run_provider: str = Field(sa_column=Column(String(64), nullable=False))
+    keywords: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    market_type: str = Field(sa_column=Column(String(32), nullable=False))
+    max_queries: int = Field(sa_column=Column(Integer, nullable=False))
+    audience_name: str = Field(sa_column=Column(String(200), nullable=False))
+    audience_description: str = Field(sa_column=Column(Text, nullable=False))
+    intent_category: str = Field(sa_column=Column(String(100), nullable=False))
+    intent_description: str = Field(sa_column=Column(Text, nullable=False))
+    should_mention_own_brand: bool = Field(sa_column=Column(Boolean, nullable=False))
+    should_mention_competitor: bool = Field(sa_column=Column(Boolean, nullable=False))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class TenantKMindHubWorkspaceMappingRow(SQLModel, table=True):

@@ -39,6 +39,138 @@ $env:KMINDHUB_INSIGHT_BASE_URL = "http://127.0.0.1:8010"
 uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 ```
 
+## Project 列表與 Query Settings
+
+`GET /api/geo/projects` 預設回傳目前 token 在 tenant 與 resource grants 範圍內可存取的全部 Projects。`customerId` 是選用篩選，不是列表必要參數；傳入無權存取的 customer 不會擴大授權範圍。
+
+```http
+GET /api/geo/projects
+GET /api/geo/projects?customerId=00000000-0000-4000-8000-000000000001
+Authorization: Bearer <access-token>
+```
+
+```ts
+interface GeoProjectSummary {
+  id: string;
+  tenantId: string;
+  customerId: string | null;
+  customerName: string | null;
+  name: string;
+  defaultRegion: string;
+  defaultLanguage: string;
+  status: string;
+  dailyRunBudget: number;
+  ownBrand: null | {
+    entityId: string;
+    websiteUrl: string | null;
+    aliases: string[];
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+const response = await fetch("/api/geo/projects", {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+const page: { items: GeoProjectSummary[]; total: number } = await response.json();
+```
+
+`customerName` 由 Resource Catalog 批次補值；Catalog 拒絕存取或暫時無法使用時仍回 `200`，欄位為 `null` 並記錄 warning。`ownBrand` 不存在時為 `null`，aliases 永遠為陣列。異常存在多筆 own-brand 時優先選 active，再取 `updatedAt` 最新者。
+
+### Project 上下架狀態
+
+Project 上下架使用獨立 status subresource，不需重送完整 Project：
+
+```http
+PATCH /api/geo/projects/{projectId}/status
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "status": "paused"
+}
+```
+
+response：
+
+```json
+{
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "status": "paused",
+  "updatedAt": "2026-07-19T00:00:00Z"
+}
+```
+
+- 僅接受 `active` 或 `paused`，未知欄位或其他狀態回 RFC 7807 `422`。
+- 需要 `geo.projects.update`；不存在、跨 tenant 或超出 customer scope 一律回 `404`。
+- `paused` Project 不會被每日排程選中；切回 `active` 後可參與後續排程。
+- 狀態切換不刪除 Project 或子資源、不取消既有 jobs，也不觸發新的 Research、Generation、Query、Job 或 Schedule。
+- 相同狀態重複 PATCH 不修改 `updatedAt`。
+
+```ts
+await fetch(`/api/geo/projects/${projectId}/status`, {
+  method: "PATCH",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ status: "paused" as "active" | "paused" }),
+});
+```
+
+```http
+GET /api/geo/projects/{projectId}/query-settings
+PUT /api/geo/projects/{projectId}/query-settings
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
+
+```ts
+interface GeoProjectQuerySettings {
+  projectId: string;
+  researchProvider: "gemini";
+  runProvider: "gemini";
+  keywords: string[];
+  marketType: "b2c" | "b2b_procurement";
+  maxQueries: number;
+  audience: { name: string; description: string };
+  intent: { category: string; description: string };
+  shouldMentionOwnBrand: boolean;
+  shouldMentionCompetitor: boolean;
+  updatedAt: string;
+}
+
+const settings: Omit<GeoProjectQuerySettings, "projectId" | "updatedAt"> = {
+  researchProvider: "gemini",
+  runProvider: "gemini",
+  keywords: ["ERP", "採購"],
+  marketType: "b2b_procurement",
+  maxQueries: 20,
+  audience: { name: "採購主管", description: "負責供應商評估" },
+  intent: { category: "commercial", description: "比較供應商" },
+  shouldMentionOwnBrand: true,
+  shouldMentionCompetitor: false,
+};
+
+await fetch(`/api/geo/projects/${projectId}/query-settings`, {
+  method: "PUT",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(settings),
+});
+```
+
+- 列表與 GET settings 需要 `geo.projects.read`；PUT settings 需要 `geo.projects.update`。
+- 不存在、跨 tenant 或超出 customer scope 的 Project 一律回 RFC 7807 `404`。Settings 尚未建立時 GET 也回 `404`。
+- PUT 是完整替換；相同正規化 payload 不更新 `updatedAt`，且不觸發 Research、Generation、Draft、Query、Job 或 Schedule。
+- 未知欄位與驗證失敗回 RFC 7807 `422`，並在 `invalidParams` 提供欄位路徑。
+- Provider 目前只允許 `gemini`；keywords 去空白、移除空值與不分大小寫重複值，最多 10 筆且每筆 200 字；`maxQueries` 為 1–40；`marketType` 只允許 `b2c`、`b2b_procurement`。
+- 既有資料庫需手動執行 `deploy/local/postgresql/019_geo_project_query_settings.sql`；fresh schema 已同步更新 `004_geo_analysis_schema.sql`。
+- Rollback 可先停止使用兩支 settings endpoint，再執行 `DROP TABLE geo_project_query_settings;`；這只移除 settings，不影響 Project、Entity、Alias、Topic、Query 或 runs。正式環境 rollback 前應先備份設定資料。
+- 舊版前端未呼叫 settings API 時行為不變；列表既有欄位保持相容，只新增 `customerName` 與 `ownBrand`。
+
 ### KMindHub Workspace Mapping
 
 一個 tenant 只會對應一個 KMindHub workspace。`tenantId` 由 Access Control token 解析，request body 不接受 client 自行指定。

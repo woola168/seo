@@ -273,6 +273,8 @@ export const api = {
       request<CollectionResponse<GeoProjectResource>>(
         `/api/geo/projects${customerId ? `?customerId=${customerId}` : ""}`,
       ),
+    project: (projectId: string) =>
+      request<GeoProjectResource>(`/api/geo/projects/${projectId}`),
     createProject: (input: GeoProjectRequest) =>
       request<GeoProjectResource>("/api/geo/projects", {
         method: "POST",
@@ -364,6 +366,10 @@ export const api = {
           method: "POST",
           body: JSON.stringify(input),
         },
+      ),
+    queryGenerationRun: (runId: string) =>
+      request<GeoQueryGenerationRunResource>(
+        `/api/geo/query-generation-runs/${runId}`,
       ),
     updateQueryDraftSelection: (
       draftId: string,

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -13,6 +14,21 @@ class ApiModel(BaseModel):
     """使用 camelCase JSON 欄位的 GEO API DTO 基底模型。"""
 
     model_config = ConfigDict(alias_generator=_camel_case, populate_by_name=True)
+
+
+class InvalidParamResponse(ApiModel):
+    name: str
+    reason: str
+    type: str
+
+
+class ProblemDetailsResponse(ApiModel):
+    type: str
+    title: str
+    status: int
+    detail: str
+    instance: str
+    invalid_params: list[InvalidParamResponse] | None = None
 
 
 class ProjectRequest(ApiModel):
@@ -51,6 +67,135 @@ class ProjectResponse(ProjectRequest):
     id: UUID
     tenant_id: UUID
     created_at: datetime
+    updated_at: datetime
+
+
+class ProjectOwnBrandSummaryResponse(ApiModel):
+    entity_id: UUID
+    website_url: str | None = None
+    aliases: list[str]
+
+
+class ProjectSummaryResponse(ApiModel):
+    id: UUID
+    tenant_id: UUID
+    customer_id: UUID | None = None
+    customer_name: str | None = None
+    name: str
+    default_region: str
+    default_language: str
+    status: str
+    daily_run_budget: int
+    own_brand: ProjectOwnBrandSummaryResponse | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectSummaryPageResponse(ApiModel):
+    items: list[ProjectSummaryResponse]
+    total: int
+
+
+class ProjectStatusRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    status: Literal["active", "paused"]
+
+
+class ProjectStatusResponse(ApiModel):
+    project_id: UUID
+    status: Literal["active", "paused"]
+    updated_at: datetime
+
+
+class QuerySettingsAudience(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("name", "description")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
+
+
+class QuerySettingsIntent(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    category: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("category", "description")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
+
+
+class ProjectQuerySettingsRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    research_provider: Literal["gemini"]
+    run_provider: Literal["gemini"]
+    keywords: list[str] = Field(max_length=10)
+    market_type: Literal["b2c", "b2b_procurement"]
+    max_queries: int = Field(ge=1, le=40)
+    audience: QuerySettingsAudience
+    intent: QuerySettingsIntent
+    should_mention_own_brand: bool
+    should_mention_competitor: bool
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def normalize_keywords(cls, values: object) -> object:
+        if not isinstance(values, list):
+            return values
+        normalized: list[object] = []
+        seen: set[str] = set()
+        for value in values:
+            if not isinstance(value, str):
+                normalized.append(value)
+                continue
+            keyword = value.strip()
+            if not keyword or keyword.casefold() in seen:
+                continue
+            if len(keyword) > 200:
+                raise ValueError("keyword must contain at most 200 characters")
+            seen.add(keyword.casefold())
+            normalized.append(keyword)
+        return normalized
+
+
+class ProjectQuerySettingsResponse(ProjectQuerySettingsRequest):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="ignore",
+    )
+
+    project_id: UUID
     updated_at: datetime
 
 

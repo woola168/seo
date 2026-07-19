@@ -27,7 +27,14 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoMetricRunResultInput,
     GeoMetricSentimentInput,
     GeoProjectCommand,
+    GeoProjectOwnBrandSummary,
+    GeoProjectQuerySettingsAudience,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectQuerySettingsIntent,
+    GeoProjectQuerySettingsRecord,
     GeoProjectRecord,
+    GeoProjectStatusCommand,
+    GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
@@ -75,6 +82,7 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoMarketRow,
     GeoMessageDispatchLogRow,
     GeoProjectRow,
+    GeoProjectQuerySettingsRow,
     GeoQueryPlatformRow,
     GeoQueryDraftRow,
     GeoQueryDraftSelectionRow,
@@ -301,6 +309,74 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             rows = (await session.scalars(statement)).all()
             return [_project_record(row) for row in rows]
+
+    async def list_project_summaries(
+        self,
+        tenant_id: UUID,
+        customer_id: UUID | None = None,
+    ) -> list[GeoProjectSummaryRecord]:
+        project_statement = (
+            select(GeoProjectRow)
+            .where(GeoProjectRow.tenant_id == tenant_id)
+            .order_by(GeoProjectRow.created_at.desc())
+        )
+        if customer_id is not None:
+            project_statement = project_statement.where(
+                GeoProjectRow.customer_id == customer_id
+            )
+        async with self._session_scope() as session:
+            project_rows = (await session.scalars(project_statement)).all()
+            if not project_rows:
+                return []
+            project_ids = [row.id for row in project_rows]
+            entity_rows = (
+                await session.scalars(
+                    select(GeoEntityRow)
+                    .where(
+                        GeoEntityRow.project_id.in_(project_ids),
+                        GeoEntityRow.entity_type == "own_brand",
+                    )
+                    .order_by(
+                        (GeoEntityRow.status == "active").desc(),
+                        GeoEntityRow.updated_at.desc(),
+                    )
+                )
+            ).all()
+            own_brand_by_project: dict[UUID, GeoEntityRow] = {}
+            for entity in entity_rows:
+                own_brand_by_project.setdefault(entity.project_id, entity)
+            aliases_by_entity: dict[UUID, list[str]] = defaultdict(list)
+            own_brand_ids = [entity.id for entity in own_brand_by_project.values()]
+            if own_brand_ids:
+                alias_rows = (
+                    await session.scalars(
+                        select(GeoEntityAliasRow)
+                        .where(GeoEntityAliasRow.entity_id.in_(own_brand_ids))
+                        .order_by(
+                            GeoEntityAliasRow.created_at,
+                            GeoEntityAliasRow.id,
+                        )
+                    )
+                ).all()
+                for alias in alias_rows:
+                    aliases_by_entity[alias.entity_id].append(alias.alias)
+            summaries: list[GeoProjectSummaryRecord] = []
+            for project in project_rows:
+                own_brand = own_brand_by_project.get(project.id)
+                own_brand_summary = None
+                if own_brand is not None:
+                    own_brand_summary = GeoProjectOwnBrandSummary(
+                        entity_id=own_brand.id,
+                        website_url=own_brand.website_url,
+                        aliases=aliases_by_entity[own_brand.id],
+                    )
+                summaries.append(
+                    GeoProjectSummaryRecord(
+                        **_project_record(project).model_dump(),
+                        own_brand=own_brand_summary,
+                    )
+                )
+            return summaries
 
     async def get_project(
         self,
@@ -653,6 +729,63 @@ class PostgresGeoAnalysisRepository:
                 return False
             await session.delete(row)
             return True
+
+    async def update_project_status(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectStatusCommand,
+    ) -> GeoProjectRecord | None:
+        async with self._session_scope() as session:
+            row = await self._get_project_row(session, tenant_id, project_id)
+            if row is None:
+                return None
+            if row.status != command.status:
+                row.status = command.status
+                row.updated_at = _now()
+            return _project_record(row)
+
+    async def get_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(GeoProjectQuerySettingsRow)
+                .join(
+                    GeoProjectRow,
+                    GeoProjectRow.id == GeoProjectQuerySettingsRow.project_id,
+                )
+                .where(
+                    GeoProjectQuerySettingsRow.project_id == project_id,
+                    GeoProjectRow.tenant_id == tenant_id,
+                )
+            )
+            return _project_query_settings_record(row) if row is not None else None
+
+    async def upsert_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectQuerySettingsCommand,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        now = _now()
+        async with self._session_scope() as session:
+            project = await self._get_project_row(session, tenant_id, project_id)
+            if project is None:
+                return None
+            await session.execute(
+                _project_query_settings_upsert_statement(
+                    project_id,
+                    command,
+                    now,
+                )
+            )
+            row = await session.get(GeoProjectQuerySettingsRow, project_id)
+            if row is None:
+                raise RuntimeError("query settings upsert did not return a row")
+            return _project_query_settings_record(row)
 
     async def list_markets(self, tenant_id: UUID, project_id: UUID) -> list[GeoMarketRecord]:
         if not await self._project_exists(tenant_id, project_id):
@@ -2176,6 +2309,80 @@ def _project_record(row: GeoProjectRow) -> GeoProjectRecord:
         default_language=row.default_language,
         status=row.status,
         daily_run_budget=row.daily_run_budget,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _project_query_settings_values(
+    command: GeoProjectQuerySettingsCommand,
+) -> dict:
+    return {
+        "research_provider": command.research_provider,
+        "run_provider": command.run_provider,
+        "keywords": command.keywords,
+        "market_type": command.market_type,
+        "max_queries": command.max_queries,
+        "audience_name": command.audience.name,
+        "audience_description": command.audience.description,
+        "intent_category": command.intent.category,
+        "intent_description": command.intent.description,
+        "should_mention_own_brand": command.should_mention_own_brand,
+        "should_mention_competitor": command.should_mention_competitor,
+    }
+
+
+def _project_query_settings_upsert_statement(
+    project_id: UUID,
+    command: GeoProjectQuerySettingsCommand,
+    now: datetime,
+):
+    values = _project_query_settings_values(command)
+    insert_statement = pg_insert(GeoProjectQuerySettingsRow).values(
+        project_id=project_id,
+        created_at=now,
+        updated_at=now,
+        **values,
+    )
+    excluded = insert_statement.excluded
+    changed = or_(
+        *(
+            getattr(GeoProjectQuerySettingsRow, field).is_distinct_from(
+                getattr(excluded, field)
+            )
+            for field in values
+        )
+    )
+    return insert_statement.on_conflict_do_update(
+        index_elements=[GeoProjectQuerySettingsRow.project_id],
+        set_={
+            **{field: getattr(excluded, field) for field in values},
+            "updated_at": now,
+        },
+        where=changed,
+    )
+
+
+def _project_query_settings_record(
+    row: GeoProjectQuerySettingsRow,
+) -> GeoProjectQuerySettingsRecord:
+    return GeoProjectQuerySettingsRecord(
+        project_id=row.project_id,
+        research_provider=row.research_provider,
+        run_provider=row.run_provider,
+        keywords=list(row.keywords),
+        market_type=row.market_type,
+        max_queries=row.max_queries,
+        audience=GeoProjectQuerySettingsAudience(
+            name=row.audience_name,
+            description=row.audience_description,
+        ),
+        intent=GeoProjectQuerySettingsIntent(
+            category=row.intent_category,
+            description=row.intent_description,
+        ),
+        should_mention_own_brand=row.should_mention_own_brand,
+        should_mention_competitor=row.should_mention_competitor,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
