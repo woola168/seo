@@ -376,7 +376,7 @@
   gap: 0;
 }
 
-.geo-project-status-loading-overlay {
+.geo-operation-loading-overlay {
   position: fixed;
   z-index: 110;
   inset: 0;
@@ -387,7 +387,7 @@
   cursor: wait;
 }
 
-.geo-project-status-loading-card {
+.geo-operation-loading-card {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -400,7 +400,7 @@
   font-size: 14px;
 }
 
-.geo-project-status-loading-card .session-loading-spinner {
+.geo-operation-loading-card .session-loading-spinner {
   flex: 0 0 auto;
   width: 22px;
   height: 22px;

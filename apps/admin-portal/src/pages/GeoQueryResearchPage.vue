@@ -25,6 +25,7 @@ const router = useRouter();
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const profile = ref<GeoProjectProfile | null>(null);
 const loading = ref(false);
+const operationLoadingMessage = ref("");
 const errorMessage = ref("");
 const step = ref<1 | 2>(1);
 const researchRun = ref<GeoQueryResearchRunResource | null>(null);
@@ -97,7 +98,7 @@ function validate(): boolean {
 
 async function executeSearch(): Promise<void> {
   if (!validate() || !profile.value) return;
-  loading.value = true;
+  startOperationLoading("正在執行 Query Research 與生成 Query…");
   errorMessage.value = "";
   try {
     researchRun.value = await api.geoAnalysis.runQueryResearch(projectId.value, researchPayload());
@@ -116,14 +117,14 @@ async function executeSearch(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "Query Search 執行失敗。";
   } finally {
-    loading.value = false;
+    stopOperationLoading();
   }
 }
 
 async function regenerate(): Promise<void> {
   const context = researchRun.value?.result?.researchContext;
   if (!context || !validate()) return;
-  loading.value = true;
+  startOperationLoading("正在重新生成 Query…");
   errorMessage.value = "";
   try {
     generationRun.value = await api.geoAnalysis.runQueryGeneration(projectId.value, generationPayload(context));
@@ -131,7 +132,7 @@ async function regenerate(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "重新生成失敗。";
   } finally {
-    loading.value = false;
+    stopOperationLoading();
   }
 }
 
@@ -140,7 +141,7 @@ async function confirmDrafts(): Promise<void> {
     showEmptyAlert.value = true;
     return;
   }
-  loading.value = true;
+  startOperationLoading("正在建立選取的 Query…");
   errorMessage.value = "";
   const failures: string[] = [];
   for (const draftId of selectedDraftIds.value) {
@@ -160,7 +161,7 @@ async function confirmDrafts(): Promise<void> {
   selectedDraftIds.value = selectedDraftIds.value.filter((id) =>
     generationRun.value?.drafts.some((draft) => draft.id === id && !draft.acceptedQueryId),
   );
-  loading.value = false;
+  stopOperationLoading();
   if (failures.length) {
     errorMessage.value = `部分 Query 已建立，${failures.length} 筆失敗：${failures.join("；")}`;
     emit("notify", errorMessage.value, "error");
@@ -168,6 +169,16 @@ async function confirmDrafts(): Promise<void> {
   }
   emit("notify", "已將選取結果建立為正式 Query。", "success");
   await router.push({ name: "geo-project-edit", params: { projectId: projectId.value } });
+}
+
+function startOperationLoading(message: string): void {
+  operationLoadingMessage.value = message;
+  loading.value = true;
+}
+
+function stopOperationLoading(): void {
+  loading.value = false;
+  operationLoadingMessage.value = "";
 }
 
 function researchPayload() {
@@ -225,7 +236,11 @@ function toggleAll(): void {
 
 <template>
   <main class="geo-form-page geo-query-research-page">
-    <div class="geo-form-shell">
+    <div
+      class="geo-form-shell"
+      :inert="operationLoadingMessage ? true : undefined"
+      :aria-busy="Boolean(operationLoadingMessage)"
+    >
       <header class="geo-form-page-header">
         <button class="geo-back-button" type="button" title="返回" @click="step === 2 ? step = 1 : router.push({ name: 'geo-projects' })"><AppIcon name="chevron-left" :size="16" /></button>
         <div><h1>Query Search</h1><p>設定並生成 Query</p></div>
@@ -249,5 +264,19 @@ function toggleAll(): void {
       </div>
     </div>
     <GeoConfirmDialog :open="showEmptyAlert" single title="尚未選擇 Query" message="請至少勾選一筆 Query，再進行生成。" confirm-label="我知道了" @cancel="showEmptyAlert = false" @confirm="showEmptyAlert = false" />
+    <Teleport to="body">
+      <div
+        v-if="operationLoadingMessage"
+        class="geo-operation-loading-overlay"
+        role="status"
+        aria-live="polite"
+        :aria-label="operationLoadingMessage"
+      >
+        <div class="geo-operation-loading-card">
+          <span class="session-loading-spinner" aria-hidden="true"></span>
+          <strong>{{ operationLoadingMessage }}</strong>
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
