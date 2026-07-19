@@ -23,6 +23,7 @@ from younilab_seo.geo_analysis.application import (
     QueryPlanningClient,
     ReceiveExternalRunCallback,
     ResourceCatalogReferenceVerifier,
+    ResourceCatalogCustomerReader,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
@@ -78,6 +79,7 @@ def build_dependencies(
     evidence_text_repairer: EvidenceTextRepairer | None = None,
     authorizer: PermissionAuthorizer | None = None,
     reference_verifier: ResourceCatalogReferenceVerifier | None = None,
+    customer_reader: ResourceCatalogCustomerReader | None = None,
     callback_base_url: str | None = None,
 ) -> GeoAnalysisApiDependencies:
     active_repository = repository or _build_repository()
@@ -90,6 +92,11 @@ def build_dependencies(
     )
     active_authorizer = authorizer or _build_authorizer()
     active_reference_verifier = reference_verifier or _build_reference_verifier()
+    active_customer_reader = customer_reader
+    if active_customer_reader is None and hasattr(
+        active_reference_verifier, "list_customer_names"
+    ):
+        active_customer_reader = active_reference_verifier
     kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
         active_repository,
         active_kmindhub_client,
@@ -115,7 +122,11 @@ def build_dependencies(
     return GeoAnalysisApiDependencies(
         repository=active_repository,
         authorizer=active_authorizer,
-        manage_geo_setup=ManageGeoSetup(active_repository, active_reference_verifier),
+        manage_geo_setup=ManageGeoSetup(
+            active_repository,
+            active_reference_verifier,
+            active_customer_reader,
+        ),
         manage_kmindhub_workspace_mapping=kmindhub_workspace_resolver,
         manage_query_planning=ManageQueryPlanning(
             active_repository,

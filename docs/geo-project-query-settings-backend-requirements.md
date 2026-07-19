@@ -1,10 +1,12 @@
 # GEO Project Query Settings 後端需求
 
+> 狀態（2026-07-19）：後端 API、persistence、migration、OpenAPI 與測試已完成；Admin Portal 的新增 Project、Project Edit 與 Query Research 預帶／更新串接仍待開發。正式環境需先執行 `019_geo_project_query_settings.sql`。
+
 ## 目的
 
-標準版 GEO 分析的新增 Project 第二步可設定 Query Research 與 Generation 的預設值。現有 API 可保存 Project、品牌、競品、別名與 Topics，但沒有 Project 層級的 Query 設定資源，因此前端目前只在當次表單保留這些值，不會宣稱已保存。
+標準版 GEO 分析的新增 Project 第二步可設定 Query Research 與 Generation 的預設值。後端目前除了 Project、品牌、競品、別名與 Topics，也已提供 Project Query Settings GET／PUT；Admin Portal 尚未串接，因此前端目前仍只在當次表單保留這些值，不會宣稱已保存。
 
-後續後端應讓每個 Project 擁有一份 `GeoProjectQuerySettings`。保存設定不得觸發 Query Research、Query Generation 或建立正式 Query；使用者進入 Query Search 時才載入預設值並自行執行。
+後端已讓每個 Project 可擁有一份 `GeoProjectQuerySettings`。保存設定不得觸發 Query Research、Query Generation 或建立正式 Query；使用者進入 Query Search 時才載入預設值並自行執行。
 
 ## 資料契約
 

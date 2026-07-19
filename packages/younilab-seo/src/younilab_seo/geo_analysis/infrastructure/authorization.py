@@ -101,6 +101,39 @@ class ResourceCatalogHttpReferenceVerifier(ResourceCatalogReferenceVerifier):
             customer_id=UUID(body["customerId"]),
         )
 
+    async def list_customer_names(
+        self,
+        *,
+        access_token: str,
+        customer_ids: frozenset[UUID],
+    ) -> dict[UUID, str]:
+        if not customer_ids:
+            return {}
+        names: dict[UUID, str] = {}
+        for status in ("active", "archived"):
+            page = 1
+            while customer_ids - names.keys():
+                body = await self._get(
+                    access_token,
+                    f"/api/customers?status={status}&page={page}&pageSize=100",
+                )
+                if body is None:
+                    break
+                try:
+                    for item in body.get("items", []):
+                        customer_id = UUID(item["id"])
+                        if customer_id in customer_ids:
+                            names[customer_id] = str(item["name"])
+                    total_pages = int(body.get("totalPages", page))
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ResourceCatalogVerificationUnavailable(
+                        "resource catalog customer response is invalid"
+                    ) from exc
+                if page >= total_pages:
+                    break
+                page += 1
+        return names
+
     async def _get(self, access_token: str, path: str) -> dict | None:
         """將 Resource Catalog HTTP 狀態轉成 application 可處理的驗證結果。"""
 
@@ -130,4 +163,14 @@ class ResourceCatalogHttpReferenceVerifier(ResourceCatalogReferenceVerifier):
             raise ResourceCatalogVerificationUnavailable(
                 "resource catalog reference verification failed"
             )
-        return response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise ResourceCatalogVerificationUnavailable(
+                "resource catalog response is invalid"
+            ) from exc
+        if not isinstance(body, dict):
+            raise ResourceCatalogVerificationUnavailable(
+                "resource catalog response is invalid"
+            )
+        return body

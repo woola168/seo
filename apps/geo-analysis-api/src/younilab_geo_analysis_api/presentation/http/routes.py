@@ -25,8 +25,15 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     OverviewReportResponse,
     OverviewResponsePageResponse,
     PageResponse,
+    ProblemDetailsResponse,
     ProjectRequest,
+    ProjectQuerySettingsRequest,
+    ProjectQuerySettingsResponse,
     ProjectResponse,
+    ProjectSummaryPageResponse,
+    ProjectSummaryResponse,
+    ProjectStatusRequest,
+    ProjectStatusResponse,
     QueryPlatformRequest,
     QueryPlatformResponse,
     QueryDraftSelectionRequest,
@@ -55,6 +62,8 @@ from younilab_seo.geo_analysis.application import (
     GeoEntityCommand,
     GeoMarketCommand,
     GeoProjectCommand,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectStatusCommand,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
@@ -202,12 +211,28 @@ async def provision_kmindhub_workspace_mapping(
     return KMindHubWorkspaceMappingResponse(**_record_data(mapping))
 
 
-@router.get("/projects", response_model=PageResponse)
-async def list_projects(request: Request, customer_id: UUID | None = None) -> PageResponse:
+@router.get(
+    "/projects",
+    response_model=ProjectSummaryPageResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def list_projects(
+    request: Request,
+    customer_id: UUID | None = Query(default=None, alias="customerId"),
+) -> ProjectSummaryPageResponse:
     principal = await _principal(request, "geo.projects.read")
-    items = await _setup(request).list_projects(principal, customer_id)
-    return PageResponse(
-        items=[ProjectResponse(**_record_data(item)) for item in items],
+    token = await _access_token(request)
+    items = await _setup(request).list_project_summaries(
+        principal,
+        customer_id,
+        access_token=token,
+    )
+    return ProjectSummaryPageResponse(
+        items=[ProjectSummaryResponse(**_record_data(item)) for item in items],
         total=len(items),
     )
 
@@ -231,6 +256,83 @@ async def get_project(request: Request, project_id: UUID) -> ProjectResponse:
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     return ProjectResponse(**_record_data(project))
+
+
+@router.patch(
+    "/projects/{project_id}/status",
+    response_model=ProjectStatusResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def update_project_status(
+    request: Request,
+    project_id: UUID,
+    payload: ProjectStatusRequest,
+) -> ProjectStatusResponse:
+    principal = await _principal(request, "geo.projects.update")
+    project = await _setup(request).update_project_status(
+        principal,
+        project_id,
+        GeoProjectStatusCommand(**payload.model_dump()),
+    )
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return ProjectStatusResponse(
+        project_id=project.id,
+        status=project.status,
+        updated_at=project.updated_at,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/query-settings",
+    response_model=ProjectQuerySettingsResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def get_project_query_settings(
+    request: Request,
+    project_id: UUID,
+) -> ProjectQuerySettingsResponse:
+    principal = await _principal(request, "geo.projects.read")
+    settings = await _setup(request).get_project_query_settings(principal, project_id)
+    if settings is None:
+        raise HTTPException(status_code=404, detail="project query settings not found")
+    return ProjectQuerySettingsResponse(**_record_data(settings))
+
+
+@router.put(
+    "/projects/{project_id}/query-settings",
+    response_model=ProjectQuerySettingsResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def replace_project_query_settings(
+    request: Request,
+    project_id: UUID,
+    payload: ProjectQuerySettingsRequest,
+) -> ProjectQuerySettingsResponse:
+    principal = await _principal(request, "geo.projects.update")
+    settings = await _setup(request).replace_project_query_settings(
+        principal,
+        project_id,
+        GeoProjectQuerySettingsCommand(**payload.model_dump()),
+    )
+    if settings is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return ProjectQuerySettingsResponse(**_record_data(settings))
 
 
 @router.get(

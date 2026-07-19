@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,7 +10,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoMarketCommand,
     GeoMarketRecord,
     GeoProjectCommand,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectQuerySettingsRecord,
     GeoProjectRecord,
+    GeoProjectStatusCommand,
+    GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoAiPlatformRecord,
@@ -23,7 +28,10 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
     GeoAnalysisRepository,
+    ResourceCatalogCustomerReader,
     ResourceCatalogReferenceVerifier,
+    ResourceCatalogVerificationDenied,
+    ResourceCatalogVerificationUnavailable,
 )
 from younilab_seo.geo_analysis.application.use_cases.access_policy import (
     can_access_project,
@@ -34,12 +42,16 @@ from younilab_seo.geo_analysis.application.use_cases.planning import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class ManageGeoSetup:
     """管理 GEO project setup 資料，並套用 tenant 與 resource grant 邊界。"""
 
     repository: GeoAnalysisRepository
     reference_verifier: ResourceCatalogReferenceVerifier | None = None
+    customer_reader: ResourceCatalogCustomerReader | None = None
 
     async def list_projects(
         self,
@@ -48,6 +60,50 @@ class ManageGeoSetup:
     ) -> list[GeoProjectRecord]:
         projects = await self.repository.list_projects(principal.tenant_id, customer_id)
         return filter_accessible_projects(principal, projects)
+
+    async def list_project_summaries(
+        self,
+        principal: AuthorizedPrincipal,
+        customer_id: UUID | None = None,
+        *,
+        access_token: str | None = None,
+    ) -> list[GeoProjectSummaryRecord]:
+        summaries = await self.repository.list_project_summaries(
+            principal.tenant_id,
+            customer_id,
+        )
+        accessible = [
+            summary
+            for summary in summaries
+            if can_access_project(principal, summary)
+        ]
+        customer_ids = frozenset(
+            summary.customer_id
+            for summary in accessible
+            if summary.customer_id is not None
+        )
+        if not customer_ids or self.customer_reader is None or access_token is None:
+            return accessible
+        try:
+            names = await self.customer_reader.list_customer_names(
+                access_token=access_token,
+                customer_ids=customer_ids,
+            )
+        except (
+            ResourceCatalogVerificationDenied,
+            ResourceCatalogVerificationUnavailable,
+        ) as exc:
+            logger.warning(
+                "GEO Project customer names unavailable: %s",
+                type(exc).__name__,
+            )
+            return accessible
+        return [
+            summary.model_copy(
+                update={"customer_name": names.get(summary.customer_id)}
+            )
+            for summary in accessible
+        ]
 
     async def get_project(
         self,
@@ -104,6 +160,52 @@ class ManageGeoSetup:
         if await self.get_project(principal, project_id) is None:
             return False
         return await self.repository.delete_project(principal.tenant_id, project_id)
+
+    async def update_project_status(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+        command: GeoProjectStatusCommand,
+    ) -> GeoProjectRecord | None:
+        if await self.get_project(principal, project_id) is None:
+            return None
+        return await self.repository.update_project_status(
+            principal.tenant_id,
+            project_id,
+            command,
+        )
+
+    async def get_project_query_settings(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        if await self.get_project(principal, project_id) is None:
+            return None
+        return await self.repository.get_project_query_settings(
+            principal.tenant_id,
+            project_id,
+        )
+
+    async def replace_project_query_settings(
+        self,
+        principal: AuthorizedPrincipal,
+        project_id: UUID,
+        command: GeoProjectQuerySettingsCommand,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        if await self.get_project(principal, project_id) is None:
+            return None
+        current = await self.repository.get_project_query_settings(
+            principal.tenant_id,
+            project_id,
+        )
+        if current is not None and _query_settings_equal(current, command):
+            return current
+        return await self.repository.upsert_project_query_settings(
+            principal.tenant_id,
+            project_id,
+            command,
+        )
 
     async def list_markets(
         self,
@@ -495,6 +597,15 @@ class ManageGeoSetup:
 
 def _validate_project_reference(command: GeoProjectCommand) -> None:
     return None
+
+
+def _query_settings_equal(
+    current: GeoProjectQuerySettingsRecord,
+    command: GeoProjectQuerySettingsCommand,
+) -> bool:
+    return current.model_dump(
+        exclude={"project_id", "created_at", "updated_at"}
+    ) == command.model_dump()
 
 
 def _can_access_project_reference(

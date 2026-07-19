@@ -20,7 +20,12 @@ from younilab_seo.geo_analysis.application import (
     GeoMetricRunResultInput,
     GeoMetricSentimentInput,
     GeoProjectCommand,
+    GeoProjectOwnBrandSummary,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectQuerySettingsRecord,
     GeoProjectRecord,
+    GeoProjectStatusCommand,
+    GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryPlatformRecord,
@@ -62,6 +67,9 @@ class GeoApiStore:
     """測試用 in-memory GEO repository fake。"""
 
     projects: dict[UUID, GeoProjectRecord] = field(default_factory=dict)
+    project_query_settings: dict[UUID, GeoProjectQuerySettingsRecord] = field(
+        default_factory=dict
+    )
     markets: dict[UUID, GeoMarketRecord] = field(default_factory=dict)
     entities: dict[UUID, GeoEntityRecord] = field(default_factory=dict)
     aliases: dict[UUID, GeoEntityAliasRecord] = field(default_factory=dict)
@@ -114,6 +122,49 @@ class GeoApiStore:
         if customer_id is not None:
             items = [item for item in items if item.customer_id == customer_id]
         return items
+
+    async def list_project_summaries(
+        self,
+        tenant_id: UUID,
+        customer_id: UUID | None = None,
+    ) -> list[GeoProjectSummaryRecord]:
+        projects = await self.list_projects(tenant_id, customer_id)
+        summaries: list[GeoProjectSummaryRecord] = []
+        for project in projects:
+            own_brands = sorted(
+                (
+                    entity
+                    for entity in self.entities.values()
+                    if entity.project_id == project.id
+                    and entity.entity_type == "own_brand"
+                ),
+                key=lambda entity: (entity.status == "active", entity.updated_at),
+                reverse=True,
+            )
+            own_brand = own_brands[0] if own_brands else None
+            aliases = sorted(
+                (
+                    alias
+                    for alias in self.aliases.values()
+                    if own_brand is not None and alias.entity_id == own_brand.id
+                ),
+                key=lambda alias: (alias.created_at, alias.id),
+            )
+            summaries.append(
+                GeoProjectSummaryRecord(
+                    **project.model_dump(),
+                    own_brand=(
+                        GeoProjectOwnBrandSummary(
+                            entity_id=own_brand.id,
+                            website_url=own_brand.website_url,
+                            aliases=[alias.alias for alias in aliases],
+                        )
+                        if own_brand is not None
+                        else None
+                    ),
+                )
+            )
+        return summaries
 
     async def get_project(
         self,
@@ -318,7 +369,53 @@ class GeoApiStore:
     async def delete_project(self, tenant_id: UUID, project_id: UUID) -> bool:
         if await self.get_project(tenant_id, project_id) is None:
             return False
+        self.project_query_settings.pop(project_id, None)
         return self.projects.pop(project_id, None) is not None
+
+    async def update_project_status(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectStatusCommand,
+    ) -> GeoProjectRecord | None:
+        project = await self.get_project(tenant_id, project_id)
+        if project is None:
+            return None
+        if project.status == command.status:
+            return project
+        updated = project.model_copy(
+            update={"status": command.status, "updated_at": _now()}
+        )
+        self.projects[project_id] = updated
+        return updated
+
+    async def get_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        if await self.get_project(tenant_id, project_id) is None:
+            return None
+        return self.project_query_settings.get(project_id)
+
+    async def upsert_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectQuerySettingsCommand,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        if await self.get_project(tenant_id, project_id) is None:
+            return None
+        now = _now()
+        current = self.project_query_settings.get(project_id)
+        settings = GeoProjectQuerySettingsRecord(
+            **command.model_dump(),
+            project_id=project_id,
+            created_at=current.created_at if current is not None else now,
+            updated_at=now,
+        )
+        self.project_query_settings[project_id] = settings
+        return settings
 
     async def list_markets(
         self,

@@ -14,6 +14,7 @@ from younilab_seo.geo_analysis.application import (
     PermissionAuthorizer,
     QueryPlanningClient,
     ResourceCatalogReferenceVerifier,
+    ResourceCatalogCustomerReader,
 )
 
 
@@ -26,6 +27,7 @@ def create_app(
     kmindhub_client: KMindHubWorkspaceClient | None = None,
     authorizer: PermissionAuthorizer | None = None,
     reference_verifier: ResourceCatalogReferenceVerifier | None = None,
+    customer_reader: ResourceCatalogCustomerReader | None = None,
     callback_base_url: str | None = None,
 ) -> FastAPI:
     dependencies = build_dependencies(
@@ -36,6 +38,7 @@ def create_app(
         kmindhub_client=kmindhub_client,
         authorizer=authorizer,
         reference_verifier=reference_verifier,
+        customer_reader=customer_reader,
         callback_base_url=callback_base_url,
     )
 

@@ -465,6 +465,288 @@ def test_projects_are_scoped_by_resource_grants() -> None:
     assert unscoped_detail.status_code == 404
 
 
+def test_project_summary_includes_own_brand_aliases_and_customer_name() -> None:
+    customer_id = uuid4()
+    customer_reader = FakeCustomerReader({customer_id: "範例客戶"})
+    client = _client(customer_reader=customer_reader)
+    project = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": "範例 Project"},
+    )
+    project_id = project.json()["id"]
+    entity = client.post(
+        f"/api/geo/projects/{project_id}/entities",
+        json={
+            "entityType": "own_brand",
+            "name": "範例品牌",
+            "websiteUrl": "https://example.com",
+        },
+    )
+    client.post(
+        f"/api/geo/entities/{entity.json()['id']}/aliases",
+        json={"alias": "品牌別名"},
+    )
+
+    response = client.get("/api/geo/projects")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["customerName"] == "範例客戶"
+    assert response.json()["items"][0]["ownBrand"] == {
+        "entityId": entity.json()["id"],
+        "websiteUrl": "https://example.com",
+        "aliases": ["品牌別名"],
+    }
+    assert customer_reader.requested_ids == {customer_id}
+
+
+def test_project_summary_keeps_local_data_when_customer_catalog_is_unavailable() -> None:
+    customer_id = uuid4()
+    client = _client(customer_reader=FakeCustomerReader({}, unavailable=True))
+    project = client.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": "Local Project"},
+    )
+
+    response = client.get("/api/geo/projects")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == [
+        {
+            "id": project.json()["id"],
+            "tenantId": str(TENANT_ID),
+            "customerId": str(customer_id),
+            "customerName": None,
+            "name": "Local Project",
+            "defaultRegion": "TW",
+            "defaultLanguage": "zh-TW",
+            "status": "active",
+            "dailyRunBudget": 0,
+            "ownBrand": None,
+            "createdAt": project.json()["createdAt"],
+            "updatedAt": project.json()["updatedAt"],
+        }
+    ]
+
+
+def test_project_summary_customer_filter_is_optional_and_scope_safe() -> None:
+    store = GeoApiStore()
+    first_customer_id = uuid4()
+    second_customer_id = uuid4()
+    admin = _client(repository=store)
+    first = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(first_customer_id), "name": "First"},
+    )
+    second = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(second_customer_id), "name": "Second"},
+    )
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({first_customer_id}),
+        ),
+    )
+
+    all_response = admin.get("/api/geo/projects")
+    filtered_response = admin.get(
+        "/api/geo/projects", params={"customerId": str(first_customer_id)}
+    )
+    denied_filter = restricted.get(
+        "/api/geo/projects", params={"customerId": str(second_customer_id)}
+    )
+
+    assert {item["id"] for item in all_response.json()["items"]} == {
+        first.json()["id"],
+        second.json()["id"],
+    }
+    assert [item["id"] for item in filtered_response.json()["items"]] == [
+        first.json()["id"]
+    ]
+    assert denied_filter.json() == {"items": [], "total": 0}
+
+
+def test_project_query_settings_crud_is_idempotent_and_scope_safe() -> None:
+    store = GeoApiStore()
+    customer_id = uuid4()
+    admin = _client(repository=store)
+    project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": "Settings Project"},
+    )
+    project_id = project.json()["id"]
+    missing = admin.get(f"/api/geo/projects/{project_id}/query-settings")
+
+    first = admin.put(
+        f"/api/geo/projects/{project_id}/query-settings",
+        json=_query_settings_payload(),
+    )
+    repeated = admin.put(
+        f"/api/geo/projects/{project_id}/query-settings",
+        json=_query_settings_payload(),
+    )
+    fetched = admin.get(f"/api/geo/projects/{project_id}/query-settings")
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({uuid4()}),
+        ),
+    )
+
+    assert missing.status_code == 404
+    assert first.status_code == 200
+    assert first.json()["keywords"] == ["ERP", "採購"]
+    assert repeated.json()["updatedAt"] == first.json()["updatedAt"]
+    assert fetched.json() == first.json()
+    assert not store.query_research_runs
+    assert not store.query_generation_runs
+    assert not store.query_drafts
+    assert not store.queries
+    assert not store.jobs
+    assert not store.schedules
+    assert (
+        restricted.get(f"/api/geo/projects/{project_id}/query-settings").status_code
+        == 404
+    )
+    assert (
+        restricted.put(
+            f"/api/geo/projects/{project_id}/query-settings",
+            json=_query_settings_payload(),
+        ).status_code
+        == 404
+    )
+
+    assert admin.delete(f"/api/geo/projects/{project_id}").status_code == 204
+    assert UUID(project_id) not in store.project_query_settings
+
+
+def test_project_status_api_pauses_and_resumes_without_replacing_project() -> None:
+    client = _client()
+    customer_id = uuid4()
+    created = client.post(
+        "/api/geo/projects",
+        json={
+            "customerId": str(customer_id),
+            "name": "Status Project",
+            "defaultRegion": "US",
+            "defaultLanguage": "en-US",
+            "dailyRunBudget": 12,
+        },
+    )
+    project_id = created.json()["id"]
+
+    paused = client.patch(
+        f"/api/geo/projects/{project_id}/status",
+        json={"status": "paused"},
+    )
+    repeated = client.patch(
+        f"/api/geo/projects/{project_id}/status",
+        json={"status": "paused"},
+    )
+    paused_project = client.get(f"/api/geo/projects/{project_id}")
+    resumed = client.patch(
+        f"/api/geo/projects/{project_id}/status",
+        json={"status": "active"},
+    )
+    active_project = client.get(f"/api/geo/projects/{project_id}")
+
+    assert paused.status_code == 200
+    assert paused.json()["projectId"] == project_id
+    assert paused.json()["status"] == "paused"
+    assert repeated.json()["updatedAt"] == paused.json()["updatedAt"]
+    assert paused_project.json()["status"] == "paused"
+    assert paused_project.json()["name"] == "Status Project"
+    assert paused_project.json()["customerId"] == str(customer_id)
+    assert paused_project.json()["dailyRunBudget"] == 12
+    assert resumed.json()["status"] == "active"
+    assert active_project.json()["status"] == "active"
+
+
+@pytest.mark.parametrize("payload", [{"status": "archived"}, {"status": ""}, {}])
+def test_project_status_api_rejects_unsupported_status(payload: dict) -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    response = client.patch(
+        f"/api/geo/projects/{project_id}/status",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "body.status" in _invalid_param_names(response.json())
+
+
+def test_project_status_api_hides_project_outside_resource_scope() -> None:
+    store = GeoApiStore()
+    customer_id = uuid4()
+    admin = _client(repository=store)
+    project = admin.post(
+        "/api/geo/projects",
+        json={"customerId": str(customer_id), "name": "Denied Status Project"},
+    )
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({uuid4()}),
+        ),
+    )
+
+    response = restricted.patch(
+        f"/api/geo/projects/{project.json()['id']}/status",
+        json={"status": "paused"},
+    )
+
+    assert response.status_code == 404
+    current = admin.get(f"/api/geo/projects/{project.json()['id']}")
+    assert current.json()["status"] == "active"
+
+
+@pytest.mark.parametrize(
+    ("override", "invalid_name"),
+    [
+        ({"researchProvider": "openai"}, "body.researchProvider"),
+        ({"marketType": "consumer"}, "body.marketType"),
+        ({"maxQueries": 0}, "body.maxQueries"),
+        ({"unknown": True}, "body.unknown"),
+    ],
+)
+def test_project_query_settings_rejects_invalid_payload(
+    override: dict,
+    invalid_name: str,
+) -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    response = client.put(
+        f"/api/geo/projects/{project_id}/query-settings",
+        json={**_query_settings_payload(), **override},
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert invalid_name in _invalid_param_names(response.json())
+
+
+def test_openapi_describes_project_summary_and_query_settings() -> None:
+    schema = _client().get("/openapi.json").json()
+
+    projects = schema["paths"]["/api/geo/projects"]["get"]
+    settings_path = schema["paths"]["/api/geo/projects/{project_id}/query-settings"]
+    status_path = schema["paths"]["/api/geo/projects/{project_id}/status"]
+    assert projects["parameters"][0]["name"] == "customerId"
+    assert "ProjectSummaryPageResponse" in str(projects["responses"]["200"])
+    assert "ProblemDetailsResponse" in str(projects["responses"]["422"])
+    assert "ProjectQuerySettingsResponse" in str(settings_path["get"]["responses"]["200"])
+    assert "ProjectQuerySettingsRequest" in str(settings_path["put"]["requestBody"])
+    assert "ProblemDetailsResponse" in str(settings_path["put"]["responses"]["422"])
+    assert "ProjectStatusRequest" in str(status_path["patch"]["requestBody"])
+    assert "ProjectStatusResponse" in str(status_path["patch"]["responses"]["200"])
+
+
 def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
     store = GeoApiStore()
     allowed_customer_id = uuid4()
@@ -1631,6 +1913,26 @@ def _create_project(client: TestClient) -> str:
     return response.json()["id"]
 
 
+def _query_settings_payload() -> dict:
+    return {
+        "researchProvider": "gemini",
+        "runProvider": "gemini",
+        "keywords": [" ERP ", "erp", "", "採購"],
+        "marketType": "b2b_procurement",
+        "maxQueries": 20,
+        "audience": {
+            "name": "採購主管",
+            "description": "負責供應商評估",
+        },
+        "intent": {
+            "category": "commercial",
+            "description": "比較供應商",
+        },
+        "shouldMentionOwnBrand": True,
+        "shouldMentionCompetitor": False,
+    }
+
+
 def _create_project_setup_resources(
     client: TestClient,
     name: str,
@@ -1895,6 +2197,29 @@ class FakeReferenceVerifier:
             )
         if self.unavailable:
             raise ResourceCatalogVerificationUnavailable("resource catalog unavailable")
+
+
+@dataclass
+class FakeCustomerReader:
+    names: dict[UUID, str]
+    requested_ids: set[UUID] = field(default_factory=set)
+    unavailable: bool = False
+
+    async def list_customer_names(
+        self,
+        *,
+        access_token: str,
+        customer_ids: frozenset[UUID],
+    ) -> dict[UUID, str]:
+        assert access_token == "test-token"
+        if self.unavailable:
+            raise ResourceCatalogVerificationUnavailable("resource catalog unavailable")
+        self.requested_ids.update(customer_ids)
+        return {
+            customer_id: self.names[customer_id]
+            for customer_id in customer_ids
+            if customer_id in self.names
+        }
 
 
 class FakePlanningClient:

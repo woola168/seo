@@ -19,7 +19,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoMetricFormulaQuery,
     GeoMetricFormulaSource,
     GeoProjectCommand,
+    GeoProjectQuerySettingsCommand,
+    GeoProjectQuerySettingsRecord,
     GeoProjectRecord,
+    GeoProjectStatusCommand,
+    GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoAiPlatformRecord,
@@ -264,6 +268,18 @@ class ResourceCatalogReferenceVerifier(Protocol):
         raise NotImplementedError
 
 
+class ResourceCatalogCustomerReader(Protocol):
+    """讀取 Resource Catalog customer 顯示名稱供 GEO read model 使用。"""
+
+    async def list_customer_names(
+        self,
+        *,
+        access_token: str,
+        customer_ids: frozenset[UUID],
+    ) -> dict[UUID, str]:
+        raise NotImplementedError
+
+
 @runtime_checkable
 class GeoQueryRunJobRepository(Protocol):
     """query run job lifecycle 與 evidence persistence port。"""
@@ -415,6 +431,13 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> list[GeoProjectRecord]:
         raise NotImplementedError
 
+    async def list_project_summaries(
+        self,
+        tenant_id: UUID,
+        customer_id: UUID | None = None,
+    ) -> list[GeoProjectSummaryRecord]:
+        raise NotImplementedError
+
     async def materialize_daily_runs(
         self,
         *,
@@ -538,6 +561,29 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
         raise NotImplementedError
 
     async def delete_project(self, tenant_id: UUID, project_id: UUID) -> bool:
+        raise NotImplementedError
+
+    async def update_project_status(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectStatusCommand,
+    ) -> GeoProjectRecord | None:
+        raise NotImplementedError
+
+    async def get_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+    ) -> GeoProjectQuerySettingsRecord | None:
+        raise NotImplementedError
+
+    async def upsert_project_query_settings(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        command: GeoProjectQuerySettingsCommand,
+    ) -> GeoProjectQuerySettingsRecord | None:
         raise NotImplementedError
 
     async def list_markets(
