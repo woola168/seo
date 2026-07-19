@@ -50,12 +50,29 @@ describe("portal router", () => {
   });
 
   it("redirects authenticated users away from login", async () => {
-    const router = createPortalRouter(createMemoryHistory(), () => true);
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.read"],
+    );
 
     await router.push("/login");
     await router.isReady();
 
-    expect(router.currentRoute.value.name).toBe("dashboard");
+    expect(router.currentRoute.value.name).toBe("geo-overview");
+  });
+
+  it("uses GEO Overview as the authenticated default route", async () => {
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.read"],
+    );
+
+    await router.push("/");
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe("geo-overview");
   });
 
   it("keeps account recovery routes public", async () => {
@@ -377,7 +394,7 @@ describe("route helpers", () => {
     expect(getLoginRedirect("/permissions/members")).toBe(
       "/permissions/members",
     );
-    expect(getLoginRedirect("https://example.com")).toBe("/dashboard");
-    expect(getLoginRedirect("//example.com")).toBe("/dashboard");
+    expect(getLoginRedirect("https://example.com")).toBe("/geo/overview");
+    expect(getLoginRedirect("//example.com")).toBe("/geo/overview");
   });
 });

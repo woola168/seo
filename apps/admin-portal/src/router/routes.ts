@@ -8,9 +8,11 @@ import {
 import type { PageId } from "../types";
 
 type PermissionLoader = () => Promise<readonly string[]>;
+const DEFAULT_AUTHENTICATED_PATH = "/geo/overview";
 
 function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
-  const defaultRoute = () => (hasSession() ? "/dashboard" : "/login");
+  const defaultRoute = () =>
+    hasSession() ? DEFAULT_AUTHENTICATED_PATH : "/login";
 
   return [
     {
@@ -231,7 +233,7 @@ export function createPortalRouter(
     }
 
     if (to.name === "login" && hasSession()) {
-      return { name: "dashboard" };
+      return { name: "geo-overview" };
     }
 
     const requiredPermission = to.meta.requiredPermission;
@@ -285,5 +287,5 @@ export function getLoginRedirect(redirect: unknown): string {
     redirect.startsWith("/") &&
     !redirect.startsWith("//")
     ? redirect
-    : "/dashboard";
+    : DEFAULT_AUTHENTICATED_PATH;
 }

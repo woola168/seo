@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import AppIcon from "../components/ui/AppIcon.vue";
+import { getRememberedLoginEmail } from "../utils/remembered-login-email";
 
 defineProps<{
   loading: boolean;
@@ -8,18 +9,19 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  login: [email: string, password: string];
+  login: [email: string, password: string, rememberEmail: boolean];
   forgot: [];
   unavailable: [label: string];
 }>();
 
-const email = ref("");
+const rememberedEmail = getRememberedLoginEmail();
+const email = ref(rememberedEmail);
 const password = ref("");
-const remember = ref(false);
+const remember = ref(Boolean(rememberedEmail));
 const showPassword = ref(false);
 
 function submit(): void {
-  emit("login", email.value.trim(), password.value);
+  emit("login", email.value.trim(), password.value, remember.value);
 }
 </script>
 

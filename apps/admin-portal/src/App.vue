@@ -44,9 +44,10 @@ import type {
   ToastTone,
   UserAccess,
 } from "./types";
-import { buildGeoNavigation } from "./utils/geo-navigation";
 import { filterAssignablePermissions } from "./utils/internal-permissions";
 import { hasPermission } from "./utils/permissions";
+import { buildPortalNavigation } from "./utils/portal-navigation";
+import { updateRememberedLoginEmail } from "./utils/remembered-login-email";
 import { removeRoleById } from "./utils/role-state";
 import {
   shouldRestoreSession,
@@ -141,86 +142,9 @@ function pageTitle(): string {
   return "總覽";
 }
 
-const navigation = computed<NavigationItem[]>(() => [
-  { id: "dashboard", label: "總覽", icon: "grid", page: "dashboard" },
-  {
-    id: "clients",
-    label: "客戶",
-    icon: "users",
-    group: "專案管理",
-    disabled: true,
-  },
-  {
-    id: "tasks",
-    label: "任務",
-    icon: "briefcase",
-    group: "專案管理",
-    badge: "9",
-    disabled: true,
-  },
-  ...buildGeoNavigation(capabilities.value?.permissions ?? []),
-  {
-    id: "strategy",
-    label: "策略分析",
-    icon: "sparkles",
-    group: "分析工具",
-    disabled: true,
-  },
-  {
-    id: "notifications",
-    label: "通知",
-    icon: "bell",
-    group: "系統",
-    badge: "2",
-    disabled: true,
-  },
-  {
-    id: "profile",
-    label: "個人設定",
-    icon: "user",
-    group: "系統",
-    disabled: true,
-  },
-  {
-    id: "permissions",
-    label: "權限管理",
-    icon: "shield",
-    group: "系統",
-    children: [
-      {
-        id: "permissions-members",
-        label: "成員管理",
-        icon: "users",
-        page: "permissions-members",
-      },
-      {
-        id: "permissions-roles",
-        label: "角色管理",
-        icon: "shield",
-        page: "permissions-roles",
-      },
-      {
-        id: "permissions-departments",
-        label: "部門管理",
-        icon: "briefcase",
-        page: "permissions-departments",
-      },
-      {
-        id: "permissions-authorization",
-        label: "授權判斷",
-        icon: "check-circle",
-        page: "permissions-authorization",
-      },
-    ],
-  },
-  {
-    id: "settings",
-    label: "系統設定",
-    icon: "settings",
-    group: "系統",
-    disabled: true,
-  },
-]);
+const navigation = computed<NavigationItem[]>(() =>
+  buildPortalNavigation(capabilities.value?.permissions ?? []),
+);
 
 onMounted(async () => {
   if (restoringSession.value) await restoreSession();
@@ -283,7 +207,11 @@ async function submitRecovery(value: string): Promise<void> {
   );
 }
 
-async function login(email: string, password: string): Promise<void> {
+async function login(
+  email: string,
+  password: string,
+  rememberEmail: boolean,
+): Promise<void> {
   loginError.value = "";
   const redirect = getLoginRedirect(route.query.redirect);
   await run(
@@ -291,6 +219,7 @@ async function login(email: string, password: string): Promise<void> {
       clearSessionCapabilities();
       await api.login(email, password);
       await loadSessionData();
+      updateRememberedLoginEmail(email, rememberEmail);
       await router.replace(redirect);
       notify("登入成功", "success");
     },
