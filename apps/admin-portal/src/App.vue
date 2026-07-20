@@ -10,7 +10,6 @@ import GeoDashboardReportDesignPage from "./pages/GeoDashboardReportDesignPage.v
 import GeoEntitiesPage from "./pages/GeoEntitiesPage.vue";
 import GeoFlowCheckPage from "./pages/GeoFlowCheckPage.vue";
 import GeoPlatformsSchedulesPage from "./pages/GeoPlatformsSchedulesPage.vue";
-import GeoProjectsPage from "./pages/GeoProjectsPage.vue";
 import GeoRunJobsPage from "./pages/GeoRunJobsPage.vue";
 import GeoStandardProjectsPage from "./pages/GeoStandardProjectsPage.vue";
 import GeoProjectEditPage from "./pages/GeoProjectEditPage.vue";
@@ -736,20 +735,19 @@ function unavailable(label: string): void {
       @unavailable="unavailable"
     />
     <GeoOverviewPage v-else-if="activePage === 'geo-analysis-overview'" />
-    <GeoProjectsPage v-else-if="activePage === 'geo-analysis-projects'" />
     <GeoStandardOverviewPage v-else-if="activePage === 'geo-overview'" />
     <GeoProjectEditPage
-      v-else-if="route.name === 'geo-project-new' || route.name === 'geo-project-edit'"
+      v-else-if="route.name === 'geo-project-new' || route.name === 'geo-project-edit' || route.name === 'geo-analysis-project-new' || route.name === 'geo-analysis-project-edit'"
       :permissions="capabilities.permissions"
       @notify="notify"
     />
     <GeoQueryResearchPage
-      v-else-if="route.name === 'geo-query-research'"
+      v-else-if="route.name === 'geo-query-research' || route.name === 'geo-analysis-project-query-research'"
       :permissions="capabilities.permissions"
       @notify="notify"
     />
     <GeoStandardProjectsPage
-      v-else-if="activePage === 'geo-projects'"
+      v-else-if="activePage === 'geo-projects' || activePage === 'geo-analysis-projects'"
       :permissions="capabilities.permissions"
       @notify="notify"
     />

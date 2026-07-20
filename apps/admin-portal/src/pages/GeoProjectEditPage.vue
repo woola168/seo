@@ -20,6 +20,7 @@ import {
   type GeoProjectProfile,
 } from "../services/geo-project-profile";
 import type { CustomerSummary, ToastTone } from "../types";
+import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import { hasPermission } from "../utils/permissions";
 
 interface CompetitorDraft {
@@ -34,6 +35,7 @@ const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
 const props = defineProps<{ permissions: readonly string[] }>();
 const route = useRoute();
 const router = useRouter();
+const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
 const isRecoveringQueryResearch = computed(
@@ -153,7 +155,7 @@ function secondaryAction(): void {
     step.value = 1;
     return;
   }
-  void router.push({ name: "geo-projects" });
+  void router.push({ name: projectRoutes.value.projects });
 }
 
 function forwardQueryResearchNotification(
@@ -197,12 +199,12 @@ async function save(): Promise<void> {
       );
       if (result.querySettingsStatus === "skipped") {
         emit("notify", "Project 已建立，但目前權限無法保存 Query Settings。", "warning");
-        await router.push({ name: "geo-projects" });
+        await router.push({ name: projectRoutes.value.projects });
         return;
       }
       if (result.querySettingsStatus === "failed") {
         emit("notify", `Project 已建立，但 Query Settings 保存失敗：${result.querySettingsError}`, "error");
-        await router.push({ name: "geo-projects" });
+        await router.push({ name: projectRoutes.value.projects });
         return;
       }
       if (!hasPermission(props.permissions, "geo.queries.manage")) {
@@ -211,12 +213,12 @@ async function save(): Promise<void> {
           "Project 與 Query Research 預設設定已建立，但目前權限無法執行 Query Research。",
           "warning",
         );
-        await router.push({ name: "geo-projects" });
+        await router.push({ name: projectRoutes.value.projects });
         return;
       }
       emit("notify", "Project 與 Query Research 預設設定已建立，正在執行 Query Research。", "success");
       await router.replace({
-        name: "geo-project-edit",
+        name: projectRoutes.value.projectEdit,
         params: { projectId: result.project.id },
         query: { mode: "query-research", phase: "researching" },
       });
@@ -224,12 +226,12 @@ async function save(): Promise<void> {
       queryResearchProjectId.value = result.project.id;
       return;
     }
-    await router.push({ name: "geo-projects" });
+    await router.push({ name: projectRoutes.value.projects });
   } catch (error) {
     if (error instanceof GeoProjectProfileSaveError) {
       errorMessage.value = `Project 核心資料已保存，但部分關聯資料失敗：${error.message}`;
       emit("notify", errorMessage.value, "error");
-      await router.replace({ name: "geo-project-edit", params: { projectId: error.project.id } });
+      await router.replace({ name: projectRoutes.value.projectEdit, params: { projectId: error.project.id } });
       await load();
     } else {
       errorMessage.value = error instanceof Error ? error.message : "Project 保存失敗。";

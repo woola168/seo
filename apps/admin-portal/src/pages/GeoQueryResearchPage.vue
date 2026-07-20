@@ -23,6 +23,7 @@ import {
   type GeoQueryFirstRunSummary,
 } from "../services/geo-query-first-run";
 import { setStoredGeoProjectId } from "../utils/geo-project-selection-storage";
+import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import type {
   GeoQueryDraftResource,
   GeoQueryGenerationRunResource,
@@ -51,6 +52,7 @@ const props = withDefaults(
 );
 const route = useRoute();
 const router = useRouter();
+const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const projectId = computed(() =>
   props.projectId ||
   (typeof route.params.projectId === "string" ? route.params.projectId : ""),
@@ -95,7 +97,7 @@ onMounted(() => void load());
 
 async function load(): Promise<void> {
   if (!projectId.value) {
-    await router.replace({ name: "geo-projects" });
+    await router.replace({ name: projectRoutes.value.projects });
     return;
   }
   loading.value = true;
@@ -290,7 +292,7 @@ async function persistRecoveryRoute(phase: string): Promise<void> {
   if (!props.recoverable) return;
   try {
     await router.replace({
-      name: "geo-project-edit",
+      name: projectRoutes.value.projectEdit,
       params: { projectId: projectId.value },
       query: {
         mode: "query-research",
@@ -384,7 +386,7 @@ async function confirmDrafts(): Promise<void> {
     firstRunError || firstRunSummary?.retryScheduled || runFailures.length ? "warning" : "success",
   );
   setStoredGeoProjectId(projectId.value);
-  await router.push({ name: "geo-overview" });
+  await router.push({ name: projectRoutes.value.overview });
 }
 
 function startOperationLoading(message: string): void {
@@ -491,10 +493,10 @@ function toggleAll(): void {
       :aria-busy="Boolean(operationLoadingMessage)"
     >
       <header class="geo-form-page-header">
-        <button class="geo-back-button" type="button" title="返回" @click="step === 2 ? step = 1 : router.push({ name: 'geo-projects' })"><AppIcon name="chevron-left" :size="16" /></button>
+        <button class="geo-back-button" type="button" title="返回" @click="step === 2 ? step = 1 : router.push({ name: projectRoutes.projects })"><AppIcon name="chevron-left" :size="16" /></button>
         <div><h1>Query Search</h1><p>設定並生成 Query</p></div>
         <span class="geo-header-spacer"></span>
-        <template v-if="step === 1"><button class="button button-secondary" type="button" @click="router.push({ name: 'geo-projects' })">返回</button><button class="button button-primary" type="button" :disabled="loading" @click="executeSearch">執行 Query Search</button></template>
+        <template v-if="step === 1"><button class="button button-secondary" type="button" @click="router.push({ name: projectRoutes.projects })">返回</button><button class="button button-primary" type="button" :disabled="loading" @click="executeSearch">執行 Query Search</button></template>
         <template v-else><button class="button button-secondary" type="button" @click="step = 1">返回</button><button class="button button-primary" type="button" :disabled="loading || selectionUpdating" @click="confirmDrafts">確認生成 Query</button></template>
       </header>
       <div v-if="errorMessage" class="geo-error-message">{{ errorMessage }}</div>

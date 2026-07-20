@@ -514,6 +514,7 @@ function shortDate(value: string): string {
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -522,9 +523,9 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function formatUtcDate(value: string): string {
+function formatTaipeiDate(value: string): string {
   return new Intl.DateTimeFormat("zh-TW", {
-    timeZone: "UTC",
+    timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -833,10 +834,10 @@ function apiMessage(caught: unknown, fallback: string): string {
         </div>
         <div class="table-scroll"><table class="response-table">
           <colgroup><col /><col style="width:90px" /><col style="width:150px" /><col style="width:70px" /><col style="width:110px" /></colgroup>
-          <thead><tr><th>回應</th><th>已提及</th><th>平台</th><th>地區</th><th>日期 (UTC)</th></tr></thead>
+          <thead><tr><th>回應</th><th>已提及</th><th>平台</th><th>地區</th><th>日期 (UTC+8)</th></tr></thead>
           <tbody>
             <tr v-for="row in responses?.items ?? []" :key="row.runResultId" class="clickable-row" @click="openResponse(row)">
-              <td><span>{{ row.responseExcerpt }}</span></td><td><span :class="['mention-icon', mentionClass(row.mentioned)]"><AppIcon :name="row.mentioned ? 'check' : row.mentioned === false ? 'x' : 'more'" :size="16" /></span></td><td><span class="platform-pill">{{ providerLabel(row.provider) }}</span></td><td>{{ row.region }}</td><td>{{ formatUtcDate(row.completedAt) }}</td>
+              <td><span>{{ row.responseExcerpt }}</span></td><td><span :class="['mention-icon', mentionClass(row.mentioned)]"><AppIcon :name="row.mentioned ? 'check' : row.mentioned === false ? 'x' : 'more'" :size="16" /></span></td><td><span class="platform-pill">{{ providerLabel(row.provider) }}</span></td><td>{{ row.region }}</td><td>{{ formatTaipeiDate(row.completedAt) }}</td>
             </tr>
             <tr v-if="!responsesLoading && !responses?.items.length"><td colspan="5" class="empty-cell">此條件沒有 Query 回答</td></tr>
           </tbody>

@@ -234,7 +234,7 @@ describe("portal router", () => {
     const updateRouter = createPortalRouter(
       createMemoryHistory(),
       () => true,
-      async () => ["geo.projects.update"],
+      async () => ["geo.projects.read", "geo.projects.update"],
     );
     await updateRouter.push("/geo/projects/project-1/edit");
     await updateRouter.isReady();
@@ -243,12 +243,83 @@ describe("portal router", () => {
     const researchRouter = createPortalRouter(
       createMemoryHistory(),
       () => true,
-      async () => ["geo.queries.manage"],
+      async () => ["geo.projects.read", "geo.queries.manage"],
     );
     await researchRouter.push("/geo/projects/project-1/query-research");
     await researchRouter.isReady();
     expect(researchRouter.currentRoute.value.name).toBe("geo-query-research");
     expect(getRoutePage(researchRouter.currentRoute.value.meta.page)).toBe("geo-projects");
+
+    const missingRead = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.update", "geo.queries.manage"],
+    );
+    await missingRead.push("/geo/projects/project-1/edit");
+    await missingRead.isReady();
+    expect(missingRead.currentRoute.value.name).toBe("dashboard");
+    await missingRead.push("/geo/projects/project-1/query-research");
+    expect(missingRead.currentRoute.value.name).toBe("dashboard");
+  });
+
+  it("keeps the shared Project flow inside GEO Analysis RD and requires both permissions", async () => {
+    const routes = [
+      ["/geo-analysis/projects/new", "geo-analysis-project-new"],
+      ["/geo-analysis/projects/project-1/edit", "geo-analysis-project-edit"],
+      ["/geo-analysis/projects/project-1/query-research", "geo-analysis-project-query-research"],
+    ] as const;
+    const router = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => [
+        "geo.admin.access",
+        "geo.projects.read",
+        "geo.projects.create",
+        "geo.projects.update",
+        "geo.queries.manage",
+      ],
+    );
+
+    for (const [path, routeName] of routes) {
+      await router.push(path);
+      await router.isReady();
+      expect(router.currentRoute.value.name).toBe(routeName);
+      expect(getRoutePage(router.currentRoute.value.meta.page)).toBe("geo-analysis-projects");
+      expect(router.currentRoute.value.meta.geoProjectArea).toBe("rd");
+    }
+
+    const missingAdmin = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.create"],
+    );
+    await missingAdmin.push("/geo-analysis/projects/new");
+    await missingAdmin.isReady();
+    expect(missingAdmin.currentRoute.value.name).toBe("dashboard");
+
+    const missingCreate = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.admin.access"],
+    );
+    await missingCreate.push("/geo-analysis/projects/new");
+    await missingCreate.isReady();
+    expect(missingCreate.currentRoute.value.name).toBe("dashboard");
+
+    const missingRead = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => [
+        "geo.admin.access",
+        "geo.projects.update",
+        "geo.queries.manage",
+      ],
+    );
+    await missingRead.push("/geo-analysis/projects/project-1/edit");
+    await missingRead.isReady();
+    expect(missingRead.currentRoute.value.name).toBe("dashboard");
+    await missingRead.push("/geo-analysis/projects/project-1/query-research");
+    expect(missingRead.currentRoute.value.name).toBe("dashboard");
   });
 
   it("redirects users without the required GEO capability", async () => {

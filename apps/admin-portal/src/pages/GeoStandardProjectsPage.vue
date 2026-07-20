@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFilterDropdown from "../components/geo/GeoFilterDropdown.vue";
 import GeoPageHeader from "../components/geo/GeoPageHeader.vue";
@@ -8,6 +8,7 @@ import GeoPagination from "../components/geo/GeoPagination.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
 import { useGeoProjectWorkspace } from "../composables/geo-project-workspace";
 import { api } from "../services/api";
+import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import { hasPermission } from "../utils/permissions";
 import {
   applyGeoProjectStatusResponse,
@@ -18,7 +19,9 @@ import type { GeoProject, ToastTone } from "../types";
 
 const props = defineProps<{ permissions: readonly string[] }>();
 const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
+const route = useRoute();
 const router = useRouter();
+const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const workspace = useGeoProjectWorkspace("projects");
 const search = ref("");
 const page = ref(1);
@@ -145,7 +148,7 @@ async function updateProjectStatus(): Promise<void> {
       :action-disabled="!canCreate"
       @update:selected-project-id="workspace.selectedProjectId.value = $event"
       @refresh="refresh"
-      @action="router.push({ name: 'geo-project-new' })"
+      @action="router.push({ name: projectRoutes.projectNew })"
     />
 
     <div v-if="workspace.errorMessage.value" class="geo-error-message">{{ workspace.errorMessage.value }}</div>
@@ -174,8 +177,8 @@ async function updateProjectStatus(): Promise<void> {
               <td>{{ projectDetails[project.id]?.alias || '—' }}</td>
               <td><span class="geo-project-status" :class="`is-${project.status}`"><i></i>{{ statusLabels[project.status] ?? project.status }}</span></td>
               <td class="sticky-action"><div class="geo-row-actions">
-                <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: 'geo-project-edit', params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>
-                <button class="geo-row-action" type="button" title="Query Search" :disabled="!canResearch" @click.stop="router.push({ name: 'geo-query-research', params: { projectId: project.id } })"><AppIcon name="search" :size="14" /></button>
+                <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: projectRoutes.projectEdit, params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>
+                <button class="geo-row-action" type="button" title="Query Search" :disabled="!canResearch" @click.stop="router.push({ name: projectRoutes.queryResearch, params: { projectId: project.id } })"><AppIcon name="search" :size="14" /></button>
                 <button class="geo-row-action" type="button" :title="geoProjectStatusAction(project.status)" :disabled="!canUpdate || statusUpdateState.updatingId === project.id" @click.stop="archiveTarget = project"><AppIcon name="x" :size="14" /></button>
               </div></td>
             </tr>

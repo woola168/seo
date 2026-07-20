@@ -13,6 +13,16 @@ describe("GEO navigation", () => {
       "GEO分析-RD",
       "GEO分析",
     ]);
+    expect(navigation[0]?.children?.some((item) => item.id === "geo-analysis-projects")).toBe(true);
+  });
+
+  it("hides RD Projects when the RD admin cannot read projects", () => {
+    const navigation = buildGeoNavigation(["geo.admin.access"]);
+
+    expect(navigation).toHaveLength(1);
+    expect(navigation[0]?.id).toBe("geo-analysis-rd");
+    expect(navigation[0]?.children?.some((item) => item.id === "geo-analysis-projects")).toBe(false);
+    expect(navigation[0]?.children?.some((item) => item.id === "geo-analysis-overview")).toBe(true);
   });
 
   it("shows only standard GEO to a project reader", () => {

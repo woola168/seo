@@ -88,12 +88,15 @@ export function buildGeoNavigation(
 ): NavigationItem[] {
   const navigation: NavigationItem[] = [];
   if (hasPermission(permissions, GEO_ADMIN_ACCESS)) {
+    const visibleRdChildren = rdChildren.filter(
+      (item) => item.id !== "geo-analysis-projects" || hasPermission(permissions, GEO_STANDARD_ACCESS),
+    );
     navigation.push({
       id: "geo-analysis-rd",
       label: "GEO分析-RD",
       icon: "activity",
       group: "分析工具",
-      children: rdChildren,
+      children: visibleRdChildren,
     });
   }
   if (hasPermission(permissions, GEO_STANDARD_ACCESS)) {
