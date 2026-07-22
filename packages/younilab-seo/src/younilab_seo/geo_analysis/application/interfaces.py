@@ -197,7 +197,18 @@ class KMindHubExtractionUnavailable(RuntimeError):
 class KMindHubExtractionValidationError(ValueError):
     """KMindHub preview 結果不符合 GEO 報表資料規則。"""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        request_payload: dict | None = None,
+        response_payload: dict | None = None,
+        validation_failures: list[dict] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.request_payload = request_payload
+        self.response_payload = response_payload
+        self.validation_failures = list(validation_failures or [])
 
 
 class AuthenticationRequired(PermissionError):

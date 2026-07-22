@@ -16,6 +16,7 @@ from younilab_seo.geo_analysis.application import (
     GeoRunResultRecord,
     GeoSentimentFact,
     GeoTopicRecord,
+    KMindHubExtractionValidationError,
     RunResultSemanticAnalysisNotFound,
     SaveSemanticRunResultAnalysisCommand,
 )
@@ -340,6 +341,38 @@ def test_analyze_run_result_saves_failed_on_analyzer_exception() -> None:
         assert result.status == "failed"
         assert result.error_code == "TimeoutError"
         assert result.error_message == "semantic timeout"
+
+    asyncio.run(run())
+
+
+def test_analyze_run_result_saves_kmindhub_validation_diagnostics() -> None:
+    async def run() -> None:
+        repository = _repository()
+        error = KMindHubExtractionValidationError(
+            "KMindHub preview verification failed",
+            request_payload={"body": {"taskId": "task-1", "text": "answer"}},
+            response_payload={"items": [{"verification": {"passed": False}}]},
+            validation_failures=[
+                {
+                    "itemIndex": 0,
+                    "fieldName": "evidenceText",
+                    "kind": "evidence",
+                    "code": "unsupportedBySource",
+                    "reason": "not supported",
+                }
+            ],
+        )
+
+        result = await AnalyzeRunResult(
+            repository,
+            FakeAnalyzer(error=error),
+            FakeClock(),
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert result.status == "failed"
+        assert result.analyzer_request_payload == error.request_payload
+        assert result.analyzer_response_payload == error.response_payload
+        assert result.validation_failures == error.validation_failures
 
     asyncio.run(run())
 

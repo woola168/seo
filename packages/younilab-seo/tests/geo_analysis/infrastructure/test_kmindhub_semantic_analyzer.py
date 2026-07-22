@@ -688,7 +688,14 @@ def test_kmindhub_semantic_analyzer_does_not_repair_failed_verification() -> Non
         )
         item.verification = {
             "passed": False,
-            "failures": [{"field": "evidenceText"}],
+            "failures": [
+                {
+                    "fieldName": "evidenceText",
+                    "kind": "evidence",
+                    "code": "unsupportedBySource",
+                    "reason": "evidence does not support the extracted value",
+                }
+            ],
         }
         repairer = FakeEvidenceTextRepairer(
             repairs=[
@@ -705,7 +712,7 @@ def test_kmindhub_semantic_analyzer_does_not_repair_failed_verification() -> Non
         with pytest.raises(
             KMindHubExtractionValidationError,
             match="KMindHub preview verification failed",
-        ):
+        ) as exc_info:
             await KMindHubGeoRunResultAnalyzer(
                 FakeRepository(),
                 FakeWorkspaceResolver(),
@@ -714,6 +721,22 @@ def test_kmindhub_semantic_analyzer_does_not_repair_failed_verification() -> Non
             ).analyze(command)
 
         assert repairer.commands == []
+        assert exc_info.value.request_payload["path"] == "/extractions"
+        assert exc_info.value.request_payload["body"]["text"].endswith(
+            "--- END AI ANSWER ---"
+        )
+        assert exc_info.value.response_payload["items"][0]["verification"] == (
+            item.verification
+        )
+        assert exc_info.value.validation_failures == [
+            {
+                "itemIndex": 0,
+                "fieldName": "evidenceText",
+                "kind": "evidence",
+                "code": "unsupportedBySource",
+                "reason": "evidence does not support the extracted value",
+            }
+        ]
 
     asyncio.run(run())
 

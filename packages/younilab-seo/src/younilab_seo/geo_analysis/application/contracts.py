@@ -277,6 +277,9 @@ class GeoRunResultAnalysis(ContractModel):
     semantic_facts: list[GeoResponseSemanticFact] = Field(default_factory=list)
     error_code: str | None = None
     error_message: str | None = None
+    analyzer_request_payload: dict | None = None
+    analyzer_response_payload: dict | None = None
+    validation_failures: list[dict] = Field(default_factory=list)
 
 
 class SaveSemanticRunResultAnalysisCommand(ContractModel):
@@ -738,6 +741,8 @@ class KMindHubExtractionPreviewResult(ContractModel):
 
     task_id: UUID
     items: list[KMindHubExtractionPreviewItem] = Field(default_factory=list)
+    request_payload: dict | None = None
+    response_payload: dict | None = None
 
 
 class KMindHubExtractionCommitResult(ContractModel):

@@ -669,6 +669,18 @@ class GeoRunResultAnalysisRow(SQLModel, table=True):
     kmindhub_item_id: str | None = Field(default=None, sa_column=Column(String(200)))
     error_code: str | None = Field(default=None, sa_column=Column(String(100)))
     error_message: str | None = Field(default=None, sa_column=Column(Text))
+    analyzer_request_payload: dict | None = Field(
+        default=None,
+        sa_column=Column(JSONB),
+    )
+    analyzer_response_payload: dict | None = Field(
+        default=None,
+        sa_column=Column(JSONB),
+    )
+    validation_failures: list = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False),
+    )
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
