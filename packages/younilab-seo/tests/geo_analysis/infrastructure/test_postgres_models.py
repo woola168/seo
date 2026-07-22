@@ -173,6 +173,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     daily_uniqueness_path = (
         postgres_dir / "020_geo_query_daily_run_uniqueness.sql"
     )
+    semantic_diagnostics_path = (
+        postgres_dir / "021_geo_semantic_analysis_diagnostics.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -183,6 +186,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
     query_settings = query_settings_path.read_text(encoding="utf-8")
     daily_uniqueness = daily_uniqueness_path.read_text(encoding="utf-8")
+    semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -223,6 +227,12 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "is_daily_slot_owner = ranked_jobs.daily_rank = 1" in daily_uniqueness
     assert daily_uniqueness.startswith("BEGIN;")
     assert daily_uniqueness.rstrip().endswith("COMMIT;")
+    assert "ALTER TABLE geo_run_result_analysis" in semantic_diagnostics
+    assert "analyzer_request_payload jsonb" in semantic_diagnostics
+    assert "analyzer_response_payload jsonb" in semantic_diagnostics
+    assert "validation_failures jsonb NOT NULL" in semantic_diagnostics
+    assert semantic_diagnostics.startswith("BEGIN;")
+    assert semantic_diagnostics.rstrip().endswith("COMMIT;")
     daily_slot_index = next(
         index
         for index in GeoQueryRunJobRow.__table__.indexes
@@ -264,6 +274,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
 def test_semantic_analysis_rows_expose_phase_two_columns() -> None:
     assert "analyzer" in GeoRunResultAnalysisRow.__table__.columns
     assert "analyzer_version" in GeoRunResultAnalysisRow.__table__.columns
+    assert "analyzer_request_payload" in GeoRunResultAnalysisRow.__table__.columns
+    assert "analyzer_response_payload" in GeoRunResultAnalysisRow.__table__.columns
+    assert "validation_failures" in GeoRunResultAnalysisRow.__table__.columns
     assert "entity_role" in GeoRunResultEntityMentionRow.__table__.columns
     assert "mentioned" in GeoRunResultEntityMentionRow.__table__.columns
     assert "first_mention_order" in GeoRunResultEntityMentionRow.__table__.columns

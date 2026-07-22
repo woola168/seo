@@ -127,6 +127,19 @@ def test_kmindhub_client_runs_extraction_preview_and_commit() -> None:
         )
 
         assert preview.items[0].fields["summary"].value == "Acme is good"
+        assert preview.request_payload == {
+            "taskId": str(created_task_id),
+            "text": "Acme is good",
+        }
+        assert preview.response_payload == {
+            "taskId": str(created_task_id),
+            "items": [
+                {
+                    "fields": {"summary": {"value": "Acme is good"}},
+                    "verification": {"passed": True},
+                }
+            ],
+        }
         assert commit.commit_batch_id == "batch-1"
         assert captured == [
             ("POST", "/extraction-tasks"),

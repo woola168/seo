@@ -3247,6 +3247,9 @@ async def _semantic_analysis_record(
         ],
         error_code=row.error_code,
         error_message=row.error_message,
+        analyzer_request_payload=row.analyzer_request_payload,
+        analyzer_response_payload=row.analyzer_response_payload,
+        validation_failures=row.validation_failures,
     )
 
 
@@ -3316,6 +3319,9 @@ def _apply_semantic_analysis(
     row.analyzer_version = analysis.analyzer_version
     row.error_code = analysis.error_code
     row.error_message = analysis.error_message
+    row.analyzer_request_payload = analysis.analyzer_request_payload
+    row.analyzer_response_payload = analysis.analyzer_response_payload
+    row.validation_failures = analysis.validation_failures
     row.updated_at = occurred_at
     row.completed_at = occurred_at if analysis.status in {"completed", "failed"} else None
 

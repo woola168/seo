@@ -132,7 +132,29 @@ class KMindHubGeoRunResultAnalyzer:
                     preview=preview,
                     error=exc,
                 )
-            raise
+            raise KMindHubExtractionValidationError(
+                str(exc),
+                request_payload={
+                    "method": "POST",
+                    "path": "/extractions",
+                    "workspaceId": str(workspace_id),
+                    "body": (
+                        preview.request_payload
+                        if preview.request_payload is not None
+                        else {"taskId": str(task_id), "text": extraction_text}
+                    ),
+                },
+                response_payload=(
+                    preview.response_payload
+                    if preview.response_payload is not None
+                    else preview.model_dump(
+                        mode="json",
+                        by_alias=True,
+                        exclude={"request_payload", "response_payload"},
+                    )
+                ),
+                validation_failures=_preview_verification_failures(preview.items),
+            ) from exc
         return preview, facts
 
     async def _ensure_task(self, tenant_id: UUID, workspace_id: UUID) -> UUID:
@@ -421,6 +443,18 @@ def _validate_preview_verification(
             },
         )
         raise KMindHubExtractionValidationError("KMindHub preview verification failed")
+
+
+def _preview_verification_failures(
+    items: list[KMindHubExtractionPreviewItem],
+) -> list[dict]:
+    failures: list[dict] = []
+    for item_index, item in enumerate(items):
+        verification = item.verification or {}
+        for failure in verification.get("failures", []):
+            if isinstance(failure, dict):
+                failures.append({**failure, "itemIndex": item_index})
+    return failures
 
 
 async def _repair_invalid_evidence(
@@ -773,6 +807,8 @@ class HttpKMindHubWorkspaceClient:
                         )
                         for item in payload.get("items", [])
                     ],
+                    request_payload=request_data,
+                    response_payload=payload,
                 )
             except (KeyError, ValueError, TypeError) as exc:
                 last_error = exc

@@ -114,6 +114,9 @@ class AnalyzeRunResult:
                 run_result_id,
                 exc.__class__.__name__,
                 str(exc),
+                analyzer_request_payload=getattr(exc, "request_payload", None),
+                analyzer_response_payload=getattr(exc, "response_payload", None),
+                validation_failures=getattr(exc, "validation_failures", None),
             )
         return await self._save(tenant_id, analysis)
 
@@ -123,6 +126,10 @@ class AnalyzeRunResult:
         run_result_id: UUID,
         error_code: str,
         error_message: str,
+        *,
+        analyzer_request_payload: dict | None = None,
+        analyzer_response_payload: dict | None = None,
+        validation_failures: list[dict] | None = None,
     ) -> GeoRunResultAnalysis:
         return await self._save(
             tenant_id,
@@ -132,6 +139,9 @@ class AnalyzeRunResult:
                 status="failed",
                 error_code=error_code,
                 error_message=error_message,
+                analyzer_request_payload=analyzer_request_payload,
+                analyzer_response_payload=analyzer_response_payload,
+                validation_failures=validation_failures or [],
             ),
         )
 
