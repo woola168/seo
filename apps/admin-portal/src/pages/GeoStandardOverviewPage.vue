@@ -776,7 +776,7 @@ function apiMessage(caught: unknown, fallback: string): string {
           <i></i>
           <span>負面提及 <b>{{ ownMentionTotals.negative }}</b></span>
           <i></i>
-          <span>正負比 <b>{{ ownMentionTotals.ratio ? `${ownMentionTotals.ratio.toFixed(1)}:1` : '—' }}</b></span>
+          <span>正負比 <b>{{ ownMentionTotals.ratio !== null ? `${Math.round(ownMentionTotals.ratio)}:1` : '—' }}</b></span>
         </div>
         <div class="sentiment-legend">
           <span v-if="sentimentMode !== 'negative'"><i class="positive"></i>正向提及</span>

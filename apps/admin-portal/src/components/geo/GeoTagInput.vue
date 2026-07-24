@@ -7,13 +7,13 @@ const emit = defineEmits<{ "update:modelValue": [values: string[]] }>();
 const draft = ref("");
 
 function commit(): void {
-  const additions = draft.value.split(",").map((value) => value.trim()).filter(Boolean);
+  const additions = draft.value.split(/[,，]/).map((value) => value.trim()).filter(Boolean);
   if (additions.length) emit("update:modelValue", Array.from(new Set([...props.modelValue, ...additions])));
   draft.value = "";
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Enter" || event.key === ",") {
+  if (event.key === "Enter" || event.key === "," || event.key === "，") {
     event.preventDefault();
     commit();
   } else if (event.key === "Backspace" && !draft.value && props.modelValue.length) {
