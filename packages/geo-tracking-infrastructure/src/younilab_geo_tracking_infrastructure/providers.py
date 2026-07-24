@@ -40,6 +40,9 @@ from younilab_geo_tracking_infrastructure.config import (
     GeoTrackingSettings,
     SerpApiLocaleProfile,
 )
+from younilab_geo_tracking_infrastructure.gemini_usage import (
+    gemini_request_usage,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +91,7 @@ class _GeminiApiCallBudget:
                         request_kind if first_attempt else "transient_retry"
                     ),
                     classify_failure=_classify_gemini_failure,
+                    read_usage=gemini_request_usage,
                 )
             except APIError as exc:
                 await self._retry_or_raise(
@@ -544,6 +548,7 @@ class GeminiVertexAnswerProvider:
                 use_case="geo_query_answer",
                 source_service="geo-tracking-api",
                 model=self._settings.gemini_model,
+                provider_region=self._settings.vertex_location,
                 uses_grounding=True,
                 tenant_id=request.tenant_id,
                 project_id=request.project_id,
@@ -637,6 +642,7 @@ class GeminiQueryGenerationProvider:
                 use_case="query_generation",
                 source_service="geo-tracking-api",
                 model=self._settings.gemini_model,
+                provider_region=self._settings.vertex_location,
             ),
         )
         try:
@@ -649,6 +655,7 @@ class GeminiQueryGenerationProvider:
                 ),
                 request_kind="initial",
                 classify_failure=_classify_gemini_failure,
+                read_usage=gemini_request_usage,
             )
         finally:
             client.close()
@@ -705,6 +712,7 @@ class GeminiQueryResearchProvider:
                 use_case="query_research",
                 source_service="geo-tracking-api",
                 model=self._settings.gemini_model,
+                provider_region=self._settings.vertex_location,
                 uses_grounding=True,
             ),
         )
@@ -718,6 +726,7 @@ class GeminiQueryResearchProvider:
                 ),
                 request_kind="initial",
                 classify_failure=_classify_gemini_failure,
+                read_usage=gemini_request_usage,
             )
         finally:
             client.close()

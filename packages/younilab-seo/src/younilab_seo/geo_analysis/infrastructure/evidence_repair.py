@@ -14,6 +14,7 @@ from younilab_provider_request_audit import (
     ProviderRequestExecutor,
     ProviderRequestFailure,
     ProviderRequestRecorder,
+    ProviderRequestUsage,
 )
 
 from younilab_seo.geo_analysis.application import (
@@ -162,6 +163,7 @@ class GeminiEvidenceTextRepairer:
                 use_case="evidence_repair",
                 source_service=self.source_service,
                 model=self.settings.model,
+                provider_region=self.settings.vertex_location,
             ),
         )
         try:
@@ -170,6 +172,7 @@ class GeminiEvidenceTextRepairer:
                     lambda: self.generate_content(prompt),
                     request_kind="initial",
                     classify_failure=_classify_gemini_failure,
+                    read_usage=_gemini_request_usage,
                 )
                 try:
                     return _GeminiEvidenceRepairOutput.model_validate(response)
@@ -193,6 +196,7 @@ class GeminiEvidenceTextRepairer:
                 ),
                 request_kind="initial",
                 classify_failure=_classify_gemini_failure,
+                read_usage=_gemini_request_usage,
             )
             if isinstance(response.parsed, _GeminiEvidenceRepairOutput):
                 return response.parsed
@@ -246,6 +250,62 @@ def _classify_gemini_failure(error: Exception) -> ProviderRequestFailure:
         ),
         error_type=error.__class__.__name__,
     )
+
+
+def _gemini_request_usage(response: Any) -> ProviderRequestUsage | None:
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata is None:
+        return None
+    output_token_count = getattr(metadata, "response_token_count", None)
+    if not isinstance(output_token_count, int):
+        output_token_count = getattr(metadata, "candidates_token_count", None)
+    model_dump = getattr(metadata, "model_dump", None)
+    payload = (
+        model_dump(mode="json", exclude_none=True)
+        if callable(model_dump)
+        else {
+            name: value
+            for name in (
+                "prompt_token_count",
+                "response_token_count",
+                "candidates_token_count",
+                "total_token_count",
+                "cached_content_token_count",
+                "thoughts_token_count",
+                "tool_use_prompt_token_count",
+            )
+            if (value := getattr(metadata, name, None)) is not None
+        }
+    )
+    traffic_type = getattr(metadata, "traffic_type", None)
+    return ProviderRequestUsage(
+        input_token_count=_optional_int(metadata, "prompt_token_count"),
+        output_token_count=(
+            output_token_count if isinstance(output_token_count, int) else None
+        ),
+        total_token_count=_optional_int(metadata, "total_token_count"),
+        cached_input_token_count=_optional_int(
+            metadata,
+            "cached_content_token_count",
+        ),
+        reasoning_token_count=_optional_int(metadata, "thoughts_token_count"),
+        tool_input_token_count=_optional_int(
+            metadata,
+            "tool_use_prompt_token_count",
+        ),
+        traffic_type=(
+            str(getattr(traffic_type, "value", traffic_type))
+            if traffic_type is not None
+            else None
+        ),
+        usage_metadata=payload if isinstance(payload, dict) else {},
+        meter_usage={"google_web_search_query": 0},
+    )
+
+
+def _optional_int(value: Any, name: str) -> int | None:
+    candidate = getattr(value, name, None)
+    return candidate if isinstance(candidate, int) else None
 
 
 def _source_blocks(raw_response: str) -> list[dict[str, str]]:

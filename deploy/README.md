@@ -85,6 +85,8 @@ GEO_SCHEDULER_POLL_SECONDS=60
 
 部署 provider request 稽核功能前，需先執行 `deploy/local/postgresql/018_provider_request_audit.sql`。`geo-tracking-api`、`geo-analysis-api` 與 GEO worker 會在呼叫 Gemini 或 SerpApi 前先寫入 `provider_request`；若 migration 尚未套用，provider request 會依 fail-closed 規則停止，不會在沒有稽核紀錄的情況下繼續呼叫。
 
+部署 provider usage 與牌價成本估算前，需先執行 `deploy/local/postgresql/023_provider_request_usage_cost_estimate.sql`，再部署新版 Tracking API 與 GEO worker。此 migration 會擴充 `provider_request`、建立版本化費率表及成本 views；舊 Gemini request 的 usage 標記為 `unavailable`，其他 provider 標記為 `not_applicable`，不回填 token 或成本。
+
 部署 deterministic entity mention detection 前，需先執行 `deploy/local/postgresql/022_geo_run_result_entity_detection.sql`，再部署新版 GEO API 與 worker。新分析會將 mention 寫入獨立 detection tables；既有、尚未建立 detection 的 run result 仍讀取 KMindHub legacy mention。回滾應用程式版本時可保留新增資料表，不需刪除 detection 資料。
 
 Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。
@@ -220,4 +222,39 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 SELECT code, default_model
 FROM geo_ai_platform
 WHERE code = 'gemini';
+```
+
+### Provider request 牌價成本估算
+
+逐 request 與每日彙總可直接查詢：
+
+```sql
+SELECT id, use_case, request_kind, estimation_status,
+       estimated_list_cost_usd
+FROM provider_request_cost_estimate
+ORDER BY started_at DESC;
+
+SELECT *
+FROM provider_request_daily_cost_estimate
+ORDER BY usage_date DESC, provider_code, model;
+```
+
+`estimated_list_cost_usd` 只代表 USD 公開牌價估算，不扣免費額度、credits、合約折扣、稅與匯率，不能視為 GCP 正式帳單。`usage_unavailable`、`rate_missing`、`not_supported` 與 `billing_uncertain` 不會產生估算金額；明確 HTTP 4xx／5xx 失敗則顯示 `not_billable` 與零成本。
+
+費率異動時只新增較晚 `effective_from` 的版本，不覆寫舊列。查詢 view 會依 request 的 `started_at`、model、region class、traffic type 與 meter 選取當時有效且最新的費率：
+
+```sql
+-- 以下 UUID、價格與生效日期僅為新增版本範例，執行前必須替換。
+INSERT INTO provider_pricing_rate (
+    id, platform_code, provider_code, model, provider_region_class,
+    traffic_type, meter_code, unit_quantity, unit_price_usd,
+    effective_from, source_url, source_checked_at
+) VALUES (
+    '00000000-0000-4000-8000-000000000000',
+    'gemini', 'google_vertex_ai', 'gemini-3.1-flash-lite',
+    'global', 'ON_DEMAND', 'input_token', 1000000, 0.30,
+    '2027-01-01T00:00:00Z',
+    'https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing',
+    '2026-12-31'
+);
 ```

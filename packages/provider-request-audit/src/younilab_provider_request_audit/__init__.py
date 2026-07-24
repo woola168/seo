@@ -6,6 +6,7 @@ from younilab_provider_request_audit.recorder import (
     ProviderRequestFailure,
     ProviderRequestRecorder,
     ProviderRequestStarted,
+    ProviderRequestUsage,
     UnconfiguredProviderRequestRecorder,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "ProviderRequestFailure",
     "ProviderRequestRecorder",
     "ProviderRequestStarted",
+    "ProviderRequestUsage",
     "UnconfiguredProviderRequestRecorder",
 ]
