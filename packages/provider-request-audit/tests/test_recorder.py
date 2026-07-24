@@ -1,4 +1,6 @@
 import asyncio
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,6 +11,7 @@ from younilab_provider_request_audit import (
     MemoryProviderRequestRecorder,
     ProviderRequestContext,
     ProviderRequestExecutor,
+    ProviderRequestUsage,
     UnconfiguredProviderRequestRecorder,
 )
 
@@ -45,6 +48,91 @@ async def test_executor_records_one_row_for_each_request() -> None:
     ]
     assert requests[0].operation_id == requests[1].operation_id
     assert list(recorder.outcomes.values()) == ["succeeded", "succeeded"]
+
+
+@pytest.mark.anyio
+async def test_executor_records_usage_from_successful_response() -> None:
+    recorder = MemoryProviderRequestRecorder()
+    executor = ProviderRequestExecutor(recorder, _context())
+    usage = ProviderRequestUsage(
+        input_token_count=100,
+        output_token_count=40,
+        total_token_count=150,
+        reasoning_token_count=10,
+        meter_usage={"google_web_search_query": 2},
+    )
+
+    result = await executor.execute(
+        _successful_request,
+        request_kind="initial",
+        read_usage=lambda _: usage,
+    )
+
+    request_id = next(iter(recorder.requests))
+    assert result == "ok"
+    assert recorder.usages[request_id] == usage
+    assert recorder.usage_capture_statuses[request_id] == "recorded"
+
+
+@pytest.mark.anyio
+async def test_executor_keeps_success_when_usage_reader_fails() -> None:
+    recorder = MemoryProviderRequestRecorder()
+    executor = ProviderRequestExecutor(recorder, _context())
+
+    def fail_usage_reader(result: str) -> ProviderRequestUsage:
+        raise RuntimeError("invalid usage")
+
+    result = await executor.execute(
+        _successful_request,
+        request_kind="initial",
+        read_usage=fail_usage_reader,
+    )
+
+    request_id = next(iter(recorder.requests))
+    assert result == "ok"
+    assert request_id not in recorder.usages
+    assert recorder.usage_capture_statuses[request_id] == "unavailable"
+
+
+@pytest.mark.anyio
+async def test_executor_rejects_invalid_usage_reader_value_without_retry() -> None:
+    recorder = MemoryProviderRequestRecorder()
+    executor = ProviderRequestExecutor(recorder, _context())
+
+    result = await executor.execute(
+        _successful_request,
+        request_kind="initial",
+        read_usage=lambda _: {"input_token_count": 10},  # type: ignore[arg-type]
+    )
+
+    request_id = next(iter(recorder.requests))
+    assert result == "ok"
+    assert request_id not in recorder.usages
+    assert recorder.usage_capture_statuses[request_id] == "unavailable"
+
+
+@pytest.mark.anyio
+async def test_executor_marks_failed_usage_request_unavailable() -> None:
+    recorder = MemoryProviderRequestRecorder()
+    executor = ProviderRequestExecutor(recorder, _context())
+
+    async def fail() -> str:
+        raise TimeoutError("timeout")
+
+    with pytest.raises(TimeoutError):
+        await executor.execute(
+            fail,
+            request_kind="initial",
+            read_usage=lambda _: ProviderRequestUsage(),
+        )
+
+    request_id = next(iter(recorder.requests))
+    assert recorder.usage_capture_statuses[request_id] == "unavailable"
+
+
+def test_provider_request_usage_rejects_negative_counts() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        ProviderRequestUsage(input_token_count=-1)
 
 
 @pytest.mark.anyio
@@ -110,6 +198,40 @@ async def test_postgres_recorder_creates_one_pool_for_concurrent_first_use(
     assert first is second
 
 
+@pytest.mark.anyio
+async def test_postgres_recorder_serializes_usage_json() -> None:
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    class FakePool:
+        async def execute(self, query: str, *arguments: object) -> str:
+            calls.append((query, arguments))
+            return "UPDATE 1"
+
+    recorder = postgres_module.PostgresProviderRequestRecorder(
+        "postgresql://postgres:postgres@localhost/postgres"
+    )
+    recorder._pool = FakePool()  # type: ignore[assignment]
+    usage = ProviderRequestUsage(
+        input_token_count=10,
+        output_token_count=4,
+        traffic_type="ON_DEMAND",
+        usage_metadata={"promptTokenCount": 10},
+        meter_usage={"google_web_search_query": 2},
+    )
+
+    await recorder.succeed(
+        uuid4(),
+        completed_at=datetime.now(UTC),
+        duration_ms=5,
+        usage=usage,
+        usage_capture_status="recorded",
+    )
+
+    _, arguments = calls[0]
+    assert json.loads(arguments[12]) == {"promptTokenCount": 10}
+    assert json.loads(arguments[13]) == {"google_web_search_query": 2}
+
+
 async def _successful_request() -> str:
     return "ok"
 
@@ -138,3 +260,30 @@ def test_provider_request_migration_keeps_one_row_per_request_contract() -> None
         "run_request_id",
     ):
         assert field in migration
+
+
+def test_provider_request_usage_cost_migration_adds_rates_and_views() -> None:
+    migration = (
+        Path(__file__).parents[3]
+        / "deploy"
+        / "local"
+        / "postgresql"
+        / "023_provider_request_usage_cost_estimate.sql"
+    ).read_text(encoding="utf-8")
+
+    for field in (
+        "input_token_count",
+        "output_token_count",
+        "total_token_count",
+        "cached_input_token_count",
+        "reasoning_token_count",
+        "tool_input_token_count",
+        "usage_metadata",
+        "meter_usage",
+    ):
+        assert field in migration
+    assert "CREATE TABLE IF NOT EXISTS provider_pricing_rate" in migration
+    assert "CREATE OR REPLACE VIEW provider_request_cost_estimate" in migration
+    assert "CREATE OR REPLACE VIEW provider_request_daily_cost_estimate" in migration
+    assert "estimated_list_cost_usd" in migration
+    assert "free" not in migration.lower()

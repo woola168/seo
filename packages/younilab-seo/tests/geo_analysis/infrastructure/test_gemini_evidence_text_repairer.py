@@ -157,6 +157,14 @@ def test_gemini_evidence_repairer_reuses_client_without_search_tool(
                 return SimpleNamespace(
                     parsed=None,
                     text='{"repairs":[{"itemIndex":0,"sourceBlockId":"B0000"}]}',
+                    usage_metadata=SimpleNamespace(
+                        prompt_token_count=20,
+                        candidates_token_count=5,
+                        total_token_count=27,
+                        thoughts_token_count=2,
+                        tool_use_prompt_token_count=0,
+                        traffic_type="ON_DEMAND",
+                    ),
                 )
 
         class FakeAsyncClient:
@@ -174,9 +182,10 @@ def test_gemini_evidence_repairer_reuses_client_without_search_tool(
                 clients.append(self)
 
         monkeypatch.setattr(evidence_repair.genai, "Client", FakeClient)
+        recorder = MemoryProviderRequestRecorder()
         repairer = GeminiEvidenceTextRepairer(
             GeminiEvidenceTextRepairSettings(vertex_project="test-project"),
-            MemoryProviderRequestRecorder(),
+            recorder,
             "test",
         )
         command = EvidenceTextRepairCommand(
@@ -196,6 +205,14 @@ def test_gemini_evidence_repairer_reuses_client_without_search_tool(
         assert len(clients) == 1
         assert len(calls) == 2
         assert calls[0]["config"].tools is None
+        assert len(recorder.usages) == 2
+        assert all(
+            usage.input_token_count == 20
+            and usage.output_token_count == 5
+            and usage.reasoning_token_count == 2
+            and usage.meter_usage == {"google_web_search_query": 0}
+            for usage in recorder.usages.values()
+        )
         session = clients[0].kwargs["http_options"].aiohttp_client
         assert clients[0].kwargs["project"] == "test-project"
         assert not session.closed

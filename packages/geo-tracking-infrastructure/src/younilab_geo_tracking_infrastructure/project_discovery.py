@@ -31,6 +31,7 @@ from younilab_geo_tracking_application import (
 )
 
 from younilab_geo_tracking_infrastructure.config import GeoTrackingSettings
+from younilab_geo_tracking_infrastructure.gemini_usage import gemini_request_usage
 
 _FETCH_REDIRECT_LIMIT = 3
 _FETCH_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024
@@ -217,6 +218,7 @@ class GeminiProjectDiscoveryProvider:
                 use_case="project_inspection",
                 source_service="geo-tracking-api",
                 model=self._settings.gemini_model,
+                provider_region=self._settings.vertex_location,
             ),
         )
         response = await self._generate(
@@ -342,6 +344,7 @@ class GeminiProjectDiscoveryProvider:
                 use_case="project_suggestions",
                 source_service="geo-tracking-api",
                 model=self._settings.gemini_model,
+                provider_region=self._settings.vertex_location,
                 uses_grounding=True,
             ),
         )
@@ -393,6 +396,7 @@ class GeminiProjectDiscoveryProvider:
             send,
             request_kind="initial",
             classify_failure=_classify_gemini_failure,
+            read_usage=gemini_request_usage,
         )
 
     def _get_client(self) -> genai.Client:

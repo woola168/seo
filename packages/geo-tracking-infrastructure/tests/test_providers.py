@@ -170,6 +170,10 @@ async def test_query_planning_records_each_gemini_request_and_disables_sdk_retry
     assert next(iter(research_recorder.requests.values())).context.use_case == (
         "query_research"
     )
+    assert set(generation_recorder.usage_capture_statuses.values()) == {
+        "unavailable"
+    }
+    assert set(research_recorder.usage_capture_statuses.values()) == {"unavailable"}
     assert all(
         arguments["http_options"].retry_options.attempts == 1
         for arguments in client_arguments
@@ -291,6 +295,7 @@ async def test_project_discovery_inspects_url_with_url_context_only() -> None:
     recorded = next(iter(recorder.requests.values()))
     assert recorded.context.use_case == "project_inspection"
     assert recorded.request_kind == "initial"
+    assert recorder.usage_capture_statuses[recorded.id] == "unavailable"
     assert "不得只依 domain" in config.system_instruction
     assert "工具結果本身不是最終答案" in config.system_instruction
     assert "sufficientContext=false" in config.system_instruction
@@ -971,6 +976,7 @@ async def test_grounding_fallback_shares_gemini_api_call_budget(
         "transient_retry",
         "transient_retry",
     ]
+    assert set(recorder.usage_capture_statuses.values()) == {"unavailable"}
 
 
 @pytest.mark.anyio
