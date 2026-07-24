@@ -35,7 +35,6 @@ const statusLabels: Record<string, string> = {
 const statusFilters = ref<string[]>([]);
 const localeFilters = ref<string[]>([]);
 const customerFilters = ref<string[]>([]);
-const projectDetails = ref<Record<string, { domain: string; alias: string }>>({});
 const archiveTarget = ref<GeoProject | null>(null);
 const statusUpdateState = reactive({ updatingId: "" });
 
@@ -52,10 +51,14 @@ const filteredProjects = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   return workspace.projects.value.filter((project) => {
     const locale = `${project.defaultRegion} / ${project.defaultLanguage}`;
-    const detail = projectDetails.value[project.id];
     const matchesKeyword =
       !keyword ||
-      [project.name, project.customerName, detail?.domain, detail?.alias]
+      [
+        project.name,
+        project.customerName,
+        project.ownBrand?.websiteUrl,
+        ...(project.ownBrand?.aliases ?? []),
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -84,25 +87,6 @@ onMounted(() => void refresh());
 
 async function refresh(): Promise<void> {
   await workspace.loadProjects();
-  const results = await Promise.allSettled(
-    workspace.projects.value.map(async (project) => {
-      const [entities, aliases] = await Promise.all([
-        api.geoAnalysis.entities(project.id),
-        api.geoAnalysis.projectAliases(project.id),
-      ]);
-      const ownBrand = entities.items.find((entity) => entity.entityType === "own_brand");
-      return {
-        id: project.id,
-        domain: ownBrand?.websiteUrl ?? "",
-        alias: ownBrand
-          ? aliases.items.filter((alias) => alias.entityId === ownBrand.id).map((alias) => alias.alias).join("、")
-          : "",
-      };
-    }),
-  );
-  projectDetails.value = Object.fromEntries(
-    results.flatMap((result) => result.status === "fulfilled" ? [[result.value.id, result.value]] : []),
-  );
 }
 
 function clearFilters(): void {
@@ -171,10 +155,10 @@ async function updateProjectStatus(): Promise<void> {
           <thead><tr><th>Project</th><th>客戶</th><th>地區 / 語系</th><th>別名</th><th>狀態</th><th class="sticky-action">操作</th></tr></thead>
           <tbody>
             <tr v-for="project in pageRows" :key="project.id">
-              <td><strong>{{ project.name }}</strong><small>{{ displayDomain(projectDetails[project.id]?.domain) }}</small></td>
+              <td><strong>{{ project.name }}</strong><small>{{ displayDomain(project.ownBrand?.websiteUrl ?? undefined) }}</small></td>
               <td>{{ project.customerName }}</td>
               <td>{{ project.defaultRegion }}/{{ project.defaultLanguage }}</td>
-              <td>{{ projectDetails[project.id]?.alias || '—' }}</td>
+              <td>{{ project.ownBrand?.aliases.join('、') || '—' }}</td>
               <td><span class="geo-project-status" :class="`is-${project.status}`"><i></i>{{ statusLabels[project.status] ?? project.status }}</span></td>
               <td class="sticky-action"><div class="geo-row-actions">
                 <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: projectRoutes.projectEdit, params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>

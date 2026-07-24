@@ -129,6 +129,50 @@ describe("useGeoProjectWorkspace", () => {
     expect(apiMocks.runResults).not.toHaveBeenCalled();
   });
 
+  it("uses the project summary for customer and own-brand list fields", async () => {
+    apiMocks.customers.mockReturnValue(collection([
+      { id: "customer-2", name: "Catalog Customer" },
+    ]));
+    apiMocks.projects.mockReturnValue(collection([
+      {
+        ...project,
+        tenantId: "tenant-1",
+        customerId: "customer-1",
+        customerName: "Summary Customer",
+        ownBrand: {
+          entityId: "entity-1",
+          websiteUrl: "https://example.com",
+          aliases: ["Example", "範例品牌"],
+        },
+      },
+      {
+        ...project,
+        id: "project-2",
+        tenantId: "tenant-1",
+        customerId: "customer-2",
+        customerName: null,
+        ownBrand: null,
+      },
+    ]));
+    const workspace = useGeoProjectWorkspace("projects");
+
+    await workspace.loadProjects();
+
+    expect(workspace.projects.value[0]).toMatchObject({
+      customerName: "Summary Customer",
+      ownBrand: {
+        websiteUrl: "https://example.com",
+        aliases: ["Example", "範例品牌"],
+      },
+    });
+    expect(workspace.projects.value[1]).toMatchObject({
+      customerName: "Catalog Customer",
+      ownBrand: null,
+    });
+    expect(apiMocks.entities).not.toHaveBeenCalled();
+    expect(apiMocks.projectAliases).not.toHaveBeenCalled();
+  });
+
   it("keeps entities when aliases fail and clears the error after a successful refresh", async () => {
     apiMocks.entities.mockReturnValue(collection([
       { id: "entity-1", projectId: "project-1", name: "Entity 1" },

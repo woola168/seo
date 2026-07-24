@@ -387,8 +387,15 @@ export interface GeoProject {
   defaultLanguage: string;
   status: "active" | "paused" | "archived";
   dailyRunBudget: number;
+  ownBrand?: GeoProjectOwnBrandSummary | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GeoProjectOwnBrandSummary {
+  entityId: string;
+  websiteUrl: string | null;
+  aliases: string[];
 }
 
 export interface GeoMarket {
@@ -820,6 +827,12 @@ export interface GeoProjectResource {
   dailyRunBudget: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GeoProjectSummaryResource extends GeoProjectResource {
+  tenantId: string;
+  customerName: string | null;
+  ownBrand: GeoProjectOwnBrandSummary | null;
 }
 
 export interface GeoProjectRequest {

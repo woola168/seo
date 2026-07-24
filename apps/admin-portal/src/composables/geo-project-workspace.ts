@@ -15,6 +15,7 @@ import type {
   GeoProject,
   GeoProjectRequest,
   GeoProjectResource,
+  GeoProjectSummaryResource,
   GeoQueryPlatformResource,
   GeoQueryResource,
   GeoTopicResource,
@@ -41,12 +42,14 @@ function customerName(customers: CustomerSummary[], customerId: string | null): 
 }
 
 function enrichProject(
-  project: GeoProjectResource,
+  project: GeoProjectResource | GeoProjectSummaryResource,
   customers: CustomerSummary[],
 ): GeoProject {
+  const summary = "ownBrand" in project ? project : null;
   return {
     ...project,
-    customerName: customerName(customers, project.customerId),
+    customerName: summary?.customerName?.trim() || customerName(customers, project.customerId),
+    ownBrand: summary?.ownBrand ?? null,
   };
 }
 

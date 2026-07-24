@@ -314,12 +314,12 @@ function addTopic(): void {
             <GeoFormField label="語系" required :error="errors.defaultLanguage"><input v-model="form.defaultLanguage" type="text" placeholder="例如：zh-TW" /></GeoFormField>
             <GeoFormField label="別名">
               <GeoTagInput v-model="ownBrandAliases" placeholder="請輸入別名" />
-              <small class="geo-form-helper">輸入別名後按 Enter 或逗號新增，可加入多組</small>
+              <small class="geo-form-helper" @click.prevent.stop>輸入別名後按 Enter 或逗號新增，可加入多組</small>
             </GeoFormField>
             <GeoFormField v-if="!isEdit" class="geo-form-full" label="競品" required :error="errors.competitors">
               <template #action><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></template>
               <GeoTagInput v-model="competitorNames" placeholder="請輸入競品" :invalid="Boolean(errors.competitors)" />
-              <small class="geo-form-helper">輸入品牌名稱後按 Enter 或逗號新增，可加入多組</small>
+              <small class="geo-form-helper" @click.prevent.stop>輸入品牌名稱後按 Enter 或逗號新增，可加入多組</small>
             </GeoFormField>
           </div>
         </section>
@@ -352,6 +352,6 @@ function addTopic(): void {
       </div>
     </div>
 
-    <Teleport to="body"><div v-if="competitorModalOpen" class="geo-dialog-backdrop geo-competitor-backdrop" @click.self="competitorModalOpen = false"><section class="geo-dialog geo-competitor-dialog"><header><strong>{{ editingCompetitorId ? "編輯競品" : "新增競品" }}</strong></header><div class="geo-dialog-form"><GeoFormField label="競品名稱" required><input v-model="competitorForm.name" type="text" placeholder="請輸入競品名稱" /></GeoFormField><GeoFormField label="網址"><input v-model="competitorForm.websiteUrl" type="text" placeholder="https://example.com" /></GeoFormField><GeoFormField label="別名"><GeoTagInput v-model="competitorForm.aliases" placeholder="請輸入別名" /><small class="geo-form-helper">輸入別名後按 Enter 或逗號新增，可加入多組</small></GeoFormField></div><footer><button class="button button-secondary" type="button" @click="competitorModalOpen = false">取消</button><button class="button button-primary" type="button" :disabled="!competitorForm.name.trim()" @click="saveCompetitor">儲存</button></footer></section></div></Teleport>
+    <Teleport to="body"><div v-if="competitorModalOpen" class="geo-dialog-backdrop geo-competitor-backdrop" @click.self="competitorModalOpen = false"><section class="geo-dialog geo-competitor-dialog"><header><strong>{{ editingCompetitorId ? "編輯競品" : "新增競品" }}</strong></header><div class="geo-dialog-form"><GeoFormField label="競品名稱" required><input v-model="competitorForm.name" type="text" placeholder="請輸入競品名稱" /></GeoFormField><GeoFormField label="網址"><input v-model="competitorForm.websiteUrl" type="text" placeholder="https://example.com" /></GeoFormField><GeoFormField label="別名"><GeoTagInput v-model="competitorForm.aliases" placeholder="請輸入別名" /><small class="geo-form-helper" @click.prevent.stop>輸入別名後按 Enter 或逗號新增，可加入多組</small></GeoFormField></div><footer><button class="button button-secondary" type="button" @click="competitorModalOpen = false">取消</button><button class="button button-primary" type="button" :disabled="!competitorForm.name.trim()" @click="saveCompetitor">儲存</button></footer></section></div></Teleport>
   </main>
 </template>

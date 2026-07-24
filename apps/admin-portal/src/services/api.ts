@@ -38,6 +38,7 @@
   GeoProjectSuggestionsResult,
   GeoProjectRequest,
   GeoProjectResource,
+  GeoProjectSummaryResource,
   GeoProjectQuerySettingsRequest,
   GeoProjectQuerySettingsResource,
   GeoProjectStatusRequest,
@@ -284,7 +285,7 @@ export const api = {
     platforms: () =>
       request<CollectionResponse<GeoPlatformResource>>("/api/geo/platforms"),
     projects: (customerId = "") =>
-      request<CollectionResponse<GeoProjectResource>>(
+      request<CollectionResponse<GeoProjectSummaryResource>>(
         `/api/geo/projects${customerId ? `?customerId=${customerId}` : ""}`,
       ),
     project: (projectId: string) =>
