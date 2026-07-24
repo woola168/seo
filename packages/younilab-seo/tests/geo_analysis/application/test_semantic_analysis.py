@@ -13,12 +13,17 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryRecord,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
+    GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoSentimentFact,
     GeoTopicRecord,
     KMindHubExtractionValidationError,
     RunResultSemanticAnalysisNotFound,
     SaveSemanticRunResultAnalysisCommand,
+    SaveRunResultEntityDetectionCommand,
+)
+from younilab_seo.geo_analysis.application.entity_mention_detection import (
+    ENTITY_MENTION_DETECTOR_VERSION,
 )
 
 
@@ -43,6 +48,10 @@ class FakeRepository:
     entities: list[GeoEntityRecord] = field(default_factory=list)
     semantic_analysis: GeoRunResultAnalysis | None = None
     saved_commands: list[SaveSemanticRunResultAnalysisCommand] = field(
+        default_factory=list
+    )
+    detection: GeoRunResultEntityDetection | None = None
+    saved_detections: list[SaveRunResultEntityDetectionCommand] = field(
         default_factory=list
     )
     save_returns_none: bool = False
@@ -79,6 +88,21 @@ class FakeRepository:
             if tenant_id == TENANT_ID and entity.project_id == project_id
         ]
 
+    async def list_project_aliases(self, tenant_id, project_id):
+        return []
+
+    async def save_run_result_entity_detection(
+        self,
+        tenant_id,
+        command: SaveRunResultEntityDetectionCommand,
+        occurred_at,
+    ):
+        if tenant_id != TENANT_ID:
+            return None
+        self.saved_detections.append(command)
+        self.detection = command.detection
+        return command.detection
+
     async def get_semantic_run_result_analysis(self, tenant_id, result_id):
         if (
             tenant_id == TENANT_ID
@@ -98,7 +122,23 @@ class FakeRepository:
             return None
         self.saved_commands.append(command)
         self.semantic_analysis = command.analysis
-        return command.analysis
+        if self.detection is None or self.detection.status != "completed":
+            return command.analysis
+        return command.analysis.model_copy(
+            update={
+                "entity_mentions": [
+                    GeoEntityMentionFact(
+                        entity_id=item.entity_id,
+                        entity_role=item.entity_role,
+                        entity_name=item.entity_name,
+                        mentioned=item.mentioned,
+                        first_mention_order=item.first_mention_order,
+                        evidence_text=item.evidence_text,
+                    )
+                    for item in self.detection.items
+                ]
+            }
+        )
 
 
 @dataclass
@@ -118,17 +158,6 @@ class FakeAnalyzer:
             analyzer="fake_analyzer",
             analyzer_version="test",
             status="completed",
-            entity_mentions=[
-                GeoEntityMentionFact(
-                    entity_id=command.entities.own_brand.entity_id,
-                    entity_role="own_brand",
-                    entity_name=command.entities.own_brand.name,
-                    mentioned=True,
-                    first_mention_order=1,
-                    evidence_text="Acme ERP",
-                    confidence=0.9,
-                )
-            ],
             sentiments=[
                 GeoSentimentFact(
                     entity_id=command.entities.own_brand.entity_id,
@@ -168,7 +197,8 @@ def test_analyze_run_result_saves_completed_semantic_facts() -> None:
         assert result.entity_mentions[0].entity_name == "Acme"
         assert result.sentiments[0].sentiment == "positive"
         assert result.semantic_facts[0].value == "ERP"
-        assert repository.saved_commands[-1].analysis == result
+        assert repository.saved_commands[-1].analysis.entity_mentions == []
+        assert repository.saved_detections[-1].detection.status == "completed"
         assert analyzer.commands[0].tenant_id == TENANT_ID
         assert analyzer.commands[0].project_id == project_id
         assert analyzer.commands[0].topic_id == topic_id
@@ -232,7 +262,7 @@ def test_analyze_run_result_force_reanalyze_overwrites_existing_analysis() -> No
         assert result.analyzer_version == "rerun"
         assert [fact.value for fact in result.semantic_facts] == ["導入顧問"]
         assert len(analyzer.commands) == 1
-        assert repository.saved_commands[-1].analysis == result
+        assert repository.saved_commands[-1].analysis.entity_mentions == []
 
     asyncio.run(run())
 
@@ -341,6 +371,38 @@ def test_analyze_run_result_saves_failed_on_analyzer_exception() -> None:
         assert result.status == "failed"
         assert result.error_code == "TimeoutError"
         assert result.error_message == "semantic timeout"
+        assert result.entity_mentions[0].entity_name == "Acme"
+        assert repository.saved_detections[-1].detection.status == "completed"
+
+    asyncio.run(run())
+
+
+def test_analyze_run_result_continues_when_entity_detection_fails(monkeypatch) -> None:
+    async def run() -> None:
+        repository = _repository()
+        analyzer = FakeAnalyzer()
+
+        def fail_detection(**kwargs):
+            raise RuntimeError("detector failed")
+
+        monkeypatch.setattr(
+            "younilab_seo.geo_analysis.application.use_cases.semantic_analysis.detect_entity_mentions",
+            fail_detection,
+        )
+        result = await AnalyzeRunResult(repository, analyzer, FakeClock()).execute(
+            TENANT_ID,
+            repository.result.id,
+        )
+
+        assert result.status == "completed"
+        assert result.entity_mentions == []
+        assert len(analyzer.commands) == 1
+        assert repository.saved_detections[-1].detection.status == "failed"
+        assert repository.saved_detections[-1].detection.error_code == "RuntimeError"
+        assert (
+            repository.saved_detections[-1].detection.detector_version
+            == ENTITY_MENTION_DETECTOR_VERSION
+        )
 
     asyncio.run(run())
 

@@ -7,7 +7,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoAnalysisEntityInput,
     GeoEntityRecord,
     GeoRunResultAnalysis,
+    GeoRunResultEntityDetection,
+    SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
+)
+from younilab_seo.geo_analysis.application.entity_mention_detection import (
+    ENTITY_MENTION_DETECTOR_VERSION,
+    detect_entity_mentions,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
@@ -72,6 +78,33 @@ class AnalyzeRunResult:
                 "own_brand_missing",
                 "active own brand entity is missing",
             )
+
+        aliases = await self.repository.list_project_aliases(
+            tenant_id,
+            query.project_id,
+        )
+        try:
+            detection = detect_entity_mentions(
+                run_result_id=run_result_id,
+                raw_response=result.raw_response,
+                entities=entities,
+                aliases=aliases,
+            )
+        except Exception as exc:
+            detection = GeoRunResultEntityDetection(
+                run_result_id=run_result_id,
+                detector_version=ENTITY_MENTION_DETECTOR_VERSION,
+                status="failed",
+                error_code=exc.__class__.__name__,
+                error_message=str(exc),
+            )
+        saved_detection = await self.repository.save_run_result_entity_detection(
+            tenant_id,
+            SaveRunResultEntityDetectionCommand(detection=detection),
+            self.clock.now(),
+        )
+        if saved_detection is None:
+            raise RunResultSemanticAnalysisNotFound("run result not found")
 
         topics = await self.repository.list_topics(tenant_id, query.project_id)
         topic = next(

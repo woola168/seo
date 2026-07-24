@@ -12,6 +12,7 @@ from younilab_seo.geo_analysis.application import (
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
+    GeoEntityMentionFact,
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
@@ -38,6 +39,7 @@ from younilab_seo.geo_analysis.application import (
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
+    GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoTopicCommand,
@@ -56,6 +58,7 @@ from younilab_seo.geo_analysis.application import (
     QueryResearchRunRecord,
     QueryRunJobMessage,
     SaveRunResultCitationNormalizationCommand,
+    SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
@@ -87,6 +90,10 @@ class GeoApiStore:
     semantic_run_result_analyses: dict[UUID, GeoRunResultAnalysis] = field(
         default_factory=dict
     )
+    run_result_entity_detections: dict[
+        tuple[UUID, str],
+        GeoRunResultEntityDetection,
+    ] = field(default_factory=dict)
     run_result_citation_normalizations: dict[
         tuple[UUID, str],
         GeoRunResultCitationNormalization,
@@ -1171,7 +1178,8 @@ class GeoApiStore:
         result = await self.get_run_result(tenant_id, result_id)
         if result is None:
             return None
-        return self.semantic_run_result_analyses.get(result_id)
+        analysis = self.semantic_run_result_analyses.get(result_id)
+        return self._semantic_with_detection(analysis) if analysis is not None else None
 
     async def save_semantic_run_result_analysis(
         self,
@@ -1185,7 +1193,33 @@ class GeoApiStore:
         self.semantic_run_result_analyses[command.analysis.run_result_id] = (
             command.analysis
         )
-        return command.analysis
+        return self._semantic_with_detection(command.analysis)
+
+    async def get_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        detector_version: str,
+    ) -> GeoRunResultEntityDetection | None:
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        return self.run_result_entity_detections.get((result_id, detector_version))
+
+    async def save_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultEntityDetectionCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultEntityDetection | None:
+        detection = command.detection
+        result = await self.get_run_result(tenant_id, detection.run_result_id)
+        if result is None:
+            return None
+        self.run_result_entity_detections[
+            (detection.run_result_id, detection.detector_version)
+        ] = detection
+        return detection
 
     async def get_run_result_citation_normalization(
         self,
@@ -1535,6 +1569,21 @@ class GeoApiStore:
     ) -> list[GeoMetricEntityMentionInput]:
         facts: list[GeoMetricEntityMentionInput] = []
         for result_id in run_result_ids:
+            detection = self._completed_detection(result_id)
+            if detection is not None:
+                facts.extend(
+                    GeoMetricEntityMentionInput(
+                        run_result_id=result_id,
+                        entity_id=item.entity_id,
+                        entity_role=item.entity_role,
+                        entity_name=item.entity_name,
+                        mentioned=item.mentioned,
+                        first_mention_order=item.first_mention_order,
+                        evidence_text=item.evidence_text,
+                    )
+                    for item in detection.items
+                )
+                continue
             analysis = self.semantic_run_result_analyses.get(result_id)
             if analysis is None or analysis.status != "completed":
                 continue
@@ -1546,6 +1595,45 @@ class GeoApiStore:
                 for mention in analysis.entity_mentions
             )
         return facts
+
+    def _completed_detection(
+        self,
+        result_id: UUID,
+    ) -> GeoRunResultEntityDetection | None:
+        return next(
+            (
+                detection
+                for (candidate_result_id, _version), detection in reversed(
+                    list(self.run_result_entity_detections.items())
+                )
+                if candidate_result_id == result_id
+                and detection.status == "completed"
+            ),
+            None,
+        )
+
+    def _semantic_with_detection(
+        self,
+        analysis: GeoRunResultAnalysis,
+    ) -> GeoRunResultAnalysis:
+        detection = self._completed_detection(analysis.run_result_id)
+        if detection is None:
+            return analysis
+        return analysis.model_copy(
+            update={
+                "entity_mentions": [
+                    GeoEntityMentionFact(
+                        entity_id=item.entity_id,
+                        entity_role=item.entity_role,
+                        entity_name=item.entity_name,
+                        mentioned=item.mentioned,
+                        first_mention_order=item.first_mention_order,
+                        evidence_text=item.evidence_text,
+                    )
+                    for item in detection.items
+                ]
+            }
+        )
 
     def _metric_sentiments(
         self,

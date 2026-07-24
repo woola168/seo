@@ -686,6 +686,59 @@ class GeoRunResultAnalysisRow(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
 
 
+class GeoRunResultEntityDetectionRow(SQLModel, table=True):
+    """Versioned lifecycle for deterministic entity mention detection."""
+
+    __tablename__ = "geo_run_result_entity_detection"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_result_id",
+            "detector_version",
+            name="ux_geo_run_result_entity_detection_version",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    detector_version: str = Field(sa_column=Column(String(100), nullable=False))
+    status: str = Field(sa_column=Column(String(32), nullable=False))
+    error_code: str | None = Field(default=None, sa_column=Column(String(100)))
+    error_message: str | None = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class GeoRunResultEntityDetectionItemRow(SQLModel, table=True):
+    """Canonical entity snapshot and explicit match selected by a detector run."""
+
+    __tablename__ = "geo_run_result_entity_detection_item"
+    __table_args__ = (
+        UniqueConstraint(
+            "detection_id",
+            "entity_id",
+            name="ux_geo_run_result_entity_detection_item_entity",
+        ),
+    )
+
+    id: UUID = Field(primary_key=True)
+    detection_id: UUID = Field(
+        foreign_key="geo_run_result_entity_detection.id",
+        nullable=False,
+    )
+    run_result_id: UUID = Field(foreign_key="geo_run_result.id", nullable=False)
+    entity_id: UUID = Field(nullable=False)
+    entity_role: str = Field(sa_column=Column(String(32), nullable=False))
+    entity_name: str = Field(sa_column=Column(String(200), nullable=False))
+    mentioned: bool = Field(sa_column=Column(Boolean, nullable=False))
+    first_mention_order: int | None = Field(default=None, sa_column=Column(Integer))
+    evidence_text: str | None = Field(default=None, sa_column=Column(Text))
+    matched_by: str | None = Field(default=None, sa_column=Column(String(32)))
+    matched_value: str | None = Field(default=None, sa_column=Column(Text))
+    match_type: str | None = Field(default=None, sa_column=Column(String(32)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
 class GeoRunResultEntityMentionRow(SQLModel, table=True):
     """AI answer 中被擷取出的品牌、競品或其他 entity mention。"""
 

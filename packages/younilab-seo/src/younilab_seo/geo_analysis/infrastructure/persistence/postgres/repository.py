@@ -44,11 +44,13 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
     GeoEntityMentionFact,
+    GeoEntityMentionDetectionItem,
     GeoResponseSemanticFact,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     GeoRunResultAnalysisRecord,
     GeoRunResultAnalysis,
+    GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GeoSentimentFact,
@@ -68,6 +70,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchRunRecord,
     QueryRunJobMessage,
     SaveRunResultCitationNormalizationCommand,
+    SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
@@ -98,6 +101,8 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoRunResultCitationClassificationRow,
     GeoRunResultCitationNormalizationRow,
     GeoRunResultCitationRow,
+    GeoRunResultEntityDetectionItemRow,
+    GeoRunResultEntityDetectionRow,
     GeoRunResultEntityMentionRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
@@ -415,7 +420,11 @@ class PostgresGeoAnalysisRepository:
             if not run_result_ids:
                 return GeoMetricFormulaSource()
 
-            analysis_ids = await _metric_semantic_analysis_ids(
+            analysis_ids_by_result = await _metric_semantic_analysis_ids(
+                session,
+                run_result_ids,
+            )
+            detection_ids_by_result = await _metric_entity_detection_ids(
                 session,
                 run_result_ids,
             )
@@ -439,9 +448,17 @@ class PostgresGeoAnalysisRepository:
                 ],
                 entity_mentions=await _metric_entity_mentions(
                     session,
-                    analysis_ids,
+                    detection_ids_by_result,
+                    [
+                        analysis_id
+                        for result_id, analysis_id in analysis_ids_by_result.items()
+                        if result_id not in detection_ids_by_result
+                    ],
                 ),
-                sentiments=await _metric_sentiments(session, analysis_ids),
+                sentiments=await _metric_sentiments(
+                    session,
+                    list(analysis_ids_by_result.values()),
+                ),
                 citations=await _metric_citations(session, normalization_ids),
             )
 
@@ -1828,6 +1845,89 @@ class PostgresGeoAnalysisRepository:
             await session.flush()
             return await _semantic_analysis_record(session, row)
 
+    async def get_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        detector_version: str,
+    ) -> GeoRunResultEntityDetection | None:
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(session, tenant_id, result_id)
+            if result is None:
+                return None
+            row = await session.scalar(
+                select(GeoRunResultEntityDetectionRow).where(
+                    GeoRunResultEntityDetectionRow.run_result_id == result_id,
+                    GeoRunResultEntityDetectionRow.detector_version
+                    == detector_version,
+                )
+            )
+            if row is None:
+                return None
+            return await _entity_detection_record(session, row)
+
+    async def save_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultEntityDetectionCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultEntityDetection | None:
+        detection = command.detection
+        async with self._session_scope() as session:
+            result = await self._get_run_result_row(
+                session,
+                tenant_id,
+                detection.run_result_id,
+            )
+            if result is None:
+                return None
+            await session.execute(
+                pg_insert(GeoRunResultEntityDetectionRow)
+                .values(
+                    id=uuid4(),
+                    run_result_id=detection.run_result_id,
+                    detector_version=detection.detector_version,
+                    status=detection.status,
+                    created_at=occurred_at,
+                    updated_at=occurred_at,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        GeoRunResultEntityDetectionRow.run_result_id,
+                        GeoRunResultEntityDetectionRow.detector_version,
+                    ]
+                )
+            )
+            row = await session.scalar(
+                select(GeoRunResultEntityDetectionRow)
+                .where(
+                    GeoRunResultEntityDetectionRow.run_result_id
+                    == detection.run_result_id,
+                    GeoRunResultEntityDetectionRow.detector_version
+                    == detection.detector_version,
+                )
+                .with_for_update()
+            )
+            if row is None:
+                raise RuntimeError("entity detection upsert did not return a row")
+            await session.execute(
+                delete(GeoRunResultEntityDetectionItemRow).where(
+                    GeoRunResultEntityDetectionItemRow.detection_id == row.id
+                )
+            )
+            _apply_entity_detection(row, detection, occurred_at)
+            for item in detection.items:
+                session.add(
+                    _entity_detection_item_row(
+                        row.id,
+                        detection.run_result_id,
+                        item,
+                        occurred_at,
+                    )
+                )
+            await session.flush()
+            return await _entity_detection_record(session, row)
+
     async def get_run_result_citation_normalization(
         self,
         tenant_id: UUID,
@@ -3011,7 +3111,7 @@ def _metric_comparison_period(
 async def _metric_semantic_analysis_ids(
     session: AsyncSession,
     run_result_ids: set[UUID],
-) -> list[UUID]:
+) -> dict[UUID, UUID]:
     rows = (
         await session.scalars(
             select(GeoRunResultAnalysisRow)
@@ -3023,12 +3123,29 @@ async def _metric_semantic_analysis_ids(
             .order_by(GeoRunResultAnalysisRow.updated_at.desc())
         )
     ).all()
-    selected: list[UUID] = []
-    seen: set[UUID] = set()
+    selected: dict[UUID, UUID] = {}
     for row in rows:
-        if row.run_result_id not in seen:
-            selected.append(row.id)
-            seen.add(row.run_result_id)
+        selected.setdefault(row.run_result_id, row.id)
+    return selected
+
+
+async def _metric_entity_detection_ids(
+    session: AsyncSession,
+    run_result_ids: set[UUID],
+) -> dict[UUID, UUID]:
+    rows = (
+        await session.scalars(
+            select(GeoRunResultEntityDetectionRow)
+            .where(
+                GeoRunResultEntityDetectionRow.run_result_id.in_(run_result_ids),
+                GeoRunResultEntityDetectionRow.status == "completed",
+            )
+            .order_by(GeoRunResultEntityDetectionRow.updated_at.desc())
+        )
+    ).all()
+    selected: dict[UUID, UUID] = {}
+    for row in rows:
+        selected.setdefault(row.run_result_id, row.id)
     return selected
 
 
@@ -3060,19 +3177,44 @@ async def _metric_citation_normalization_ids(
 
 async def _metric_entity_mentions(
     session: AsyncSession,
-    analysis_ids: list[UUID],
+    detection_ids_by_result: dict[UUID, UUID],
+    legacy_analysis_ids: list[UUID],
 ) -> list[GeoMetricEntityMentionInput]:
-    if not analysis_ids:
-        return []
-    rows = (
+    mentions: list[GeoMetricEntityMentionInput] = []
+    if detection_ids_by_result:
+        detection_rows = (
+            await session.scalars(
+                select(GeoRunResultEntityDetectionItemRow)
+                .where(
+                    GeoRunResultEntityDetectionItemRow.detection_id.in_(
+                        detection_ids_by_result.values()
+                    )
+                )
+                .order_by(GeoRunResultEntityDetectionItemRow.created_at)
+            )
+        ).all()
+        mentions.extend(
+            GeoMetricEntityMentionInput(
+                run_result_id=row.run_result_id,
+                entity_id=row.entity_id,
+                entity_role=row.entity_role,
+                entity_name=row.entity_name,
+                mentioned=row.mentioned,
+                first_mention_order=row.first_mention_order,
+                evidence_text=row.evidence_text,
+            )
+            for row in detection_rows
+        )
+    if not legacy_analysis_ids:
+        return mentions
+    legacy_rows = (
         await session.scalars(
             select(GeoRunResultEntityMentionRow)
-            .where(GeoRunResultEntityMentionRow.analysis_id.in_(analysis_ids))
+            .where(GeoRunResultEntityMentionRow.analysis_id.in_(legacy_analysis_ids))
             .order_by(GeoRunResultEntityMentionRow.created_at)
         )
     ).all()
-    mentions: list[GeoMetricEntityMentionInput] = []
-    for row in rows:
+    for row in legacy_rows:
         role = row.entity_role or row.entity_type
         if row.entity_id is None or role not in {"own_brand", "competitor"}:
             continue
@@ -3204,24 +3346,43 @@ async def _semantic_analysis_record(
             .order_by(GeoResponseSemanticFactRow.created_at)
         )
     ).all()
-    return GeoRunResultAnalysis(
-        run_result_id=row.run_result_id,
-        analyzer=row.analyzer or row.task_key,
-        analyzer_version=row.analyzer_version,
-        status=row.status,
-        entity_mentions=[
+    detection = await _latest_completed_entity_detection(session, row.run_result_id)
+    if detection is None:
+        entity_mentions = [
             GeoEntityMentionFact(
                 entity_id=mention.entity_id,
                 entity_role=mention.entity_role or mention.entity_type,
                 entity_name=mention.entity_name,
-                mentioned=mention.mentioned if mention.mentioned is not None else mention.mention_count > 0,
+                mentioned=(
+                    mention.mentioned
+                    if mention.mentioned is not None
+                    else mention.mention_count > 0
+                ),
                 first_mention_order=mention.first_mention_order,
                 evidence_text=_empty_to_none(mention.evidence_text),
                 confidence=mention.confidence,
             )
             for mention in mention_rows
             if mention.entity_id is not None
-        ],
+        ]
+    else:
+        entity_mentions = [
+            GeoEntityMentionFact(
+                entity_id=item.entity_id,
+                entity_role=item.entity_role,
+                entity_name=item.entity_name,
+                mentioned=item.mentioned,
+                first_mention_order=item.first_mention_order,
+                evidence_text=item.evidence_text,
+            )
+            for item in detection.items
+        ]
+    return GeoRunResultAnalysis(
+        run_result_id=row.run_result_id,
+        analyzer=row.analyzer or row.task_key,
+        analyzer_version=row.analyzer_version,
+        status=row.status,
+        entity_mentions=entity_mentions,
         sentiments=[
             GeoSentimentFact(
                 entity_id=statement.entity_id,
@@ -3250,6 +3411,57 @@ async def _semantic_analysis_record(
         analyzer_request_payload=row.analyzer_request_payload,
         analyzer_response_payload=row.analyzer_response_payload,
         validation_failures=row.validation_failures,
+    )
+
+
+async def _latest_completed_entity_detection(
+    session: AsyncSession,
+    run_result_id: UUID,
+) -> GeoRunResultEntityDetection | None:
+    row = await session.scalar(
+        select(GeoRunResultEntityDetectionRow)
+        .where(
+            GeoRunResultEntityDetectionRow.run_result_id == run_result_id,
+            GeoRunResultEntityDetectionRow.status == "completed",
+        )
+        .order_by(GeoRunResultEntityDetectionRow.updated_at.desc())
+    )
+    if row is None:
+        return None
+    return await _entity_detection_record(session, row)
+
+
+async def _entity_detection_record(
+    session: AsyncSession,
+    row: GeoRunResultEntityDetectionRow,
+) -> GeoRunResultEntityDetection:
+    items = (
+        await session.scalars(
+            select(GeoRunResultEntityDetectionItemRow)
+            .where(GeoRunResultEntityDetectionItemRow.detection_id == row.id)
+            .order_by(GeoRunResultEntityDetectionItemRow.created_at)
+        )
+    ).all()
+    return GeoRunResultEntityDetection(
+        run_result_id=row.run_result_id,
+        detector_version=row.detector_version,
+        status=row.status,
+        items=[
+            GeoEntityMentionDetectionItem(
+                entity_id=item.entity_id,
+                entity_role=item.entity_role,
+                entity_name=item.entity_name,
+                mentioned=item.mentioned,
+                first_mention_order=item.first_mention_order,
+                evidence_text=item.evidence_text,
+                matched_by=item.matched_by,
+                matched_value=item.matched_value,
+                match_type=item.match_type,
+            )
+            for item in items
+        ],
+        error_code=row.error_code,
+        error_message=row.error_message,
     )
 
 
@@ -3324,6 +3536,41 @@ def _apply_semantic_analysis(
     row.validation_failures = analysis.validation_failures
     row.updated_at = occurred_at
     row.completed_at = occurred_at if analysis.status in {"completed", "failed"} else None
+
+
+def _apply_entity_detection(
+    row: GeoRunResultEntityDetectionRow,
+    detection: GeoRunResultEntityDetection,
+    occurred_at: datetime,
+) -> None:
+    row.status = detection.status
+    row.error_code = detection.error_code
+    row.error_message = detection.error_message
+    row.updated_at = occurred_at
+    row.completed_at = occurred_at
+
+
+def _entity_detection_item_row(
+    detection_id: UUID,
+    run_result_id: UUID,
+    item: GeoEntityMentionDetectionItem,
+    occurred_at: datetime,
+) -> GeoRunResultEntityDetectionItemRow:
+    return GeoRunResultEntityDetectionItemRow(
+        id=uuid4(),
+        detection_id=detection_id,
+        run_result_id=run_result_id,
+        entity_id=item.entity_id,
+        entity_role=item.entity_role,
+        entity_name=item.entity_name,
+        mentioned=item.mentioned,
+        first_mention_order=item.first_mention_order,
+        evidence_text=item.evidence_text,
+        matched_by=item.matched_by,
+        matched_value=item.matched_value,
+        match_type=item.match_type,
+        created_at=occurred_at,
+    )
 
 
 async def _run_result_project_id(

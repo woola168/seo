@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -14,12 +15,14 @@ from younilab_seo.geo_analysis.application import (
     GeoEntityAliasCommand,
     GeoEntityCommand,
     GeoEntityMentionFact,
+    GeoEntityMentionDetectionItem,
     GeoAnalysisRepository,
     GeoMetricFormulaQuery,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
+    GeoRunResultEntityDetection,
     GeoProjectCommand,
     GeoProjectQuerySettingsCommand,
     GeoQueryCommand,
@@ -32,6 +35,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryRunJobRepository,
     GeoSentimentFact,
     SaveRunResultCitationNormalizationCommand,
+    SaveRunResultEntityDetectionCommand,
     SaveRunResultAnalysisCommand,
     SaveSemanticRunResultAnalysisCommand,
 )
@@ -55,6 +59,8 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoRunResultEntityMentionRow,
     GeoRunResultCitationNormalizationRow,
     GeoRunResultCitationRow,
+    GeoRunResultEntityDetectionItemRow,
+    GeoRunResultEntityDetectionRow,
     GeoRunRequestRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
@@ -176,6 +182,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     semantic_diagnostics_path = (
         postgres_dir / "021_geo_semantic_analysis_diagnostics.sql"
     )
+    entity_detection_path = (
+        postgres_dir / "022_geo_run_result_entity_detection.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -187,6 +196,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     query_settings = query_settings_path.read_text(encoding="utf-8")
     daily_uniqueness = daily_uniqueness_path.read_text(encoding="utf-8")
     semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
+    entity_detection = entity_detection_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -233,6 +243,15 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "validation_failures jsonb NOT NULL" in semantic_diagnostics
     assert semantic_diagnostics.startswith("BEGIN;")
     assert semantic_diagnostics.rstrip().endswith("COMMIT;")
+    assert "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection" in entity_detection
+    assert (
+        "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection_item"
+        in entity_detection
+    )
+    assert "ux_geo_run_result_entity_detection_version" in entity_detection
+    assert "ux_geo_run_result_entity_detection_item_entity" in entity_detection
+    assert entity_detection.startswith("BEGIN;")
+    assert entity_detection.rstrip().endswith("COMMIT;")
     daily_slot_index = next(
         index
         for index in GeoQueryRunJobRow.__table__.indexes
@@ -286,6 +305,21 @@ def test_semantic_analysis_rows_expose_phase_two_columns() -> None:
     assert "entity_name" in GeoRunResultStatementRow.__table__.columns
     assert "confidence" in GeoRunResultStatementRow.__table__.columns
     assert GeoResponseSemanticFactRow.__tablename__ == "geo_response_semantic_fact"
+
+
+def test_entity_detection_rows_expose_versioned_match_snapshot_columns() -> None:
+    assert (
+        GeoRunResultEntityDetectionRow.__tablename__
+        == "geo_run_result_entity_detection"
+    )
+    assert (
+        GeoRunResultEntityDetectionItemRow.__tablename__
+        == "geo_run_result_entity_detection_item"
+    )
+    assert "detector_version" in GeoRunResultEntityDetectionRow.__table__.columns
+    assert "matched_by" in GeoRunResultEntityDetectionItemRow.__table__.columns
+    assert "matched_value" in GeoRunResultEntityDetectionItemRow.__table__.columns
+    assert "match_type" in GeoRunResultEntityDetectionItemRow.__table__.columns
 
 
 def test_citation_normalization_rows_expose_phase_six_columns() -> None:
@@ -1066,6 +1100,72 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         assert [sentiment.sentiment for sentiment in source.sentiments] == ["positive"]
         assert await repository.get_semantic_run_result_analysis(uuid4(), result_id) is None
 
+        detection_command = SaveRunResultEntityDetectionCommand(
+            detection=GeoRunResultEntityDetection(
+                run_result_id=result_id,
+                status="completed",
+                items=[
+                    GeoEntityMentionDetectionItem(
+                        entity_id=own_brand_id,
+                        entity_role="own_brand",
+                        entity_name="Acme snapshot",
+                        mentioned=False,
+                    )
+                ],
+            )
+        )
+        detections = await asyncio.gather(
+            repository.save_run_result_entity_detection(
+                TENANT_ID,
+                detection_command,
+                now,
+            ),
+            repository.save_run_result_entity_detection(
+                TENANT_ID,
+                detection_command,
+                now,
+            ),
+        )
+        assert all(detection is not None for detection in detections)
+        async with session_factory() as session:
+            detection_rows = (
+                await session.scalars(
+                    select(GeoRunResultEntityDetectionRow).where(
+                        GeoRunResultEntityDetectionRow.run_result_id == result_id
+                    )
+                )
+            ).all()
+            detection_item_rows = (
+                await session.scalars(
+                    select(GeoRunResultEntityDetectionItemRow).where(
+                        GeoRunResultEntityDetectionItemRow.run_result_id == result_id
+                    )
+                )
+            ).all()
+        assert len(detection_rows) == 1
+        assert len(detection_item_rows) == 1
+        loaded_with_detection = await repository.get_semantic_run_result_analysis(
+            TENANT_ID,
+            result_id,
+        )
+        assert loaded_with_detection is not None
+        assert loaded_with_detection.entity_mentions[0].entity_name == "Acme snapshot"
+        source_with_detection = await repository.get_metric_formula_source(
+            TENANT_ID,
+            project_id,
+            GeoMetricFormulaQuery(
+                period_start=now - timedelta(days=1),
+                period_end=now + timedelta(days=1),
+            ),
+            "url_domain:v1",
+        )
+        assert [
+            mention.entity_name for mention in source_with_detection.entity_mentions
+        ] == ["Acme snapshot"]
+        assert [
+            sentiment.sentiment for sentiment in source_with_detection.sentiments
+        ] == ["positive"]
+
         await repository.save_semantic_run_result_analysis(
             TENANT_ID,
             SaveSemanticRunResultAnalysisCommand(
@@ -1086,7 +1186,7 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         )
         rerun = await repository.get_semantic_run_result_analysis(TENANT_ID, result_id)
         assert rerun is not None
-        assert rerun.entity_mentions == []
+        assert rerun.entity_mentions[0].entity_name == "Acme snapshot"
         assert rerun.sentiments == []
         assert [fact.value for fact in rerun.semantic_facts] == ["導入顧問"]
         assert (await repository.get_run_result_analysis(TENANT_ID, result_id)).summary == (

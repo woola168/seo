@@ -243,6 +243,67 @@ class GeoEntityMentionFact(ContractModel):
         return self
 
 
+class GeoEntityMentionDetectionItem(ContractModel):
+    """Deterministic mention with the canonical or alias match that produced it."""
+
+    entity_id: UUID
+    entity_role: Literal["own_brand", "competitor"]
+    entity_name: str
+    mentioned: bool
+    first_mention_order: int | None = Field(default=None, ge=1)
+    evidence_text: str | None = None
+    matched_by: Literal["canonical", "alias"] | None = None
+    matched_value: str | None = None
+    match_type: (
+        Literal["canonical", "exact", "case_insensitive", "contains"] | None
+    ) = None
+
+    @model_validator(mode="after")
+    def validate_match(self):
+        if self.mentioned and (
+            self.first_mention_order is None or self.evidence_text is None
+        ):
+            raise ValueError(
+                "mentioned detection items must include order and evidence"
+            )
+        if not self.mentioned:
+            if self.first_mention_order is not None:
+                raise ValueError(
+                    "firstMentionOrder must be empty when mentioned is false"
+                )
+            if self.evidence_text is not None:
+                raise ValueError("evidenceText must be empty when mentioned is false")
+        match_values = (self.matched_by, self.matched_value, self.match_type)
+        if self.mentioned and any(value is None for value in match_values):
+            raise ValueError("mentioned detection items must include match metadata")
+        if not self.mentioned and any(value is not None for value in match_values):
+            raise ValueError("unmentioned detection items must not include match metadata")
+        return self
+
+
+class GeoRunResultEntityDetection(ContractModel):
+    """Versioned entity-mention result independent of semantic extraction."""
+
+    run_result_id: UUID
+    detector_version: str = "explicit_alias:v1"
+    status: Literal["completed", "failed"]
+    items: list[GeoEntityMentionDetectionItem] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+
+    @model_validator(mode="after")
+    def validate_status(self):
+        if self.status == "failed" and self.items:
+            raise ValueError("failed detection must not contain items")
+        return self
+
+
+class SaveRunResultEntityDetectionCommand(ContractModel):
+    """Persistence input for one version of deterministic entity mention detection."""
+
+    detection: GeoRunResultEntityDetection
+
+
 class GeoSentimentFact(ContractModel):
     """品牌或競品相關的 statement-level positive / negative sentiment。"""
 
