@@ -176,7 +176,7 @@ async function saveRelatedProfile(
         description: "GEO Project 主要品牌。",
         status: "active",
       });
-  await syncAliases(ownBrand.id, current?.ownBrand.aliases ?? [], input.aliases);
+  await replaceAliases(ownBrand.id, input.aliases);
 
   const currentCompetitors = new Map(
     (current?.competitors ?? []).map((competitor) => [competitor.entity?.id, competitor]),
@@ -204,7 +204,7 @@ async function saveRelatedProfile(
           description: "GEO Project 競品。",
           status: "active",
         });
-    await syncAliases(entity.id, existing?.aliases ?? [], competitor.aliases);
+    await replaceAliases(entity.id, competitor.aliases);
   }
 
   if (!current) {
@@ -218,21 +218,13 @@ async function saveRelatedProfile(
   }
 }
 
-async function syncAliases(
+async function replaceAliases(
   entityId: string,
-  current: GeoEntityAliasResource[],
   values: string[],
 ): Promise<void> {
-  const wanted = new Set(normalizeValues(values));
-  for (const alias of current) {
-    if (!wanted.has(alias.alias)) await api.geoAnalysis.deleteAlias(alias.id);
-  }
-  const currentValues = new Set(current.map((alias) => alias.alias));
-  for (const alias of wanted) {
-    if (!currentValues.has(alias)) {
-      await api.geoAnalysis.createAlias(entityId, { alias, matchType: "exact" });
-    }
-  }
+  await api.geoAnalysis.replaceAliases(entityId, {
+    items: normalizeValues(values).map((alias) => ({ alias, matchType: "exact" })),
+  });
 }
 
 export function normalizeValues(values: string[]): string[] {

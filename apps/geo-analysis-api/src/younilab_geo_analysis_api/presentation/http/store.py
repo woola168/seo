@@ -265,16 +265,6 @@ class GeoApiStore:
             return None
         return await self.get_project(tenant_id, entity.project_id)
 
-    async def get_alias_project(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-    ) -> GeoProjectRecord | None:
-        alias = self.aliases.get(alias_id)
-        if alias is None:
-            return None
-        return await self.get_entity_project(tenant_id, alias.entity_id)
-
     async def get_topic_project(
         self,
         tenant_id: UUID,
@@ -540,7 +530,10 @@ class GeoApiStore:
     ) -> list[GeoEntityAliasRecord]:
         if await self.get_entity(tenant_id, entity_id) is None:
             return []
-        return [item for item in self.aliases.values() if item.entity_id == entity_id]
+        return sorted(
+            (item for item in self.aliases.values() if item.entity_id == entity_id),
+            key=lambda item: (item.created_at, item.id),
+        )
 
     async def list_project_aliases(
         self,
@@ -554,50 +547,40 @@ class GeoApiStore:
             for entity in self.entities.values()
             if entity.project_id == project_id
         }
-        return [
-            item for item in self.aliases.values() if item.entity_id in entity_ids
-        ]
+        return sorted(
+            (item for item in self.aliases.values() if item.entity_id in entity_ids),
+            key=lambda item: (item.created_at, item.id),
+        )
 
-    async def create_alias(
+    async def replace_aliases(
         self,
         tenant_id: UUID,
         entity_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
+        commands: list[GeoEntityAliasCommand],
+    ) -> list[GeoEntityAliasRecord] | None:
         if await self.get_entity(tenant_id, entity_id) is None:
             return None
-        alias = GeoEntityAliasRecord(
-            **command.model_dump(),
-            id=uuid4(),
-            entity_id=entity_id,
-            created_at=_now(),
-        )
-        self.aliases[alias.id] = alias
-        return alias
-
-    async def update_alias(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        existing = self.aliases.get(alias_id)
-        if existing is None or await self.get_entity(tenant_id, existing.entity_id) is None:
-            return None
-        alias = GeoEntityAliasRecord(
-            **command.model_dump(),
-            id=alias_id,
-            entity_id=existing.entity_id,
-            created_at=existing.created_at,
-        )
-        self.aliases[alias_id] = alias
-        return alias
-
-    async def delete_alias(self, tenant_id: UUID, alias_id: UUID) -> bool:
-        existing = self.aliases.get(alias_id)
-        if existing is None or await self.get_entity(tenant_id, existing.entity_id) is None:
-            return False
-        return self.aliases.pop(alias_id, None) is not None
+        if len({command.alias for command in commands}) != len(commands):
+            raise ValueError("alias values must be unique")
+        existing = {
+            item.alias: item
+            for item in self.aliases.values()
+            if item.entity_id == entity_id
+        }
+        wanted = {command.alias: command for command in commands}
+        for alias in existing.values():
+            if alias.alias not in wanted:
+                self.aliases.pop(alias.id, None)
+        for value, command in wanted.items():
+            current = existing.get(value)
+            alias = GeoEntityAliasRecord(
+                **command.model_dump(),
+                id=current.id if current else uuid4(),
+                entity_id=entity_id,
+                created_at=current.created_at if current else _now(),
+            )
+            self.aliases[alias.id] = alias
+        return await self.list_aliases(tenant_id, entity_id)
 
     async def list_topics(
         self,

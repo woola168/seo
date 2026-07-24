@@ -525,9 +525,7 @@ Problem Details 格式：
 | `PATCH` | `/api/geo/entities/{entityId}` | 更新 tracked entity。 |
 | `DELETE` | `/api/geo/entities/{entityId}` | 刪除 tracked entity。 |
 | `GET` | `/api/geo/entities/{entityId}/aliases` | 列出 entity alias，供 runner 或分析模組參考。 |
-| `POST` | `/api/geo/entities/{entityId}/aliases` | 建立 entity alias。 |
-| `PATCH` | `/api/geo/entity-aliases/{aliasId}` | 更新 entity alias。 |
-| `DELETE` | `/api/geo/entity-aliases/{aliasId}` | 刪除 entity alias。 |
+| `PUT` | `/api/geo/entities/{entityId}/aliases` | 原子替換 entity 的全部 aliases。 |
 | `GET` | `/api/geo/projects/{projectId}/topics` | 列出 project 的 query topic。 |
 | `POST` | `/api/geo/projects/{projectId}/topics` | 建立 query topic。 |
 | `PATCH` | `/api/geo/topics/{topicId}` | 更新 query topic。 |
@@ -627,10 +625,8 @@ Problem Details 格式：
 | `GET` | `/api/geo/entities/{entityId}` | 無 | `EntityResponse` |
 | `PATCH` | `/api/geo/entities/{entityId}` | `EntityRequest` | `EntityResponse` |
 | `DELETE` | `/api/geo/entities/{entityId}` | 無 | `204` |
-| `GET` | `/api/geo/entities/{entityId}/aliases` | 無 | `PageResponse<AliasResponse>` |
-| `POST` | `/api/geo/entities/{entityId}/aliases` | `AliasRequest` | `201 AliasResponse` |
-| `PATCH` | `/api/geo/entity-aliases/{aliasId}` | `AliasRequest` | `AliasResponse` |
-| `DELETE` | `/api/geo/entity-aliases/{aliasId}` | 無 | `204` |
+| `GET` | `/api/geo/entities/{entityId}/aliases` | 無 | `AliasCollectionResponse` |
+| `PUT` | `/api/geo/entities/{entityId}/aliases` | `AliasCollectionRequest` | `200 AliasCollectionResponse` |
 
 ```json
 // EntityRequest
@@ -642,12 +638,65 @@ Problem Details 格式：
   "status": "active"
 }
 
-// AliasRequest
+// AliasCollectionRequest
 {
-  "alias": "Acme Inc.",
-  "matchType": "exact"
+  "items": [
+    {
+      "alias": "Acme Inc.",
+      "matchType": "exact"
+    },
+    {
+      "alias": "Acme Taiwan",
+      "matchType": "contains"
+    }
+  ]
 }
 ```
+
+Alias PUT 採完整替換並在單一 transaction 內完成。空 `items` 會刪除該 Entity
+的全部別名；未變更項目保留原本的 `id` 與 `createdAt`。Alias 會去除前後
+空白，完全相同的值不可重複，但大小寫不同仍視為不同值。Entity 不存在或
+不在目前 tenant／resource grants 範圍時回 `404`，欄位驗證失敗回 RFC 7807
+`422`。trim 與重複驗證只套用於 PUT request；GET 會原樣回傳既有持久化值，
+避免舊資料在讀取時被靜默改寫。
+
+```ts
+interface GeoEntityAliasInput {
+  alias: string;
+  matchType: "exact" | "contains" | "domain";
+}
+
+interface GeoEntityAliasCollectionRequest {
+  items: GeoEntityAliasInput[];
+}
+
+interface GeoEntityAliasResource extends GeoEntityAliasInput {
+  id: string;
+  entityId: string;
+  createdAt: string;
+}
+
+interface GeoEntityAliasCollectionResponse {
+  items: GeoEntityAliasResource[];
+  total: number;
+}
+
+const response = await fetch(`/api/geo/entities/${entityId}/aliases`, {
+  method: "PUT",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    items: aliases.map((alias) => ({ alias, matchType: "exact" })),
+  } satisfies GeoEntityAliasCollectionRequest),
+});
+```
+
+`GET` 需要 `geo.projects.read`，`PUT` 需要 `geo.projects.update`。本版已移除
+舊版單筆 `POST /entities/{entityId}/aliases` 與
+`PATCH／DELETE /entity-aliases/{aliasId}`，屬破壞性契約變更；Admin Portal 與
+GEO Analysis API 必須在同一發布批次部署，舊瀏覽器頁面需重新整理後再操作。
 
 ## Topics 與 Queries
 

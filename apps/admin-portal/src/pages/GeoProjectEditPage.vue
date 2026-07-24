@@ -38,11 +38,12 @@ const router = useRouter();
 const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
+const canResearch = computed(() => hasPermission(props.permissions, "geo.queries.manage"));
 const isRecoveringQueryResearch = computed(
   () =>
     route.query.mode === "query-research" &&
     Boolean(projectId.value) &&
-    hasPermission(props.permissions, "geo.queries.manage"),
+    canResearch.value,
 );
 const step = ref<1 | 2>(1);
 const loading = ref(false);
@@ -155,6 +156,14 @@ function secondaryAction(): void {
     return;
   }
   void router.push({ name: projectRoutes.value.projects });
+}
+
+function openQueryResearch(): void {
+  if (!projectId.value || !canResearch.value) return;
+  void router.push({
+    name: projectRoutes.value.queryResearch,
+    params: { projectId: projectId.value },
+  });
 }
 
 function forwardQueryResearchNotification(
@@ -288,6 +297,7 @@ function addTopic(): void {
         <div><h1>{{ isEdit ? "編輯 Project" : "新增 Project" }}</h1><p>{{ isEdit ? "修改專案基本資料與 Query list" : "填寫專案基本資料與 Query list" }}</p></div>
         <span class="geo-header-spacer"></span>
         <button class="button button-secondary" type="button" @click="secondaryAction">{{ !isEdit && step === 2 ? "上一步" : "取消" }}</button>
+        <button v-if="isEdit" class="button button-secondary" type="button" :disabled="loading || !canResearch" @click="openQueryResearch"><AppIcon name="search" :size="14" />Query Research</button>
         <button class="button button-primary" type="button" :disabled="loading" @click="primaryAction">{{ isEdit ? "儲存" : step === 1 ? "下一步" : "Query Research" }}</button>
       </header>
 

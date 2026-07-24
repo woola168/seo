@@ -11,7 +11,7 @@
   GeoDashboardReport,
   GeoDashboardReportQuery,
   GeoDummyProject,
-  GeoEntityAliasRequest,
+  GeoEntityAliasCollectionRequest,
   GeoEntityAliasResource,
   GeoEntityRequest,
   GeoEntityResource,
@@ -353,13 +353,14 @@ export const api = {
       request<CollectionResponse<GeoEntityAliasResource>>(
         `/api/geo/projects/${projectId}/entity-aliases`,
       ),
-    createAlias: (entityId: string, input: GeoEntityAliasRequest) =>
-      request<GeoEntityAliasResource>(`/api/geo/entities/${entityId}/aliases`, {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-    deleteAlias: (aliasId: string) =>
-      request<void>(`/api/geo/entity-aliases/${aliasId}`, { method: "DELETE" }),
+    replaceAliases: (entityId: string, input: GeoEntityAliasCollectionRequest) =>
+      request<CollectionResponse<GeoEntityAliasResource>>(
+        `/api/geo/entities/${entityId}/aliases`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
     topics: (projectId: string) =>
       request<CollectionResponse<GeoTopicResource>>(
         `/api/geo/projects/${projectId}/topics`,

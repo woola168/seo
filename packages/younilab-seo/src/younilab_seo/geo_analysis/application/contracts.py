@@ -1035,7 +1035,7 @@ class GeoEntityRecord(GeoEntityCommand):
 
 
 class GeoEntityAliasCommand(ContractModel):
-    """建立或更新 tracked entity alias 的 application input。"""
+    """描述 tracked entity alias 集合中的單一項目。"""
 
     alias: str
     match_type: str = "exact"

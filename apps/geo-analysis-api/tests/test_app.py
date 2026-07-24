@@ -19,6 +19,7 @@ from younilab_seo.geo_analysis.application import (
     EvidenceTextRepairCommand,
     EvidenceTextRepairResult,
     GeoAiPlatformRecord,
+    GeoEntityAliasRecord,
     GeoEntityMentionDetectionItem,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
@@ -485,9 +486,9 @@ def test_project_summary_includes_own_brand_aliases_and_customer_name() -> None:
             "websiteUrl": "https://example.com",
         },
     )
-    client.post(
+    client.put(
         f"/api/geo/entities/{entity.json()['id']}/aliases",
-        json={"alias": "品牌別名"},
+        json={"items": [{"alias": "品牌別名"}]},
     )
 
     response = client.get("/api/geo/projects")
@@ -529,6 +530,187 @@ def test_project_summary_keeps_local_data_when_customer_catalog_is_unavailable()
             "updatedAt": project.json()["updatedAt"],
         }
     ]
+
+
+def test_alias_collection_replaces_all_entity_aliases_idempotently() -> None:
+    client = _client()
+    project_id = _create_project(client)
+    entity = client.post(
+        f"/api/geo/projects/{project_id}/entities",
+        json={"entityType": "own_brand", "name": "範例品牌"},
+    ).json()
+
+    created = client.put(
+        f"/api/geo/entities/{entity['id']}/aliases",
+        json={
+            "items": [
+                {"alias": " 品牌別名 ", "matchType": "exact"},
+                {"alias": "Brand", "matchType": "contains"},
+            ]
+        },
+    )
+    assert created.status_code == 200
+    assert {item["alias"] for item in created.json()["items"]} == {"品牌別名", "Brand"}
+    original = {item["alias"]: item for item in created.json()["items"]}
+
+    replaced = client.put(
+        f"/api/geo/entities/{entity['id']}/aliases",
+        json={
+            "items": [
+                {"alias": "Brand", "matchType": "domain"},
+                {"alias": "brand", "matchType": "exact"},
+            ]
+        },
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["total"] == 2
+    values = {item["alias"]: item for item in replaced.json()["items"]}
+    assert set(values) == {"Brand", "brand"}
+    assert values["Brand"]["id"] == original["Brand"]["id"]
+    assert values["Brand"]["createdAt"] == original["Brand"]["createdAt"]
+    assert values["Brand"]["matchType"] == "domain"
+
+    repeated = client.put(
+        f"/api/geo/entities/{entity['id']}/aliases",
+        json={
+            "items": [
+                {"alias": "Brand", "matchType": "domain"},
+                {"alias": "brand", "matchType": "exact"},
+            ]
+        },
+    )
+    assert repeated.json() == replaced.json()
+    assert client.get(f"/api/geo/entities/{entity['id']}/aliases").json() == replaced.json()
+
+    cleared = client.put(
+        f"/api/geo/entities/{entity['id']}/aliases",
+        json={"items": []},
+    )
+    assert cleared.json() == {"items": [], "total": 0}
+
+
+def test_alias_collection_get_preserves_legacy_whitespace() -> None:
+    store = GeoApiStore()
+    client = _client(repository=store)
+    project_id = _create_project(client)
+    entity = client.post(
+        f"/api/geo/projects/{project_id}/entities",
+        json={"entityType": "own_brand", "name": "Legacy Brand"},
+    ).json()
+    legacy_alias = GeoEntityAliasRecord(
+        id=uuid4(),
+        entity_id=UUID(entity["id"]),
+        alias=" Legacy Alias ",
+        match_type="exact",
+        created_at=datetime.now(UTC),
+    )
+    store.aliases[legacy_alias.id] = legacy_alias
+
+    aliases = client.get(f"/api/geo/entities/{entity['id']}/aliases")
+    projects = client.get("/api/geo/projects")
+
+    assert aliases.status_code == 200
+    assert aliases.json()["items"][0]["alias"] == " Legacy Alias "
+    assert projects.json()["items"][0]["ownBrand"]["aliases"] == [
+        " Legacy Alias "
+    ]
+
+
+@pytest.mark.parametrize(
+    ("payload", "invalid_name"),
+    [
+        (
+            {"items": [{"alias": "Same"}, {"alias": "Same"}]},
+            "body.items",
+        ),
+        ({"items": [{"alias": "   "}]}, "body.items.0.alias"),
+        ({"items": [{"alias": "Alias", "unknown": True}]}, "body.items.0.unknown"),
+        ({"items": [], "unknown": True}, "body.unknown"),
+    ],
+)
+def test_alias_collection_rejects_invalid_payloads(
+    payload: dict,
+    invalid_name: str,
+) -> None:
+    client = _client()
+    project_id = _create_project(client)
+    entity = client.post(
+        f"/api/geo/projects/{project_id}/entities",
+        json={"entityType": "own_brand", "name": "範例品牌"},
+    ).json()
+
+    response = client.put(
+        f"/api/geo/entities/{entity['id']}/aliases",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert invalid_name in _invalid_param_names(response.json())
+
+
+def test_alias_collection_replace_respects_permissions_tenant_and_customer_scope() -> None:
+    store = GeoApiStore()
+    allowed_customer_id = uuid4()
+    denied_customer_id = uuid4()
+    admin = _client(repository=store)
+    allowed = _create_project_setup_resources(
+        admin,
+        "Allowed Aliases",
+        customer_id=allowed_customer_id,
+    )
+    denied = _create_project_setup_resources(
+        admin,
+        "Denied Aliases",
+        customer_id=denied_customer_id,
+    )
+    allowed_entity_id = admin.get(
+        f"/api/geo/projects/{allowed['project_id']}/entities"
+    ).json()["items"][0]["id"]
+    denied_entity_id = admin.get(
+        f"/api/geo/projects/{denied['project_id']}/entities"
+    ).json()["items"][0]["id"]
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({allowed_customer_id}),
+        ),
+    )
+
+    assert restricted.put(
+        f"/api/geo/entities/{allowed_entity_id}/aliases",
+        json={"items": [{"alias": "Allowed"}]},
+    ).status_code == 200
+    assert restricted.put(
+        f"/api/geo/entities/{denied_entity_id}/aliases",
+        json={"items": [{"alias": "Denied"}]},
+    ).status_code == 404
+    assert restricted.get(
+        f"/api/geo/entities/{denied_entity_id}/aliases"
+    ).status_code == 404
+    assert _client(
+        repository=store,
+        authorizer=FakeAuthorizer(OTHER_TENANT_ID),
+    ).put(
+        f"/api/geo/entities/{allowed_entity_id}/aliases",
+        json={"items": []},
+    ).status_code == 404
+    assert _client(
+        repository=store,
+        authorizer=FakeAuthorizer(OTHER_TENANT_ID),
+    ).get(
+        f"/api/geo/entities/{allowed_entity_id}/aliases"
+    ).status_code == 404
+    forbidden = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(access_denied=True),
+    ).put(
+        f"/api/geo/entities/{allowed_entity_id}/aliases",
+        json={"items": []},
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.headers["content-type"] == "application/problem+json"
 
 
 def test_project_summary_customer_filter_is_optional_and_scope_safe() -> None:
@@ -741,6 +923,7 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     settings_path = schema["paths"]["/api/geo/projects/{project_id}/query-settings"]
     status_path = schema["paths"]["/api/geo/projects/{project_id}/status"]
     create_job_path = schema["paths"]["/api/geo/queries/{query_id}/jobs"]["post"]
+    aliases_path = schema["paths"]["/api/geo/entities/{entity_id}/aliases"]
     assert projects["parameters"][0]["name"] == "customerId"
     assert "ProjectSummaryPageResponse" in str(projects["responses"]["200"])
     assert "ProblemDetailsResponse" in str(projects["responses"]["422"])
@@ -751,6 +934,12 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     assert "ProjectStatusResponse" in str(status_path["patch"]["responses"]["200"])
     assert "CreateJobResponse" in str(create_job_path["responses"]["200"])
     assert "CreateJobResponse" in str(create_job_path["responses"]["201"])
+    assert "AliasCollectionResponse" in str(aliases_path["get"]["responses"]["200"])
+    assert "AliasCollectionRequest" in str(aliases_path["put"]["requestBody"])
+    assert "AliasCollectionResponse" in str(aliases_path["put"]["responses"]["200"])
+    assert "ProblemDetailsResponse" in str(aliases_path["put"]["responses"]["422"])
+    assert "post" not in aliases_path
+    assert "/api/geo/entity-aliases/{alias_id}" not in schema["paths"]
 
 
 def test_job_and_run_result_are_scoped_by_resource_grants() -> None:
@@ -2075,11 +2264,11 @@ def _create_project_setup_resources(
         json={"entityType": "own_brand", "name": f"{name} Entity"},
     )
     assert entity_response.status_code == 201
-    alias_response = client.post(
+    alias_response = client.put(
         f"/api/geo/entities/{entity_response.json()['id']}/aliases",
-        json={"alias": f"{name} Alias"},
+        json={"items": [{"alias": f"{name} Alias"}]},
     )
-    assert alias_response.status_code == 201
+    assert alias_response.status_code == 200
     query_response = client.post(
         f"/api/geo/projects/{project_id}/queries",
         json={
@@ -2103,7 +2292,7 @@ def _create_project_setup_resources(
     assert schedule_response.status_code == 201
     return {
         "project_id": project_id,
-        "alias_id": alias_response.json()["id"],
+        "alias_id": alias_response.json()["items"][0]["id"],
         "query_platform_id": platform_response.json()["items"][0]["id"],
         "schedule_id": schedule_response.json()["id"],
     }

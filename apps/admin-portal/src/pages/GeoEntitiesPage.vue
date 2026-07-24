@@ -93,12 +93,10 @@ async function submit(): Promise<void> {
     });
     workspace.entities.value.unshift(entity);
     if (form.alias.trim()) {
-      workspace.aliases.value.unshift(
-        await api.geoAnalysis.createAlias(entity.id, {
-          alias: form.alias.trim(),
-          matchType: "contains",
-        }),
-      );
+      const aliases = await api.geoAnalysis.replaceAliases(entity.id, {
+        items: [{ alias: form.alias.trim(), matchType: "contains" }],
+      });
+      workspace.aliases.value.unshift(...aliases.items);
     }
     workspace.setMessage("已建立 entity。");
     closeDrawer();

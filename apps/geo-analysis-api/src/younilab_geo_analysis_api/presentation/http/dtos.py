@@ -243,16 +243,55 @@ class EntityResponse(EntityRequest):
 class AliasRequest(ApiModel):
     """傳給 runner 或分析模組的 entity 替代名稱。"""
 
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
     alias: str = Field(min_length=1, max_length=200)
     match_type: str = Field(default="exact", max_length=32)
 
+    @field_validator("alias")
+    @classmethod
+    def normalize_alias(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
 
-class AliasResponse(AliasRequest):
+
+class AliasResponse(ApiModel):
     """由 GEO setup UI 管理的 entity alias resource。"""
 
+    alias: str
+    match_type: str
     id: UUID
     entity_id: UUID
     created_at: datetime
+
+
+class AliasCollectionRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    items: list[AliasRequest]
+
+    @field_validator("items")
+    @classmethod
+    def require_unique_aliases(cls, items: list[AliasRequest]) -> list[AliasRequest]:
+        values = [item.alias for item in items]
+        if len(set(values)) != len(values):
+            raise ValueError("alias values must be unique")
+        return items
+
+
+class AliasCollectionResponse(ApiModel):
+    items: list[AliasResponse]
+    total: int
 
 
 class TopicRequest(ApiModel):

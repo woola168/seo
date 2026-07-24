@@ -586,6 +586,36 @@ describe("api.geoAnalysis.dashboardReport", () => {
     ]);
   });
 
+  it("replaces all aliases for an Entity with one PUT request", async () => {
+    let requestedPath = "";
+    let requestedInit: RequestInit | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        requestedPath = String(path);
+        requestedInit = init;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0 }),
+        } as Response;
+      }),
+    );
+    const { api } = await import("./api");
+    const input = {
+      items: [
+        { alias: "品牌別名", matchType: "exact" as const },
+        { alias: "Brand", matchType: "contains" as const },
+      ],
+    };
+
+    await api.geoAnalysis.replaceAliases("entity-1", input);
+
+    expect(requestedPath).toBe("/api/geo/entities/entity-1/aliases");
+    expect(requestedInit?.method).toBe("PUT");
+    expect(JSON.parse(String(requestedInit?.body))).toEqual(input);
+  });
+
   it("keeps RFC 7807 invalidParams on ApiError", async () => {
     vi.stubGlobal(
       "fetch",
