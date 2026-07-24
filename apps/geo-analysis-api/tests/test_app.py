@@ -19,9 +19,11 @@ from younilab_seo.geo_analysis.application import (
     EvidenceTextRepairCommand,
     EvidenceTextRepairResult,
     GeoAiPlatformRecord,
+    GeoEntityMentionDetectionItem,
     GeoRunResultAnalysis,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
+    GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
     GetGeoDashboardReport,
@@ -35,6 +37,7 @@ from younilab_seo.geo_analysis.application import (
     ResourceCatalogVerificationUnavailable,
     ResourceTaskReference,
     SaveRunResultCitationNormalizationCommand,
+    SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.domain import JobStatus
@@ -1664,12 +1667,36 @@ def test_store_saves_and_loads_semantic_run_result_analysis() -> None:
             SaveSemanticRunResultAnalysisCommand(analysis=analysis),
             datetime(2026, 7, 5, tzinfo=UTC),
         )
+        await store.save_run_result_entity_detection(
+            TENANT_ID,
+            SaveRunResultEntityDetectionCommand(
+                detection=GeoRunResultEntityDetection(
+                    runResultId=result_id,
+                    status="completed",
+                    items=[
+                        GeoEntityMentionDetectionItem(
+                            entityId=entity_id,
+                            entityRole="own_brand",
+                            entityName="Acme deterministic",
+                            mentioned=True,
+                            firstMentionOrder=1,
+                            evidenceText="Acme",
+                            matchedBy="canonical",
+                            matchedValue="Acme",
+                            matchType="canonical",
+                        )
+                    ],
+                )
+            ),
+            datetime(2026, 7, 5, tzinfo=UTC),
+        )
         loaded = await store.get_semantic_run_result_analysis(TENANT_ID, result_id)
 
         client.close()
         assert saved == analysis
         assert loaded is not None
         assert loaded.entity_mentions[0].first_mention_order == 1
+        assert loaded.entity_mentions[0].entity_name == "Acme deterministic"
         assert loaded.sentiments[0].sentiment == "positive"
         assert loaded.semantic_facts[0].fact_type == "topic"
 

@@ -135,13 +135,14 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
 
         assert result.status == "completed"
         assert result.analyzer == "kmindhub"
-        assert result.analyzer_version == "geo_semantic_analysis:v4"
-        assert result.entity_mentions[0].entity_id == OWN_BRAND_ID
-        assert result.entity_mentions[0].first_mention_order == 1
+        assert result.analyzer_version == "geo_semantic_analysis:v5"
+        assert result.entity_mentions == []
+        assert result.sentiments[0].entity_id == OWN_BRAND_ID
+        assert result.sentiments[0].entity_name == "Acme"
         assert result.sentiments[0].sentiment == "positive"
         assert result.semantic_facts[0].fact_type == "product"
         assert repository.upserts[0].task_key == SEMANTIC_ANALYSIS_TASK_KEY
-        assert repository.upserts[0].schema_version == 4
+        assert repository.upserts[0].schema_version == 5
         assert client.created_tasks == 1
         assert client.committed_items is not None
 
@@ -188,13 +189,12 @@ def test_kmindhub_semantic_analyzer_repairs_only_invalid_evidence() -> None:
             repairer.commands[0].failures[0].wrong_evidence_text
             == "Acme ERP 適合製造業。"
         )
-        assert result.entity_mentions[0].evidence_text == "**Acme ERP** 適合製造業。"
         assert result.sentiments[0].statement == "Acme ERP 適合製造業。"
         assert result.sentiments[0].evidence_text == "**Acme ERP** 適合製造業。"
         assert result.semantic_facts[0].evidence_text == "**Acme ERP** 適合製造業。"
         assert client.committed_items is not None
         committed_fields = client.committed_items[0]["fields"]
-        assert committed_fields["entityName"]["value"] == "Acme"
+        assert "entityName" not in committed_fields
         assert committed_fields["statement"]["value"] == "Acme ERP 適合製造業。"
         assert committed_fields["evidenceText"]["value"] == "**Acme ERP** 適合製造業。"
         assert (
@@ -209,11 +209,16 @@ def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> N
     definition = geo_semantic_analysis_task_definition()
     fields = {field.name: field for field in definition.fields}
 
-    assert definition.schema_version == 4
-    assert definition.name == "GEO semantic analysis v4"
+    assert definition.schema_version == 5
+    assert definition.name == "GEO semantic analysis v5"
     assert "preserve all Markdown delimiters" in definition.task
     assert "including Markdown formatting syntax" in definition.description
     assert "confidence" not in fields
+    assert "entityRole" not in fields
+    assert "entityName" not in fields
+    assert "mentioned" not in fields
+    assert "firstMentionOrder" not in fields
+    assert "mention" not in fields["entityId"].description.lower()
     assert (
         "Copy the exact UUID from Entity context"
         in fields["entityId"].normalization["instruction"]
@@ -251,6 +256,7 @@ def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
         ).analyze(_command())
 
         assert client.preview_text is not None
+        assert "entity mention" not in client.preview_text.lower()
         assert "Entity context:" in client.preview_text
         assert f"entityId: {OWN_BRAND_ID}" in client.preview_text
         assert "entityRole: own_brand" in client.preview_text
@@ -288,7 +294,6 @@ def test_kmindhub_semantic_analyzer_repairs_evidence_text_from_exact_excerpt() -
 
         assert result.status == "completed"
         assert len(client.preview_texts) == 1
-        assert result.entity_mentions[0].evidence_text == "Acme ERP"
         assert result.sentiments[0].evidence_text == "Acme ERP"
         assert result.semantic_facts[0].evidence_text == "Acme ERP"
         assert client.committed_items is not None
@@ -331,7 +336,6 @@ def test_kmindhub_semantic_analyzer_preserves_markdown_evidence() -> None:
 
         expected = "**活粒適**的膠囊形式通常被認為添加物較少"
         assert result.status == "completed"
-        assert result.entity_mentions[0].evidence_text == expected
         assert result.sentiments[0].evidence_text == expected
         assert result.semantic_facts[0].evidence_text == expected
         assert client.committed_items is not None
@@ -355,7 +359,7 @@ def test_kmindhub_semantic_analyzer_ignores_preview_confidence_field() -> None:
         ).analyze(_command())
 
         assert result.status == "completed"
-        assert result.entity_mentions[0].confidence is None
+        assert result.entity_mentions == []
         assert result.sentiments[0].confidence is None
         assert result.semantic_facts[0].confidence is None
 
@@ -745,7 +749,7 @@ def test_kmindhub_semantic_analyzer_does_not_repair_failed_verification() -> Non
     ("field_name", "field_value"),
     [
         ("entityId", "not-a-uuid"),
-        ("entityRole", "other"),
+        ("entityId", "00000000-0000-4000-8000-000000000007"),
         ("sentiment", "neutral"),
         ("factType", "brand"),
     ],
@@ -828,7 +832,7 @@ def test_kmindhub_semantic_analyzer_accepts_empty_evidence_text(field_value) -> 
             client,
         ).analyze(_command())
 
-        assert result.entity_mentions[0].evidence_text is None
+        assert result.entity_mentions == []
         assert result.sentiments[0].evidence_text is None
         assert result.semantic_facts[0].evidence_text is None
         assert client.committed_items is not None
@@ -848,7 +852,7 @@ def test_kmindhub_semantic_analyzer_accepts_missing_evidence_text_field() -> Non
             client,
         ).analyze(_command())
 
-        assert result.entity_mentions[0].evidence_text is None
+        assert result.entity_mentions == []
         assert result.sentiments[0].evidence_text is None
         assert result.semantic_facts[0].evidence_text is None
         assert client.committed_items is not None
@@ -856,12 +860,12 @@ def test_kmindhub_semantic_analyzer_accepts_missing_evidence_text_field() -> Non
     asyncio.run(run())
 
 
-def test_kmindhub_semantic_analyzer_accepts_unmentioned_entity_without_fields() -> None:
+def test_kmindhub_semantic_analyzer_ignores_legacy_mention_fields() -> None:
     async def run() -> None:
         item = _complete_item()
         item.fields["mentioned"] = KMindHubExtractionFieldValue(value="false")
-        del item.fields["firstMentionOrder"]
-        del item.fields["evidenceText"]
+        item.fields["entityRole"] = KMindHubExtractionFieldValue(value="other")
+        item.fields["entityName"] = KMindHubExtractionFieldValue(value="Wrong")
         client = FakeKMindHubClient(preview_items=[item])
 
         result = await KMindHubGeoRunResultAnalyzer(
@@ -870,9 +874,7 @@ def test_kmindhub_semantic_analyzer_accepts_unmentioned_entity_without_fields() 
             client,
         ).analyze(_command())
 
-        assert result.entity_mentions[0].mentioned is False
-        assert result.entity_mentions[0].first_mention_order is None
-        assert result.entity_mentions[0].evidence_text is None
+        assert result.entity_mentions == []
         assert client.committed_items is not None
 
     asyncio.run(run())
@@ -883,9 +885,7 @@ def test_kmindhub_semantic_analyzer_skips_incomplete_fact_fields() -> None:
         item = KMindHubExtractionPreviewItem(
             fields={
                 "entityId": KMindHubExtractionFieldValue(value=str(OWN_BRAND_ID)),
-                "entityRole": KMindHubExtractionFieldValue(value="own_brand"),
-                "entityName": KMindHubExtractionFieldValue(value="Acme"),
-                "factType": KMindHubExtractionFieldValue(value="product"),
+            "factType": KMindHubExtractionFieldValue(value="product"),
             },
             verification={"passed": True},
         )
@@ -977,10 +977,6 @@ def _complete_item() -> KMindHubExtractionPreviewItem:
     return KMindHubExtractionPreviewItem(
         fields={
             "entityId": KMindHubExtractionFieldValue(value=str(OWN_BRAND_ID)),
-            "entityRole": KMindHubExtractionFieldValue(value="own_brand"),
-            "entityName": KMindHubExtractionFieldValue(value="Acme"),
-            "mentioned": KMindHubExtractionFieldValue(value="true"),
-            "firstMentionOrder": KMindHubExtractionFieldValue(value="1"),
             "sentiment": KMindHubExtractionFieldValue(value="positive"),
             "theme": KMindHubExtractionFieldValue(value="fit"),
             "statement": KMindHubExtractionFieldValue(value="Acme ERP 適合製造業。"),

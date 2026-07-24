@@ -85,6 +85,8 @@ GEO_SCHEDULER_POLL_SECONDS=60
 
 部署 provider request 稽核功能前，需先執行 `deploy/local/postgresql/018_provider_request_audit.sql`。`geo-tracking-api`、`geo-analysis-api` 與 GEO worker 會在呼叫 Gemini 或 SerpApi 前先寫入 `provider_request`；若 migration 尚未套用，provider request 會依 fail-closed 規則停止，不會在沒有稽核紀錄的情況下繼續呼叫。
 
+部署 deterministic entity mention detection 前，需先執行 `deploy/local/postgresql/022_geo_run_result_entity_detection.sql`，再部署新版 GEO API 與 worker。新分析會將 mention 寫入獨立 detection tables；既有、尚未建立 detection 的 run result 仍讀取 KMindHub legacy mention。回滾應用程式版本時可保留新增資料表，不需刪除 detection 資料。
+
 Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。
 
 Provider 已執行但結果保存失敗時，Worker 只記錄 structured exception 並 ack message；Job 後續由 reconciliation 標記為 `execution_outcome_unknown`，不會重新呼叫 Provider 或送入 DLQ。DLQ 僅保留給 Provider 尚未開始前且超過 delivery 次數的 message。

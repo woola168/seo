@@ -15,7 +15,6 @@ from younilab_seo.geo_analysis.application import (
     EvidenceTextRepairer,
     EvidenceTextRepairFailure,
     GeoAnalysisRepository,
-    GeoEntityMentionFact,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoSentimentFact,
@@ -192,20 +191,13 @@ def _facts_from_preview(
     *,
     require_exact_evidence: bool = True,
 ) -> GeoRunResultAnalysis:
-    entity_mentions: list[GeoEntityMentionFact] = []
     sentiments: list[GeoSentimentFact] = []
     semantic_facts: list[GeoResponseSemanticFact] = []
 
     for index, item in enumerate(items):
         try:
-            mention = _mention_from_item(
-                item,
-                command.raw_response,
-                require_exact_evidence=require_exact_evidence,
-            )
-            if mention is not None:
-                entity_mentions.append(mention)
             sentiment = _sentiment_from_item(
+                command,
                 item,
                 command.raw_response,
                 require_exact_evidence=require_exact_evidence,
@@ -257,56 +249,33 @@ def _facts_from_preview(
         analyzer=SEMANTIC_ANALYZER_NAME,
         analyzer_version=SEMANTIC_ANALYZER_VERSION,
         status="completed",
-        entity_mentions=entity_mentions,
         sentiments=sentiments,
         semantic_facts=semantic_facts,
     )
 
 
-def _mention_from_item(
-    item: KMindHubExtractionPreviewItem,
-    raw_response: str,
-    *,
-    require_exact_evidence: bool = True,
-) -> GeoEntityMentionFact | None:
-    fields = item.fields
-    if not _has_fields(fields, "entityId", "entityRole", "entityName", "mentioned"):
-        return None
-    return GeoEntityMentionFact(
-        entity_id=_uuid_value(fields, "entityId"),
-        entity_role=_string_value(fields, "entityRole"),
-        entity_name=_string_value(fields, "entityName"),
-        mentioned=_bool_value(fields, "mentioned"),
-        first_mention_order=_int_value(fields, "firstMentionOrder"),
-        evidence_text=_evidence_value(
-            fields,
-            raw_response,
-            require_exact=require_exact_evidence,
-        ),
-    )
-
-
 def _sentiment_from_item(
+    command: AnalyzeGeoRunResultCommand,
     item: KMindHubExtractionPreviewItem,
     raw_response: str,
     *,
     require_exact_evidence: bool = True,
 ) -> GeoSentimentFact | None:
     fields = item.fields
+    entity = _entity_value(command, fields)
+    if entity is None:
+        return None
     if not _has_fields(
         fields,
-        "entityId",
-        "entityRole",
-        "entityName",
         "sentiment",
         "theme",
         "statement",
     ):
         return None
     return GeoSentimentFact(
-        entity_id=_uuid_value(fields, "entityId"),
-        entity_role=_string_value(fields, "entityRole"),
-        entity_name=_string_value(fields, "entityName"),
+        entity_id=entity.entity_id,
+        entity_role=entity.entity_role,
+        entity_name=entity.name,
         sentiment=_string_value(fields, "sentiment"),
         theme=_string_value(fields, "theme"),
         statement=_string_value(fields, "statement"),
@@ -316,6 +285,32 @@ def _sentiment_from_item(
             require_exact=require_exact_evidence,
         ),
     )
+
+
+def _entity_value(
+    command: AnalyzeGeoRunResultCommand,
+    fields: dict[str, KMindHubExtractionFieldValue],
+):
+    value = _string_value(fields, "entityId")
+    if value is None:
+        return None
+    entity_id = _uuid_value(fields, "entityId")
+    entity = next(
+        (
+            candidate
+            for candidate in [
+                command.entities.own_brand,
+                *command.entities.competitors,
+            ]
+            if candidate.entity_id == entity_id
+        ),
+        None,
+    )
+    if entity is None:
+        raise KMindHubExtractionValidationError(
+            f"entityId is not present in entity context: {entity_id}"
+        )
+    return entity
 
 
 def _semantic_fact_from_item(
@@ -364,31 +359,6 @@ def _uuid_value(fields: dict[str, KMindHubExtractionFieldValue], name: str) -> U
         raise KMindHubExtractionValidationError(
             f"{name} must be a UUID: {_safe_text(value)}"
         ) from exc
-
-
-def _bool_value(fields: dict[str, KMindHubExtractionFieldValue], name: str) -> bool:
-    value = _string_value(fields, name)
-    if value is None:
-        raise KMindHubExtractionValidationError(f"{name} must be a boolean")
-    normalized = value.lower()
-    if normalized in {"true", "1", "yes"}:
-        return True
-    if normalized in {"false", "0", "no"}:
-        return False
-    raise KMindHubExtractionValidationError(f"{name} must be a boolean")
-
-
-def _int_value(
-    fields: dict[str, KMindHubExtractionFieldValue],
-    name: str,
-) -> int | None:
-    value = _string_value(fields, name)
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise KMindHubExtractionValidationError(f"{name} must be an integer") from exc
 
 
 def _validated_evidence(
@@ -586,7 +556,7 @@ def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
             "Instructions:",
             "- Extract facts only from the AI answer section.",
             (
-                "- For entity mention and sentiment facts, entityId must be "
+                "- For sentiment facts, entityId must be "
                 "copied exactly from the entity context below."
             ),
             (

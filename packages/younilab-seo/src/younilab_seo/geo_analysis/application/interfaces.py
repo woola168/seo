@@ -35,6 +35,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoRunResultAnalysis,
     GeoRunResultAnalysisRecord,
     GeoRunResultCitationNormalization,
+    GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoTopicCommand,
     GeoTopicRecord,
@@ -55,6 +56,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryRunJobMessage,
     SaveRunResultAnalysisCommand,
     SaveRunResultCitationNormalizationCommand,
+    SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
     TrackingRunResponse,
@@ -412,6 +414,22 @@ class GeoQueryRunJobRepository(Protocol):
         command: SaveSemanticRunResultAnalysisCommand,
         occurred_at: datetime,
     ) -> GeoRunResultAnalysis | None:
+        raise NotImplementedError
+
+    async def get_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        result_id: UUID,
+        detector_version: str,
+    ) -> GeoRunResultEntityDetection | None:
+        raise NotImplementedError
+
+    async def save_run_result_entity_detection(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultEntityDetectionCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultEntityDetection | None:
         raise NotImplementedError
 
     async def get_run_result_citation_normalization(

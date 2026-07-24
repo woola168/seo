@@ -7,7 +7,6 @@ SENTIMENT_VALUES = frozenset(
     {"positive", "neutral", "negative", "mixed", "unknown"}
 )
 ENTITY_TYPE_VALUES = frozenset({"own_brand", "competitor", "other"})
-SEMANTIC_ENTITY_ROLE_VALUES = frozenset({"own_brand", "competitor"})
 SEMANTIC_SENTIMENT_VALUES = frozenset({"positive", "negative"})
 SEMANTIC_FACT_TYPE_VALUES = frozenset(
     {"product", "service", "topic", "common_statement"}
@@ -15,7 +14,7 @@ SEMANTIC_FACT_TYPE_VALUES = frozenset(
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
 SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
-SEMANTIC_ANALYSIS_SCHEMA_VERSION = 4
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 5
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -125,10 +124,10 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
     return KMindHubExtractionTaskDefinition(
         task_key=SEMANTIC_ANALYSIS_TASK_KEY,
         schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
-        name="GEO semantic analysis v4",
+        name="GEO semantic analysis v5",
         task=(
-            "Extract entity mentions, statement sentiment, and semantic labels "
-            "from one AI answer using the supplied entity context. Copy entity "
+            "Extract statement sentiment and semantic labels from one AI answer "
+            "using the supplied entity context. Copy entity "
             "UUIDs exactly from Entity context. Copy evidenceText character-for-"
             "character from the AI answer and preserve all Markdown delimiters."
         ),
@@ -141,7 +140,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
             _field(
                 "entityId",
                 "Entity ID",
-                "Tracked entity UUID for mention or sentiment facts.",
+                "Tracked entity UUID for sentiment facts.",
                 (
                     "Copy the exact UUID from Entity context for the matching own "
                     "brand or competitor. Do not use the entity name, website, or "
@@ -150,40 +149,6 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 ),
                 "00000000-0000-4000-8000-000000000001",
                 0,
-            ),
-            _field(
-                "entityRole",
-                "Entity role",
-                "Tracked entity role.",
-                _enum_instruction(SEMANTIC_ENTITY_ROLE_VALUES),
-                "own_brand",
-                1,
-            ),
-            _field(
-                "entityName",
-                "Entity name",
-                "Tracked entity name as it appears in the entity context.",
-                "Use the canonical entity name from the provided context.",
-                "Acme",
-                2,
-            ),
-            _field(
-                "mentioned",
-                "Mentioned",
-                "Whether the entity appears in the AI answer.",
-                "Use true or false.",
-                "true",
-                3,
-                field_type="boolean",
-            ),
-            _field(
-                "firstMentionOrder",
-                "First mention order",
-                "One-based order among tracked entities mentioned in the answer.",
-                "Leave empty when mentioned is false.",
-                "1",
-                4,
-                field_type="int",
             ),
             _field(
                 "sentiment",
@@ -195,7 +160,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "or uncertain statements."
                 ),
                 "positive",
-                5,
+                1,
             ),
             _field(
                 "theme",
@@ -203,7 +168,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "Short theme for a sentiment statement.",
                 "Use a concise stable theme.",
                 "product fit",
-                6,
+                2,
             ),
             _field(
                 "statement",
@@ -216,7 +181,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "the AI answer."
                 ),
                 "Acme ERP is suitable for manufacturers.",
-                7,
+                3,
             ),
             _field(
                 "factType",
@@ -228,7 +193,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "unsupported categories."
                 ),
                 "product",
-                8,
+                4,
             ),
             _field(
                 "value",
@@ -236,7 +201,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                 "Product, service, topic, or common statement value.",
                 "Return one stable normalized value.",
                 "ERP",
-                9,
+                5,
             ),
             _field(
                 "evidenceText",
@@ -263,7 +228,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "copied from the AI answer without changing any words."
                 ),
                 "**Acme** ERP",
-                10,
+                6,
             ),
         ],
     )
