@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import DataError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from younilab_seo.geo_analysis.application import (
@@ -558,15 +559,15 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         )
         assert entity is not None
         assert other_entity is not None
-        alias = await repository.create_alias(
+        created_aliases = await repository.replace_aliases(
             TENANT_ID,
             entity.id,
-            GeoEntityAliasCommand(alias="Bulk List Alias"),
+            [GeoEntityAliasCommand(alias="Bulk List Alias")],
         )
-        await repository.create_alias(
+        await repository.replace_aliases(
             TENANT_ID,
             other_entity.id,
-            GeoEntityAliasCommand(alias="Other Bulk List Alias"),
+            [GeoEntityAliasCommand(alias="Other Bulk List Alias")],
         )
         query = await repository.create_query(
             TENANT_ID,
@@ -578,7 +579,7 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
             other_project.id,
             GeoQueryCommand(query_text="Other bulk list query", region="TW", language="zh-TW"),
         )
-        assert alias is not None
+        assert created_aliases is not None
         assert query is not None
         assert other_query is not None
         query_platforms = await repository.replace_query_platforms(
@@ -632,12 +633,100 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         )
         schedules = await repository.list_project_schedules(TENANT_ID, project.id)
 
-        assert [item.id for item in aliases] == [alias.id]
+        assert [item.id for item in aliases] == [created_aliases[0].id]
         assert [item.id for item in platforms] == [query_platforms[0].id]
         assert [item.id for item in schedules] == [schedule.id]
         assert await repository.list_project_aliases(uuid4(), project.id) == []
         assert await repository.list_project_query_platforms(uuid4(), project.id) == []
         assert await repository.list_project_schedules(uuid4(), project.id) == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_postgres_repository_replaces_aliases_atomically() -> None:
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    try:
+        project = await repository.create_project(
+            GeoProjectCommand(tenant_id=TENANT_ID, name=f"Alias Replace {uuid4()}")
+        )
+        entity = await repository.create_entity(
+            TENANT_ID,
+            project.id,
+            GeoEntityCommand(entity_type="own_brand", name="Alias Replace Entity"),
+        )
+        assert entity is not None
+        original = await repository.replace_aliases(
+            TENANT_ID,
+            entity.id,
+            [
+                GeoEntityAliasCommand(alias="Keep", match_type="exact"),
+                GeoEntityAliasCommand(alias="Remove", match_type="contains"),
+            ],
+        )
+        assert original is not None
+
+        repeated = await repository.replace_aliases(
+            TENANT_ID,
+            entity.id,
+            [
+                GeoEntityAliasCommand(alias="Keep", match_type="exact"),
+                GeoEntityAliasCommand(alias="Remove", match_type="contains"),
+            ],
+        )
+        assert repeated is not None
+        assert [(item.id, item.created_at) for item in repeated] == [
+            (item.id, item.created_at) for item in original
+        ]
+
+        with pytest.raises(DataError):
+            await repository.replace_aliases(
+                TENANT_ID,
+                entity.id,
+                [
+                    GeoEntityAliasCommand(alias="Keep", match_type="domain"),
+                    GeoEntityAliasCommand(alias="Invalid", match_type="x" * 33),
+                ],
+            )
+        after_failure = await repository.list_aliases(TENANT_ID, entity.id)
+        assert {item.alias: item.match_type for item in after_failure} == {
+            "Keep": "exact",
+            "Remove": "contains",
+        }
+
+        await asyncio.gather(
+            repository.replace_aliases(
+                TENANT_ID,
+                entity.id,
+                [
+                    GeoEntityAliasCommand(alias="First"),
+                    GeoEntityAliasCommand(alias="First Two"),
+                ],
+            ),
+            repository.replace_aliases(
+                TENANT_ID,
+                entity.id,
+                [GeoEntityAliasCommand(alias="Second")],
+            ),
+        )
+        final_values = {
+            item.alias for item in await repository.list_aliases(TENANT_ID, entity.id)
+        }
+        assert final_values in ({"First", "First Two"}, {"Second"})
     finally:
         await engine.dispose()
 

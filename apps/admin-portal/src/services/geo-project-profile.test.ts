@@ -107,6 +107,7 @@ describe("GEO Project profile", () => {
     expect(result.querySettingsStatus).toBe("saved");
     expect(calls.createProject).toHaveBeenCalledTimes(1);
     expect(calls.updateQuerySettings).toHaveBeenCalledWith("project-1", querySettingsRequest());
+    expect(calls.replaceAliases).toHaveBeenCalledWith("own-1", { items: [] });
     expect(calls.createProject.mock.invocationCallOrder[0]).toBeLessThan(
       calls.createEntity.mock.invocationCallOrder[0]!,
     );
@@ -116,6 +117,41 @@ describe("GEO Project profile", () => {
     expect(calls.createTopic.mock.invocationCallOrder[0]).toBeLessThan(
       calls.updateQuerySettings.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("replaces own-brand and competitor aliases once per Entity", async () => {
+    const calls = mockProjectCreation();
+    calls.createEntity
+      .mockResolvedValueOnce(entity("own-1", "own_brand", "範例 Project", "https://example.com"))
+      .mockResolvedValueOnce(entity("competitor-1", "competitor", "競品", "https://competitor.example"));
+    const input = {
+      ...projectInput(),
+      aliases: ["Own", "Own TW"],
+      competitors: [
+        {
+          id: null,
+          name: "競品",
+          websiteUrl: "https://competitor.example",
+          aliases: ["Competitor", "競品別名"],
+        },
+      ],
+    };
+
+    await createGeoProjectWithQuerySettings(input, querySettingsRequest(), true);
+
+    expect(calls.replaceAliases).toHaveBeenCalledTimes(2);
+    expect(calls.replaceAliases).toHaveBeenNthCalledWith(1, "own-1", {
+      items: [
+        { alias: "Own", matchType: "exact" },
+        { alias: "Own TW", matchType: "exact" },
+      ],
+    });
+    expect(calls.replaceAliases).toHaveBeenNthCalledWith(2, "competitor-1", {
+      items: [
+        { alias: "Competitor", matchType: "exact" },
+        { alias: "競品別名", matchType: "exact" },
+      ],
+    });
   });
 
   it("keeps the created Project when Query Settings saving fails", async () => {
@@ -134,6 +170,20 @@ describe("GEO Project profile", () => {
       querySettingsError: "settings unavailable",
     });
     expect(calls.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the created Project and reports a batch Alias failure", async () => {
+    const calls = mockProjectCreation();
+    calls.replaceAliases.mockRejectedValueOnce(new Error("aliases unavailable"));
+
+    await expect(
+      createGeoProjectWithQuerySettings(projectInput(), querySettingsRequest(), true),
+    ).rejects.toMatchObject({
+      message: "aliases unavailable",
+      project: { id: "project-1" },
+    });
+    expect(calls.createProject).toHaveBeenCalledTimes(1);
+    expect(calls.updateQuerySettings).not.toHaveBeenCalled();
   });
 
   it("skips Query Settings when the user cannot update Projects", async () => {
@@ -166,12 +216,16 @@ function mockProjectCreation() {
     createdAt: "2026-07-19T00:00:00Z",
     updatedAt: "2026-07-19T00:00:00Z",
   });
+  const replaceAliases = vi.spyOn(apiModule.api.geoAnalysis, "replaceAliases").mockResolvedValue({
+    items: [],
+    total: 0,
+  });
   const updateQuerySettings = vi.spyOn(apiModule.api.geoAnalysis, "updateQuerySettings").mockResolvedValue({
     projectId: project.id,
     ...querySettingsRequest(),
     updatedAt: "2026-07-19T00:00:00Z",
   });
-  return { createProject, createEntity, createTopic, updateQuerySettings };
+  return { createProject, createEntity, createTopic, replaceAliases, updateQuerySettings };
 }
 
 function projectInput() {

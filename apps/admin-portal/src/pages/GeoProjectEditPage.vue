@@ -38,11 +38,12 @@ const router = useRouter();
 const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
+const canResearch = computed(() => hasPermission(props.permissions, "geo.queries.manage"));
 const isRecoveringQueryResearch = computed(
   () =>
     route.query.mode === "query-research" &&
     Boolean(projectId.value) &&
-    hasPermission(props.permissions, "geo.queries.manage"),
+    canResearch.value,
 );
 const step = ref<1 | 2>(1);
 const loading = ref(false);
@@ -76,8 +77,7 @@ const topics = ref<Array<{ name: string; description: string }>>([]);
 const competitorModalOpen = ref(false);
 const editingCompetitorId = ref("");
 const competitorForm = reactive({ name: "", websiteUrl: "", aliases: [] as string[] });
-const aliasText = ref("");
-const aliasValues = computed(() => normalizeValues(aliasText.value.split(/[,，]/)));
+const ownBrandAliases = ref<string[]>([]);
 const form = reactive({
   name: "",
   websiteUrl: "",
@@ -107,7 +107,7 @@ async function load(): Promise<void> {
     form.customerId = profile.project.customerId ?? "";
     form.defaultRegion = profile.project.defaultRegion;
     form.defaultLanguage = profile.project.defaultLanguage;
-    aliasText.value = profile.ownBrand.aliases.map((alias) => alias.alias).join(", ");
+    ownBrandAliases.value = profile.ownBrand.aliases.map((alias) => alias.alias);
     competitors.value = profile.competitors.map((competitor) => ({
       clientId: competitor.clientId,
       id: competitor.entity?.id ?? null,
@@ -158,6 +158,14 @@ function secondaryAction(): void {
   void router.push({ name: projectRoutes.value.projects });
 }
 
+function openQueryResearch(): void {
+  if (!projectId.value || !canResearch.value) return;
+  void router.push({
+    name: projectRoutes.value.queryResearch,
+    params: { projectId: projectId.value },
+  });
+}
+
 function forwardQueryResearchNotification(
   message: string,
   tone?: ToastTone,
@@ -178,7 +186,7 @@ async function save(): Promise<void> {
       dailyRunBudget: currentProfile.value?.project.dailyRunBudget ?? 200,
     },
     websiteUrl: form.websiteUrl,
-    aliases: aliasValues.value,
+    aliases: normalizeValues(ownBrandAliases.value),
     competitors: competitors.value.map((competitor) => ({
       id: competitor.id,
       name: competitor.name.trim(),
@@ -289,6 +297,7 @@ function addTopic(): void {
         <div><h1>{{ isEdit ? "編輯 Project" : "新增 Project" }}</h1><p>{{ isEdit ? "修改專案基本資料與 Query list" : "填寫專案基本資料與 Query list" }}</p></div>
         <span class="geo-header-spacer"></span>
         <button class="button button-secondary" type="button" @click="secondaryAction">{{ !isEdit && step === 2 ? "上一步" : "取消" }}</button>
+        <button v-if="isEdit" class="button button-secondary" type="button" :disabled="loading || !canResearch" @click="openQueryResearch"><AppIcon name="search" :size="14" />Query Research</button>
         <button class="button button-primary" type="button" :disabled="loading" @click="primaryAction">{{ isEdit ? "儲存" : step === 1 ? "下一步" : "Query Research" }}</button>
       </header>
 
@@ -303,7 +312,10 @@ function addTopic(): void {
             <GeoFormField label="客戶" required :error="errors.customerId"><select v-model="form.customerId" :class="{ invalid: errors.customerId }"><option value="">請選擇客戶</option><option v-for="customer in customers" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></GeoFormField>
             <GeoFormField label="地區" required :error="errors.defaultRegion"><input v-model="form.defaultRegion" type="text" placeholder="例如：TW" /></GeoFormField>
             <GeoFormField label="語系" required :error="errors.defaultLanguage"><input v-model="form.defaultLanguage" type="text" placeholder="例如：zh-TW" /></GeoFormField>
-            <GeoFormField label="別名"><input v-model="aliasText" type="text" placeholder="請輸入別名" /></GeoFormField>
+            <GeoFormField label="別名">
+              <GeoTagInput v-model="ownBrandAliases" placeholder="請輸入別名" />
+              <small class="geo-form-helper">輸入別名後按 Enter 或逗號新增，可加入多組</small>
+            </GeoFormField>
             <GeoFormField v-if="!isEdit" class="geo-form-full" label="競品" required :error="errors.competitors">
               <template #action><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></template>
               <GeoTagInput v-model="competitorNames" placeholder="請輸入競品" :invalid="Boolean(errors.competitors)" />
@@ -329,7 +341,7 @@ function addTopic(): void {
         </section>
 
         <template v-if="!isEdit && step === 2">
-          <section class="geo-form-card"><header><strong>品牌基本資料</strong></header><div class="geo-read-grid"><div><span>Project 名稱</span><strong>{{ form.name }}</strong></div><div><span>網址/網域</span><strong>{{ form.websiteUrl }}</strong></div><div><span>客戶</span><strong>{{ customers.find((customer) => customer.id === form.customerId)?.name }}</strong></div><div><span>地區</span><strong>{{ form.defaultRegion }}</strong></div><div><span>語系</span><strong>{{ form.defaultLanguage }}</strong></div><div><span>別名</span><strong>{{ aliasValues.join("、") || "—" }}</strong></div><div class="geo-read-full"><span>競品</span><div class="geo-read-tags"><span v-for="competitor in competitors" :key="competitor.clientId" class="geo-read-tag">{{ competitor.name }}</span></div></div></div></section>
+          <section class="geo-form-card"><header><strong>品牌基本資料</strong></header><div class="geo-read-grid"><div><span>Project 名稱</span><strong>{{ form.name }}</strong></div><div><span>網址/網域</span><strong>{{ form.websiteUrl }}</strong></div><div><span>客戶</span><strong>{{ customers.find((customer) => customer.id === form.customerId)?.name }}</strong></div><div><span>地區</span><strong>{{ form.defaultRegion }}</strong></div><div><span>語系</span><strong>{{ form.defaultLanguage }}</strong></div><div><span>別名</span><strong>{{ ownBrandAliases.join("、") || "—" }}</strong></div><div class="geo-read-full"><span>競品</span><div class="geo-read-tags"><span v-for="competitor in competitors" :key="competitor.clientId" class="geo-read-tag">{{ competitor.name }}</span></div></div></div></section>
           <section class="geo-form-card"><header><strong>Provider</strong></header><div class="geo-form-grid"><GeoFormField label="Research / Generation Provider"><select v-model="form.researchProvider"><option value="gemini">Gemini</option></select></GeoFormField><GeoFormField label="Run Provider"><select v-model="form.runProvider"><option value="gemini">Gemini</option></select></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>Keywords</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header><div class="geo-card-body"><GeoFormField label="Keywords" :error="errors.keywords"><textarea v-model="form.keywords" rows="5" placeholder="一行一個 keyword" :class="{ invalid: errors.keywords }"></textarea></GeoFormField><small>一行一個 keyword，最多 10 筆。</small></div></section>
           <section class="geo-form-card"><header><strong>Topics</strong><div><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button><button class="button button-secondary button-small" type="button" @click="addTopic">新增 Topic</button></div></header><div class="geo-card-body geo-topic-list"><div v-for="(topic, index) in topics" :key="index"><label><span>Topic 名稱</span><input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商" /></label><label><span>Topic 描述</span><input v-model="topic.description" type="text" placeholder="描述此 Topic" /></label><button class="button button-secondary button-small" type="button" @click="topics.splice(index, 1)">移除</button></div><p v-if="!topics.length">尚未新增 Topic，點右上「新增 Topic」開始</p></div></section>

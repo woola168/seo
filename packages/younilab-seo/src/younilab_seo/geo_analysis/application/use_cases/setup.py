@@ -320,9 +320,9 @@ class ManageGeoSetup:
         self,
         principal: AuthorizedPrincipal,
         entity_id: UUID,
-    ) -> list[GeoEntityAliasRecord]:
+    ) -> list[GeoEntityAliasRecord] | None:
         if await self.get_entity(principal, entity_id) is None:
-            return []
+            return None
         return await self.repository.list_aliases(principal.tenant_id, entity_id)
 
     async def list_project_aliases(
@@ -337,40 +337,19 @@ class ManageGeoSetup:
             project_id,
         )
 
-    async def create_alias(
+    async def replace_aliases(
         self,
         principal: AuthorizedPrincipal,
         entity_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
+        commands: list[GeoEntityAliasCommand],
+    ) -> list[GeoEntityAliasRecord] | None:
         if await self.get_entity(principal, entity_id) is None:
             return None
-        return await self.repository.create_alias(
+        return await self.repository.replace_aliases(
             principal.tenant_id,
             entity_id,
-            command,
+            commands,
         )
-
-    async def update_alias(
-        self,
-        principal: AuthorizedPrincipal,
-        alias_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        project = await self.repository.get_alias_project(principal.tenant_id, alias_id)
-        if project is None or not can_access_project(principal, project):
-            return None
-        return await self.repository.update_alias(
-            principal.tenant_id,
-            alias_id,
-            command,
-        )
-
-    async def delete_alias(self, principal: AuthorizedPrincipal, alias_id: UUID) -> bool:
-        project = await self.repository.get_alias_project(principal.tenant_id, alias_id)
-        if project is None or not can_access_project(principal, project):
-            return False
-        return await self.repository.delete_alias(principal.tenant_id, alias_id)
 
     async def list_topics(
         self,

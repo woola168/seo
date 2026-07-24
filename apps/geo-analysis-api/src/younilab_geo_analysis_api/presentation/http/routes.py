@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from younilab_geo_analysis_api.presentation.http.dependencies import bearer_token
 from younilab_geo_analysis_api.presentation.http.dtos import (
-    AliasRequest,
+    AliasCollectionRequest,
+    AliasCollectionResponse,
     AliasResponse,
     AcceptQueryDraftRequest,
     AiPlatformResponse,
@@ -663,55 +664,54 @@ async def delete_entity(request: Request, entity_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="entity not found")
 
 
-@router.get("/entities/{entity_id}/aliases", response_model=PageResponse)
-async def list_aliases(request: Request, entity_id: UUID) -> PageResponse:
+@router.get(
+    "/entities/{entity_id}/aliases",
+    response_model=AliasCollectionResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def list_aliases(request: Request, entity_id: UUID) -> AliasCollectionResponse:
     principal = await _principal(request, "geo.projects.read")
     items = await _setup(request).list_aliases(principal, entity_id)
-    return PageResponse(
+    if items is None:
+        raise HTTPException(status_code=404, detail="entity not found")
+    return AliasCollectionResponse(
         items=[AliasResponse(**_record_data(item)) for item in items],
         total=len(items),
     )
 
 
-@router.post("/entities/{entity_id}/aliases", response_model=AliasResponse, status_code=201)
-async def create_alias(
+@router.put(
+    "/entities/{entity_id}/aliases",
+    response_model=AliasCollectionResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def replace_aliases(
     request: Request,
     entity_id: UUID,
-    payload: AliasRequest,
-) -> AliasResponse:
+    payload: AliasCollectionRequest,
+) -> AliasCollectionResponse:
     principal = await _principal(request, "geo.projects.update")
-    alias = await _setup(request).create_alias(
+    aliases = await _setup(request).replace_aliases(
         principal,
         entity_id,
-        GeoEntityAliasCommand(**payload.model_dump()),
+        [GeoEntityAliasCommand(**item.model_dump()) for item in payload.items],
     )
-    if alias is None:
+    if aliases is None:
         raise HTTPException(status_code=404, detail="entity not found")
-    return AliasResponse(**_record_data(alias))
-
-
-@router.patch("/entity-aliases/{alias_id}", response_model=AliasResponse)
-async def update_alias(
-    request: Request,
-    alias_id: UUID,
-    payload: AliasRequest,
-) -> AliasResponse:
-    principal = await _principal(request, "geo.projects.update")
-    alias = await _setup(request).update_alias(
-        principal,
-        alias_id,
-        GeoEntityAliasCommand(**payload.model_dump()),
+    return AliasCollectionResponse(
+        items=[AliasResponse(**_record_data(alias)) for alias in aliases],
+        total=len(aliases),
     )
-    if alias is None:
-        raise HTTPException(status_code=404, detail="alias not found")
-    return AliasResponse(**_record_data(alias))
-
-
-@router.delete("/entity-aliases/{alias_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_alias(request: Request, alias_id: UUID) -> None:
-    principal = await _principal(request, "geo.projects.update")
-    if not await _setup(request).delete_alias(principal, alias_id):
-        raise HTTPException(status_code=404, detail="alias not found")
 
 
 @router.get("/projects/{project_id}/topics", response_model=PageResponse)

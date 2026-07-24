@@ -600,22 +600,6 @@ class PostgresGeoAnalysisRepository:
         )
         return await self._project_record_for(statement)
 
-    async def get_alias_project(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-    ) -> GeoProjectRecord | None:
-        statement = (
-            select(GeoProjectRow)
-            .join(GeoEntityRow, GeoEntityRow.project_id == GeoProjectRow.id)
-            .join(GeoEntityAliasRow, GeoEntityAliasRow.entity_id == GeoEntityRow.id)
-            .where(
-                GeoProjectRow.tenant_id == tenant_id,
-                GeoEntityAliasRow.id == alias_id,
-            )
-        )
-        return await self._project_record_for(statement)
-
     async def get_topic_project(
         self,
         tenant_id: UUID,
@@ -962,11 +946,14 @@ class PostgresGeoAnalysisRepository:
     ) -> list[GeoEntityAliasRecord]:
         if await self.get_entity(tenant_id, entity_id) is None:
             return []
-        return await self._list_scoped(
-            GeoEntityAliasRow,
-            GeoEntityAliasRow.entity_id == entity_id,
-            _alias_record,
+        statement = (
+            select(GeoEntityAliasRow)
+            .where(GeoEntityAliasRow.entity_id == entity_id)
+            .order_by(GeoEntityAliasRow.created_at, GeoEntityAliasRow.id)
         )
+        async with self._session_scope() as session:
+            rows = (await session.scalars(statement)).all()
+            return [_alias_record(row) for row in rows]
 
     async def list_project_aliases(
         self,
@@ -979,46 +966,28 @@ class PostgresGeoAnalysisRepository:
             select(GeoEntityAliasRow)
             .join(GeoEntityRow, GeoEntityRow.id == GeoEntityAliasRow.entity_id)
             .where(GeoEntityRow.project_id == project_id)
+            .order_by(GeoEntityAliasRow.created_at, GeoEntityAliasRow.id)
         )
         async with self._session_scope() as session:
             rows = (await session.scalars(statement)).all()
             return [_alias_record(row) for row in rows]
 
-    async def create_alias(
+    async def replace_aliases(
         self,
         tenant_id: UUID,
         entity_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        if await self.get_entity(tenant_id, entity_id) is None:
-            return None
-        row = GeoEntityAliasRow(
-            id=uuid4(),
-            entity_id=entity_id,
-            alias=command.alias,
-            match_type=command.match_type,
-            created_at=_now(),
-        )
+        commands: list[GeoEntityAliasCommand],
+    ) -> list[GeoEntityAliasRecord] | None:
+        if len({command.alias for command in commands}) != len(commands):
+            raise ValueError("alias values must be unique")
         async with self._session_scope() as session:
-            session.add(row)
-        return _alias_record(row)
-
-    async def update_alias(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        async with self._session_scope() as session:
-            row = await session.get(GeoEntityAliasRow, alias_id)
-            entity = (
-                await session.get(GeoEntityRow, row.entity_id)
-                if row is not None
-                else None
+            entity = await session.scalar(
+                select(GeoEntityRow)
+                .where(GeoEntityRow.id == entity_id)
+                .with_for_update()
             )
             if (
-                row is None
-                or entity is None
+                entity is None
                 or not await self._project_row_matches(
                     session,
                     tenant_id,
@@ -1026,30 +995,39 @@ class PostgresGeoAnalysisRepository:
                 )
             ):
                 return None
-            row.alias = command.alias
-            row.match_type = command.match_type
-            return _alias_record(row)
-
-    async def delete_alias(self, tenant_id: UUID, alias_id: UUID) -> bool:
-        async with self._session_scope() as session:
-            row = await session.get(GeoEntityAliasRow, alias_id)
-            entity = (
-                await session.get(GeoEntityRow, row.entity_id)
-                if row is not None
-                else None
+            rows = list(
+                (
+                    await session.scalars(
+                        select(GeoEntityAliasRow).where(
+                            GeoEntityAliasRow.entity_id == entity_id
+                        )
+                    )
+                ).all()
             )
-            if (
-                row is None
-                or entity is None
-                or not await self._project_row_matches(
-                    session,
-                    tenant_id,
-                    entity.project_id,
-                )
-            ):
-                return False
-            await session.delete(row)
-            return True
+            existing = {row.alias: row for row in rows}
+            wanted = {command.alias: command for command in commands}
+            for row in rows:
+                if row.alias not in wanted:
+                    await session.delete(row)
+            result: list[GeoEntityAliasRow] = []
+            for value, command in wanted.items():
+                row = existing.get(value)
+                if row is None:
+                    row = GeoEntityAliasRow(
+                        id=uuid4(),
+                        entity_id=entity_id,
+                        alias=command.alias,
+                        match_type=command.match_type,
+                        created_at=_now(),
+                    )
+                    session.add(row)
+                else:
+                    row.match_type = command.match_type
+                result.append(row)
+            return [
+                _alias_record(row)
+                for row in sorted(result, key=lambda item: (item.created_at, item.id))
+            ]
 
     async def list_topics(self, tenant_id: UUID, project_id: UUID) -> list[GeoTopicRecord]:
         if not await self._project_exists(tenant_id, project_id):

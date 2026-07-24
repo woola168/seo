@@ -881,9 +881,13 @@ export interface GeoEntityAliasResource extends GeoEntityAlias {
   createdAt: string;
 }
 
-export interface GeoEntityAliasRequest {
+export interface GeoEntityAliasInput {
   alias: string;
   matchType: GeoEntityAlias["matchType"];
+}
+
+export interface GeoEntityAliasCollectionRequest {
+  items: GeoEntityAliasInput[];
 }
 
 export interface GeoTopicResource extends GeoTopic {

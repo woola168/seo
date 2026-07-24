@@ -571,14 +571,12 @@ PATCH  /api/geo/entities/{entityId}
 DELETE /api/geo/entities/{entityId}
 
 GET    /api/geo/entities/{entityId}/aliases
-POST   /api/geo/entities/{entityId}/aliases
-PATCH  /api/geo/entity-aliases/{aliasId}
-DELETE /api/geo/entity-aliases/{aliasId}
+PUT    /api/geo/entities/{entityId}/aliases
 ```
 
 用途：
 
-- 管理 primary brand、competitor、alias。
+- 管理 primary brand、competitor、alias；Alias PUT 會在單一 transaction 內完整替換指定 Entity 的別名集合。
 - 不在本模組做 mention 解析。
 
 ### Topics and Queries

@@ -529,13 +529,6 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> GeoProjectRecord | None:
         raise NotImplementedError
 
-    async def get_alias_project(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-    ) -> GeoProjectRecord | None:
-        raise NotImplementedError
-
     async def get_topic_project(
         self,
         tenant_id: UUID,
@@ -678,23 +671,12 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> list[GeoEntityAliasRecord]:
         raise NotImplementedError
 
-    async def create_alias(
+    async def replace_aliases(
         self,
         tenant_id: UUID,
         entity_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        raise NotImplementedError
-
-    async def update_alias(
-        self,
-        tenant_id: UUID,
-        alias_id: UUID,
-        command: GeoEntityAliasCommand,
-    ) -> GeoEntityAliasRecord | None:
-        raise NotImplementedError
-
-    async def delete_alias(self, tenant_id: UUID, alias_id: UUID) -> bool:
+        commands: list[GeoEntityAliasCommand],
+    ) -> list[GeoEntityAliasRecord] | None:
         raise NotImplementedError
 
     async def list_topics(
