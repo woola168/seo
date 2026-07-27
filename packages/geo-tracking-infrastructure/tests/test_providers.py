@@ -1093,6 +1093,206 @@ async def test_google_aio_provider_uses_direct_ai_overview_content() -> None:
 
 
 @pytest.mark.anyio
+async def test_google_aio_provider_renders_nested_lists_and_table() -> None:
+    async def fetch_json(params: dict[str, str]) -> dict[str, object]:
+        return {
+            "ai_overview": {
+                "text_blocks": [
+                    {
+                        "type": "paragraph",
+                        "snippet": (
+                            "網訊、漸強實驗室與 Super8 的定位不同\n\n。"
+                        ),
+                    },
+                    {
+                        "type": "heading",
+                        "snippet": "核心定位與協作模式差異",
+                    },
+                    {
+                        "type": "list",
+                        "list": [
+                            {
+                                "snippet": "網訊電通 (Telexpress)：",
+                                "list": [
+                                    {"snippet": "優勢\n：一站式 BPO 服務"},
+                                    {"snippet": "協作特點：AI 與真人客服整合"},
+                                ],
+                            },
+                            {
+                                "snippet": "漸強實驗室 (Crescendo Lab)：",
+                                "list": [
+                                    {"snippet": "優勢：跨渠道行銷數據引擎"},
+                                ],
+                            },
+                            {
+                                "snippet": "Super8：",
+                                "list": [
+                                    {"snippet": "優勢：多代理對話式 CRM"},
+                                ],
+                            },
+                        ],
+                    },
+                    {"type": "heading", "snippet": "數據架構對比"},
+                    {
+                        "type": "table",
+                        "table": [
+                            ["廠商", "數據架構"],
+                            ["網訊電通", "BPO 與客服系統整合"],
+                            ["漸強實驗室", "MAAC、CAAC、DAAC"],
+                            ["Super8", "Agentic AI"],
+                        ],
+                        "detailed": [
+                            [{"snippet": "廠商"}, {"snippet": "數據架構"}],
+                            [
+                                {"snippet": "網訊電通"},
+                                {"snippet": "BPO 與客服系統整合"},
+                            ],
+                        ],
+                        "formatted": [
+                            {
+                                "廠商": "網訊電通",
+                                "數據架構": "BPO 與客服系統整合",
+                            }
+                        ],
+                    },
+                ],
+                "references": [],
+            }
+        }
+
+    provider = SerpApiGoogleAioAnswerProvider(
+        GeoTrackingSettings(serpapi_api_key="test-key"),
+        _recorder(),
+        fetch_json=fetch_json,
+    )
+
+    response = await provider.generate_answer(_answer_request())
+
+    assert response.raw_response == (
+        "網訊、漸強實驗室與 Super8 的定位不同。\n\n"
+        "## 核心定位與協作模式差異\n\n"
+        "- 網訊電通 (Telexpress)：\n"
+        "  - 優勢：一站式 BPO 服務\n"
+        "  - 協作特點：AI 與真人客服整合\n"
+        "- 漸強實驗室 (Crescendo Lab)：\n"
+        "  - 優勢：跨渠道行銷數據引擎\n"
+        "- Super8：\n"
+        "  - 優勢：多代理對話式 CRM\n\n"
+        "## 數據架構對比\n\n"
+        "| 廠商 | 數據架構 |\n"
+        "| --- | --- |\n"
+        "| 網訊電通 | BPO 與客服系統整合 |\n"
+        "| 漸強實驗室 | MAAC、CAAC、DAAC |\n"
+        "| Super8 | Agentic AI |"
+    )
+    assert response.raw_response.count("BPO 與客服系統整合") == 1
+
+
+@pytest.mark.parametrize(
+    ("table_block", "expected"),
+    [
+        (
+            {
+                "type": "table",
+                "detailed": [
+                    [{"snippet": "廠商"}, {"snippet": "評分"}],
+                    [{"snippet": "網訊"}, {"snippet": "5"}],
+                ],
+            },
+            "| 廠商 | 評分 |\n| --- | --- |\n| 網訊 | 5 |",
+        ),
+        (
+            {
+                "type": "table",
+                "formatted": [
+                    {" vendor\n": "網訊", "score": 5},
+                    {"vendor": "Super8", "score": 4},
+                ],
+            },
+            (
+                "| vendor | score |\n"
+                "| --- | --- |\n"
+                "| 網訊 | 5 |\n"
+                "| Super8 | 4 |"
+            ),
+        ),
+    ],
+)
+def test_ai_overview_table_uses_documented_fallbacks(
+    table_block: dict[str, object],
+    expected: str,
+) -> None:
+    assert providers_module._ai_overview_text(
+        {"text_blocks": [table_block]}
+    ) == expected
+
+
+def test_ai_overview_renderer_handles_expandable_comparison_and_malformed_data(
+) -> None:
+    ai_overview = {
+        "text_blocks": [
+            {
+                "type": "expandable",
+                "title": "相機比較",
+                "subtitle": "兩款產品的規格",
+                "text_blocks": [
+                    {"type": "paragraph", "snippet": "先比較解析度。"},
+                    {
+                        "type": "comparison",
+                        "product_labels": ["產品 A", "產品 B"],
+                        "comparison": [
+                            {
+                                "feature": "鏡頭 | 類型",
+                                "values": ["廣角", "望遠"],
+                            },
+                            {"feature": "變焦", "values": ["2x"]},
+                            "invalid",
+                        ],
+                    },
+                ],
+            },
+            {"type": "unknown", "snippet": "仍應保留的文字"},
+            {"type": "list", "list": [None, {"list": [{"snippet": "孤立子項"}]}]},
+            None,
+        ]
+    }
+
+    assert providers_module._ai_overview_text(ai_overview) == (
+        "## 相機比較\n\n"
+        "兩款產品的規格\n\n"
+        "先比較解析度。\n\n"
+        "|  | 產品 A | 產品 B |\n"
+        "| --- | --- | --- |\n"
+        "| 鏡頭 \\| 類型 | 廣角 | 望遠 |\n"
+        "| 變焦 | 2x |  |\n\n"
+        "仍應保留的文字\n\n"
+        "- 孤立子項"
+    )
+
+
+def test_ai_overview_table_pads_ragged_rows_and_escapes_pipes() -> None:
+    ai_overview = {
+        "text_blocks": [
+            {
+                "type": "table",
+                "table": [
+                    ["欄位", "內容"],
+                    ["A|B"],
+                    [None, "值", "額外欄位"],
+                ],
+            }
+        ]
+    }
+
+    assert providers_module._ai_overview_text(ai_overview) == (
+        "| 欄位 | 內容 |  |\n"
+        "| --- | --- | --- |\n"
+        "| A\\|B |  |  |\n"
+        "|  | 值 | 額外欄位 |"
+    )
+
+
+@pytest.mark.anyio
 async def test_google_aio_provider_uses_distinct_operations_for_queries_in_same_run(
 ) -> None:
     recorder = _recorder()

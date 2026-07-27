@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -442,38 +443,234 @@ def _has_ai_overview_content(ai_overview: dict[str, Any]) -> bool:
 
 
 def _ai_overview_text(ai_overview: dict[str, Any]) -> str:
-    blocks = ai_overview.get("text_blocks")
-    if not isinstance(blocks, list):
-        return ""
-    lines: list[str] = []
-    for block in blocks:
+    return "\n\n".join(
+        _render_ai_overview_blocks(ai_overview.get("text_blocks"))
+    ).strip()
+
+
+def _render_ai_overview_blocks(
+    value: Any,
+    *,
+    heading_level: int = 2,
+) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    rendered: list[str] = []
+    for block in value:
         if not isinstance(block, dict):
             continue
-        snippet = _clean_text(block.get("snippet"))
-        block_type = block.get("type")
-        if snippet:
-            lines.append(snippet)
-        if block_type == "list":
-            lines.extend(_ai_overview_list_lines(block.get("list")))
-    return "\n\n".join(lines).strip()
+        content = _render_ai_overview_block(block, heading_level=heading_level)
+        if content:
+            rendered.append(content)
+    return rendered
 
 
-def _ai_overview_list_lines(value: Any) -> list[str]:
+def _render_ai_overview_block(
+    block: dict[str, Any],
+    *,
+    heading_level: int,
+) -> str:
+    block_type = block.get("type")
+    snippet = _clean_ai_overview_text(block.get("snippet"))
+    if block_type == "heading":
+        if not snippet:
+            return ""
+        marker = "#" * min(max(heading_level, 1), 6)
+        return f"{marker} {snippet}"
+    if block_type == "list":
+        list_text = "\n".join(_ai_overview_list_lines(block.get("list")))
+        return "\n".join(part for part in (snippet, list_text) if part)
+    if block_type == "table":
+        table_text = _render_markdown_table(_ai_overview_table_rows(block))
+        return "\n\n".join(part for part in (snippet, table_text) if part)
+    if block_type == "expandable":
+        return _render_ai_overview_expandable(block, heading_level=heading_level)
+    if block_type == "comparison":
+        comparison = _render_ai_overview_comparison(block)
+        return "\n\n".join(part for part in (snippet, comparison) if part)
+    return snippet
+
+
+def _render_ai_overview_expandable(
+    block: dict[str, Any],
+    *,
+    heading_level: int,
+) -> str:
+    sections: list[str] = []
+    title = _clean_ai_overview_text(block.get("title"))
+    if title:
+        marker = "#" * min(max(heading_level, 1), 6)
+        sections.append(f"{marker} {title}")
+    subtitle = _clean_ai_overview_text(block.get("subtitle"))
+    if subtitle:
+        sections.append(subtitle)
+    sections.extend(
+        _render_ai_overview_blocks(
+            block.get("text_blocks"),
+            heading_level=min(heading_level + 1, 6),
+        )
+    )
+    return "\n\n".join(sections)
+
+
+def _ai_overview_list_lines(value: Any, *, depth: int = 0) -> list[str]:
     if not isinstance(value, list):
         return []
     lines: list[str] = []
     for item in value:
         if not isinstance(item, dict):
             continue
-        title = _clean_text(item.get("title"))
-        snippet = _clean_text(item.get("snippet"))
-        if title and snippet:
-            lines.append(f"- {title} {snippet}")
-        elif title:
-            lines.append(f"- {title}")
-        elif snippet:
-            lines.append(f"- {snippet}")
+        title = _clean_ai_overview_text(item.get("title"))
+        snippet = _clean_ai_overview_text(item.get("snippet"))
+        label = _join_ai_overview_text(title, snippet)
+        if label:
+            lines.append(f"{'  ' * depth}- {label}")
+        nested_depth = depth + 1 if label else depth
+        lines.extend(
+            _ai_overview_list_lines(item.get("list"), depth=nested_depth)
+        )
     return lines
+
+
+def _join_ai_overview_text(first: str, second: str) -> str:
+    if not first:
+        return second
+    if not second:
+        return first
+    if second[0] in ",.;:!?，。；：！？、":
+        return f"{first}{second}"
+    return f"{first} {second}"
+
+
+def _ai_overview_table_rows(block: dict[str, Any]) -> list[list[str]]:
+    rows = _ai_overview_plain_table_rows(block.get("table"))
+    if rows:
+        return rows
+    rows = _ai_overview_detailed_table_rows(block.get("detailed"))
+    if rows:
+        return rows
+    return _ai_overview_formatted_table_rows(block.get("formatted"))
+
+
+def _ai_overview_plain_table_rows(value: Any) -> list[list[str]]:
+    if not isinstance(value, list):
+        return []
+    rows: list[list[str]] = []
+    for row in value:
+        if not isinstance(row, list):
+            continue
+        cells = [_ai_overview_table_cell(cell) for cell in row]
+        if any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _ai_overview_detailed_table_rows(value: Any) -> list[list[str]]:
+    if not isinstance(value, list):
+        return []
+    rows: list[list[str]] = []
+    for row in value:
+        if not isinstance(row, list):
+            continue
+        cells = [
+            _clean_ai_overview_text(cell.get("snippet"))
+            if isinstance(cell, dict)
+            else ""
+            for cell in row
+        ]
+        if any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _ai_overview_formatted_table_rows(value: Any) -> list[list[str]]:
+    if not isinstance(value, list):
+        return []
+    records = [item for item in value if isinstance(item, dict)]
+    headers: list[str] = []
+    for record in records:
+        for key in record:
+            header = _clean_ai_overview_text(key)
+            if header and header not in headers:
+                headers.append(header)
+    if not headers:
+        return []
+    rows = [headers]
+    for record in records:
+        values_by_header = {
+            _clean_ai_overview_text(key): value
+            for key, value in record.items()
+            if _clean_ai_overview_text(key)
+        }
+        rows.append(
+            [
+                _ai_overview_table_cell(values_by_header.get(header))
+                for header in headers
+            ]
+        )
+    return rows
+
+
+def _render_ai_overview_comparison(block: dict[str, Any]) -> str:
+    labels = block.get("product_labels")
+    if not isinstance(labels, list):
+        return ""
+    clean_labels = [_ai_overview_table_cell(label) for label in labels]
+    if not any(clean_labels):
+        return ""
+    comparison = block.get("comparison")
+    if not isinstance(comparison, list):
+        return ""
+    rows = [["", *clean_labels]]
+    for item in comparison:
+        if not isinstance(item, dict):
+            continue
+        feature = _clean_ai_overview_text(item.get("feature"))
+        values = item.get("values")
+        clean_values = (
+            [_ai_overview_table_cell(value) for value in values]
+            if isinstance(values, list)
+            else []
+        )
+        if feature or any(clean_values):
+            rows.append([feature, *clean_values])
+    if len(rows) == 1:
+        return ""
+    return _render_markdown_table(rows)
+
+
+def _render_markdown_table(rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    column_count = max(len(row) for row in rows)
+    normalized_rows = [row + [""] * (column_count - len(row)) for row in rows]
+    escaped_rows = [
+        [cell.replace("|", "\\|") for cell in row]
+        for row in normalized_rows
+    ]
+    rendered = [_markdown_table_row(escaped_rows[0])]
+    rendered.append(_markdown_table_row(["---"] * column_count))
+    rendered.extend(_markdown_table_row(row) for row in escaped_rows[1:])
+    return "\n".join(rendered)
+
+
+def _markdown_table_row(cells: list[str]) -> str:
+    return f"| {' | '.join(cells)} |"
+
+
+def _ai_overview_table_cell(value: Any) -> str:
+    if isinstance(value, str):
+        return _clean_ai_overview_text(value)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _clean_ai_overview_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = re.sub(r"\s+", " ", value.strip())
+    return re.sub(r"\s+([,.;:!?，。；：！？、])", r"\1", text)
 
 
 def _clean_text(value: Any) -> str:
