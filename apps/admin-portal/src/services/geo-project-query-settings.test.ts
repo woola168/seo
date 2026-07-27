@@ -26,6 +26,15 @@ describe("GEO Project Query Settings", () => {
     ]);
   });
 
+  it("maps Keyword tags back to normalized Query Settings text", () => {
+    expect(settingsService.querySettingsKeywordTagsToText([
+      " ERP ",
+      "erp",
+      "採購",
+      "CRM\n供應商",
+    ])).toBe("ERP\n採購\nCRM\n供應商");
+  });
+
   it("maps a saved resource into the editable form", () => {
     expect(settingsService.querySettingsResourceToForm({
       projectId: "project-1",
@@ -60,6 +69,24 @@ describe("GEO Project Query Settings", () => {
       maxQueries: "Max Queries 必須是 1–40 的整數",
       audienceName: "請輸入 Audience",
       intentDescription: "Intent 描述 最多 2000 字",
+    });
+  });
+
+  it("returns field errors for required Query Research inputs", () => {
+    const form = settingsService.createDefaultQuerySettingsForm();
+    form.keywords = "";
+    form.audienceName = "";
+    form.audienceDescription = "";
+    form.intentCategory = "";
+    form.intentDescription = "";
+
+    expect(settingsService.validateQueryResearchForm(form, [{ name: "  " }])).toEqual({
+      keywords: "請至少輸入一個 Keyword。",
+      audienceName: "請輸入 Audience",
+      audienceDescription: "請輸入 Audience Description",
+      intentCategory: "請輸入 Intent 分類",
+      intentDescription: "請輸入 Intent 描述",
+      topics: "請至少輸入一個 Topic。",
     });
   });
 

@@ -114,6 +114,10 @@ export function normalizeQuerySettingsKeywords(value: string): string[] {
   return normalized;
 }
 
+export function querySettingsKeywordTagsToText(tags: readonly string[]): string {
+  return normalizeQuerySettingsKeywords(tags.join("\n")).join("\n");
+}
+
 export function validateQuerySettingsForm(
   form: GeoProjectQuerySettingsForm,
 ): Record<string, string> {
@@ -136,6 +140,20 @@ export function validateQuerySettingsForm(
   );
   validateText(errors, "intentCategory", form.intentCategory, 100, "Intent 分類");
   validateText(errors, "intentDescription", form.intentDescription, 2000, "Intent 描述");
+  return errors;
+}
+
+export function validateQueryResearchForm(
+  form: GeoProjectQuerySettingsForm,
+  topics: ReadonlyArray<{ name: string }>,
+): Record<string, string> {
+  const errors = validateQuerySettingsForm(form);
+  if (!normalizeQuerySettingsKeywords(form.keywords).length) {
+    errors.keywords = "請至少輸入一個 Keyword。";
+  }
+  if (!topics.some((topic) => topic.name.trim())) {
+    errors.topics = "請至少輸入一個 Topic。";
+  }
   return errors;
 }
 

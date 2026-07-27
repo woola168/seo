@@ -8,6 +8,8 @@ import GeoQueryResearchPage from "./GeoQueryResearchPage.vue";
 import { api } from "../services/api";
 import {
   createDefaultQuerySettingsForm,
+  normalizeQuerySettingsKeywords,
+  querySettingsKeywordTagsToText,
   querySettingsFormToRequest,
   validateQuerySettingsForm,
 } from "../services/geo-project-query-settings";
@@ -85,6 +87,13 @@ const form = reactive({
   defaultRegion: "TW",
   defaultLanguage: "zh-TW",
   ...createDefaultQuerySettingsForm(),
+});
+const keywordTags = computed<string[]>({
+  get: () => normalizeQuerySettingsKeywords(form.keywords),
+  set: (tags) => {
+    form.keywords = querySettingsKeywordTagsToText(tags);
+    delete errors.keywords;
+  },
 });
 
 onMounted(() => void load());
@@ -343,7 +352,7 @@ function addTopic(): void {
         <template v-if="!isEdit && step === 2">
           <section class="geo-form-card"><header><strong>品牌基本資料</strong></header><div class="geo-read-grid"><div><span>Project 名稱</span><strong>{{ form.name }}</strong></div><div><span>網址/網域</span><strong>{{ form.websiteUrl }}</strong></div><div><span>客戶</span><strong>{{ customers.find((customer) => customer.id === form.customerId)?.name }}</strong></div><div><span>地區</span><strong>{{ form.defaultRegion }}</strong></div><div><span>語系</span><strong>{{ form.defaultLanguage }}</strong></div><div><span>別名</span><strong>{{ ownBrandAliases.join("、") || "—" }}</strong></div><div class="geo-read-full"><span>競品</span><div class="geo-read-tags"><span v-for="competitor in competitors" :key="competitor.clientId" class="geo-read-tag">{{ competitor.name }}</span></div></div></div></section>
           <section class="geo-form-card"><header><strong>Provider</strong></header><div class="geo-form-grid"><GeoFormField label="Research / Generation Provider"><select v-model="form.researchProvider"><option value="gemini">Gemini</option></select></GeoFormField><GeoFormField label="Run Provider"><select v-model="form.runProvider"><option value="gemini">Gemini</option></select></GeoFormField></div></section>
-          <section class="geo-form-card"><header><strong>Keywords</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header><div class="geo-card-body"><GeoFormField label="Keywords" :error="errors.keywords"><textarea v-model="form.keywords" rows="5" placeholder="一行一個 keyword" :class="{ invalid: errors.keywords }"></textarea></GeoFormField><small>一行一個 keyword，最多 10 筆。</small></div></section>
+          <section class="geo-form-card"><header><strong>Keywords</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header><div class="geo-card-body"><GeoFormField label="Keywords" :error="errors.keywords"><GeoTagInput v-model="keywordTags" :invalid="Boolean(errors.keywords)" placeholder="請輸入 Keyword" /></GeoFormField><small>輸入後按 Enter 或逗號新增，最多 10 筆；也可貼上多行內容。</small></div></section>
           <section class="geo-form-card"><header><strong>Topics</strong><div><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button><button class="button button-secondary button-small" type="button" @click="addTopic">新增 Topic</button></div></header><div class="geo-card-body geo-topic-list"><div v-for="(topic, index) in topics" :key="index"><label><span>Topic 名稱</span><input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商" /></label><label><span>Topic 描述</span><input v-model="topic.description" type="text" placeholder="描述此 Topic" /></label><button class="button button-secondary button-small" type="button" @click="topics.splice(index, 1)">移除</button></div><p v-if="!topics.length">尚未新增 Topic，點右上「新增 Topic」開始</p></div></section>
           <section class="geo-form-card"><header><strong>市場與受眾</strong></header><div class="geo-form-grid"><GeoFormField label="Market Type"><select v-model="form.marketType"><option value="b2b_procurement">B2B 採購</option><option value="b2c">B2C 消費</option></select></GeoFormField><GeoFormField label="Max Queries" :error="errors.maxQueries"><input v-model.number="form.maxQueries" type="number" min="1" max="40" :class="{ invalid: errors.maxQueries }" /></GeoFormField><GeoFormField label="Audience" :error="errors.audienceName"><input v-model="form.audienceName" type="text" :class="{ invalid: errors.audienceName }" /></GeoFormField><GeoFormField label="Audience Description" :error="errors.audienceDescription"><input v-model="form.audienceDescription" type="text" :class="{ invalid: errors.audienceDescription }" /></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-form-grid"><GeoFormField label="Intent 分類" :error="errors.intentCategory"><select v-model="form.intentCategory" :class="{ invalid: errors.intentCategory }"><option>導航型</option><option>資訊型</option><option>商業評估</option></select></GeoFormField><GeoFormField label="Intent 描述" :error="errors.intentDescription"><input v-model="form.intentDescription" type="text" :class="{ invalid: errors.intentDescription }" /></GeoFormField></div></section>
