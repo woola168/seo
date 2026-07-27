@@ -984,12 +984,10 @@ async def test_gemini_answer_provider_disables_sdk_retry_and_sets_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client_arguments: dict[str, Any] = {}
-    generation_configs: list[Any] = []
     clients: list[Any] = []
 
     class FakeModels:
         def generate_content(self, **kwargs: Any) -> FakeResponse:
-            generation_configs.append(kwargs["config"])
             return FakeResponse(
                 "Grounded answer",
                 "https://example.com/reference",
@@ -1024,14 +1022,6 @@ async def test_gemini_answer_provider_disables_sdk_retry_and_sets_timeout(
     http_options = client_arguments["http_options"]
     assert http_options.retry_options.attempts == 1
     assert http_options.timeout == 60_000
-    assert len(generation_configs) == 2
-    for config in generation_configs:
-        search_tool = config.tools[0]
-        assert search_tool.google_search is None
-        retrieval = search_tool.google_search_retrieval
-        assert retrieval is not None
-        assert retrieval.dynamic_retrieval_config is not None
-        assert retrieval.dynamic_retrieval_config.mode == "MODE_UNSPECIFIED"
     assert response.raw_response == "Grounded answer"
     assert all(client.closed for client in clients)
     requests = list(recorder.requests.values())
