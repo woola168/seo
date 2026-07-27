@@ -19,6 +19,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
+    GeoEntityMentionDetectionItem,
+    GeoEntityMentionFact,
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
@@ -43,13 +45,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
-    GeoEntityMentionFact,
-    GeoEntityMentionDetectionItem,
     GeoResponseSemanticFact,
+    GeoRunResultAnalysis,
+    GeoRunResultAnalysisRecord,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
-    GeoRunResultAnalysisRecord,
-    GeoRunResultAnalysis,
     GeoRunResultEntityDetection,
     GeoRunResultRecord,
     GeoRunResultReferenceRecord,
@@ -69,11 +69,17 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryResearchResultRecord,
     QueryResearchRunRecord,
     QueryRunJobMessage,
+    SaveRunResultAnalysisCommand,
     SaveRunResultCitationNormalizationCommand,
     SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
-    SaveRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
+)
+from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
+    CitationNormalizationContext,
+)
+from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
+    SemanticAnalysisContext,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
@@ -85,18 +91,18 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import
     GeoJobDispatchEventRow,
     GeoMarketRow,
     GeoMessageDispatchLogRow,
-    GeoProjectRow,
     GeoProjectQuerySettingsRow,
-    GeoQueryPlatformRow,
+    GeoProjectRow,
     GeoQueryDraftRow,
     GeoQueryDraftSelectionRow,
     GeoQueryGenerationRunRow,
+    GeoQueryPlatformRow,
     GeoQueryResearchRunRow,
     GeoQueryRow,
     GeoQueryRunJobRow,
     GeoQueryScheduleRow,
-    GeoRunRequestRow,
     GeoResponseSemanticFactRow,
+    GeoRunRequestRow,
     GeoRunResultAnalysisRow,
     GeoRunResultCitationClassificationRow,
     GeoRunResultCitationNormalizationRow,
@@ -119,6 +125,143 @@ class PostgresGeoAnalysisRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
+    async def load_semantic_analysis_context(
+        self,
+        tenant_id: UUID,
+        run_result_id: UUID,
+    ) -> SemanticAnalysisContext | None:
+        run_result = await self.get_run_result(tenant_id, run_result_id)
+        if run_result is None:
+            return None
+        query = await self.get_query(tenant_id, run_result.query_id)
+        if query is None:
+            return SemanticAnalysisContext(run_result=run_result)
+
+        entities = await self.list_entities(tenant_id, query.project_id)
+        tracked_entities = [
+            entity
+            for entity in entities
+            if entity.status == "active"
+            and entity.entity_type in {"own_brand", "competitor"}
+        ]
+        tracked_ids = {entity.id for entity in tracked_entities}
+        topic = next(
+            (
+                item
+                for item in await self.list_topics(tenant_id, query.project_id)
+                if item.id == query.topic_id and item.status == "active"
+            ),
+            None,
+        )
+        return SemanticAnalysisContext(
+            run_result=run_result,
+            query=query,
+            topic=topic,
+            own_brand=next(
+                (
+                    entity
+                    for entity in tracked_entities
+                    if entity.entity_type == "own_brand"
+                ),
+                None,
+            ),
+            competitors=tuple(
+                entity
+                for entity in tracked_entities
+                if entity.entity_type == "competitor"
+            ),
+            aliases=tuple(
+                alias
+                for alias in await self.list_project_aliases(
+                    tenant_id,
+                    query.project_id,
+                )
+                if alias.entity_id in tracked_ids
+            ),
+        )
+
+    async def get_existing_semantic_analysis(
+        self,
+        tenant_id: UUID,
+        run_result_id: UUID,
+    ) -> GeoRunResultAnalysis | None:
+        return await self.get_semantic_run_result_analysis(
+            tenant_id,
+            run_result_id,
+        )
+
+    async def save_semantic_entity_detection(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultEntityDetectionCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultEntityDetection | None:
+        return await self.save_run_result_entity_detection(
+            tenant_id,
+            command,
+            occurred_at,
+        )
+
+    async def save_semantic_analysis(
+        self,
+        tenant_id: UUID,
+        command: SaveSemanticRunResultAnalysisCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultAnalysis | None:
+        return await self.save_semantic_run_result_analysis(
+            tenant_id,
+            command,
+            occurred_at,
+        )
+
+    async def load_citation_normalization_context(
+        self,
+        tenant_id: UUID,
+        run_result_id: UUID,
+    ) -> CitationNormalizationContext | None:
+        run_result = await self.get_run_result(tenant_id, run_result_id)
+        if run_result is None:
+            return None
+        query = await self.get_query(tenant_id, run_result.query_id)
+        if query is None:
+            return CitationNormalizationContext(run_result=run_result)
+        entities = await self.list_entities(tenant_id, query.project_id)
+        return CitationNormalizationContext(
+            run_result=run_result,
+            project_id=query.project_id,
+            owned_website_urls=tuple(
+                entity.website_url
+                for entity in entities
+                if entity.status == "active"
+                and entity.entity_type == "own_brand"
+                and entity.website_url is not None
+            ),
+        )
+
+    async def get_existing_citation_normalization(
+        self,
+        tenant_id: UUID,
+        run_result_id: UUID,
+        normalizer_version: str,
+    ) -> GeoRunResultCitationNormalization | None:
+        return await self.get_run_result_citation_normalization(
+            tenant_id,
+            run_result_id,
+            normalizer_version,
+        )
+
+    async def save_citation_normalization(
+        self,
+        tenant_id: UUID,
+        command: SaveRunResultCitationNormalizationCommand,
+        occurred_at: datetime,
+    ) -> GeoRunResultCitationNormalization | None:
+        return await self.save_run_result_citation_normalization(
+            tenant_id,
+            command,
+            occurred_at,
+        )
+
     async def materialize_daily_runs(
         self,
         *,
@@ -131,9 +274,7 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             active_platforms = (
                 await session.scalars(
-                    select(GeoAiPlatformRow).where(
-                        GeoAiPlatformRow.status == "active"
-                    )
+                    select(GeoAiPlatformRow).where(GeoAiPlatformRow.status == "active")
                 )
             ).all()
             projects = (
@@ -288,8 +429,7 @@ class PostgresGeoAnalysisRepository:
                     filters.append(
                         or_(
                             GeoQueryRunJobRow.source == "scheduled",
-                            GeoQueryRunJobRow.job_type
-                            == "query_research_first_run",
+                            GeoQueryRunJobRow.job_type == "query_research_first_run",
                         )
                     )
                 statement = (
@@ -304,9 +444,7 @@ class PostgresGeoAnalysisRepository:
                     )
                     .returning(GeoQueryRunJobRow.id)
                 )
-                reconciled_ids.extend(
-                    (await session.scalars(statement)).all()
-                )
+                reconciled_ids.extend((await session.scalars(statement)).all())
             return len(reconciled_ids)
 
     async def list_projects(
@@ -401,6 +539,22 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await self._get_project_row(session, tenant_id, project_id)
             return _project_record(row) if row is not None else None
+
+    async def load_metric_formula_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoMetricFormulaQuery,
+        normalizer_version: str,
+    ) -> GeoMetricFormulaSource | None:
+        if await self.get_project(tenant_id, project_id) is None:
+            return None
+        return await self.get_metric_formula_source(
+            tenant_id,
+            project_id,
+            query,
+            normalizer_version,
+        )
 
     async def get_metric_formula_source(
         self,
@@ -649,7 +803,9 @@ class PostgresGeoAnalysisRepository:
             select(GeoProjectRow)
             .join(GeoQueryRunJobRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
             .join(GeoRunResultRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
-            .where(GeoProjectRow.tenant_id == tenant_id, GeoRunResultRow.id == result_id)
+            .where(
+                GeoProjectRow.tenant_id == tenant_id, GeoRunResultRow.id == result_id
+            )
         )
         return await self._project_record_for(statement)
 
@@ -660,7 +816,10 @@ class PostgresGeoAnalysisRepository:
     ) -> GeoProjectRecord | None:
         statement = (
             select(GeoProjectRow)
-            .join(GeoQueryResearchRunRow, GeoQueryResearchRunRow.project_id == GeoProjectRow.id)
+            .join(
+                GeoQueryResearchRunRow,
+                GeoQueryResearchRunRow.project_id == GeoProjectRow.id,
+            )
             .where(
                 GeoProjectRow.tenant_id == tenant_id,
                 GeoQueryResearchRunRow.id == run_id,
@@ -675,7 +834,10 @@ class PostgresGeoAnalysisRepository:
     ) -> GeoProjectRecord | None:
         statement = (
             select(GeoProjectRow)
-            .join(GeoQueryGenerationRunRow, GeoQueryGenerationRunRow.project_id == GeoProjectRow.id)
+            .join(
+                GeoQueryGenerationRunRow,
+                GeoQueryGenerationRunRow.project_id == GeoProjectRow.id,
+            )
             .where(
                 GeoProjectRow.tenant_id == tenant_id,
                 GeoQueryGenerationRunRow.id == run_id,
@@ -691,7 +853,9 @@ class PostgresGeoAnalysisRepository:
         statement = (
             select(GeoProjectRow)
             .join(GeoQueryDraftRow, GeoQueryDraftRow.project_id == GeoProjectRow.id)
-            .where(GeoProjectRow.tenant_id == tenant_id, GeoQueryDraftRow.id == draft_id)
+            .where(
+                GeoProjectRow.tenant_id == tenant_id, GeoQueryDraftRow.id == draft_id
+            )
         )
         return await self._project_record_for(statement)
 
@@ -711,7 +875,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _project_record(row)
+            return _project_record(row)
 
     async def update_project(
         self,
@@ -798,7 +962,9 @@ class PostgresGeoAnalysisRepository:
                 raise RuntimeError("query settings upsert did not return a row")
             return _project_query_settings_record(row)
 
-    async def list_markets(self, tenant_id: UUID, project_id: UUID) -> list[GeoMarketRecord]:
+    async def list_markets(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoMarketRecord]:
         if not await self._project_exists(tenant_id, project_id):
             return []
         return await self._list_scoped(
@@ -832,7 +998,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _market_record(row)
+            return _market_record(row)
 
     async def update_market(
         self,
@@ -842,7 +1008,9 @@ class PostgresGeoAnalysisRepository:
     ) -> GeoMarketRecord | None:
         async with self._session_scope() as session:
             row = await session.get(GeoMarketRow, market_id)
-            if row is None or not await self._project_row_matches(session, tenant_id, row.project_id):
+            if row is None or not await self._project_row_matches(
+                session, tenant_id, row.project_id
+            ):
                 return None
             row.region = command.region
             row.language = command.language
@@ -912,7 +1080,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _entity_record(row)
+            return _entity_record(row)
 
     async def update_entity(
         self,
@@ -986,13 +1154,10 @@ class PostgresGeoAnalysisRepository:
                 .where(GeoEntityRow.id == entity_id)
                 .with_for_update()
             )
-            if (
-                entity is None
-                or not await self._project_row_matches(
-                    session,
-                    tenant_id,
-                    entity.project_id,
-                )
+            if entity is None or not await self._project_row_matches(
+                session,
+                tenant_id,
+                entity.project_id,
             ):
                 return None
             rows = list(
@@ -1029,7 +1194,9 @@ class PostgresGeoAnalysisRepository:
                 for row in sorted(result, key=lambda item: (item.created_at, item.id))
             ]
 
-    async def list_topics(self, tenant_id: UUID, project_id: UUID) -> list[GeoTopicRecord]:
+    async def list_topics(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoTopicRecord]:
         if not await self._project_exists(tenant_id, project_id):
             return []
         return await self._list_scoped(
@@ -1058,7 +1225,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _topic_record(row)
+            return _topic_record(row)
 
     async def update_topic(
         self,
@@ -1083,7 +1250,9 @@ class PostgresGeoAnalysisRepository:
     async def delete_topic(self, tenant_id: UUID, topic_id: UUID) -> bool:
         return await self._delete_project_child(GeoTopicRow, topic_id, tenant_id)
 
-    async def list_queries(self, tenant_id: UUID, project_id: UUID) -> list[GeoQueryRecord]:
+    async def list_queries(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoQueryRecord]:
         if not await self._project_exists(tenant_id, project_id):
             return []
         return await self._list_scoped(
@@ -1125,7 +1294,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _query_record(row)
+            return _query_record(row)
 
     async def update_query(
         self,
@@ -1232,7 +1401,7 @@ class PostgresGeoAnalysisRepository:
                 )
             )
             session.add_all(rows)
-        return [_query_platform_record(row) for row in rows]
+            return [_query_platform_record(row) for row in rows]
 
     async def list_schedules(
         self,
@@ -1287,7 +1456,7 @@ class PostgresGeoAnalysisRepository:
         )
         async with self._session_scope() as session:
             session.add(row)
-        return _schedule_record(row)
+            return _schedule_record(row)
 
     async def update_schedule(
         self,
@@ -1297,7 +1466,10 @@ class PostgresGeoAnalysisRepository:
     ) -> GeoQueryScheduleRecord | None:
         async with self._session_scope() as session:
             row = await session.get(GeoQueryScheduleRow, schedule_id)
-            if row is None or await self._get_query_row(session, tenant_id, row.query_id) is None:
+            if (
+                row is None
+                or await self._get_query_row(session, tenant_id, row.query_id) is None
+            ):
                 return None
             row.platform_id = command.platform_id
             row.frequency = command.frequency
@@ -1311,7 +1483,10 @@ class PostgresGeoAnalysisRepository:
     async def delete_schedule(self, tenant_id: UUID, schedule_id: UUID) -> bool:
         async with self._session_scope() as session:
             row = await session.get(GeoQueryScheduleRow, schedule_id)
-            if row is None or await self._get_query_row(session, tenant_id, row.query_id) is None:
+            if (
+                row is None
+                or await self._get_query_row(session, tenant_id, row.query_id) is None
+            ):
                 return False
             await session.delete(row)
             return True
@@ -1358,16 +1533,16 @@ class PostgresGeoAnalysisRepository:
             )
             if inserted_id is not None:
                 return job, True
-            business_date = scheduled_for.astimezone(
-                ZoneInfo("Asia/Taipei")
-            ).date()
+            business_date = scheduled_for.astimezone(ZoneInfo("Asia/Taipei")).date()
             existing = await session.scalar(
-                select(GeoQueryRunJobRow).where(
+                select(GeoQueryRunJobRow)
+                .where(
                     GeoQueryRunJobRow.query_id == query_id,
                     GeoQueryRunJobRow.platform_id == command.platform_id,
                     GeoQueryRunJobRow.business_date == business_date,
                     GeoQueryRunJobRow.is_daily_slot_owner.is_(True),
-                ).with_for_update()
+                )
+                .with_for_update()
             )
             if existing is None:
                 raise RuntimeError("job insert conflicted without a daily slot owner")
@@ -1381,7 +1556,9 @@ class PostgresGeoAnalysisRepository:
                 existing.updated_at = now
             return _job_from_row(existing), False
 
-    async def list_jobs(self, tenant_id: UUID, project_id: UUID) -> list[GeoQueryRunJob]:
+    async def list_jobs(
+        self, tenant_id: UUID, project_id: UUID
+    ) -> list[GeoQueryRunJob]:
         if not await self._project_exists(tenant_id, project_id):
             return []
         statement = (
@@ -1436,7 +1613,9 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             return await session.scalar(
                 select(GeoProjectRow.tenant_id)
-                .join(GeoQueryRunJobRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+                .join(
+                    GeoQueryRunJobRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id
+                )
                 .where(GeoQueryRunJobRow.id == job_id)
             )
 
@@ -1565,7 +1744,9 @@ class PostgresGeoAnalysisRepository:
         event = GeoJobDispatchEventRow(
             id=uuid4(),
             job_id=job_id,
-            event_type="published" if result.status == "published" else "publish_failed",
+            event_type="published"
+            if result.status == "published"
+            else "publish_failed",
             occurred_at=occurred_at,
             actor="broker",
             metadata_json={"destination": result.destination},
@@ -1697,7 +1878,9 @@ class PostgresGeoAnalysisRepository:
                         GeoQueryRunJobRow,
                         GeoRunResultRow.job_id == GeoQueryRunJobRow.id,
                     )
-                    .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+                    .join(
+                        GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id
+                    )
                     .where(
                         GeoRunResultRow.job_id == job_id,
                         GeoProjectRow.tenant_id == tenant_id,
@@ -1720,7 +1903,9 @@ class PostgresGeoAnalysisRepository:
                         GeoQueryRunJobRow,
                         GeoRunResultRow.job_id == GeoQueryRunJobRow.id,
                     )
-                    .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+                    .join(
+                        GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id
+                    )
                     .where(
                         GeoQueryRunJobRow.project_id == project_id,
                         GeoProjectRow.tenant_id == tenant_id,
@@ -1863,8 +2048,7 @@ class PostgresGeoAnalysisRepository:
             row = await session.scalar(
                 select(GeoRunResultEntityDetectionRow).where(
                     GeoRunResultEntityDetectionRow.run_result_id == result_id,
-                    GeoRunResultEntityDetectionRow.detector_version
-                    == detector_version,
+                    GeoRunResultEntityDetectionRow.detector_version == detector_version,
                 )
             )
             if row is None:
@@ -2051,7 +2235,11 @@ class PostgresGeoAnalysisRepository:
                     )
                 )
             for statement in command.statements:
-                session.add(_statement_row(row.id, command.run_result_id, statement, occurred_at))
+                session.add(
+                    _statement_row(
+                        row.id, command.run_result_id, statement, occurred_at
+                    )
+                )
             for citation in command.citation_classifications:
                 session.add(_citation_classification_row(row.id, citation, occurred_at))
             await session.flush()
@@ -2118,7 +2306,9 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await session.scalar(
                 select(GeoQueryResearchRunRow)
-                .join(GeoProjectRow, GeoQueryResearchRunRow.project_id == GeoProjectRow.id)
+                .join(
+                    GeoProjectRow, GeoQueryResearchRunRow.project_id == GeoProjectRow.id
+                )
                 .where(
                     GeoQueryResearchRunRow.id == run_id,
                     GeoProjectRow.tenant_id == tenant_id,
@@ -2196,7 +2386,10 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             row = await session.scalar(
                 select(GeoQueryGenerationRunRow)
-                .join(GeoProjectRow, GeoQueryGenerationRunRow.project_id == GeoProjectRow.id)
+                .join(
+                    GeoProjectRow,
+                    GeoQueryGenerationRunRow.project_id == GeoProjectRow.id,
+                )
                 .where(
                     GeoQueryGenerationRunRow.id == run_id,
                     GeoProjectRow.tenant_id == tenant_id,
@@ -2305,7 +2498,9 @@ class PostgresGeoAnalysisRepository:
 
     async def _project_exists(self, tenant_id: UUID, project_id: UUID) -> bool:
         async with self._session_scope() as session:
-            return await self._get_project_row(session, tenant_id, project_id) is not None
+            return (
+                await self._get_project_row(session, tenant_id, project_id) is not None
+            )
 
     async def _project_record_for(self, statement) -> GeoProjectRecord | None:
         async with self._session_scope() as session:
@@ -2348,12 +2543,13 @@ class PostgresGeoAnalysisRepository:
             )
         )
 
-    async def _delete_project_child(self, model, item_id: UUID, tenant_id: UUID) -> bool:
+    async def _delete_project_child(
+        self, model, item_id: UUID, tenant_id: UUID
+    ) -> bool:
         async with self._session_scope() as session:
             row = await session.get(model, item_id)
-            if (
-                row is None
-                or not await self._project_row_matches(session, tenant_id, row.project_id)
+            if row is None or not await self._project_row_matches(
+                session, tenant_id, row.project_id
             ):
                 return False
             await session.delete(row)
@@ -2691,7 +2887,10 @@ def _draft_row(
         project_id=project_id,
         topic_id=topic_id,
         topic_name=query.get("topicName") or attributes.get("topicName") or "",
-        query_text=query.get("queryText") or query.get("text") or query.get("query") or "",
+        query_text=query.get("queryText")
+        or query.get("text")
+        or query.get("query")
+        or "",
         keywords=query.get("keywords", []),
         region=query.get("region", "TW"),
         language=query.get("language", "zh-TW"),
@@ -3223,7 +3422,9 @@ async def _metric_entity_mentions(
         role = row.entity_role or row.entity_type
         if row.entity_id is None or role not in {"own_brand", "competitor"}:
             continue
-        mentioned = row.mentioned if row.mentioned is not None else row.mention_count > 0
+        mentioned = (
+            row.mentioned if row.mentioned is not None else row.mention_count > 0
+        )
         mentions.append(
             GeoMetricEntityMentionInput(
                 run_result_id=row.run_result_id,
@@ -3392,7 +3593,9 @@ async def _semantic_analysis_record(
             GeoSentimentFact(
                 entity_id=statement.entity_id,
                 entity_role=statement.entity_role,
-                entity_name=statement.entity_name or statement.subject_entity_name or "",
+                entity_name=statement.entity_name
+                or statement.subject_entity_name
+                or "",
                 sentiment=statement.sentiment,
                 theme=statement.theme,
                 statement=statement.statement_text,
@@ -3523,7 +3726,9 @@ def _apply_run_result_analysis(
     row.error_code = command.error_code
     row.error_message = command.error_message
     row.updated_at = occurred_at
-    row.completed_at = occurred_at if command.status in {"completed", "failed"} else None
+    row.completed_at = (
+        occurred_at if command.status in {"completed", "failed"} else None
+    )
 
 
 def _apply_semantic_analysis(
@@ -3540,7 +3745,9 @@ def _apply_semantic_analysis(
     row.analyzer_response_payload = analysis.analyzer_response_payload
     row.validation_failures = analysis.validation_failures
     row.updated_at = occurred_at
-    row.completed_at = occurred_at if analysis.status in {"completed", "failed"} else None
+    row.completed_at = (
+        occurred_at if analysis.status in {"completed", "failed"} else None
+    )
 
 
 def _apply_entity_detection(
@@ -3596,7 +3803,9 @@ async def _validate_citation_facts(
     citations: list[GeoRunResultCitationFact],
 ) -> None:
     if any(citation.run_result_id != run_result_id for citation in citations):
-        raise ValueError("citation run_result_id must match normalization run_result_id")
+        raise ValueError(
+            "citation run_result_id must match normalization run_result_id"
+        )
     reference_ids = {citation.reference_id for citation in citations}
     if not reference_ids:
         return

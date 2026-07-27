@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from younilab_seo.geo_analysis.application import (
     DailyRunMaterializationResult,
     RunDailySchedulerTick,
+    RunSchedulerPersistence,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 
@@ -73,6 +74,10 @@ class FakeDispatcher:
             updated_at=now,
             source="scheduled",
         )
+
+
+def test_scheduler_fake_implements_run_scheduler_persistence() -> None:
+    assert isinstance(FakeRepository(), RunSchedulerPersistence)
 
 
 def test_tick_before_cutoff_skips_materialization_but_maintains_existing_jobs() -> None:

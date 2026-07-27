@@ -14,12 +14,12 @@ from younilab_seo.geo_analysis.application import (
     KMindHubExtractionTaskMappingCommand,
     KMindHubExtractionTaskMappingRecord,
     KMindHubWorkspaceMappingRecord,
+    LegacyAnalysisExtractionPersistence,
     SaveRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.application.use_cases.analysis_extraction import (
     RunKMindHubAnalysisExtraction,
 )
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 
@@ -30,6 +30,15 @@ class FakeClock:
 
     def now(self) -> datetime:
         return self.current
+
+
+def test_legacy_analysis_fake_implements_extraction_persistence() -> None:
+    repository = FakeRepository(
+        result=_run_result(),
+        workspace_mapping=_workspace_mapping(uuid4()),
+    )
+
+    assert isinstance(repository, LegacyAnalysisExtractionPersistence)
 
 
 @dataclass

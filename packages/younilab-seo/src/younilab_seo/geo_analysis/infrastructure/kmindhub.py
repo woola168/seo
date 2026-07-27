@@ -14,7 +14,6 @@ from younilab_seo.geo_analysis.application import (
     EvidenceTextRepairCommand,
     EvidenceTextRepairer,
     EvidenceTextRepairFailure,
-    GeoAnalysisRepository,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoSentimentFact,
@@ -26,6 +25,7 @@ from younilab_seo.geo_analysis.application import (
     KMindHubExtractionTaskMappingCommand,
     KMindHubExtractionUnavailable,
     KMindHubExtractionValidationError,
+    KMindHubTaskMappingPersistence,
     KMindHubWorkspaceClient,
     KMindHubWorkspaceProvisionUnavailable,
     KMindHubWorkspaceResolver,
@@ -48,7 +48,7 @@ KMINDHUB_PREVIEW_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 class KMindHubGeoRunResultAnalyzer:
     """透過 KMindHub extraction API 產生 GEO semantic facts。"""
 
-    repository: GeoAnalysisRepository
+    repository: KMindHubTaskMappingPersistence
     workspace_resolver: KMindHubWorkspaceResolver
     client: KMindHubWorkspaceClient
     debug_payloads: bool = False

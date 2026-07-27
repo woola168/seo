@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
 import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -10,9 +10,10 @@ from younilab_seo.geo_analysis.application import (
     PublishResult,
     QueryRunJobMessage,
     ReceiveExternalRunCallback,
+    RunCallbackPersistence,
+    RunDispatchPersistence,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 
@@ -58,6 +59,9 @@ class FakeRepository:
     async def get_job_tenant_id(self, job_id: UUID) -> UUID | None:
         assert job_id == self.job.id
         return self.context.tenant_id
+
+    async def get_job_project(self, tenant_id: UUID, job_id: UUID):
+        return None
 
     async def save(self, job: GeoQueryRunJob) -> None:
         self.job = job
@@ -137,6 +141,14 @@ def make_job() -> GeoQueryRunJob:
         created_at=now,
         updated_at=now,
     )
+
+
+def test_dispatch_fake_implements_run_lifecycle_interfaces() -> None:
+    job = make_job()
+    repository = FakeRepository(job, make_context(job))
+
+    assert isinstance(repository, RunDispatchPersistence)
+    assert isinstance(repository, RunCallbackPersistence)
 
 
 def make_message(job: GeoQueryRunJob) -> QueryRunJobMessage:

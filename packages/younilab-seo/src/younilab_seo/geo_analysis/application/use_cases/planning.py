@@ -14,8 +14,10 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
     Clock,
-    GeoAnalysisRepository,
     QueryPlanningClient,
+)
+from younilab_seo.geo_analysis.application.interfaces.query_planning import (
+    QueryPlanningPersistence,
 )
 from younilab_seo.geo_analysis.application.use_cases.access_policy import (
     can_access_project,
@@ -32,7 +34,7 @@ class GeoProjectReferenceError(ValueError):
 class ManageQueryPlanning:
     """執行 Query Research / Generation，並保存 planning run 與 draft 結果。"""
 
-    repository: GeoAnalysisRepository
+    repository: QueryPlanningPersistence
     planning_client: QueryPlanningClient
     clock: Clock
 
@@ -150,7 +152,9 @@ class ManageQueryPlanning:
         )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.get_query_generation_run(principal.tenant_id, run_id)
+        return await self.repository.get_query_generation_run(
+            principal.tenant_id, run_id
+        )
 
     async def update_query_draft_selection(
         self,

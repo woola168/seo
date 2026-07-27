@@ -1,29 +1,45 @@
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
+from younilab_provider_request_audit import (
+    PostgresProviderRequestRecorder,
+    UnconfiguredProviderRequestRecorder,
+)
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
     BuildGeoMetricFormulaSource,
     CalculateGeoReportMetrics,
     Clock,
     DispatchQueryRunJob,
+    EntityCatalogPersistence,
     EvidenceTextRepairer,
-    GeoAnalysisRepository,
     GetGeoDashboardReport,
     GetGeoOverviewReport,
+    KMindHubTaskMappingPersistence,
     KMindHubWorkspaceClient,
+    KMindHubWorkspaceMappingPersistence,
+    ListGeoOverviewResponses,
     ManageGeoSetup,
     ManageKMindHubWorkspaceMapping,
     ManageQueryPlanning,
     ManageQueryRunJobs,
-    ListGeoOverviewResponses,
     MessagePublisher,
+    MetricsReadPersistence,
+    OverviewReadPersistence,
     PermissionAuthorizer,
+    ProjectSetupPersistence,
+    QueryCatalogPersistence,
     QueryPlanningClient,
+    QueryPlanningPersistence,
     ReceiveExternalRunCallback,
-    ResourceCatalogReferenceVerifier,
     ResourceCatalogCustomerReader,
+    ResourceCatalogReferenceVerifier,
+    RunCallbackPersistence,
+    RunDispatchPersistence,
+    RunJobManagementPersistence,
+    SemanticAnalysisPersistence,
 )
 from younilab_seo.geo_analysis.infrastructure import (
     AccessControlAuthorizer,
@@ -35,17 +51,13 @@ from younilab_seo.geo_analysis.infrastructure import (
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
-from younilab_provider_request_audit import (
-    PostgresProviderRequestRecorder,
-    UnconfiguredProviderRequestRecorder,
-)
 
 from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
 
 
 @dataclass(frozen=True)
 class GeoAnalysisApiDependencies:
-    repository: GeoAnalysisRepository
+    repository: object
     authorizer: PermissionAuthorizer
     manage_geo_setup: ManageGeoSetup
     manage_kmindhub_workspace_mapping: ManageKMindHubWorkspaceMapping
@@ -71,7 +83,7 @@ class GeoAnalysisApiDependencies:
 
 def build_dependencies(
     *,
-    repository: GeoAnalysisRepository | None = None,
+    repository: object | None = None,
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,
@@ -97,18 +109,39 @@ def build_dependencies(
         active_reference_verifier, "list_customer_names"
     ):
         active_customer_reader = active_reference_verifier
-    kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
+    project_persistence = cast(ProjectSetupPersistence, active_repository)
+    entity_persistence = cast(EntityCatalogPersistence, active_repository)
+    query_catalog_persistence = cast(QueryCatalogPersistence, active_repository)
+    workspace_mapping_persistence = cast(
+        KMindHubWorkspaceMappingPersistence,
         active_repository,
+    )
+    task_mapping_persistence = cast(
+        KMindHubTaskMappingPersistence,
+        active_repository,
+    )
+    metrics_persistence = cast(MetricsReadPersistence, active_repository)
+    planning_persistence = cast(QueryPlanningPersistence, active_repository)
+    job_management_persistence = cast(
+        RunJobManagementPersistence,
+        active_repository,
+    )
+    semantic_persistence = cast(SemanticAnalysisPersistence, active_repository)
+    overview_persistence = cast(OverviewReadPersistence, active_repository)
+    dispatch_persistence = cast(RunDispatchPersistence, active_repository)
+    callback_persistence = cast(RunCallbackPersistence, active_repository)
+    kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
+        workspace_mapping_persistence,
         active_kmindhub_client,
     )
     semantic_analyzer = KMindHubGeoRunResultAnalyzer(
-        active_repository,
+        task_mapping_persistence,
         kmindhub_workspace_resolver,
         active_kmindhub_client,
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
         evidence_text_repairer=active_evidence_text_repairer,
     )
-    metric_source_builder = BuildGeoMetricFormulaSource(active_repository)
+    metric_source_builder = BuildGeoMetricFormulaSource(metrics_persistence)
     closeables = tuple(
         item
         for item in (
@@ -123,19 +156,24 @@ def build_dependencies(
         repository=active_repository,
         authorizer=active_authorizer,
         manage_geo_setup=ManageGeoSetup(
-            active_repository,
+            project_persistence,
             active_reference_verifier,
             active_customer_reader,
+            entity_persistence=entity_persistence,
+            query_catalog_persistence=query_catalog_persistence,
         ),
         manage_kmindhub_workspace_mapping=kmindhub_workspace_resolver,
         manage_query_planning=ManageQueryPlanning(
-            active_repository,
+            planning_persistence,
             active_planning_client,
             active_clock,
         ),
-        manage_query_run_jobs=ManageQueryRunJobs(active_repository, active_clock),
+        manage_query_run_jobs=ManageQueryRunJobs(
+            job_management_persistence,
+            active_clock,
+        ),
         analyze_run_result=AnalyzeRunResult(
-            active_repository,
+            semantic_persistence,
             semantic_analyzer,
             active_clock,
         ),
@@ -147,21 +185,21 @@ def build_dependencies(
             metric_source_builder,
         ),
         get_geo_overview_report=GetGeoOverviewReport(
-            active_repository,
+            overview_persistence,
             metric_source_builder,
             active_clock,
         ),
         list_geo_overview_responses=ListGeoOverviewResponses(
-            active_repository,
+            overview_persistence,
             metric_source_builder,
         ),
         dispatch_query_run_job=(
-            DispatchQueryRunJob(active_repository, active_publisher, active_clock)
+            DispatchQueryRunJob(dispatch_persistence, active_publisher, active_clock)
             if active_publisher is not None
             else None
         ),
         receive_external_run_callback=ReceiveExternalRunCallback(
-            active_repository,
+            callback_persistence,
             active_clock,
         ),
         callback_base_url=(
@@ -178,7 +216,7 @@ class SystemClock:
         return datetime.now(UTC).replace(microsecond=0)
 
 
-def _build_repository() -> GeoAnalysisRepository:
+def _build_repository() -> object:
     database_url = os.getenv("GEO_ANALYSIS_DATABASE_URL")
     if database_url:
         return build_postgres_repository(database_url)

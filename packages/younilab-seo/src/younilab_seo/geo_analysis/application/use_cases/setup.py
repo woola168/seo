@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
+    GeoAiPlatformRecord,
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
@@ -17,7 +18,6 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
-    GeoAiPlatformRecord,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
     GeoQueryScheduleCommand,
@@ -27,11 +27,19 @@ from younilab_seo.geo_analysis.application.contracts import (
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
-    GeoAnalysisRepository,
     ResourceCatalogCustomerReader,
     ResourceCatalogReferenceVerifier,
     ResourceCatalogVerificationDenied,
     ResourceCatalogVerificationUnavailable,
+)
+from younilab_seo.geo_analysis.application.interfaces.entity_catalog import (
+    EntityCatalogPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.project_setup import (
+    ProjectSetupPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.query_catalog import (
+    QueryCatalogPersistence,
 )
 from younilab_seo.geo_analysis.application.use_cases.access_policy import (
     can_access_project,
@@ -41,7 +49,6 @@ from younilab_seo.geo_analysis.application.use_cases.planning import (
     GeoProjectReferenceError,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -49,16 +56,31 @@ logger = logging.getLogger(__name__)
 class ManageGeoSetup:
     """管理 GEO project setup 資料，並套用 tenant 與 resource grant 邊界。"""
 
-    repository: GeoAnalysisRepository
+    project_persistence: ProjectSetupPersistence
     reference_verifier: ResourceCatalogReferenceVerifier | None = None
     customer_reader: ResourceCatalogCustomerReader | None = None
+    entity_persistence: EntityCatalogPersistence | None = None
+    query_catalog_persistence: QueryCatalogPersistence | None = None
+
+    def __post_init__(self) -> None:
+        if self.entity_persistence is None:
+            object.__setattr__(self, "entity_persistence", self.project_persistence)
+        if self.query_catalog_persistence is None:
+            object.__setattr__(
+                self,
+                "query_catalog_persistence",
+                self.project_persistence,
+            )
 
     async def list_projects(
         self,
         principal: AuthorizedPrincipal,
         customer_id: UUID | None = None,
     ) -> list[GeoProjectRecord]:
-        projects = await self.repository.list_projects(principal.tenant_id, customer_id)
+        projects = await self.project_persistence.list_projects(
+            principal.tenant_id,
+            customer_id,
+        )
         return filter_accessible_projects(principal, projects)
 
     async def list_project_summaries(
@@ -68,14 +90,12 @@ class ManageGeoSetup:
         *,
         access_token: str | None = None,
     ) -> list[GeoProjectSummaryRecord]:
-        summaries = await self.repository.list_project_summaries(
+        summaries = await self.project_persistence.list_project_summaries(
             principal.tenant_id,
             customer_id,
         )
         accessible = [
-            summary
-            for summary in summaries
-            if can_access_project(principal, summary)
+            summary for summary in summaries if can_access_project(principal, summary)
         ]
         customer_ids = frozenset(
             summary.customer_id
@@ -99,9 +119,7 @@ class ManageGeoSetup:
             )
             return accessible
         return [
-            summary.model_copy(
-                update={"customer_name": names.get(summary.customer_id)}
-            )
+            summary.model_copy(update={"customer_name": names.get(summary.customer_id)})
             for summary in accessible
         ]
 
@@ -110,7 +128,10 @@ class ManageGeoSetup:
         principal: AuthorizedPrincipal,
         project_id: UUID,
     ) -> GeoProjectRecord | None:
-        project = await self.repository.get_project(principal.tenant_id, project_id)
+        project = await self.project_persistence.get_project(
+            principal.tenant_id,
+            project_id,
+        )
         if project is None or not can_access_project(principal, project):
             return None
         return project
@@ -128,7 +149,7 @@ class ManageGeoSetup:
                 "project reference is not available to current principal"
             )
         await self._validate_project_reference(command, access_token)
-        return await self.repository.create_project(command)
+        return await self.project_persistence.create_project(command)
 
     async def update_project(
         self,
@@ -146,7 +167,7 @@ class ManageGeoSetup:
                 "project reference is not available to current principal"
             )
         await self._validate_project_reference(command, access_token)
-        return await self.repository.update_project(
+        return await self.project_persistence.update_project(
             principal.tenant_id,
             project_id,
             command,
@@ -159,7 +180,10 @@ class ManageGeoSetup:
     ) -> bool:
         if await self.get_project(principal, project_id) is None:
             return False
-        return await self.repository.delete_project(principal.tenant_id, project_id)
+        return await self.project_persistence.delete_project(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def update_project_status(
         self,
@@ -169,7 +193,7 @@ class ManageGeoSetup:
     ) -> GeoProjectRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.update_project_status(
+        return await self.project_persistence.update_project_status(
             principal.tenant_id,
             project_id,
             command,
@@ -182,7 +206,7 @@ class ManageGeoSetup:
     ) -> GeoProjectQuerySettingsRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.get_project_query_settings(
+        return await self.project_persistence.get_project_query_settings(
             principal.tenant_id,
             project_id,
         )
@@ -195,13 +219,13 @@ class ManageGeoSetup:
     ) -> GeoProjectQuerySettingsRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        current = await self.repository.get_project_query_settings(
+        current = await self.project_persistence.get_project_query_settings(
             principal.tenant_id,
             project_id,
         )
         if current is not None and _query_settings_equal(current, command):
             return current
-        return await self.repository.upsert_project_query_settings(
+        return await self.project_persistence.upsert_project_query_settings(
             principal.tenant_id,
             project_id,
             command,
@@ -214,7 +238,10 @@ class ManageGeoSetup:
     ) -> list[GeoMarketRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_markets(principal.tenant_id, project_id)
+        return await self.project_persistence.list_markets(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def create_market(
         self,
@@ -224,7 +251,7 @@ class ManageGeoSetup:
     ) -> GeoMarketRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.create_market(
+        return await self.project_persistence.create_market(
             principal.tenant_id,
             project_id,
             command,
@@ -236,26 +263,31 @@ class ManageGeoSetup:
         market_id: UUID,
         command: GeoMarketCommand,
     ) -> GeoMarketRecord | None:
-        project = await self.repository.get_market_project(
+        project = await self.project_persistence.get_market_project(
             principal.tenant_id,
             market_id,
         )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.update_market(
+        return await self.project_persistence.update_market(
             principal.tenant_id,
             market_id,
             command,
         )
 
-    async def delete_market(self, principal: AuthorizedPrincipal, market_id: UUID) -> bool:
-        project = await self.repository.get_market_project(
+    async def delete_market(
+        self, principal: AuthorizedPrincipal, market_id: UUID
+    ) -> bool:
+        project = await self.project_persistence.get_market_project(
             principal.tenant_id,
             market_id,
         )
         if project is None or not can_access_project(principal, project):
             return False
-        return await self.repository.delete_market(principal.tenant_id, market_id)
+        return await self.project_persistence.delete_market(
+            principal.tenant_id,
+            market_id,
+        )
 
     async def list_entities(
         self,
@@ -264,20 +296,26 @@ class ManageGeoSetup:
     ) -> list[GeoEntityRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_entities(principal.tenant_id, project_id)
+        return await self.entity_persistence.list_entities(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def get_entity(
         self,
         principal: AuthorizedPrincipal,
         entity_id: UUID,
     ) -> GeoEntityRecord | None:
-        project = await self.repository.get_entity_project(
+        project = await self.entity_persistence.get_entity_project(
             principal.tenant_id,
             entity_id,
         )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.get_entity(principal.tenant_id, entity_id)
+        return await self.entity_persistence.get_entity(
+            principal.tenant_id,
+            entity_id,
+        )
 
     async def create_entity(
         self,
@@ -287,7 +325,7 @@ class ManageGeoSetup:
     ) -> GeoEntityRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.create_entity(
+        return await self.entity_persistence.create_entity(
             principal.tenant_id,
             project_id,
             command,
@@ -301,7 +339,7 @@ class ManageGeoSetup:
     ) -> GeoEntityRecord | None:
         if await self.get_entity(principal, entity_id) is None:
             return None
-        return await self.repository.update_entity(
+        return await self.entity_persistence.update_entity(
             principal.tenant_id,
             entity_id,
             command,
@@ -314,7 +352,10 @@ class ManageGeoSetup:
     ) -> bool:
         if await self.get_entity(principal, entity_id) is None:
             return False
-        return await self.repository.delete_entity(principal.tenant_id, entity_id)
+        return await self.entity_persistence.delete_entity(
+            principal.tenant_id,
+            entity_id,
+        )
 
     async def list_aliases(
         self,
@@ -323,7 +364,10 @@ class ManageGeoSetup:
     ) -> list[GeoEntityAliasRecord] | None:
         if await self.get_entity(principal, entity_id) is None:
             return None
-        return await self.repository.list_aliases(principal.tenant_id, entity_id)
+        return await self.entity_persistence.list_aliases(
+            principal.tenant_id,
+            entity_id,
+        )
 
     async def list_project_aliases(
         self,
@@ -332,7 +376,7 @@ class ManageGeoSetup:
     ) -> list[GeoEntityAliasRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_project_aliases(
+        return await self.entity_persistence.list_project_aliases(
             principal.tenant_id,
             project_id,
         )
@@ -345,7 +389,7 @@ class ManageGeoSetup:
     ) -> list[GeoEntityAliasRecord] | None:
         if await self.get_entity(principal, entity_id) is None:
             return None
-        return await self.repository.replace_aliases(
+        return await self.entity_persistence.replace_aliases(
             principal.tenant_id,
             entity_id,
             commands,
@@ -358,7 +402,10 @@ class ManageGeoSetup:
     ) -> list[GeoTopicRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_topics(principal.tenant_id, project_id)
+        return await self.query_catalog_persistence.list_topics(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def create_topic(
         self,
@@ -368,7 +415,7 @@ class ManageGeoSetup:
     ) -> GeoTopicRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.create_topic(
+        return await self.query_catalog_persistence.create_topic(
             principal.tenant_id,
             project_id,
             command,
@@ -380,20 +427,31 @@ class ManageGeoSetup:
         topic_id: UUID,
         command: GeoTopicCommand,
     ) -> GeoTopicRecord | None:
-        project = await self.repository.get_topic_project(principal.tenant_id, topic_id)
+        project = await self.query_catalog_persistence.get_topic_project(
+            principal.tenant_id,
+            topic_id,
+        )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.update_topic(
+        return await self.query_catalog_persistence.update_topic(
             principal.tenant_id,
             topic_id,
             command,
         )
 
-    async def delete_topic(self, principal: AuthorizedPrincipal, topic_id: UUID) -> bool:
-        project = await self.repository.get_topic_project(principal.tenant_id, topic_id)
+    async def delete_topic(
+        self, principal: AuthorizedPrincipal, topic_id: UUID
+    ) -> bool:
+        project = await self.query_catalog_persistence.get_topic_project(
+            principal.tenant_id,
+            topic_id,
+        )
         if project is None or not can_access_project(principal, project):
             return False
-        return await self.repository.delete_topic(principal.tenant_id, topic_id)
+        return await self.query_catalog_persistence.delete_topic(
+            principal.tenant_id,
+            topic_id,
+        )
 
     async def list_queries(
         self,
@@ -402,17 +460,26 @@ class ManageGeoSetup:
     ) -> list[GeoQueryRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_queries(principal.tenant_id, project_id)
+        return await self.query_catalog_persistence.list_queries(
+            principal.tenant_id,
+            project_id,
+        )
 
     async def get_query(
         self,
         principal: AuthorizedPrincipal,
         query_id: UUID,
     ) -> GeoQueryRecord | None:
-        project = await self.repository.get_query_project(principal.tenant_id, query_id)
+        project = await self.query_catalog_persistence.get_query_project(
+            principal.tenant_id,
+            query_id,
+        )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.get_query(principal.tenant_id, query_id)
+        return await self.query_catalog_persistence.get_query(
+            principal.tenant_id,
+            query_id,
+        )
 
     async def create_query(
         self,
@@ -422,7 +489,7 @@ class ManageGeoSetup:
     ) -> GeoQueryRecord | None:
         if await self.get_project(principal, project_id) is None:
             return None
-        return await self.repository.create_query(
+        return await self.query_catalog_persistence.create_query(
             principal.tenant_id,
             project_id,
             command,
@@ -436,19 +503,24 @@ class ManageGeoSetup:
     ) -> GeoQueryRecord | None:
         if await self.get_query(principal, query_id) is None:
             return None
-        return await self.repository.update_query(
+        return await self.query_catalog_persistence.update_query(
             principal.tenant_id,
             query_id,
             command,
         )
 
-    async def delete_query(self, principal: AuthorizedPrincipal, query_id: UUID) -> bool:
+    async def delete_query(
+        self, principal: AuthorizedPrincipal, query_id: UUID
+    ) -> bool:
         if await self.get_query(principal, query_id) is None:
             return False
-        return await self.repository.delete_query(principal.tenant_id, query_id)
+        return await self.query_catalog_persistence.delete_query(
+            principal.tenant_id,
+            query_id,
+        )
 
     async def list_ai_platforms(self) -> list[GeoAiPlatformRecord]:
-        return await self.repository.list_ai_platforms()
+        return await self.query_catalog_persistence.list_ai_platforms()
 
     async def list_query_platforms(
         self,
@@ -457,7 +529,10 @@ class ManageGeoSetup:
     ) -> list[GeoQueryPlatformRecord]:
         if await self.get_query(principal, query_id) is None:
             return []
-        return await self.repository.list_query_platforms(principal.tenant_id, query_id)
+        return await self.query_catalog_persistence.list_query_platforms(
+            principal.tenant_id,
+            query_id,
+        )
 
     async def list_project_query_platforms(
         self,
@@ -466,7 +541,7 @@ class ManageGeoSetup:
     ) -> list[GeoQueryPlatformRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_project_query_platforms(
+        return await self.query_catalog_persistence.list_project_query_platforms(
             principal.tenant_id,
             project_id,
         )
@@ -479,7 +554,7 @@ class ManageGeoSetup:
     ) -> list[GeoQueryPlatformRecord] | None:
         if await self.get_query(principal, query_id) is None:
             return None
-        return await self.repository.replace_query_platforms(
+        return await self.query_catalog_persistence.replace_query_platforms(
             principal.tenant_id,
             query_id,
             commands,
@@ -492,7 +567,10 @@ class ManageGeoSetup:
     ) -> list[GeoQueryScheduleRecord]:
         if await self.get_query(principal, query_id) is None:
             return []
-        return await self.repository.list_schedules(principal.tenant_id, query_id)
+        return await self.query_catalog_persistence.list_schedules(
+            principal.tenant_id,
+            query_id,
+        )
 
     async def list_project_schedules(
         self,
@@ -501,7 +579,7 @@ class ManageGeoSetup:
     ) -> list[GeoQueryScheduleRecord]:
         if await self.get_project(principal, project_id) is None:
             return []
-        return await self.repository.list_project_schedules(
+        return await self.query_catalog_persistence.list_project_schedules(
             principal.tenant_id,
             project_id,
         )
@@ -514,7 +592,7 @@ class ManageGeoSetup:
     ) -> GeoQueryScheduleRecord | None:
         if await self.get_query(principal, query_id) is None:
             return None
-        return await self.repository.create_schedule(
+        return await self.query_catalog_persistence.create_schedule(
             principal.tenant_id,
             query_id,
             command,
@@ -526,13 +604,13 @@ class ManageGeoSetup:
         schedule_id: UUID,
         command: GeoQueryScheduleCommand,
     ) -> GeoQueryScheduleRecord | None:
-        project = await self.repository.get_schedule_project(
+        project = await self.query_catalog_persistence.get_schedule_project(
             principal.tenant_id,
             schedule_id,
         )
         if project is None or not can_access_project(principal, project):
             return None
-        return await self.repository.update_schedule(
+        return await self.query_catalog_persistence.update_schedule(
             principal.tenant_id,
             schedule_id,
             command,
@@ -543,13 +621,16 @@ class ManageGeoSetup:
         principal: AuthorizedPrincipal,
         schedule_id: UUID,
     ) -> bool:
-        project = await self.repository.get_schedule_project(
+        project = await self.query_catalog_persistence.get_schedule_project(
             principal.tenant_id,
             schedule_id,
         )
         if project is None or not can_access_project(principal, project):
             return False
-        return await self.repository.delete_schedule(principal.tenant_id, schedule_id)
+        return await self.query_catalog_persistence.delete_schedule(
+            principal.tenant_id,
+            schedule_id,
+        )
 
     async def _validate_project_reference(
         self,
@@ -582,9 +663,10 @@ def _query_settings_equal(
     current: GeoProjectQuerySettingsRecord,
     command: GeoProjectQuerySettingsCommand,
 ) -> bool:
-    return current.model_dump(
-        exclude={"project_id", "created_at", "updated_at"}
-    ) == command.model_dump()
+    return (
+        current.model_dump(exclude={"project_id", "created_at", "updated_at"})
+        == command.model_dump()
+    )
 
 
 def _can_access_project_reference(
@@ -593,6 +675,9 @@ def _can_access_project_reference(
 ) -> bool:
     if principal.has_global_resource_access:
         return True
-    if command.customer_id is not None and command.customer_id in principal.customer_ids:
+    if (
+        command.customer_id is not None
+        and command.customer_id in principal.customer_ids
+    ):
         return True
     return False

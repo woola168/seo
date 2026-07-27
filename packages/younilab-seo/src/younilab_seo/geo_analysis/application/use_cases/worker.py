@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -10,11 +10,12 @@ from younilab_seo.geo_analysis.application.contracts import (
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
-    GeoQueryRunJobRepository,
     TrackingRunClient,
 )
+from younilab_seo.geo_analysis.application.interfaces.run_lifecycle import (
+    RunExecutionPersistence,
+)
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, QueryRunJobStatusError
-
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class QueryRunJobResultPersistenceFailed(RuntimeError):
 class ProcessQueryRunJobMessage:
     """將已發布的 query job 交給 geo-tracking 執行並保存 runner 狀態。"""
 
-    repository: GeoQueryRunJobRepository
+    repository: RunExecutionPersistence
     tracking_client: TrackingRunClient
     clock: Clock
     supported_provider: str
@@ -57,7 +58,9 @@ class ProcessQueryRunJobMessage:
                     message=message,
                     status="failed",
                     error_code="tenant_mismatch",
-                    error_message="queue message tenant does not match job project tenant",
+                    error_message=(
+                        "queue message tenant does not match job project tenant"
+                    ),
                     request_payload={
                         "reason": "tenant_mismatch",
                         "queueMessage": message.model_dump(
@@ -216,10 +219,8 @@ class ProcessQueryRunJobMessage:
                 raise
             self._log_result_persistence_failure(command, exc)
             raise QueryRunJobResultPersistenceFailed(
-                (
-                    f"job {command.message.job_id} stopped after provider execution: "
-                    f"tracking result persistence failed: {exc.__class__.__name__}"
-                )
+                f"job {command.message.job_id} stopped after provider execution: "
+                f"tracking result persistence failed: {exc.__class__.__name__}"
             ) from exc
 
     @staticmethod

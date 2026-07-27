@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import re
 import unicodedata
+from dataclasses import dataclass
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
@@ -13,11 +13,13 @@ from younilab_seo.geo_analysis.application.contracts import (
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
-    GeoAnalysisRepository,
     KMindHubExtractionUnavailable,
     KMindHubExtractionValidationError,
     KMindHubWorkspaceClient,
     KMindHubWorkspaceResolver,
+)
+from younilab_seo.geo_analysis.application.interfaces.kmindhub_mapping import (
+    LegacyAnalysisExtractionPersistence,
 )
 from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     ANALYSIS_SCHEMA_VERSION,
@@ -36,7 +38,7 @@ class RunResultAnalysisNotFound(LookupError):
 class RunKMindHubAnalysisExtraction:
     """將已保存的 GEO raw answer 送到 KMindHub Insight，並保存報表前處理結果。"""
 
-    repository: GeoAnalysisRepository
+    repository: LegacyAnalysisExtractionPersistence
     workspace_resolver: KMindHubWorkspaceResolver
     client: KMindHubWorkspaceClient
     clock: Clock
@@ -57,13 +59,17 @@ class RunKMindHubAnalysisExtraction:
         try:
             task_id = await self._ensure_task(tenant_id)
             preview = await self.client.preview_text_extraction(
-                workspace_id=await self.workspace_resolver.resolve_workspace_id(tenant_id),
+                workspace_id=await self.workspace_resolver.resolve_workspace_id(
+                    tenant_id
+                ),
                 task_id=task_id,
                 text=result.raw_response,
             )
             extraction = _analysis_command_from_preview(result, preview.items)
             commit = await self.client.commit_extraction_items(
-                workspace_id=await self.workspace_resolver.resolve_workspace_id(tenant_id),
+                workspace_id=await self.workspace_resolver.resolve_workspace_id(
+                    tenant_id
+                ),
                 task_id=task_id,
                 items=[
                     {
@@ -193,7 +199,9 @@ def _analysis_command_from_preview(
     for item in items:
         verification = item.verification or {}
         if verification and verification.get("passed") is False:
-            raise KMindHubExtractionValidationError("KMindHub preview verification failed")
+            raise KMindHubExtractionValidationError(
+                "KMindHub preview verification failed"
+            )
 
     fields = items[0].fields
     summary = _string_value(fields, "summary")
@@ -249,7 +257,8 @@ def _mention_from_item(item, raw_response: str):
         entity_name=entity_name,
         entity_type=_enum_value(fields, "entityType", ENTITY_TYPE_VALUES) or "other",
         mention_count=_int_value(fields, "mentionCount"),
-        sentiment=_enum_value(fields, "overallSentiment", SENTIMENT_VALUES) or "unknown",
+        sentiment=_enum_value(fields, "overallSentiment", SENTIMENT_VALUES)
+        or "unknown",
         evidence_text=evidence_text,
     )
 
@@ -263,7 +272,8 @@ def _statement_from_item(item, raw_response: str):
     return GeoRunResultStatementCommand(
         statement_text=statement_text,
         theme=_string_value(fields, "theme") or "",
-        sentiment=_enum_value(fields, "statementSentiment", SENTIMENT_VALUES) or "unknown",
+        sentiment=_enum_value(fields, "statementSentiment", SENTIMENT_VALUES)
+        or "unknown",
         subject_entity_name=_string_value(fields, "subjectEntityName"),
         evidence_text=evidence_text,
     )
@@ -304,7 +314,9 @@ def _int_value(fields: dict, name: str) -> int:
 
 def _validated_evidence(fields: dict, raw_response: str) -> str:
     evidence = _string_value(fields, "evidenceText") or ""
-    if evidence and _normalize_evidence(evidence) not in _normalize_evidence(raw_response):
+    if evidence and _normalize_evidence(evidence) not in _normalize_evidence(
+        raw_response
+    ):
         raise KMindHubExtractionValidationError(
             "evidenceText must exist in raw response"
         )

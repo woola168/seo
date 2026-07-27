@@ -3,7 +3,10 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from younilab_seo.geo_analysis.application.contracts import DailySchedulerTickResult
-from younilab_seo.geo_analysis.application.interfaces import Clock, GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces import Clock
+from younilab_seo.geo_analysis.application.interfaces.run_lifecycle import (
+    RunSchedulerPersistence,
+)
 from younilab_seo.geo_analysis.application.use_cases.dispatch import DispatchQueryRunJob
 
 
@@ -11,7 +14,7 @@ from younilab_seo.geo_analysis.application.use_cases.dispatch import DispatchQue
 class RunDailySchedulerTick:
     """展開當日工作、處理逾時狀態，並派送已到期的 jobs。"""
 
-    repository: GeoAnalysisRepository
+    repository: RunSchedulerPersistence
     dispatcher: DispatchQueryRunJob
     clock: Clock
     callback_base_url: str

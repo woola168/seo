@@ -5,7 +5,9 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoMetricFormulaQuery,
     GeoMetricFormulaSource,
 )
-from younilab_seo.geo_analysis.application.interfaces import GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces.metrics import (
+    MetricsReadPersistence,
+)
 from younilab_seo.geo_analysis.application.use_cases.citation_normalization import (
     DEFAULT_CITATION_NORMALIZER_VERSION,
 )
@@ -19,7 +21,7 @@ class GeoMetricFormulaSourceProjectNotFound(LookupError):
 class BuildGeoMetricFormulaSource:
     """從 persistence read model 組出 metrics formula source，不計算 metrics。"""
 
-    repository: GeoAnalysisRepository
+    repository: MetricsReadPersistence
     normalizer_version: str = DEFAULT_CITATION_NORMALIZER_VERSION
 
     async def execute(
@@ -28,17 +30,16 @@ class BuildGeoMetricFormulaSource:
         project_id: UUID,
         query: GeoMetricFormulaQuery,
     ) -> GeoMetricFormulaSource:
-        project = await self.repository.get_project(tenant_id, project_id)
-        if project is None:
-            raise GeoMetricFormulaSourceProjectNotFound("project not found")
-
         source_query = self._with_explicit_comparison(query)
-        return await self.repository.get_metric_formula_source(
+        source = await self.repository.load_metric_formula_source(
             tenant_id,
             project_id,
             source_query,
             self.normalizer_version,
         )
+        if source is None:
+            raise GeoMetricFormulaSourceProjectNotFound("project not found")
+        return source
 
     def _with_explicit_comparison(
         self,

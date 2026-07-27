@@ -10,7 +10,9 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
     Clock,
-    GeoAnalysisRepository,
+)
+from younilab_seo.geo_analysis.application.interfaces.run_lifecycle import (
+    RunJobManagementPersistence,
 )
 from younilab_seo.geo_analysis.application.use_cases.access_policy import (
     can_access_project,
@@ -22,7 +24,7 @@ from younilab_seo.geo_analysis.domain import GeoQueryRunJob
 class ManageQueryRunJobs:
     """管理 GEO query run job lifecycle，尚不負責 queue dispatch。"""
 
-    repository: GeoAnalysisRepository
+    repository: RunJobManagementPersistence
     clock: Clock
 
     async def create_job(

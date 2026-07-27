@@ -1,17 +1,22 @@
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
+from younilab_provider_request_audit import PostgresProviderRequestRecorder
 from younilab_seo.geo_analysis.application import (
     AnalyzeRunResult,
+    CitationNormalizationPersistence,
     Clock,
     EvidenceTextRepairer,
-    GeoAnalysisRepository,
+    KMindHubTaskMappingPersistence,
     KMindHubWorkspaceClient,
+    KMindHubWorkspaceMappingPersistence,
     ManageKMindHubWorkspaceMapping,
     NormalizeRunResultCitations,
     ProcessQueryRunJobMessage,
+    RunExecutionPersistence,
+    SemanticAnalysisPersistence,
     TrackingRunClient,
 )
 from younilab_seo.geo_analysis.infrastructure import (
@@ -23,8 +28,6 @@ from younilab_seo.geo_analysis.infrastructure import (
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
-from younilab_provider_request_audit import PostgresProviderRequestRecorder
-
 
 _TRACKING_RUN_TIMEOUT_SECONDS = 210.0
 
@@ -50,7 +53,7 @@ class GeoAnalysisWorkerDependencies:
 
 def build_dependencies(
     *,
-    repository: GeoAnalysisRepository | None = None,
+    repository: object | None = None,
     tracking_client: TrackingRunClient | None = None,
     kmindhub_client: KMindHubWorkspaceClient | None = None,
     evidence_text_repairer: EvidenceTextRepairer | None = None,
@@ -68,30 +71,44 @@ def build_dependencies(
     citation_url_resolver = _build_citation_url_resolver()
     active_consumer = consumer or _build_consumer(active_provider)
     active_clock = clock or SystemClock()
-    kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
+    workspace_mapping_persistence = cast(
+        KMindHubWorkspaceMappingPersistence,
         active_repository,
+    )
+    task_mapping_persistence = cast(
+        KMindHubTaskMappingPersistence,
+        active_repository,
+    )
+    semantic_persistence = cast(SemanticAnalysisPersistence, active_repository)
+    citation_persistence = cast(
+        CitationNormalizationPersistence,
+        active_repository,
+    )
+    execution_persistence = cast(RunExecutionPersistence, active_repository)
+    kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
+        workspace_mapping_persistence,
         active_kmindhub_client,
     )
     semantic_analyzer = KMindHubGeoRunResultAnalyzer(
-        active_repository,
+        task_mapping_persistence,
         kmindhub_workspace_resolver,
         active_kmindhub_client,
         debug_payloads=_env_bool("GEO_KMINDHUB_DEBUG_PAYLOADS"),
         evidence_text_repairer=active_evidence_text_repairer,
     )
     analyze_run_result = AnalyzeRunResult(
-        active_repository,
+        semantic_persistence,
         semantic_analyzer,
         active_clock,
     )
     normalize_run_result_citations = NormalizeRunResultCitations(
-        active_repository,
+        citation_persistence,
         active_clock,
         url_resolver=citation_url_resolver,
     )
     return GeoAnalysisWorkerDependencies(
         processor=ProcessQueryRunJobMessage(
-            repository=active_repository,
+            repository=execution_persistence,
             tracking_client=active_tracking_client,
             clock=active_clock,
             supported_provider=active_provider,
@@ -119,7 +136,7 @@ class SystemClock:
         return datetime.now(UTC).replace(microsecond=0)
 
 
-def _build_repository() -> GeoAnalysisRepository:
+def _build_repository() -> object:
     return build_postgres_repository(_required_env("GEO_ANALYSIS_DATABASE_URL"))
 
 

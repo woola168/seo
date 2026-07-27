@@ -24,7 +24,10 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoOverviewVisibilitySeries,
     GeoQueryRecord,
 )
-from younilab_seo.geo_analysis.application.interfaces import Clock, GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces import Clock
+from younilab_seo.geo_analysis.application.interfaces.overview_read import (
+    OverviewReadPersistence,
+)
 from younilab_seo.geo_analysis.application.use_cases.metric_source import (
     BuildGeoMetricFormulaSource,
 )
@@ -37,7 +40,7 @@ from younilab_seo.geo_analysis.application.use_cases.metrics_formula import (
 class GetGeoOverviewReport:
     """依現有 normalized facts 組裝 Kinsan Overview 使用的 read model。"""
 
-    repository: GeoAnalysisRepository
+    repository: OverviewReadPersistence
     source_builder: BuildGeoMetricFormulaSource
     clock: Clock
     calculator: CalculateGeoMetricFormulas = field(
@@ -114,7 +117,7 @@ class GetGeoOverviewReport:
 class ListGeoOverviewResponses:
     """分頁列出 Overview 回答摘要，並保留 semantic analysis 未完成的未知狀態。"""
 
-    repository: GeoAnalysisRepository
+    repository: OverviewReadPersistence
     source_builder: BuildGeoMetricFormulaSource
 
     async def execute(
@@ -160,7 +163,9 @@ class ListGeoOverviewResponses:
             tenant_id,
             project_id,
         ):
-            if result.id not in allowed_ids or (query_id and result.query_id != query_id):
+            if result.id not in allowed_ids or (
+                query_id and result.query_id != query_id
+            ):
                 continue
             mentioned = _mentioned_state(result.analysis_status, mentions[result.id])
             if mention_status == "mentioned" and mentioned is not True:
@@ -221,12 +226,20 @@ def _filter_source(
         if _run_matches(item, query_index.get(item.query_id), query)
     }
     return GeoMetricFormulaSource(
-        run_results=[item for item in source.run_results if item.run_result_id in selected_ids],
-        entity_mentions=[
-            item for item in source.entity_mentions if item.run_result_id in selected_ids
+        run_results=[
+            item for item in source.run_results if item.run_result_id in selected_ids
         ],
-        sentiments=[item for item in source.sentiments if item.run_result_id in selected_ids],
-        citations=[item for item in source.citations if item.run_result_id in selected_ids],
+        entity_mentions=[
+            item
+            for item in source.entity_mentions
+            if item.run_result_id in selected_ids
+        ],
+        sentiments=[
+            item for item in source.sentiments if item.run_result_id in selected_ids
+        ],
+        citations=[
+            item for item in source.citations if item.run_result_id in selected_ids
+        ],
     )
 
 
@@ -264,10 +277,20 @@ def _period_source(
         if start <= item.completed_at < end
     }
     return GeoMetricFormulaSource(
-        run_results=[item for item in source.run_results if item.run_result_id in selected_ids],
-        entity_mentions=[item for item in source.entity_mentions if item.run_result_id in selected_ids],
-        sentiments=[item for item in source.sentiments if item.run_result_id in selected_ids],
-        citations=[item for item in source.citations if item.run_result_id in selected_ids],
+        run_results=[
+            item for item in source.run_results if item.run_result_id in selected_ids
+        ],
+        entity_mentions=[
+            item
+            for item in source.entity_mentions
+            if item.run_result_id in selected_ids
+        ],
+        sentiments=[
+            item for item in source.sentiments if item.run_result_id in selected_ids
+        ],
+        citations=[
+            item for item in source.citations if item.run_result_id in selected_ids
+        ],
     )
 
 
@@ -284,7 +307,9 @@ def _filter_options(source, queries, topics, query) -> GeoOverviewFilterOptions:
         ],
         platforms=[
             GeoOverviewFilterOption(value=value, label=_provider_label(value))
-            for value in sorted({item.provider for item in current_runs if item.provider})
+            for value in sorted(
+                {item.provider for item in current_runs if item.provider}
+            )
         ],
         regions=sorted({item.region for item in current_runs if item.region}),
         metadata_industries=_metadata_options(queries, "industry"),
@@ -297,7 +322,9 @@ def _metadata_options(queries, key: str) -> list[str]:
     for item in queries:
         value = item.metadata.get(key)
         candidates = value if isinstance(value, list) else [value]
-        values.update(candidate for candidate in candidates if isinstance(candidate, str))
+        values.update(
+            candidate for candidate in candidates if isinstance(candidate, str)
+        )
     return sorted(values)
 
 
@@ -439,7 +466,9 @@ def _visibility_trend(source, query) -> list[GeoOverviewVisibilitySeries]:
             points=[
                 GeoOverviewTrendPoint(
                     date=date_key,
-                    value=_percent(len(mentioned[(entity_id, date_key)]), totals[date_key]),
+                    value=_percent(
+                        len(mentioned[(entity_id, date_key)]), totals[date_key]
+                    ),
                 )
                 for date_key in dates
             ],
@@ -504,9 +533,13 @@ def _topic_rows(source, queries, topic_index, calculator, overview_query):
     for item in queries:
         if overview_query.topic_ids and item.topic_id not in overview_query.topic_ids:
             continue
-        if not _metadata_matches(item.metadata.get("industry"), overview_query.metadata_industry):
+        if not _metadata_matches(
+            item.metadata.get("industry"), overview_query.metadata_industry
+        ):
             continue
-        if not _metadata_matches(item.metadata.get("type"), overview_query.metadata_type):
+        if not _metadata_matches(
+            item.metadata.get("type"), overview_query.metadata_type
+        ):
             continue
         grouped[item.topic_id].append(item)
     for topic_id, topic_queries in grouped.items():
@@ -514,7 +547,9 @@ def _topic_rows(source, queries, topic_index, calculator, overview_query):
             _query_row(source, item, calculator, overview_query)
             for item in topic_queries
         ]
-        topic_source = _source_for_query_ids(source, {item.id for item in topic_queries})
+        topic_source = _source_for_query_ids(
+            source, {item.id for item in topic_queries}
+        )
         stats = _scope_stats(topic_source, calculator, overview_query)
         rows.append(
             GeoOverviewTopicRow(
@@ -554,10 +589,20 @@ def _source_for_query_ids(source, query_ids):
         item.run_result_id for item in source.run_results if item.query_id in query_ids
     }
     return GeoMetricFormulaSource(
-        run_results=[item for item in source.run_results if item.run_result_id in selected_ids],
-        entity_mentions=[item for item in source.entity_mentions if item.run_result_id in selected_ids],
-        sentiments=[item for item in source.sentiments if item.run_result_id in selected_ids],
-        citations=[item for item in source.citations if item.run_result_id in selected_ids],
+        run_results=[
+            item for item in source.run_results if item.run_result_id in selected_ids
+        ],
+        entity_mentions=[
+            item
+            for item in source.entity_mentions
+            if item.run_result_id in selected_ids
+        ],
+        sentiments=[
+            item for item in source.sentiments if item.run_result_id in selected_ids
+        ],
+        citations=[
+            item for item in source.citations if item.run_result_id in selected_ids
+        ],
     )
 
 
@@ -598,7 +643,9 @@ def _citation_rows(source, run_results, queries, *, scope):
                 citation_rate_percent=_percent(len(run_ids), completed),
                 citation_share_percent=_percent(len(citations), total),
                 ownership=next(iter(ownerships)) if len(ownerships) == 1 else "mixed",
-                source_type=next(iter(source_types)) if len(source_types) == 1 else "mixed",
+                source_type=next(iter(source_types))
+                if len(source_types) == 1
+                else "mixed",
             )
         )
     return sorted(rows, key=lambda item: (-item.citation_count, item.value))

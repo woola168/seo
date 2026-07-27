@@ -15,8 +15,8 @@ from younilab_seo.geo_analysis.application import (
     GeoTopicRecord,
     GetGeoOverviewReport,
     ListGeoOverviewResponses,
+    OverviewReadPersistence,
 )
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 PROJECT_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -58,6 +58,10 @@ class FakeRepository:
     ):
         self.preparation_business_date = business_date
         return self.is_preparing
+
+
+def test_overview_fake_implements_overview_read_persistence() -> None:
+    assert isinstance(FakeRepository(), OverviewReadPersistence)
 
 
 @dataclass

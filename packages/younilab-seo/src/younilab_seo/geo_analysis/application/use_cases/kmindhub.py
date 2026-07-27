@@ -7,8 +7,10 @@ from younilab_seo.geo_analysis.application.contracts import (
     KMindHubWorkspaceProvisionCommand,
 )
 from younilab_seo.geo_analysis.application.interfaces import (
-    GeoAnalysisRepository,
     KMindHubWorkspaceClient,
+)
+from younilab_seo.geo_analysis.application.interfaces.kmindhub_mapping import (
+    KMindHubWorkspaceMappingPersistence,
 )
 
 
@@ -24,7 +26,7 @@ class KMindHubWorkspaceMappingAlreadyExists(RuntimeError):
 class ManageKMindHubWorkspaceMapping:
     """管理 tenant 對 KMindHub workspace 的手動 mapping 與 runtime 解析。"""
 
-    repository: GeoAnalysisRepository
+    repository: KMindHubWorkspaceMappingPersistence
     client: KMindHubWorkspaceClient
 
     async def get_mapping(

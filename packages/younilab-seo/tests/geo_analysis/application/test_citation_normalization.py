@@ -5,7 +5,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from younilab_seo.geo_analysis.application import (
     GeoEntityRecord,
     GeoQueryRecord,
@@ -18,7 +17,9 @@ from younilab_seo.geo_analysis.application import (
     RunResultCitationNormalizationNotFound,
     SaveRunResultCitationNormalizationCommand,
 )
-
+from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
+    CitationNormalizationContext,
+)
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 NOW = datetime(2026, 7, 5, tzinfo=UTC)
@@ -45,6 +46,44 @@ class FakeRepository:
         default_factory=list
     )
     save_returns_none: bool = False
+
+    async def load_citation_normalization_context(self, tenant_id, result_id):
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        query = await self.get_query(tenant_id, result.query_id)
+        if query is None:
+            return CitationNormalizationContext(run_result=result)
+        return CitationNormalizationContext(
+            run_result=result,
+            project_id=query.project_id,
+            owned_website_urls=tuple(
+                entity.website_url
+                for entity in await self.list_entities(tenant_id, query.project_id)
+                if entity.status == "active"
+                and entity.entity_type == "own_brand"
+                and entity.website_url is not None
+            ),
+        )
+
+    async def get_existing_citation_normalization(
+        self,
+        tenant_id,
+        result_id,
+        normalizer_version,
+    ):
+        return await self.get_run_result_citation_normalization(
+            tenant_id,
+            result_id,
+            normalizer_version,
+        )
+
+    async def save_citation_normalization(self, tenant_id, command, occurred_at):
+        return await self.save_run_result_citation_normalization(
+            tenant_id,
+            command,
+            occurred_at,
+        )
 
     async def get_run_result(self, tenant_id, result_id):
         if (
@@ -105,6 +144,68 @@ class FakeCitationUrlResolver:
     async def resolve(self, url: str) -> str | None:
         self.calls.append(url)
         return self.results.get(url)
+
+
+@dataclass
+class MinimalCitationNormalizationPersistence:
+    context: CitationNormalizationContext
+    citation_normalization: GeoRunResultCitationNormalization | None = None
+    saved_commands: list[SaveRunResultCitationNormalizationCommand] = field(
+        default_factory=list
+    )
+
+    async def load_citation_normalization_context(self, tenant_id, run_result_id):
+        if tenant_id == TENANT_ID and run_result_id == self.context.run_result.id:
+            return self.context
+        return None
+
+    async def get_existing_citation_normalization(
+        self,
+        tenant_id,
+        run_result_id,
+        normalizer_version,
+    ):
+        if tenant_id != TENANT_ID:
+            return None
+        if (
+            self.citation_normalization is not None
+            and self.citation_normalization.run_result_id == run_result_id
+            and self.citation_normalization.normalizer_version == normalizer_version
+        ):
+            return self.citation_normalization
+        return None
+
+    async def save_citation_normalization(self, tenant_id, command, occurred_at):
+        if tenant_id != TENANT_ID:
+            return None
+        self.saved_commands.append(command)
+        self.citation_normalization = command.normalization
+        return command.normalization
+
+
+def test_normalize_run_result_uses_citation_persistence_interface() -> None:
+    async def run() -> None:
+        repository = _repository(
+            references=[_reference("https://docs.acme.com/guide")],
+        )
+        persistence = MinimalCitationNormalizationPersistence(
+            CitationNormalizationContext(
+                run_result=repository.result,
+                project_id=repository.query.project_id,
+                owned_website_urls=("https://acme.com",),
+            )
+        )
+
+        result = await NormalizeRunResultCitations(
+            persistence,
+            FakeClock(),
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert result.status == "completed"
+        assert result.citations[0].domain == "docs.acme.com"
+        assert result.citations[0].ownership == "owned"
+
+    asyncio.run(run())
 
 
 def test_citation_contracts_use_camel_case_shape() -> None:
@@ -241,9 +342,10 @@ def test_normalize_run_result_citations_force_rerun_saves_new_result() -> None:
             "https://example.com/first"
         ]
         assert repository.saved_commands[-1].normalization == result
-        assert repository.citation_normalizations[
-            (repository.result.id, "url_domain:v2")
-        ] == result
+        assert (
+            repository.citation_normalizations[(repository.result.id, "url_domain:v2")]
+            == result
+        )
 
     asyncio.run(run())
 
@@ -304,7 +406,9 @@ def test_normalize_run_result_citations_uses_resolved_url_for_ownership() -> Non
     asyncio.run(run())
 
 
-def test_normalize_run_result_citations_falls_back_when_redirect_resolution_fails() -> None:
+def test_normalize_run_result_citations_falls_back_when_redirect_resolution_fails() -> (
+    None
+):
     async def run() -> None:
         redirect_url = (
             "https://vertexaisearch.cloud.google.com/grounding-api-redirect/fallback"
@@ -428,7 +532,9 @@ def test_normalize_run_result_citations_uses_only_active_own_brand_domains() -> 
     asyncio.run(run())
 
 
-def test_normalize_run_result_citations_ignores_missing_or_invalid_own_brand_url() -> None:
+def test_normalize_run_result_citations_ignores_missing_or_invalid_own_brand_url() -> (
+    None
+):
     async def run() -> None:
         repository = _repository(
             references=[_reference("https://acme.com/page")],

@@ -2,25 +2,24 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
-from younilab_geo_analysis_api.presentation.http.errors import register_error_handlers
-from younilab_geo_analysis_api.presentation.http.routes import router
 from younilab_seo.geo_analysis.application import (
     Clock,
-    GeoAnalysisRepository,
     KMindHubWorkspaceClient,
     MessagePublisher,
     PermissionAuthorizer,
     QueryPlanningClient,
-    ResourceCatalogReferenceVerifier,
     ResourceCatalogCustomerReader,
+    ResourceCatalogReferenceVerifier,
 )
+
+from younilab_geo_analysis_api.presentation.http.composition import build_dependencies
+from younilab_geo_analysis_api.presentation.http.errors import register_error_handlers
+from younilab_geo_analysis_api.presentation.http.routes import router
 
 
 def create_app(
     *,
-    repository: GeoAnalysisRepository | None = None,
+    repository: object | None = None,
     clock: Clock | None = None,
     publisher: MessagePublisher | None = None,
     planning_client: QueryPlanningClient | None = None,

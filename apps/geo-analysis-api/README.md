@@ -430,19 +430,31 @@ ON CONFLICT (code) DO UPDATE SET
 目前 GEO Analysis API 的呼叫路徑：
 
 ```text
-routes -> application use case -> GeoAnalysisRepository port -> infrastructure adapter
+routes -> application use case -> workflow persistence port -> infrastructure adapter
 ```
 
 - `apps/geo-analysis-api/.../routes.py`：保留 HTTP API contract、Problem Details 與 DTO/response mapping。
 - `packages/younilab-seo/.../geo_analysis/application/use_cases/`：依 workflow 分檔放置 application use cases，例如 `setup.py`、`jobs.py`、`dispatch.py`。
 - `packages/younilab-seo/.../geo_analysis/application/contracts.py`：定義 application command/result records，避免 API DTO 或 untyped dict 穿越 application boundary。
-- `packages/younilab-seo/.../geo_analysis/application/interfaces.py`：定義 `GeoAnalysisRepository` port。
+- `packages/younilab-seo/.../geo_analysis/application/interfaces/`：依 workflow 定義 persistence ports。閱讀 use case 時，只需要打開同名或相鄰的 interface module。
 - `packages/younilab-seo/.../geo_analysis/infrastructure/persistence/postgres/repository.py`：實作 PostgreSQL adapter，負責 SQLModel row 與 application/domain model 互轉。
 - `packages/younilab-seo/.../geo_analysis/infrastructure/messaging/rabbitmq.py`：實作 RabbitMQ publisher adapter，依 provider 發布到不同 queue。
 - `apps/geo-analysis-worker`：消費 provider queue，呼叫 `geo-tracking-api` `/api/v1/geo-tracking/run-requests`，並只回寫 job status/evidence。
-- `apps/geo-analysis-api/.../store.py`：僅作為 API tests 與本機 stub 用的 in-memory fake repository。
+- `apps/geo-analysis-api/.../store.py`：作為 API tests 與本機 stub 用的 in-memory adapter。
 
-已移除舊的 `PostgresGeoApiStore` presentation adapter；正式 runtime 直接由 composition 建立 `PostgresGeoAnalysisRepository` 後注入 use cases。
+已移除 application layer 的 `GeoAnalysisRepository` 大型 façade。正式 runtime 仍建立一個 `PostgresGeoAnalysisRepository`，本機模式仍建立一個 `GeoApiStore`，但 `composition.py` 會把同一個 adapter 明確注入各 workflow port。這樣可重用同一個 session/state kernel，同時避免 use case 看見不相關的 persistence 方法。
+
+目前主要 persistence ports：
+
+- `semantic_analysis.py`：Semantic Analysis context、entity detection 與 analysis 保存。
+- `citation_normalization.py`：Citation context、既有 normalization 與 facts 保存。
+- `metrics.py`、`overview_read.py`：Metrics formula source 與 Overview read model 輸入。
+- `run_lifecycle.py`：Dispatch、callback、execution、result read、job management 與 scheduler。
+- `query_planning.py`：Research、Generation、draft selection 與 draft acceptance。
+- `project_setup.py`、`entity_catalog.py`、`query_catalog.py`：Project/Market/Settings、Entity/Alias、Topic/Query/Platform/Schedule。
+- `kmindhub_mapping.py`：Workspace mapping、task mapping 與 legacy extraction persistence。
+
+完整決策與取捨見 `docs/architecture/geo-tracking/adr/0004-use-workflow-specific-persistence-ports.md`。
 
 ### Future Service Standard
 
@@ -460,7 +472,9 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
   domain/
   application/
     contracts.py
-    interfaces.py
+    interfaces/
+      __init__.py
+      {workflow}.py
     use_cases/
       __init__.py
       {workflow}.py
@@ -470,9 +484,10 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
 
 - Routes 不直接使用 repository、SQL session、id generator、queue client 或 provider SDK。
 - `composition.py` 是 runtime dependency 組裝入口，並將 application use cases 掛到 `app.state`。
-- Application use cases 只依賴 application contracts、domain model 與 application ports。
+- Application use cases 只依賴 application contracts、domain model 與完成該 workflow 所需的最小 application port。
+- Persistence port 依 workflow 設計，不依資料表設計；跨表 context load、tenant scope、claim 與原子保存由 adapter 隱藏。
 - Infrastructure adapters 實作 application ports，並負責 row / external payload / SDK object 與 application model 的轉換。
-- API tests 使用 fake repository 或 fake port 注入 `create_app()`，不連正式 PostgreSQL 或外部服務。
+- Application tests 優先使用只實作該 workflow port 的小型 fake；API tests 可注入共用 in-memory adapter，不連正式 PostgreSQL 或外部服務。
 
 ## 前端介接共通規則
 

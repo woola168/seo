@@ -10,6 +10,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     EvidenceTextRepairFailure,
     EvidenceTextRepairResult,
     ExternalRunCallback,
+    GeoAiPlatformRecord,
     GeoAnalysisEntityContext,
     GeoAnalysisEntityInput,
     GeoDashboardCitationRow,
@@ -21,8 +22,8 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoEntityAliasCommand,
     GeoEntityAliasRecord,
     GeoEntityCommand,
-    GeoEntityMentionFact,
     GeoEntityMentionDetectionItem,
+    GeoEntityMentionFact,
     GeoEntityRecord,
     GeoMarketCommand,
     GeoMarketRecord,
@@ -59,7 +60,6 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoProjectSummaryRecord,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
-    GeoAiPlatformRecord,
     GeoQueryPlatformRecord,
     GeoQueryRecord,
     GeoQueryRunJobDispatchContext,
@@ -120,8 +120,6 @@ from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
     EvidenceTextRepairer,
     EvidenceTextRepairUnavailable,
-    GeoAnalysisRepository,
-    GeoQueryRunJobRepository,
     GeoRunResultAnalyzer,
     IdGenerator,
     KMindHubExtractionUnavailable,
@@ -139,6 +137,45 @@ from younilab_seo.geo_analysis.application.interfaces import (
     ResourceTaskReference,
     TrackingRunClient,
 )
+from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
+    CitationNormalizationContext,
+    CitationNormalizationPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.entity_catalog import (
+    EntityCatalogPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.kmindhub_mapping import (
+    KMindHubTaskMappingPersistence,
+    KMindHubWorkspaceMappingPersistence,
+    LegacyAnalysisExtractionPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.metrics import (
+    MetricsReadPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.overview_read import (
+    OverviewReadPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.project_setup import (
+    ProjectSetupPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.query_catalog import (
+    QueryCatalogPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.query_planning import (
+    QueryPlanningPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.run_lifecycle import (
+    RunCallbackPersistence,
+    RunDispatchPersistence,
+    RunExecutionPersistence,
+    RunJobManagementPersistence,
+    RunResultReadPersistence,
+    RunSchedulerPersistence,
+)
+from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
+    SemanticAnalysisContext,
+    SemanticAnalysisPersistence,
+)
 from younilab_seo.geo_analysis.application.use_cases import (
     AnalyzeRunResult,
     BuildGeoMetricFormulaSource,
@@ -152,26 +189,28 @@ from younilab_seo.geo_analysis.application.use_cases import (
     GetGeoOverviewReport,
     KMindHubWorkspaceMappingAlreadyExists,
     KMindHubWorkspaceMappingNotFound,
+    ListGeoOverviewResponses,
     ManageGeoSetup,
     ManageKMindHubWorkspaceMapping,
     ManageQueryPlanning,
     ManageQueryRunJobs,
-    ListGeoOverviewResponses,
     NormalizeRunResultCitations,
     ProcessQueryRunJobMessage,
     QueryRunJobMessageRejected,
     QueryRunJobResultPersistenceFailed,
     ReceiveExternalRunCallback,
+    RunDailySchedulerTick,
     RunKMindHubAnalysisExtraction,
     RunResultAnalysisNotFound,
     RunResultCitationNormalizationNotFound,
     RunResultSemanticAnalysisNotFound,
-    RunDailySchedulerTick,
 )
 
 __all__ = [
     "Clock",
     "CitationUrlResolver",
+    "CitationNormalizationContext",
+    "CitationNormalizationPersistence",
     "AcceptQueryDraftCommand",
     "AnalyzeGeoRunResultCommand",
     "AuthenticationRequired",
@@ -189,6 +228,7 @@ __all__ = [
     "EvidenceTextRepairFailure",
     "EvidenceTextRepairResult",
     "EvidenceTextRepairer",
+    "EntityCatalogPersistence",
     "EvidenceTextRepairUnavailable",
     "DispatchQueryRunJob",
     "DispatchQueryRunJobError",
@@ -199,7 +239,6 @@ __all__ = [
     "GeoDashboardOverviewCard",
     "GeoDashboardReport",
     "GeoDashboardSentimentRow",
-    "GeoAnalysisRepository",
     "GeoAnalysisEntityContext",
     "GeoAnalysisEntityInput",
     "GeoProjectReferenceError",
@@ -218,6 +257,7 @@ __all__ = [
     "GeoMetricFormulaResult",
     "GeoMetricFormulaSource",
     "GeoMetricFormulaSourceProjectNotFound",
+    "MetricsReadPersistence",
     "GeoMetricRunResultInput",
     "GeoMetricSentimentInput",
     "GeoMetricValue",
@@ -251,7 +291,6 @@ __all__ = [
     "GeoQueryPlatformRecord",
     "GeoQueryRecord",
     "GeoQueryRunJobDispatchContext",
-    "GeoQueryRunJobRepository",
     "GeoQueryScheduleCommand",
     "GeoQueryScheduleRecord",
     "GeoResponseSemanticFact",
@@ -285,6 +324,9 @@ __all__ = [
     "KMindHubWorkspaceMappingCommand",
     "KMindHubWorkspaceMappingAlreadyExists",
     "KMindHubWorkspaceMappingNotFound",
+    "KMindHubTaskMappingPersistence",
+    "KMindHubWorkspaceMappingPersistence",
+    "LegacyAnalysisExtractionPersistence",
     "KMindHubWorkspaceMappingRecord",
     "KMindHubWorkspaceProvisionCommand",
     "KMindHubWorkspaceProvisionUnavailable",
@@ -297,6 +339,7 @@ __all__ = [
     "MessagePublisher",
     "NormalizeRunResultCitations",
     "NormalizeRunResultCitationsCommand",
+    "OverviewReadPersistence",
     "PermissionAuthorizer",
     "ProcessQueryRunJobMessage",
     "PublishResult",
@@ -307,6 +350,9 @@ __all__ = [
     "QueryGenerationRunRecord",
     "QueryIntent",
     "QueryPlanningClient",
+    "QueryPlanningPersistence",
+    "ProjectSetupPersistence",
+    "QueryCatalogPersistence",
     "ResourceCatalogCustomerReader",
     "QueryResearchCommand",
     "QueryResearchResultRecord",
@@ -323,12 +369,20 @@ __all__ = [
     "RunResultAnalysisNotFound",
     "RunResultCitationNormalizationNotFound",
     "RunResultSemanticAnalysisNotFound",
+    "RunCallbackPersistence",
+    "RunDispatchPersistence",
+    "RunExecutionPersistence",
+    "RunJobManagementPersistence",
+    "RunResultReadPersistence",
+    "RunSchedulerPersistence",
     "RunDailySchedulerTick",
     "SaveRunResultCitationNormalizationCommand",
     "SaveRunResultEntityDetectionCommand",
     "SaveSemanticRunResultAnalysisCommand",
     "SaveRunResultAnalysisCommand",
     "SaveTrackingRunResultCommand",
+    "SemanticAnalysisContext",
+    "SemanticAnalysisPersistence",
     "TrackingRunClient",
     "TrackingRunReference",
     "TrackingRunResult",

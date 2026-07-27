@@ -4,16 +4,14 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
-
 from younilab_seo.geo_analysis.application import (
     BuildGeoMetricFormulaSource,
     GeoMetricFormulaQuery,
     GeoMetricFormulaSource,
     GeoMetricFormulaSourceProjectNotFound,
     GeoMetricRunResultInput,
-    GeoProjectRecord,
+    MetricsReadPersistence,
 )
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 PROJECT_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -22,17 +20,13 @@ RUN_RESULT_ID = UUID("00000000-0000-4000-8000-000000000003")
 
 @dataclass
 class FakeRepository:
-    project: GeoProjectRecord | None = None
-    source: GeoMetricFormulaSource = field(default_factory=GeoMetricFormulaSource)
+    source: GeoMetricFormulaSource | None = field(
+        default_factory=GeoMetricFormulaSource
+    )
     captured_query: GeoMetricFormulaQuery | None = None
     captured_normalizer_version: str | None = None
 
-    async def get_project(self, tenant_id, project_id):
-        if tenant_id == TENANT_ID and project_id == PROJECT_ID:
-            return self.project
-        return None
-
-    async def get_metric_formula_source(
+    async def load_metric_formula_source(
         self,
         tenant_id,
         project_id,
@@ -54,10 +48,8 @@ def test_build_metric_formula_source_normalizes_implicit_comparison_period() -> 
                 )
             ]
         )
-        repository = FakeRepository(
-            project=_project(),
-            source=source,
-        )
+        repository = FakeRepository(source=source)
+        assert isinstance(repository, MetricsReadPersistence)
         query = GeoMetricFormulaQuery(
             periodStart=datetime(2026, 7, 1, tzinfo=UTC),
             periodEnd=datetime(2026, 7, 8, tzinfo=UTC),
@@ -90,7 +82,7 @@ def test_build_metric_formula_source_normalizes_implicit_comparison_period() -> 
 
 def test_build_metric_formula_source_keeps_explicit_comparison_period() -> None:
     async def run() -> None:
-        repository = FakeRepository(project=_project())
+        repository = FakeRepository()
         query = GeoMetricFormulaQuery(
             periodStart=datetime(2026, 7, 1, tzinfo=UTC),
             periodEnd=datetime(2026, 7, 8, tzinfo=UTC),
@@ -111,7 +103,7 @@ def test_build_metric_formula_source_keeps_explicit_comparison_period() -> None:
 
 def test_build_metric_formula_source_rejects_missing_project() -> None:
     async def run() -> None:
-        repository = FakeRepository(project=None)
+        repository = FakeRepository(source=None)
 
         with pytest.raises(GeoMetricFormulaSourceProjectNotFound):
             await BuildGeoMetricFormulaSource(repository).execute(
@@ -124,14 +116,3 @@ def test_build_metric_formula_source_rejects_missing_project() -> None:
             )
 
     asyncio.run(run())
-
-
-def _project() -> GeoProjectRecord:
-    now = datetime(2026, 7, 1, tzinfo=UTC)
-    return GeoProjectRecord(
-        id=PROJECT_ID,
-        tenantId=TENANT_ID,
-        name="Acme GEO",
-        createdAt=now,
-        updatedAt=now,
-    )

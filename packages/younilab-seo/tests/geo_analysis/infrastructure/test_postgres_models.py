@@ -1,53 +1,65 @@
 import asyncio
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    CitationNormalizationPersistence,
     CreateQueryRunJobCommand,
+    EntityCatalogPersistence,
     GeoEntityAliasCommand,
     GeoEntityCommand,
-    GeoEntityMentionFact,
     GeoEntityMentionDetectionItem,
-    GeoAnalysisRepository,
+    GeoEntityMentionFact,
     GeoMetricFormulaQuery,
-    GeoResponseSemanticFact,
-    GeoRunResultAnalysis,
-    GeoRunResultCitationFact,
-    GeoRunResultCitationNormalization,
-    GeoRunResultEntityDetection,
     GeoProjectCommand,
     GeoProjectQuerySettingsCommand,
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
+    GeoResponseSemanticFact,
+    GeoRunResultAnalysis,
+    GeoRunResultCitationFact,
+    GeoRunResultCitationNormalization,
+    GeoRunResultEntityDetection,
+    GeoSentimentFact,
+    KMindHubTaskMappingPersistence,
+    KMindHubWorkspaceMappingPersistence,
+    LegacyAnalysisExtractionPersistence,
+    MetricsReadPersistence,
+    OverviewReadPersistence,
+    ProjectSetupPersistence,
     QueryAudience,
+    QueryCatalogPersistence,
     QueryDraftSelectionCommand,
     QueryGenerationCommand,
+    QueryPlanningPersistence,
     QueryResearchCommand,
-    GeoQueryRunJobRepository,
-    GeoSentimentFact,
+    RunCallbackPersistence,
+    RunDispatchPersistence,
+    RunExecutionPersistence,
+    RunJobManagementPersistence,
+    RunResultReadPersistence,
+    RunSchedulerPersistence,
+    SaveRunResultAnalysisCommand,
     SaveRunResultCitationNormalizationCommand,
     SaveRunResultEntityDetectionCommand,
-    SaveRunResultAnalysisCommand,
     SaveSemanticRunResultAnalysisCommand,
+    SemanticAnalysisPersistence,
 )
-
-
-TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 from younilab_seo.geo_analysis.infrastructure import (
     GeoAiPlatformRow,
     GeoMessageDispatchLogRow,
-    GeoProjectRow,
     GeoProjectQuerySettingsRow,
+    GeoProjectRow,
     GeoQueryDraftRow,
     GeoQueryDraftSelectionRow,
     GeoQueryGenerationRunRow,
@@ -56,13 +68,13 @@ from younilab_seo.geo_analysis.infrastructure import (
     GeoQueryRow,
     GeoQueryRunJobRow,
     GeoResponseSemanticFactRow,
+    GeoRunRequestRow,
     GeoRunResultAnalysisRow,
-    GeoRunResultEntityMentionRow,
     GeoRunResultCitationNormalizationRow,
     GeoRunResultCitationRow,
     GeoRunResultEntityDetectionItemRow,
     GeoRunResultEntityDetectionRow,
-    GeoRunRequestRow,
+    GeoRunResultEntityMentionRow,
     GeoRunResultReferenceRow,
     GeoRunResultRow,
     GeoRunResultStatementRow,
@@ -75,13 +87,22 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres.repository im
     _run_result_record,
 )
 
+TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
+POSTGRES_INTEGRATION_SKIP_MESSAGE = (
+    "Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests."
+)
 
-def test_postgres_rows_use_timezone_aware_timestamps_and_neutral_message_names() -> None:
-    tables = [GeoProjectRow.__table__, GeoQueryRunJobRow.__table__, GeoMessageDispatchLogRow.__table__]
+
+def test_postgres_rows_use_timezone_aware_timestamps_and_neutral_message_names() -> (
+    None
+):
+    tables = [
+        GeoProjectRow.__table__,
+        GeoQueryRunJobRow.__table__,
+        GeoMessageDispatchLogRow.__table__,
+    ]
     column_types = "\n".join(
-        str(column.type)
-        for table in tables
-        for column in table.columns
+        str(column.type) for table in tables for column in table.columns
     )
     table_names = {table.name for table in tables}
     dispatch_columns = set(GeoMessageDispatchLogRow.__table__.columns.keys())
@@ -127,15 +148,84 @@ def test_run_result_tables_exist_without_metric_tables() -> None:
     assert "geo_daily_query_metric" not in defined_tables
 
 
-def test_postgres_repository_implements_job_repository_port() -> None:
+def test_postgres_repository_implements_run_lifecycle_ports() -> None:
     repository = PostgresGeoAnalysisRepository(
         build_postgres_session_factory(
             "postgresql+asyncpg://user:pass@localhost/resource_catalog"
         )
     )
 
-    assert isinstance(repository, GeoQueryRunJobRepository)
-    assert isinstance(repository, GeoAnalysisRepository)
+    assert isinstance(repository, RunDispatchPersistence)
+    assert isinstance(repository, RunCallbackPersistence)
+    assert isinstance(repository, RunExecutionPersistence)
+    assert isinstance(repository, RunJobManagementPersistence)
+    assert isinstance(repository, RunResultReadPersistence)
+    assert isinstance(repository, RunSchedulerPersistence)
+
+
+def test_postgres_repository_implements_semantic_analysis_persistence() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, SemanticAnalysisPersistence)
+
+
+def test_postgres_repository_implements_citation_normalization_persistence() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, CitationNormalizationPersistence)
+
+
+def test_postgres_repository_implements_metrics_read_persistence() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, MetricsReadPersistence)
+
+
+def test_postgres_repository_implements_query_planning_persistence() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, QueryPlanningPersistence)
+
+
+def test_postgres_repository_implements_setup_persistence_ports() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, ProjectSetupPersistence)
+    assert isinstance(repository, EntityCatalogPersistence)
+    assert isinstance(repository, QueryCatalogPersistence)
+
+
+def test_postgres_repository_implements_remaining_workflow_ports() -> None:
+    repository = PostgresGeoAnalysisRepository(
+        build_postgres_session_factory(
+            "postgresql+asyncpg://user:pass@localhost/resource_catalog"
+        )
+    )
+
+    assert isinstance(repository, OverviewReadPersistence)
+    assert isinstance(repository, KMindHubWorkspaceMappingPersistence)
+    assert isinstance(repository, KMindHubTaskMappingPersistence)
+    assert isinstance(repository, LegacyAnalysisExtractionPersistence)
 
 
 def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -> None:
@@ -152,7 +242,7 @@ def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -
             shouldMentionOwnBrand=True,
             shouldMentionCompetitor=False,
         ),
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
     )
 
     sql = str(statement.compile(dialect=postgresql.dialect()))
@@ -164,6 +254,7 @@ def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -
 
 def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     postgres_dir = Path(__file__).parents[5] / "deploy" / "local" / "postgresql"
+    compose_path = postgres_dir.parent / "docker-compose.postgresql.yml"
     schema_path = postgres_dir / "004_geo_analysis_schema.sql"
     patch_path = postgres_dir / "005_geo_analysis_query_planning_patch.sql"
     analysis_metrics_patch_path = (
@@ -177,24 +268,18 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
         postgres_dir / "016_geo_analysis_remove_seo_task_contract.sql"
     )
     query_settings_path = postgres_dir / "019_geo_project_query_settings.sql"
-    daily_uniqueness_path = (
-        postgres_dir / "020_geo_query_daily_run_uniqueness.sql"
-    )
+    daily_uniqueness_path = postgres_dir / "020_geo_query_daily_run_uniqueness.sql"
     semantic_diagnostics_path = (
         postgres_dir / "021_geo_semantic_analysis_diagnostics.sql"
     )
-    entity_detection_path = (
-        postgres_dir / "022_geo_run_result_entity_detection.sql"
-    )
+    entity_detection_path = postgres_dir / "022_geo_run_result_entity_detection.sql"
     preparation_lookup_path = (
         postgres_dir / "024_geo_query_run_job_preparation_lookup.sql"
     )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
-    nullable_seo_task_patch = nullable_seo_task_patch_path.read_text(
-        encoding="utf-8"
-    )
+    nullable_seo_task_patch = nullable_seo_task_patch_path.read_text(encoding="utf-8")
     scheduler_patch = scheduler_patch_path.read_text(encoding="utf-8")
     seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
     query_settings = query_settings_path.read_text(encoding="utf-8")
@@ -202,6 +287,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
     entity_detection = entity_detection_path.read_text(encoding="utf-8")
     preparation_lookup = preparation_lookup_path.read_text(encoding="utf-8")
+    compose = compose_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -254,7 +340,11 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "validation_failures jsonb NOT NULL" in semantic_diagnostics
     assert semantic_diagnostics.startswith("BEGIN;")
     assert semantic_diagnostics.rstrip().endswith("COMMIT;")
-    assert "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection" in entity_detection
+    assert "012_geo_analysis_analysis_metrics_patch.sql" in compose
+    assert "021_geo_semantic_analysis_diagnostics.sql" in compose
+    assert (
+        "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection" in entity_detection
+    )
     assert (
         "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection_item"
         in entity_detection
@@ -283,8 +373,12 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "seo_task_id" not in GeoRunRequestRow.__table__.columns
     assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
     assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
-    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["tenant_id"].foreign_keys
-    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns["workspace_id"].foreign_keys
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns[
+        "tenant_id"
+    ].foreign_keys
+    assert not TenantKMindHubWorkspaceMappingRow.__table__.columns[
+        "workspace_id"
+    ].foreign_keys
     assert "ALTER COLUMN customer_id DROP NOT NULL" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in patch
     assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in patch
@@ -292,7 +386,10 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in patch
     assert "ADD COLUMN IF NOT EXISTS analyzer varchar(64)" in analysis_metrics_patch
     assert "ADD COLUMN IF NOT EXISTS mentioned boolean" in analysis_metrics_patch
-    assert "CREATE TABLE IF NOT EXISTS geo_response_semantic_fact" in analysis_metrics_patch
+    assert (
+        "CREATE TABLE IF NOT EXISTS geo_response_semantic_fact"
+        in analysis_metrics_patch
+    )
     assert "ix_geo_response_semantic_fact_analysis" in analysis_metrics_patch
     assert "ix_geo_run_result_entity_mention_analysis" in analysis_metrics_patch
     assert "ix_geo_run_result_statement_analysis" in analysis_metrics_patch
@@ -300,7 +397,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
         "CREATE TABLE IF NOT EXISTS geo_run_result_citation_normalization"
         in analysis_metrics_patch
     )
-    assert "CREATE TABLE IF NOT EXISTS geo_run_result_citation" in analysis_metrics_patch
+    assert (
+        "CREATE TABLE IF NOT EXISTS geo_run_result_citation" in analysis_metrics_patch
+    )
     assert "ux_geo_run_result_citation_normalization_version" in analysis_metrics_patch
     assert "ix_geo_run_result_citation_reference" in analysis_metrics_patch
     assert "ALTER TABLE geo_run_request" in nullable_seo_task_patch
@@ -345,7 +444,9 @@ def test_citation_normalization_rows_expose_phase_six_columns() -> None:
         == "geo_run_result_citation_normalization"
     )
     assert GeoRunResultCitationRow.__tablename__ == "geo_run_result_citation"
-    assert "normalizer_version" in GeoRunResultCitationNormalizationRow.__table__.columns
+    assert (
+        "normalizer_version" in GeoRunResultCitationNormalizationRow.__table__.columns
+    )
     assert (
         "skipped_reference_count"
         in GeoRunResultCitationNormalizationRow.__table__.columns
@@ -392,7 +493,7 @@ async def test_legacy_analysis_lookup_filters_answer_analysis_task_key() -> None
 
 @pytest.mark.anyio
 async def test_run_result_record_uses_semantic_analysis_status() -> None:
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     session = _CapturedSession()
     row = GeoRunResultRow(
         id=uuid4(),
@@ -426,7 +527,7 @@ def anyio_backend() -> str:
 async def test_postgres_repository_query_planning_crud_with_real_database() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -435,7 +536,7 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
         expire_on_commit=True,
     )
     repository = PostgresGeoAnalysisRepository(session_factory)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
 
     async with engine.begin() as connection:
         await connection.run_sync(SQLModel.metadata.create_all)
@@ -526,7 +627,7 @@ async def test_postgres_repository_query_planning_crud_with_real_database() -> N
 async def test_postgres_repository_lists_project_setup_resources() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -535,7 +636,7 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         expire_on_commit=True,
     )
     repository = PostgresGeoAnalysisRepository(session_factory)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     platform_id = uuid4()
 
     async with engine.begin() as connection:
@@ -588,12 +689,16 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
         query = await repository.create_query(
             TENANT_ID,
             project.id,
-            GeoQueryCommand(query_text="Bulk list query", region="TW", language="zh-TW"),
+            GeoQueryCommand(
+                query_text="Bulk list query", region="TW", language="zh-TW"
+            ),
         )
         other_query = await repository.create_query(
             TENANT_ID,
             other_project.id,
-            GeoQueryCommand(query_text="Other bulk list query", region="TW", language="zh-TW"),
+            GeoQueryCommand(
+                query_text="Other bulk list query", region="TW", language="zh-TW"
+            ),
         )
         assert created_aliases is not None
         assert query is not None
@@ -663,7 +768,7 @@ async def test_postgres_repository_lists_project_setup_resources() -> None:
 async def test_postgres_repository_replaces_aliases_atomically() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -709,7 +814,7 @@ async def test_postgres_repository_replaces_aliases_atomically() -> None:
             (item.id, item.created_at) for item in original
         ]
 
-        with pytest.raises(DataError):
+        with pytest.raises(DBAPIError):
             await repository.replace_aliases(
                 TENANT_ID,
                 entity.id,
@@ -751,9 +856,7 @@ async def test_postgres_repository_replaces_aliases_atomically() -> None:
 async def test_daily_materialization_uses_active_queries_and_active_platforms() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip(
-            "Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests."
-        )
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -762,7 +865,7 @@ async def test_daily_materialization_uses_active_queries_and_active_platforms() 
         expire_on_commit=True,
     )
     repository = PostgresGeoAnalysisRepository(session_factory)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     active_platform_id = uuid4()
     paused_platform_id = uuid4()
 
@@ -1028,10 +1131,10 @@ async def test_daily_materialization_uses_active_queries_and_active_platforms() 
 
 
 @pytest.mark.anyio
-async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_database() -> None:
+async def test_postgres_repository_semantic_analysis_round_trip() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -1040,7 +1143,7 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         expire_on_commit=True,
     )
     repository = PostgresGeoAnalysisRepository(session_factory)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     project_id = uuid4()
     query_id = uuid4()
     platform_id = uuid4()
@@ -1181,9 +1284,9 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
 
         assert legacy is not None
         assert semantic is not None
-        assert (await repository.get_run_result_analysis(TENANT_ID, result_id)).summary == (
-            "legacy analysis"
-        )
+        assert (
+            await repository.get_run_result_analysis(TENANT_ID, result_id)
+        ).summary == ("legacy analysis")
         loaded = await repository.get_semantic_run_result_analysis(TENANT_ID, result_id)
         assert loaded is not None
         assert loaded.entity_mentions[0].entity_name == "Acme"
@@ -1203,7 +1306,10 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         )
         assert [mention.entity_name for mention in source.entity_mentions] == ["Acme"]
         assert [sentiment.sentiment for sentiment in source.sentiments] == ["positive"]
-        assert await repository.get_semantic_run_result_analysis(uuid4(), result_id) is None
+        assert (
+            await repository.get_semantic_run_result_analysis(uuid4(), result_id)
+            is None
+        )
 
         detection_command = SaveRunResultEntityDetectionCommand(
             detection=GeoRunResultEntityDetection(
@@ -1294,18 +1400,18 @@ async def test_postgres_repository_saves_and_loads_semantic_analysis_with_real_d
         assert rerun.entity_mentions[0].entity_name == "Acme snapshot"
         assert rerun.sentiments == []
         assert [fact.value for fact in rerun.semantic_facts] == ["導入顧問"]
-        assert (await repository.get_run_result_analysis(TENANT_ID, result_id)).summary == (
-            "legacy analysis"
-        )
+        assert (
+            await repository.get_run_result_analysis(TENANT_ID, result_id)
+        ).summary == ("legacy analysis")
     finally:
         await engine.dispose()
 
 
 @pytest.mark.anyio
-async def test_postgres_repository_saves_and_loads_citation_normalization_with_real_database() -> None:
+async def test_postgres_repository_citation_normalization_round_trip() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
-        pytest.skip("Set GEO_ANALYSIS_TEST_DATABASE_URL to run Postgres repository integration tests.")
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(
@@ -1314,9 +1420,10 @@ async def test_postgres_repository_saves_and_loads_citation_normalization_with_r
         expire_on_commit=True,
     )
     repository = PostgresGeoAnalysisRepository(session_factory)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     project_id = uuid4()
     query_id = uuid4()
+    platform_id = uuid4()
     job_id = uuid4()
     run_request_id = uuid4()
     result_id = uuid4()
@@ -1330,6 +1437,16 @@ async def test_postgres_repository_saves_and_loads_citation_normalization_with_r
             async with session.begin():
                 session.add_all(
                     [
+                        GeoAiPlatformRow(
+                            id=platform_id,
+                            code=f"citation-{uuid4()}",
+                            display_name="Citation Platform",
+                            provider_type="test",
+                            default_model="gemini-3.1-flash-lite",
+                            status="active",
+                            created_at=now,
+                            updated_at=now,
+                        ),
                         GeoProjectRow(
                             id=project_id,
                             tenant_id=TENANT_ID,
@@ -1354,7 +1471,7 @@ async def test_postgres_repository_saves_and_loads_citation_normalization_with_r
                             id=job_id,
                             project_id=project_id,
                             query_id=query_id,
-                            platform_id=uuid4(),
+                            platform_id=platform_id,
                             job_type="manual_run",
                             priority="normal",
                             scheduled_for=now,
@@ -1391,15 +1508,18 @@ async def test_postgres_repository_saves_and_loads_citation_normalization_with_r
                             run_at=now,
                             created_at=now,
                         ),
-                        GeoRunResultReferenceRow(
-                            id=reference_id,
-                            run_result_id=result_id,
-                            url="https://acme.com/source",
-                            title="Acme Source",
-                            domain="acme.com",
-                            position=1,
-                        ),
                     ]
+                )
+                await session.flush()
+                session.add(
+                    GeoRunResultReferenceRow(
+                        id=reference_id,
+                        run_result_id=result_id,
+                        url="https://acme.com/source",
+                        title="Acme Source",
+                        domain="acme.com",
+                        position=1,
+                    )
                 )
 
         saved = await repository.save_run_result_citation_normalization(

@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-
 from younilab_seo.geo_analysis.application import (
     KMindHubWorkspaceMappingCommand,
+    KMindHubWorkspaceMappingPersistence,
     KMindHubWorkspaceMappingRecord,
     KMindHubWorkspaceProvisionCommand,
     ManageKMindHubWorkspaceMapping,
@@ -15,7 +15,6 @@ from younilab_seo.geo_analysis.application.use_cases import (
     KMindHubWorkspaceMappingAlreadyExists,
     KMindHubWorkspaceMappingNotFound,
 )
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 
@@ -152,3 +151,7 @@ class FakeClient:
 
     def workspace_headers(self, workspace_id: UUID) -> dict[str, str]:
         return {"X-Workspace-Id": str(workspace_id)}
+
+
+def test_workspace_fake_implements_mapping_persistence() -> None:
+    assert isinstance(FakeRepository(), KMindHubWorkspaceMappingPersistence)

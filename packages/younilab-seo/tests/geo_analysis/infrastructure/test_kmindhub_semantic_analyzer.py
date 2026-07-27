@@ -18,6 +18,7 @@ from younilab_seo.geo_analysis.application import (
     KMindHubExtractionTaskMappingRecord,
     KMindHubExtractionUnavailable,
     KMindHubExtractionValidationError,
+    KMindHubTaskMappingPersistence,
 )
 from younilab_seo.geo_analysis.application.kmindhub_extraction_schema import (
     SEMANTIC_ANALYSIS_SCHEMA_VERSION,
@@ -67,6 +68,10 @@ class FakeWorkspaceResolver:
 
     async def workspace_headers(self, tenant_id):
         return {"X-Workspace-Id": str(WORKSPACE_ID)}
+
+
+def test_analyzer_fake_implements_task_mapping_persistence() -> None:
+    assert isinstance(FakeRepository(), KMindHubTaskMappingPersistence)
 
 
 @dataclass
@@ -885,7 +890,7 @@ def test_kmindhub_semantic_analyzer_skips_incomplete_fact_fields() -> None:
         item = KMindHubExtractionPreviewItem(
             fields={
                 "entityId": KMindHubExtractionFieldValue(value=str(OWN_BRAND_ID)),
-            "factType": KMindHubExtractionFieldValue(value="product"),
+                "factType": KMindHubExtractionFieldValue(value="product"),
             },
             verification={"passed": True},
         )

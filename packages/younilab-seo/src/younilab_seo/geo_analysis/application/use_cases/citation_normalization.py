@@ -3,7 +3,6 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
-    GeoEntityRecord,
     GeoRunResultCitationFact,
     GeoRunResultCitationNormalization,
     SaveRunResultCitationNormalizationCommand,
@@ -11,9 +10,10 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.application.interfaces import (
     CitationUrlResolver,
     Clock,
-    GeoAnalysisRepository,
 )
-
+from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
+    CitationNormalizationPersistence,
+)
 
 DEFAULT_CITATION_NORMALIZER_VERSION = "url_domain:v2"
 VERTEX_GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
@@ -27,7 +27,7 @@ class RunResultCitationNormalizationNotFound(LookupError):
 class NormalizeRunResultCitations:
     """從 runner references 產生報表可計算的 deterministic citation facts。"""
 
-    repository: GeoAnalysisRepository
+    persistence: CitationNormalizationPersistence
     clock: Clock
     normalizer_version: str = DEFAULT_CITATION_NORMALIZER_VERSION
     url_resolver: CitationUrlResolver | None = None
@@ -40,11 +40,15 @@ class NormalizeRunResultCitations:
         normalizer_version: str | None = None,
     ) -> GeoRunResultCitationNormalization:
         version = normalizer_version or self.normalizer_version
-        result = await self.repository.get_run_result(tenant_id, run_result_id)
-        if result is None:
+        context = await self.persistence.load_citation_normalization_context(
+            tenant_id,
+            run_result_id,
+        )
+        if context is None:
             raise RunResultCitationNormalizationNotFound("run result not found")
+        result = context.run_result
         if not force_renormalize:
-            current = await self.repository.get_run_result_citation_normalization(
+            current = await self.persistence.get_existing_citation_normalization(
                 tenant_id,
                 run_result_id,
                 version,
@@ -52,8 +56,7 @@ class NormalizeRunResultCitations:
             if current is not None:
                 return current
 
-        query = await self.repository.get_query(tenant_id, result.query_id)
-        if query is None:
+        if context.project_id is None:
             return await self._save(
                 tenant_id,
                 self._failed(
@@ -70,15 +73,14 @@ class NormalizeRunResultCitations:
                 tenant_id,
                 self._failed(
                     run_result_id,
-                    query.project_id,
+                    context.project_id,
                     version,
                     "run_result_not_normalizable",
                     "run result is not completed",
                 ),
             )
 
-        entities = await self.repository.list_entities(tenant_id, query.project_id)
-        owned_domains = _owned_domains(entities)
+        owned_domains = _owned_domains(context.owned_website_urls)
         citations: list[GeoRunResultCitationFact] = []
         skipped_reference_count = 0
         for reference in result.references:
@@ -109,7 +111,7 @@ class NormalizeRunResultCitations:
             tenant_id,
             GeoRunResultCitationNormalization(
                 run_result_id=result.id,
-                project_id=query.project_id,
+                project_id=context.project_id,
                 normalizer_version=version,
                 status="completed",
                 citations=citations,
@@ -152,7 +154,7 @@ class NormalizeRunResultCitations:
         tenant_id: UUID,
         normalization: GeoRunResultCitationNormalization,
     ) -> GeoRunResultCitationNormalization:
-        saved = await self.repository.save_run_result_citation_normalization(
+        saved = await self.persistence.save_citation_normalization(
             tenant_id,
             SaveRunResultCitationNormalizationCommand(normalization=normalization),
             self.clock.now(),
@@ -162,12 +164,10 @@ class NormalizeRunResultCitations:
         return saved
 
 
-def _owned_domains(entities: list[GeoEntityRecord]) -> set[str]:
+def _owned_domains(website_urls: tuple[str, ...]) -> set[str]:
     domains = set()
-    for entity in entities:
-        if entity.status != "active" or entity.entity_type != "own_brand":
-            continue
-        normalized = _normalize_url(entity.website_url or "")
+    for website_url in website_urls:
+        normalized = _normalize_url(website_url)
         if normalized is not None:
             domains.add(normalized[1])
     return domains

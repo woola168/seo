@@ -1,22 +1,22 @@
-from dataclasses import dataclass, field
 import asyncio
-from datetime import UTC, datetime
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from younilab_seo.geo_analysis.application import (
     ExternalRunCallback,
     ProcessQueryRunJobMessage,
+    QueryRunJobMessage,
     QueryRunJobMessageRejected,
     QueryRunJobResultPersistenceFailed,
-    QueryRunJobMessage,
+    RunExecutionPersistence,
     SaveTrackingRunResultCommand,
     TrackingRunReference,
     TrackingRunResponse,
     TrackingRunResultItem,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
-
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -89,7 +89,9 @@ class FakeRepository:
     ) -> GeoQueryRunJob:
         if self.save_error is not None:
             raise self.save_error
-        external_run_id = command.response.id if command.response is not None else "unknown"
+        external_run_id = (
+            command.response.id if command.response is not None else "unknown"
+        )
         self.job.mark_external_status(
             external_run_id=external_run_id,
             external_status=command.status,
@@ -98,13 +100,14 @@ class FakeRepository:
             now=occurred_at,
         )
         self.save_commands.append(command)
-        self.result_ids = [uuid4() for _ in (command.response.results if command.response else [])]
+        self.result_ids = [
+            uuid4() for _ in (command.response.results if command.response else [])
+        ]
         return self.job
 
     async def list_job_run_results(self, tenant_id: UUID, job_id: UUID):
         return [
-            type("RunResult", (), {"id": result_id})()
-            for result_id in self.result_ids
+            type("RunResult", (), {"id": result_id})() for result_id in self.result_ids
         ]
 
 
@@ -134,6 +137,10 @@ class FakeTrackingClient:
             raise self.error
         assert self.result is not None
         return self.result
+
+
+def test_worker_fake_implements_run_execution_persistence() -> None:
+    assert isinstance(FakeRepository(make_job()), RunExecutionPersistence)
 
 
 @dataclass
@@ -237,7 +244,9 @@ def test_worker_keeps_tracking_job_succeeded_when_semantic_analysis_crashes() ->
     asyncio.run(run())
 
 
-def test_worker_keeps_tracking_job_succeeded_when_citation_normalization_crashes() -> None:
+def test_worker_keeps_tracking_job_succeeded_when_citation_normalization_crashes() -> (
+    None
+):
     async def run() -> None:
         job = make_job()
         repository = FakeRepository(job)
@@ -454,9 +463,9 @@ def test_worker_marks_unsupported_provider_failed_without_tracking_call() -> Non
         assert repository.save_commands[0].request_payload["reason"] == (
             "unsupported_provider"
         )
-        assert repository.save_commands[0].request_payload["queueMessage"]["platform"] == (
-            "openai"
-        )
+        assert repository.save_commands[0].request_payload["queueMessage"][
+            "platform"
+        ] == ("openai")
 
     asyncio.run(run())
 
@@ -512,7 +521,9 @@ def test_worker_marks_tenant_mismatch_failed_without_tracking_call() -> None:
         assert tracking.messages == []
         assert analyzer.calls == []
         assert normalizer.calls == []
-        assert repository.save_commands[0].request_payload["reason"] == "tenant_mismatch"
+        assert (
+            repository.save_commands[0].request_payload["reason"] == "tenant_mismatch"
+        )
 
     asyncio.run(run())
 

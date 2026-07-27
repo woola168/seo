@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-
 from younilab_seo.geo_analysis.application import (
     AnalyzeGeoRunResultCommand,
     AnalyzeRunResult,
@@ -19,13 +18,15 @@ from younilab_seo.geo_analysis.application import (
     GeoTopicRecord,
     KMindHubExtractionValidationError,
     RunResultSemanticAnalysisNotFound,
-    SaveSemanticRunResultAnalysisCommand,
     SaveRunResultEntityDetectionCommand,
+    SaveSemanticRunResultAnalysisCommand,
 )
 from younilab_seo.geo_analysis.application.entity_mention_detection import (
     ENTITY_MENTION_DETECTOR_VERSION,
 )
-
+from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
+    SemanticAnalysisContext,
+)
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 NOW = datetime(2026, 7, 5, tzinfo=UTC)
@@ -55,6 +56,62 @@ class FakeRepository:
         default_factory=list
     )
     save_returns_none: bool = False
+
+    async def load_semantic_analysis_context(self, tenant_id, result_id):
+        result = await self.get_run_result(tenant_id, result_id)
+        if result is None:
+            return None
+        query = await self.get_query(tenant_id, result.query_id)
+        if query is None:
+            return SemanticAnalysisContext(run_result=result)
+        active_entities = [
+            entity
+            for entity in await self.list_entities(tenant_id, query.project_id)
+            if entity.status == "active"
+            and entity.entity_type in {"own_brand", "competitor"}
+        ]
+        topic = next(
+            (
+                item
+                for item in await self.list_topics(tenant_id, query.project_id)
+                if item.id == query.topic_id and item.status == "active"
+            ),
+            None,
+        )
+        return SemanticAnalysisContext(
+            run_result=result,
+            query=query,
+            topic=topic,
+            own_brand=next(
+                (item for item in active_entities if item.entity_type == "own_brand"),
+                None,
+            ),
+            competitors=tuple(
+                item for item in active_entities if item.entity_type == "competitor"
+            ),
+        )
+
+    async def get_existing_semantic_analysis(self, tenant_id, result_id):
+        return await self.get_semantic_run_result_analysis(tenant_id, result_id)
+
+    async def save_semantic_entity_detection(
+        self,
+        tenant_id,
+        command,
+        occurred_at,
+    ):
+        return await self.save_run_result_entity_detection(
+            tenant_id,
+            command,
+            occurred_at,
+        )
+
+    async def save_semantic_analysis(self, tenant_id, command, occurred_at):
+        return await self.save_semantic_run_result_analysis(
+            tenant_id,
+            command,
+            occurred_at,
+        )
 
     async def get_run_result(self, tenant_id, result_id):
         if (
@@ -147,7 +204,9 @@ class FakeAnalyzer:
     error: Exception | None = None
     commands: list[AnalyzeGeoRunResultCommand] = field(default_factory=list)
 
-    async def analyze(self, command: AnalyzeGeoRunResultCommand) -> GeoRunResultAnalysis:
+    async def analyze(
+        self, command: AnalyzeGeoRunResultCommand
+    ) -> GeoRunResultAnalysis:
         self.commands.append(command)
         if self.error is not None:
             raise self.error
@@ -179,6 +238,94 @@ class FakeAnalyzer:
                 )
             ],
         )
+
+
+@dataclass
+class MinimalSemanticAnalysisPersistence:
+    context: SemanticAnalysisContext
+    semantic_analysis: GeoRunResultAnalysis | None = None
+    detection: GeoRunResultEntityDetection | None = None
+    saved_commands: list[SaveSemanticRunResultAnalysisCommand] = field(
+        default_factory=list
+    )
+    saved_detections: list[SaveRunResultEntityDetectionCommand] = field(
+        default_factory=list
+    )
+
+    async def load_semantic_analysis_context(self, tenant_id, run_result_id):
+        if tenant_id == TENANT_ID and run_result_id == self.context.run_result.id:
+            return self.context
+        return None
+
+    async def get_existing_semantic_analysis(self, tenant_id, run_result_id):
+        if tenant_id == TENANT_ID and (
+            self.semantic_analysis is None
+            or self.semantic_analysis.run_result_id == run_result_id
+        ):
+            return self.semantic_analysis
+        return None
+
+    async def save_semantic_entity_detection(
+        self,
+        tenant_id,
+        command,
+        occurred_at,
+    ):
+        if tenant_id != TENANT_ID:
+            return None
+        self.saved_detections.append(command)
+        self.detection = command.detection
+        return command.detection
+
+    async def save_semantic_analysis(self, tenant_id, command, occurred_at):
+        if tenant_id != TENANT_ID:
+            return None
+        self.saved_commands.append(command)
+        self.semantic_analysis = command.analysis
+        if self.detection is None or self.detection.status != "completed":
+            return command.analysis
+        return command.analysis.model_copy(
+            update={
+                "entity_mentions": [
+                    GeoEntityMentionFact(
+                        entity_id=item.entity_id,
+                        entity_role=item.entity_role,
+                        entity_name=item.entity_name,
+                        mentioned=item.mentioned,
+                        first_mention_order=item.first_mention_order,
+                        evidence_text=item.evidence_text,
+                    )
+                    for item in self.detection.items
+                ]
+            }
+        )
+
+
+def test_analyze_run_result_uses_semantic_analysis_persistence_interface() -> None:
+    async def run() -> None:
+        repository = _repository()
+        persistence = MinimalSemanticAnalysisPersistence(
+            SemanticAnalysisContext(
+                run_result=repository.result,
+                query=repository.query,
+                topic=repository.topics[0],
+                own_brand=repository.entities[0],
+                competitors=(repository.entities[1],),
+            )
+        )
+        analyzer = FakeAnalyzer()
+
+        result = await AnalyzeRunResult(
+            persistence,
+            analyzer,
+            FakeClock(),
+        ).execute(TENANT_ID, repository.result.id)
+
+        assert result.status == "completed"
+        assert result.entity_mentions[0].entity_name == "Acme"
+        assert analyzer.commands[0].entities.own_brand.name == "Acme"
+
+    asyncio.run(run())
 
 
 def test_analyze_run_result_saves_completed_semantic_facts() -> None:

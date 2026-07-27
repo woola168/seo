@@ -17,8 +17,10 @@ from younilab_seo.geo_analysis.application.entity_mention_detection import (
 )
 from younilab_seo.geo_analysis.application.interfaces import (
     Clock,
-    GeoAnalysisRepository,
     GeoRunResultAnalyzer,
+)
+from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
+    SemanticAnalysisPersistence,
 )
 
 
@@ -30,7 +32,7 @@ class RunResultSemanticAnalysisNotFound(LookupError):
 class AnalyzeRunResult:
     """將已保存的 raw run result 轉成 semantic facts 並保存分析結果。"""
 
-    repository: GeoAnalysisRepository
+    persistence: SemanticAnalysisPersistence
     analyzer: GeoRunResultAnalyzer
     clock: Clock
 
@@ -40,12 +42,16 @@ class AnalyzeRunResult:
         run_result_id: UUID,
         force_reanalyze: bool = False,
     ) -> GeoRunResultAnalysis:
-        result = await self.repository.get_run_result(tenant_id, run_result_id)
-        if result is None:
+        context = await self.persistence.load_semantic_analysis_context(
+            tenant_id,
+            run_result_id,
+        )
+        if context is None:
             raise RunResultSemanticAnalysisNotFound("run result not found")
+        result = context.run_result
 
         if not force_reanalyze:
-            current = await self.repository.get_semantic_run_result_analysis(
+            current = await self.persistence.get_existing_semantic_analysis(
                 tenant_id,
                 run_result_id,
             )
@@ -60,7 +66,7 @@ class AnalyzeRunResult:
                 "run result is not completed or raw response is empty",
             )
 
-        query = await self.repository.get_query(tenant_id, result.query_id)
+        query = context.query
         if query is None:
             return await self._save_failed(
                 tenant_id,
@@ -69,8 +75,7 @@ class AnalyzeRunResult:
                 "query context is missing",
             )
 
-        entities = await self.repository.list_entities(tenant_id, query.project_id)
-        own_brand = _own_brand(entities)
+        own_brand = context.own_brand
         if own_brand is None:
             return await self._save_failed(
                 tenant_id,
@@ -79,16 +84,12 @@ class AnalyzeRunResult:
                 "active own brand entity is missing",
             )
 
-        aliases = await self.repository.list_project_aliases(
-            tenant_id,
-            query.project_id,
-        )
         try:
             detection = detect_entity_mentions(
                 run_result_id=run_result_id,
                 raw_response=result.raw_response,
-                entities=entities,
-                aliases=aliases,
+                entities=[own_brand, *context.competitors],
+                aliases=list(context.aliases),
             )
         except Exception as exc:
             detection = GeoRunResultEntityDetection(
@@ -98,7 +99,7 @@ class AnalyzeRunResult:
                 error_code=exc.__class__.__name__,
                 error_message=str(exc),
             )
-        saved_detection = await self.repository.save_run_result_entity_detection(
+        saved_detection = await self.persistence.save_semantic_entity_detection(
             tenant_id,
             SaveRunResultEntityDetectionCommand(detection=detection),
             self.clock.now(),
@@ -106,15 +107,7 @@ class AnalyzeRunResult:
         if saved_detection is None:
             raise RunResultSemanticAnalysisNotFound("run result not found")
 
-        topics = await self.repository.list_topics(tenant_id, query.project_id)
-        topic = next(
-            (
-                item
-                for item in topics
-                if item.id == query.topic_id and item.status == "active"
-            ),
-            None,
-        )
+        topic = context.topic
         command = AnalyzeGeoRunResultCommand(
             tenant_id=tenant_id,
             run_result_id=result.id,
@@ -133,9 +126,7 @@ class AnalyzeRunResult:
             entities=GeoAnalysisEntityContext(
                 own_brand=_entity_input(own_brand, "own_brand"),
                 competitors=[
-                    _entity_input(item, "competitor")
-                    for item in entities
-                    if item.status == "active" and item.entity_type == "competitor"
+                    _entity_input(item, "competitor") for item in context.competitors
                 ],
             ),
         )
@@ -183,7 +174,7 @@ class AnalyzeRunResult:
         tenant_id: UUID,
         analysis: GeoRunResultAnalysis,
     ) -> GeoRunResultAnalysis:
-        saved = await self.repository.save_semantic_run_result_analysis(
+        saved = await self.persistence.save_semantic_analysis(
             tenant_id,
             SaveSemanticRunResultAnalysisCommand(analysis=analysis),
             self.clock.now(),
@@ -191,17 +182,6 @@ class AnalyzeRunResult:
         if saved is None:
             raise RunResultSemanticAnalysisNotFound("run result not found")
         return saved
-
-
-def _own_brand(entities: list[GeoEntityRecord]) -> GeoEntityRecord | None:
-    return next(
-        (
-            item
-            for item in entities
-            if item.status == "active" and item.entity_type == "own_brand"
-        ),
-        None,
-    )
 
 
 def _entity_input(

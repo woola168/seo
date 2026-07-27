@@ -10,8 +10,11 @@ from younilab_seo.geo_analysis.application.contracts import (
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
     Clock,
-    GeoQueryRunJobRepository,
     MessagePublisher,
+)
+from younilab_seo.geo_analysis.application.interfaces.run_lifecycle import (
+    RunCallbackPersistence,
+    RunDispatchPersistence,
 )
 from younilab_seo.geo_analysis.application.use_cases.access_policy import (
     can_access_project,
@@ -27,7 +30,7 @@ class DispatchQueryRunJobError(ValueError):
 class DispatchQueryRunJob:
     """將 pending GEO job 發布到 provider queue，並記錄 dispatch evidence。"""
 
-    repository: GeoQueryRunJobRepository
+    repository: RunDispatchPersistence
     publisher: MessagePublisher
     clock: Clock
     retry_delays: tuple[timedelta, ...] = (
@@ -116,7 +119,7 @@ class DispatchQueryRunJob:
 class ReceiveExternalRunCallback:
     """處理外部 runner callback，透過 repository 同步更新 job 與 evidence。"""
 
-    repository: GeoQueryRunJobRepository
+    repository: RunCallbackPersistence
     clock: Clock
 
     async def execute(self, callback: ExternalRunCallback) -> GeoQueryRunJob:
