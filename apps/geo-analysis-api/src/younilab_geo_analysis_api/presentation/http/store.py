@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -83,6 +83,7 @@ class GeoApiStore:
     query_platforms: dict[UUID, GeoQueryPlatformRecord] = field(default_factory=dict)
     schedules: dict[UUID, GeoQueryScheduleRecord] = field(default_factory=dict)
     jobs: dict[UUID, GeoQueryRunJob] = field(default_factory=dict)
+    non_daily_slot_owner_job_ids: set[UUID] = field(default_factory=set)
     run_results: dict[UUID, GeoRunResultRecord] = field(default_factory=dict)
     run_result_analyses: dict[UUID, GeoRunResultAnalysisRecord] = field(
         default_factory=dict
@@ -862,6 +863,30 @@ class GeoApiStore:
         if not self._project_matches(tenant_id, project_id):
             return []
         return [job for job in self.jobs.values() if job.project_id == project_id]
+
+    async def is_project_data_preparing(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        business_date: date,
+    ) -> bool:
+        if not self._project_matches(tenant_id, project_id):
+            return False
+        preparing_statuses = {
+            JobStatus.PENDING,
+            JobStatus.PUBLISHING,
+            JobStatus.PUBLISHED,
+            JobStatus.RUNNING_EXTERNAL,
+            JobStatus.DELAYED,
+        }
+        taipei = ZoneInfo("Asia/Taipei")
+        return any(
+            job.project_id == project_id
+            and job.id not in self.non_daily_slot_owner_job_ids
+            and job.scheduled_for.astimezone(taipei).date() == business_date
+            and job.status in preparing_statuses
+            for job in self.jobs.values()
+        )
 
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
         job = self.jobs.get(job_id)

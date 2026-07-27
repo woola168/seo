@@ -462,6 +462,13 @@ class GeoQueryRunJobRow(SQLModel, table=True):
             unique=True,
             postgresql_where=text("is_daily_slot_owner = true"),
         ),
+        Index(
+            "ix_geo_query_run_job_project_preparing",
+            "project_id",
+            "business_date",
+            "status",
+            postgresql_where=text("is_daily_slot_owner = true"),
+        ),
     )
 
     id: UUID = Field(primary_key=True)

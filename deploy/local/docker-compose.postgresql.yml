@@ -29,6 +29,7 @@ services:
       - ./postgresql/018_provider_request_audit.sql:/docker-entrypoint-initdb.d/018_provider_request_audit.sql:ro
       - ./postgresql/022_geo_run_result_entity_detection.sql:/docker-entrypoint-initdb.d/022_geo_run_result_entity_detection.sql:ro
       - ./postgresql/023_provider_request_usage_cost_estimate.sql:/docker-entrypoint-initdb.d/023_provider_request_usage_cost_estimate.sql:ro
+      - ./postgresql/024_geo_query_run_job_preparation_lookup.sql:/docker-entrypoint-initdb.d/024_geo_query_run_job_preparation_lookup.sql:ro
 
 volumes:
   access-control-postgresql-data:

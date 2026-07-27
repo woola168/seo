@@ -186,6 +186,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     entity_detection_path = (
         postgres_dir / "022_geo_run_result_entity_detection.sql"
     )
+    preparation_lookup_path = (
+        postgres_dir / "024_geo_query_run_job_preparation_lookup.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -198,6 +201,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     daily_uniqueness = daily_uniqueness_path.read_text(encoding="utf-8")
     semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
     entity_detection = entity_detection_path.read_text(encoding="utf-8")
+    preparation_lookup = preparation_lookup_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
@@ -234,6 +238,12 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert query_settings.rstrip().endswith("COMMIT;")
     assert "business_date date GENERATED ALWAYS" in schema
     assert "ux_geo_query_run_job_daily_slot" in schema
+    assert "ix_geo_query_run_job_project_preparing" in schema
+    assert "ix_geo_query_run_job_project_preparing" in preparation_lookup
+    assert "is_daily_slot_owner = true" in preparation_lookup
+    assert "(project_id, business_date, status)" in preparation_lookup
+    assert preparation_lookup.startswith("BEGIN;")
+    assert preparation_lookup.rstrip().endswith("COMMIT;")
     assert "PARTITION BY query_id, platform_id, business_date" in daily_uniqueness
     assert "is_daily_slot_owner = ranked_jobs.daily_rank = 1" in daily_uniqueness
     assert daily_uniqueness.startswith("BEGIN;")
@@ -259,6 +269,12 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
         if index.name == "ux_geo_query_run_job_daily_slot"
     )
     assert daily_slot_index.unique is True
+    preparation_index = next(
+        index
+        for index in GeoQueryRunJobRow.__table__.indexes
+        if index.name == "ix_geo_query_run_job_project_preparing"
+    )
+    assert preparation_index.unique is False
     assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
     assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema

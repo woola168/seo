@@ -89,6 +89,8 @@ GEO_SCHEDULER_POLL_SECONDS=60
 
 部署 deterministic entity mention detection 前，需先執行 `deploy/local/postgresql/022_geo_run_result_entity_detection.sql`，再部署新版 GEO API 與 worker。新分析會將 mention 寫入獨立 detection tables；既有、尚未建立 detection 的 run result 仍讀取 KMindHub legacy mention。回滾應用程式版本時可保留新增資料表，不需刪除 detection 資料。
 
+部署 Overview 資料準備狀態前，建議先執行 `deploy/local/postgresql/024_geo_query_run_job_preparation_lookup.sql`，再部署 GEO API 與 Admin Portal。Migration 只新增 partial index，不修改 Job 資料或欄位；回退程式時可保留索引，必要時可在確認無查詢依賴後另行移除。
+
 Provider credential 只注入實際執行 Provider 的服務，不提供給 scheduler。缺少必要 credential 的 Platform 應維持非 active；以 Google AIO 為例，部署順序為注入 `SERPAPI_API_KEY`、執行 smoke test，再將 Platform 改為 active。
 
 Provider 已執行但結果保存失敗時，Worker 只記錄 structured exception 並 ack message；Job 後續由 reconciliation 標記為 `execution_outcome_unknown`，不會重新呼叫 Provider 或送入 DLQ。DLQ 僅保留給 Provider 尚未開始前且超過 delivery 次數的 message。

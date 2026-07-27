@@ -703,6 +703,7 @@ class GeoOverviewReport(ContractModel):
     period_end: datetime
     comparison_start: datetime
     comparison_end: datetime
+    is_preparing: bool
     filter_options: GeoOverviewFilterOptions
     overview: list[GeoOverviewKpi] = Field(default_factory=list)
     citation_summary: GeoOverviewCitationSummary

@@ -726,6 +726,7 @@ export interface GeoOverviewReport {
   periodEnd: string;
   comparisonStart: string;
   comparisonEnd: string;
+  isPreparing: boolean;
   filterOptions: {
     topics: GeoOverviewFilterOption[];
     platforms: GeoOverviewFilterOption[];

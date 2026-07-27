@@ -508,6 +508,14 @@ class GeoAnalysisRepository(GeoQueryRunJobRepository, Protocol):
     ) -> GeoMetricFormulaSource:
         raise NotImplementedError
 
+    async def is_project_data_preparing(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        business_date: date,
+    ) -> bool:
+        raise NotImplementedError
+
     async def get_query_project(
         self,
         tenant_id: UUID,

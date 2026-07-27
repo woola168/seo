@@ -149,6 +149,7 @@ def build_dependencies(
         get_geo_overview_report=GetGeoOverviewReport(
             active_repository,
             metric_source_builder,
+            active_clock,
         ),
         list_geo_overview_responses=ListGeoOverviewResponses(
             active_repository,

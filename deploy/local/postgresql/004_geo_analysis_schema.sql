@@ -335,6 +335,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_geo_query_run_job_daily_slot
     ON geo_query_run_job (query_id, platform_id, business_date)
     WHERE is_daily_slot_owner = true;
 
+CREATE INDEX IF NOT EXISTS ix_geo_query_run_job_project_preparing
+    ON geo_query_run_job (project_id, business_date, status)
+    WHERE is_daily_slot_owner = true;
+
 CREATE TABLE IF NOT EXISTS geo_message_dispatch_log (
     id uuid PRIMARY KEY,
     job_id uuid NOT NULL REFERENCES geo_query_run_job(id) ON DELETE CASCADE,

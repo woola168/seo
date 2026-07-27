@@ -826,6 +826,7 @@ class OverviewReportResponse(ApiModel):
     period_end: datetime
     comparison_start: datetime
     comparison_end: datetime
+    is_preparing: bool
     filter_options: OverviewFilterOptionsResponse
     overview: list[OverviewKpiResponse]
     citation_summary: OverviewCitationSummaryResponse

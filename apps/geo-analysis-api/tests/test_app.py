@@ -50,6 +50,14 @@ AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
 @dataclass
+class FakeClock:
+    current: datetime
+
+    def now(self) -> datetime:
+        return self.current
+
+
+@dataclass
 class FakeEvidenceTextRepairer:
     close_calls: int = 0
 
@@ -924,6 +932,7 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     status_path = schema["paths"]["/api/geo/projects/{project_id}/status"]
     create_job_path = schema["paths"]["/api/geo/queries/{query_id}/jobs"]["post"]
     aliases_path = schema["paths"]["/api/geo/entities/{entity_id}/aliases"]
+    overview_response = schema["components"]["schemas"]["OverviewReportResponse"]
     assert projects["parameters"][0]["name"] == "customerId"
     assert "ProjectSummaryPageResponse" in str(projects["responses"]["200"])
     assert "ProblemDetailsResponse" in str(projects["responses"]["422"])
@@ -938,6 +947,8 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     assert "AliasCollectionRequest" in str(aliases_path["put"]["requestBody"])
     assert "AliasCollectionResponse" in str(aliases_path["put"]["responses"]["200"])
     assert "ProblemDetailsResponse" in str(aliases_path["put"]["responses"]["422"])
+    assert overview_response["properties"]["isPreparing"]["type"] == "boolean"
+    assert "isPreparing" in overview_response["required"]
     assert "post" not in aliases_path
     assert "/api/geo/entity-aliases/{alias_id}" not in schema["paths"]
 
@@ -2107,6 +2118,7 @@ def test_overview_endpoints_return_stable_empty_read_models() -> None:
     )
 
     assert report.status_code == 200
+    assert report.json()["isPreparing"] is False
     assert report.json()["filterOptions"]["topics"] == []
     assert report.json()["citationSummary"]["citationCount"] == 0
     assert responses.status_code == 200
@@ -2128,6 +2140,119 @@ def test_overview_rejects_invalid_time_zone() -> None:
 
     assert response.status_code == 422
     assert response.headers["content-type"] == "application/problem+json"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        JobStatus.PENDING,
+        JobStatus.PUBLISHING,
+        JobStatus.PUBLISHED,
+        JobStatus.RUNNING_EXTERNAL,
+        JobStatus.DELAYED,
+    ],
+)
+def test_overview_reports_current_taipei_day_preparing_jobs(status: JobStatus) -> None:
+    clock = FakeClock(datetime(2026, 7, 27, 15, 59, tzinfo=UTC))
+    client, store, query_id = _client_with_query(clock=clock)
+    project_id = store.queries[UUID(query_id)].project_id
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": str(uuid4()),
+            "scheduledFor": "2026-07-26T16:00:00Z",
+        },
+    )
+    store.jobs[UUID(job_response.json()["id"])].status = status
+
+    report = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params={
+            "periodStart": "2026-07-01T00:00:00Z",
+            "periodEnd": "2026-07-08T00:00:00Z",
+        },
+    )
+
+    assert report.status_code == 200
+    assert report.json()["isPreparing"] is True
+
+
+@pytest.mark.parametrize(
+    "status",
+    [JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED],
+)
+def test_overview_ignores_terminal_jobs(status: JobStatus) -> None:
+    clock = FakeClock(datetime(2026, 7, 27, 15, 59, tzinfo=UTC))
+    client, store, query_id = _client_with_query(clock=clock)
+    project_id = store.queries[UUID(query_id)].project_id
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    store.jobs[UUID(job_response.json()["id"])].status = status
+
+    report = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params={
+            "periodStart": "2026-07-01T00:00:00Z",
+            "periodEnd": "2026-07-08T00:00:00Z",
+        },
+    )
+
+    assert report.status_code == 200
+    assert report.json()["isPreparing"] is False
+
+
+def test_overview_uses_taipei_business_date_at_utc_boundary() -> None:
+    clock = FakeClock(datetime(2026, 7, 27, 15, 59, tzinfo=UTC))
+    client, store, query_id = _client_with_query(clock=clock)
+    project_id = store.queries[UUID(query_id)].project_id
+    client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={
+            "platformId": str(uuid4()),
+            "scheduledFor": "2026-07-26T16:00:00Z",
+        },
+    )
+    params = {
+        "periodStart": "2026-07-01T00:00:00Z",
+        "periodEnd": "2026-07-08T00:00:00Z",
+    }
+
+    before_midnight = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params=params,
+    )
+    clock.current = datetime(2026, 7, 27, 16, tzinfo=UTC)
+    after_midnight = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params=params,
+    )
+
+    assert before_midnight.json()["isPreparing"] is True
+    assert after_midnight.json()["isPreparing"] is False
+
+
+def test_overview_ignores_historical_non_owner_jobs() -> None:
+    clock = FakeClock(datetime(2026, 7, 27, 8, tzinfo=UTC))
+    client, store, query_id = _client_with_query(clock=clock)
+    project_id = store.queries[UUID(query_id)].project_id
+    job_response = client.post(
+        f"/api/geo/queries/{query_id}/jobs",
+        json={"platformId": str(uuid4())},
+    )
+    store.non_daily_slot_owner_job_ids.add(UUID(job_response.json()["id"]))
+
+    report = client.get(
+        f"/api/geo/projects/{project_id}/reports/overview",
+        params={
+            "periodStart": "2026-07-01T00:00:00Z",
+            "periodEnd": "2026-07-08T00:00:00Z",
+        },
+    )
+
+    assert report.status_code == 200
+    assert report.json()["isPreparing"] is False
 
 
 def _client(**kwargs) -> TestClient:
@@ -2160,12 +2285,14 @@ def _client_with_query(
     market_type: str | None = None,
     repository: GeoApiStore | None = None,
     kmindhub_client=None,
+    clock=None,
 ) -> tuple[TestClient, GeoApiStore, str]:
     store = repository or GeoApiStore()
     client = _client(
         repository=store,
         publisher=publisher,
         callback_base_url=callback_base_url,
+        clock=clock,
         **({"kmindhub_client": kmindhub_client} if kmindhub_client is not None else {}),
     )
     project_response = client.post(

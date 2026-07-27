@@ -24,7 +24,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoOverviewVisibilitySeries,
     GeoQueryRecord,
 )
-from younilab_seo.geo_analysis.application.interfaces import GeoAnalysisRepository
+from younilab_seo.geo_analysis.application.interfaces import Clock, GeoAnalysisRepository
 from younilab_seo.geo_analysis.application.use_cases.metric_source import (
     BuildGeoMetricFormulaSource,
 )
@@ -39,6 +39,7 @@ class GetGeoOverviewReport:
 
     repository: GeoAnalysisRepository
     source_builder: BuildGeoMetricFormulaSource
+    clock: Clock
     calculator: CalculateGeoMetricFormulas = field(
         default_factory=CalculateGeoMetricFormulas
     )
@@ -68,12 +69,19 @@ class GetGeoOverviewReport:
         query_index = {item.id: item for item in queries}
         topic_index = {item.id: item for item in topics}
         entity_sov = _entity_sov(current)
+        business_date = self.clock.now().astimezone(_time_zone("Asia/Taipei")).date()
+        is_preparing = await self.repository.is_project_data_preparing(
+            tenant_id,
+            project_id,
+            business_date,
+        )
 
         return GeoOverviewReport(
             period_start=query.period_start,
             period_end=query.period_end,
             comparison_start=metrics.comparison_start,
             comparison_end=metrics.comparison_end,
+            is_preparing=is_preparing,
             filter_options=_filter_options(unfiltered, queries, topics, query),
             overview=_overview_kpis(metric_index, entity_sov, current),
             citation_summary=_citation_summary(current),

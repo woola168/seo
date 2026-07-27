@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -1392,6 +1392,33 @@ class PostgresGeoAnalysisRepository:
         async with self._session_scope() as session:
             rows = (await session.scalars(statement)).all()
             return [_job_from_row(row) for row in rows]
+
+    async def is_project_data_preparing(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        business_date: date,
+    ) -> bool:
+        statement = select(
+            exists().where(
+                GeoProjectRow.id == GeoQueryRunJobRow.project_id,
+                GeoProjectRow.tenant_id == tenant_id,
+                GeoQueryRunJobRow.project_id == project_id,
+                GeoQueryRunJobRow.business_date == business_date,
+                GeoQueryRunJobRow.is_daily_slot_owner.is_(True),
+                GeoQueryRunJobRow.status.in_(
+                    {
+                        JobStatus.PENDING,
+                        JobStatus.PUBLISHING,
+                        JobStatus.PUBLISHED,
+                        JobStatus.RUNNING_EXTERNAL,
+                        JobStatus.DELAYED,
+                    }
+                ),
+            )
+        )
+        async with self._session_scope() as session:
+            return bool(await session.scalar(statement))
 
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
         async with self._session_scope() as session:

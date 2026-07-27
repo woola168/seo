@@ -14,6 +14,7 @@ import { Bar, Line } from "vue-chartjs";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import AppIcon from "../components/ui/AppIcon.vue";
 import DateRangePicker from "../components/ui/DateRangePicker.vue";
+import GeoDataPreparationNotice from "../components/geo/GeoDataPreparationNotice.vue";
 import { ApiError, api } from "../services/api";
 import type {
   GeoAnalysisRunResult,
@@ -608,6 +609,8 @@ function apiMessage(caught: unknown, fallback: string): string {
         <p>品牌在 AI 搜尋中的能見度、評價傾向與競品表現總覽。</p>
       </div>
     </header>
+
+    <GeoDataPreparationNotice v-if="report?.isPreparing && !loading" />
 
     <section class="overview-toolbar" aria-label="Overview 查詢條件">
       <div class="filter-group">

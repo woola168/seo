@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application import (
@@ -37,6 +37,10 @@ class FakeSourceBuilder:
 
 
 class FakeRepository:
+    def __init__(self, *, is_preparing: bool = False) -> None:
+        self.is_preparing = is_preparing
+        self.preparation_business_date: date | None = None
+
     async def list_queries(self, _tenant_id, _project_id):
         return [_query_record()]
 
@@ -46,13 +50,32 @@ class FakeRepository:
     async def list_project_run_results(self, _tenant_id, _project_id):
         return [_run_result()]
 
+    async def is_project_data_preparing(
+        self,
+        _tenant_id,
+        _project_id,
+        business_date,
+    ):
+        self.preparation_business_date = business_date
+        return self.is_preparing
+
+
+@dataclass
+class FakeClock:
+    current: datetime
+
+    def now(self) -> datetime:
+        return self.current
+
 
 def test_overview_report_composes_kinsan_sections_from_existing_facts() -> None:
     async def run() -> None:
         source = _source()
+        repository = FakeRepository(is_preparing=True)
         report = await GetGeoOverviewReport(
-            FakeRepository(),
+            repository,
             FakeSourceBuilder(source),
+            FakeClock(datetime(2026, 7, 26, 16, tzinfo=UTC)),
         ).execute(TENANT_ID, PROJECT_ID, _overview_query())
 
         kpis = {item.metric_name: item for item in report.overview}
@@ -66,6 +89,8 @@ def test_overview_report_composes_kinsan_sections_from_existing_facts() -> None:
         assert report.sentiment_trend[0].positive_count == 1
         assert report.topics[0].queries[0].query_text == "Acme 好嗎？"
         assert report.citation_urls[0].query_count == 1
+        assert report.is_preparing is True
+        assert repository.preparation_business_date == date(2026, 7, 27)
 
     asyncio.run(run())
 

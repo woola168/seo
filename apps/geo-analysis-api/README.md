@@ -325,10 +325,12 @@ Authorization: Bearer <access-token>
 - `topicIds`、`providers`、`metadataIndustry`、`metadataType` 可重複傳入；同一維度採 OR，不同維度採 AND。
 - 比較期間自動使用目前區間之前的等長期間。
 - `timeZone` 用於每日趨勢分組，預設 `Asia/Taipei`。
+- Overview response 的 `isPreparing` 會檢查該 Project 在台北當日是否仍有 `pending`、`publishing`、`published`、`running_external` 或 `delayed` 的 daily-slot owner Job；`succeeded`、`failed`、`cancelled` 不計入。
 - `mentionStatus` 支援 `all`、`mentioned`、`not_mentioned`。Semantic analysis 尚未完成或失敗時 `mentioned=null`，只會出現在 `all`。
 - Entity SOV 為該 entity mentions 除以全部自有品牌與競品 mentions。
 - 引用回答比例為至少有一筆 citation 的 completed 回答數除以 completed 回答總數。
 - 產業均值、citation content tag、citation page 品牌與競品提及目前沒有資料來源，response 會使用 `null`，前端顯示「尚無資料」或「未分析」。
+- 既有資料庫部署前建議執行 `deploy/local/postgresql/024_geo_query_run_job_preparation_lookup.sql`，為 `isPreparing` 的 Project／台北日期查詢建立 partial index；缺少此索引不改變 API 結果，但 Job 資料量增加後會影響 Overview 查詢效能。
 
 ### 手動建立 AI Platform
 
