@@ -534,7 +534,15 @@ class GeminiVertexAnswerProvider:
         config = types.GenerateContentConfig(
             temperature=self._settings.gemini_temperature,
             system_instruction=request.system_prompt,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
+            tools=[
+                types.Tool(
+                    google_search_retrieval=types.GoogleSearchRetrieval(
+                        dynamic_retrieval_config=types.DynamicRetrievalConfig(
+                            mode=types.DynamicRetrievalConfigMode.MODE_UNSPECIFIED,
+                        )
+                    )
+                )
+            ],
             thinking_config=types.ThinkingConfig(
                 thinking_level=self._settings.gemini_thinking_level.upper(),
             ),
