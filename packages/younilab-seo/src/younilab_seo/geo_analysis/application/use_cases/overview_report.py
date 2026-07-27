@@ -5,31 +5,31 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from younilab_seo.geo_analysis.application.contracts import (
-    GeoMetricFormulaQuery,
     GeoMetricFormulaSource,
     GeoOverviewCitationRow,
     GeoOverviewCitationSummary,
     GeoOverviewEntityRow,
-    GeoOverviewFilterOption,
-    GeoOverviewFilterOptions,
     GeoOverviewKpi,
     GeoOverviewQuery,
     GeoOverviewQueryRow,
     GeoOverviewReport,
     GeoOverviewResponsePage,
-    GeoOverviewResponseRow,
+    GeoOverviewResponsePageQuery,
     GeoOverviewSentimentPoint,
     GeoOverviewTopicRow,
     GeoOverviewTrendPoint,
     GeoOverviewVisibilitySeries,
-    GeoQueryRecord,
 )
 from younilab_seo.geo_analysis.application.interfaces import Clock
 from younilab_seo.geo_analysis.application.interfaces.overview_read import (
-    OverviewReadPersistence,
+    OverviewReportReadModel,
+    OverviewResponseReadModel,
+)
+from younilab_seo.geo_analysis.application.overview_filters import (
+    overview_formula_query,
 )
 from younilab_seo.geo_analysis.application.use_cases.metric_source import (
-    BuildGeoMetricFormulaSource,
+    GeoMetricFormulaSourceProjectNotFound,
 )
 from younilab_seo.geo_analysis.application.use_cases.metrics_formula import (
     CalculateGeoMetricFormulas,
@@ -38,11 +38,11 @@ from younilab_seo.geo_analysis.application.use_cases.metrics_formula import (
 
 @dataclass(frozen=True)
 class GetGeoOverviewReport:
-    """依現有 normalized facts 組裝 Kinsan Overview 使用的 read model。"""
+    """依現有 normalized facts 組裝 GEO Overview 使用的 read model。"""
 
-    repository: OverviewReadPersistence
-    source_builder: BuildGeoMetricFormulaSource
+    read_model: OverviewReportReadModel
     clock: Clock
+    normalizer_version: str = "url_domain:v2"
     calculator: CalculateGeoMetricFormulas = field(
         default_factory=CalculateGeoMetricFormulas
     )
@@ -53,15 +53,20 @@ class GetGeoOverviewReport:
         project_id: UUID,
         query: GeoOverviewQuery,
     ) -> GeoOverviewReport:
-        queries = await self.repository.list_queries(tenant_id, project_id)
-        topics = await self.repository.list_topics(tenant_id, project_id)
-        formula_query = _formula_query(query)
-        unfiltered = await self.source_builder.execute(
+        business_date = self.clock.now().astimezone(_time_zone("Asia/Taipei")).date()
+        report_source = await self.read_model.load_overview_report_source(
             tenant_id,
             project_id,
-            formula_query,
+            query,
+            business_date,
+            self.normalizer_version,
         )
-        source = _filter_source(unfiltered, queries, query)
+        if report_source is None:
+            raise GeoMetricFormulaSourceProjectNotFound("project not found")
+        queries = report_source.queries
+        topics = report_source.topics
+        formula_query = overview_formula_query(query)
+        source = report_source.formula_source
         metrics = self.calculator.calculate(source, formula_query)
         metric_index = {
             (item.metric_name, item.scope_type, item.scope_value): item
@@ -72,20 +77,13 @@ class GetGeoOverviewReport:
         query_index = {item.id: item for item in queries}
         topic_index = {item.id: item for item in topics}
         entity_sov = _entity_sov(current)
-        business_date = self.clock.now().astimezone(_time_zone("Asia/Taipei")).date()
-        is_preparing = await self.repository.is_project_data_preparing(
-            tenant_id,
-            project_id,
-            business_date,
-        )
-
         return GeoOverviewReport(
             period_start=query.period_start,
             period_end=query.period_end,
             comparison_start=metrics.comparison_start,
             comparison_end=metrics.comparison_end,
-            is_preparing=is_preparing,
-            filter_options=_filter_options(unfiltered, queries, topics, query),
+            is_preparing=report_source.is_preparing,
+            filter_options=report_source.filter_options,
             overview=_overview_kpis(metric_index, entity_sov, current),
             citation_summary=_citation_summary(current),
             visibility_trend=_visibility_trend(current, query),
@@ -117,8 +115,7 @@ class GetGeoOverviewReport:
 class ListGeoOverviewResponses:
     """分頁列出 Overview 回答摘要，並保留 semantic analysis 未完成的未知狀態。"""
 
-    repository: OverviewReadPersistence
-    source_builder: BuildGeoMetricFormulaSource
+    read_model: OverviewResponseReadModel
 
     async def execute(
         self,
@@ -137,133 +134,20 @@ class ListGeoOverviewResponses:
             raise ValueError("page must be at least 1")
         if not 1 <= page_size <= 100:
             raise ValueError("pageSize must be between 1 and 100")
-
-        queries = await self.repository.list_queries(tenant_id, project_id)
-        source = _filter_source(
-            await self.source_builder.execute(
-                tenant_id,
-                project_id,
-                _formula_query(query),
-            ),
-            queries,
-            query,
-        )
-        source = _period_source(source, query.period_start, query.period_end)
-        allowed_ids = {item.run_result_id for item in source.run_results}
-        query_index = {item.id: item for item in queries}
-        mentions = defaultdict(list)
-        sentiments = defaultdict(list)
-        for item in source.entity_mentions:
-            mentions[item.run_result_id].append(item)
-        for item in source.sentiments:
-            sentiments[item.run_result_id].append(item)
-
-        rows: list[GeoOverviewResponseRow] = []
-        for result in await self.repository.list_project_run_results(
+        result = await self.read_model.load_overview_response_page(
             tenant_id,
             project_id,
-        ):
-            if result.id not in allowed_ids or (
-                query_id and result.query_id != query_id
-            ):
-                continue
-            mentioned = _mentioned_state(result.analysis_status, mentions[result.id])
-            if mention_status == "mentioned" and mentioned is not True:
-                continue
-            if mention_status == "not_mentioned" and mentioned is not False:
-                continue
-            result_sentiments = sentiments[result.id]
-            rows.append(
-                GeoOverviewResponseRow(
-                    run_result_id=result.id,
-                    query_id=result.query_id,
-                    query_text=query_index.get(result.query_id).query_text
-                    if result.query_id in query_index
-                    else "未知 Query",
-                    response_excerpt=_excerpt(result.raw_response),
-                    mentioned=mentioned,
-                    provider=result.provider,
-                    region=result.region,
-                    completed_at=result.run_at,
-                    reference_count=len(result.references),
-                    positive_count=sum(
-                        item.sentiment == "positive" for item in result_sentiments
-                    ),
-                    negative_count=sum(
-                        item.sentiment == "negative" for item in result_sentiments
-                    ),
-                )
-            )
-        rows.sort(key=lambda item: item.completed_at, reverse=True)
-        start = (page - 1) * page_size
-        return GeoOverviewResponsePage(
-            items=rows[start : start + page_size],
-            total=len(rows),
-            page=page,
-            page_size=page_size,
+            GeoOverviewResponsePageQuery(
+                report_query=query,
+                query_id=query_id,
+                mention_status=mention_status,
+                page=page,
+                page_size=page_size,
+            ),
         )
-
-
-def _formula_query(query: GeoOverviewQuery) -> GeoMetricFormulaQuery:
-    duration = query.period_end - query.period_start
-    return GeoMetricFormulaQuery(
-        period_start=query.period_start,
-        period_end=query.period_end,
-        comparison_start=query.period_start - duration,
-        comparison_end=query.period_start,
-    )
-
-
-def _filter_source(
-    source: GeoMetricFormulaSource,
-    queries: list[GeoQueryRecord],
-    query: GeoOverviewQuery,
-) -> GeoMetricFormulaSource:
-    query_index = {item.id: item for item in queries}
-    selected_ids = {
-        item.run_result_id
-        for item in source.run_results
-        if _run_matches(item, query_index.get(item.query_id), query)
-    }
-    return GeoMetricFormulaSource(
-        run_results=[
-            item for item in source.run_results if item.run_result_id in selected_ids
-        ],
-        entity_mentions=[
-            item
-            for item in source.entity_mentions
-            if item.run_result_id in selected_ids
-        ],
-        sentiments=[
-            item for item in source.sentiments if item.run_result_id in selected_ids
-        ],
-        citations=[
-            item for item in source.citations if item.run_result_id in selected_ids
-        ],
-    )
-
-
-def _run_matches(run_result, source_query, query: GeoOverviewQuery) -> bool:
-    if query.topic_ids and (
-        source_query is None or source_query.topic_id not in query.topic_ids
-    ):
-        return False
-    if query.providers and run_result.provider not in query.providers:
-        return False
-    if query.region and run_result.region != query.region:
-        return False
-    if source_query is None:
-        return not query.metadata_industry and not query.metadata_type
-    return _metadata_matches(
-        source_query.metadata.get("industry"), query.metadata_industry
-    ) and _metadata_matches(source_query.metadata.get("type"), query.metadata_type)
-
-
-def _metadata_matches(value, selected: list[str]) -> bool:
-    if not selected:
-        return True
-    values = value if isinstance(value, list) else [value]
-    return any(item in selected for item in values if isinstance(item, str))
+        if result is None:
+            raise GeoMetricFormulaSourceProjectNotFound("project not found")
+        return result
 
 
 def _period_source(
@@ -291,47 +175,6 @@ def _period_source(
         citations=[
             item for item in source.citations if item.run_result_id in selected_ids
         ],
-    )
-
-
-def _filter_options(source, queries, topics, query) -> GeoOverviewFilterOptions:
-    current_runs = [
-        item
-        for item in source.run_results
-        if query.period_start <= item.completed_at < query.period_end
-    ]
-    return GeoOverviewFilterOptions(
-        topics=[
-            GeoOverviewFilterOption(value=str(item.id), label=item.name)
-            for item in sorted(topics, key=lambda item: item.name)
-        ],
-        platforms=[
-            GeoOverviewFilterOption(value=value, label=_provider_label(value))
-            for value in sorted(
-                {item.provider for item in current_runs if item.provider}
-            )
-        ],
-        regions=sorted({item.region for item in current_runs if item.region}),
-        metadata_industries=_metadata_options(queries, "industry"),
-        metadata_types=_metadata_options(queries, "type"),
-    )
-
-
-def _metadata_options(queries, key: str) -> list[str]:
-    values: set[str] = set()
-    for item in queries:
-        value = item.metadata.get(key)
-        candidates = value if isinstance(value, list) else [value]
-        values.update(
-            candidate for candidate in candidates if isinstance(candidate, str)
-        )
-    return sorted(values)
-
-
-def _provider_label(provider: str) -> str:
-    return {"gemini": "Gemini", "google_aio": "Google AI Overview"}.get(
-        provider,
-        provider.replace("_", " ").title(),
     )
 
 
@@ -531,16 +374,6 @@ def _topic_rows(source, queries, topic_index, calculator, overview_query):
     rows = []
     grouped = defaultdict(list)
     for item in queries:
-        if overview_query.topic_ids and item.topic_id not in overview_query.topic_ids:
-            continue
-        if not _metadata_matches(
-            item.metadata.get("industry"), overview_query.metadata_industry
-        ):
-            continue
-        if not _metadata_matches(
-            item.metadata.get("type"), overview_query.metadata_type
-        ):
-            continue
         grouped[item.topic_id].append(item)
     for topic_id, topic_queries in grouped.items():
         query_rows = [
@@ -579,7 +412,10 @@ def _query_row(source, query_record, calculator, overview_query):
 
 
 def _scope_stats(source, calculator, overview_query):
-    metrics = calculator.calculate(source, _formula_query(overview_query)).metrics
+    metrics = calculator.calculate(
+        source,
+        overview_formula_query(overview_query),
+    ).metrics
     index = {(item.metric_name, item.scope_type): item.value for item in metrics}
     return index.get(("visibility", "project"), 0.0), index.get(("sov", "project"), 0.0)
 
@@ -649,17 +485,6 @@ def _citation_rows(source, run_results, queries, *, scope):
             )
         )
     return sorted(rows, key=lambda item: (-item.citation_count, item.value))
-
-
-def _mentioned_state(analysis_status, mentions) -> bool | None:
-    if analysis_status != "completed":
-        return None
-    return any(item.entity_role == "own_brand" and item.mentioned for item in mentions)
-
-
-def _excerpt(value: str, limit: int = 300) -> str:
-    normalized = " ".join(value.split())
-    return normalized if len(normalized) <= limit else f"{normalized[: limit - 1]}…"
 
 
 def _percent(numerator: int, denominator: int) -> float:

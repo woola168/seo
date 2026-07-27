@@ -254,9 +254,9 @@ class GeoEntityMentionDetectionItem(ContractModel):
     evidence_text: str | None = None
     matched_by: Literal["canonical", "alias"] | None = None
     matched_value: str | None = None
-    match_type: (
-        Literal["canonical", "exact", "case_insensitive", "contains"] | None
-    ) = None
+    match_type: Literal["canonical", "exact", "case_insensitive", "contains"] | None = (
+        None
+    )
 
     @model_validator(mode="after")
     def validate_match(self):
@@ -277,7 +277,9 @@ class GeoEntityMentionDetectionItem(ContractModel):
         if self.mentioned and any(value is None for value in match_values):
             raise ValueError("mentioned detection items must include match metadata")
         if not self.mentioned and any(value is not None for value in match_values):
-            raise ValueError("unmentioned detection items must not include match metadata")
+            raise ValueError(
+                "unmentioned detection items must not include match metadata"
+            )
         return self
 
 
@@ -602,6 +604,16 @@ class GeoOverviewQuery(ContractModel):
                 return self
             raise ValueError("timeZone must be a valid IANA time zone") from exc
         return self
+
+
+class GeoOverviewResponsePageQuery(ContractModel):
+    """Overview 回答清單 adapter 使用的完整篩選與分頁條件。"""
+
+    report_query: GeoOverviewQuery
+    query_id: UUID | None = None
+    mention_status: Literal["all", "mentioned", "not_mentioned"] = "all"
+    page: int = 1
+    page_size: int = 20
 
 
 class GeoOverviewFilterOption(ContractModel):
@@ -1090,6 +1102,18 @@ class GeoQueryRecord(GeoQueryCommand):
     project_id: UUID
     created_at: datetime
     updated_at: datetime
+
+
+class GeoOverviewReportSource(ContractModel):
+    """Overview calculator 與畫面組裝所需的已篩選唯讀資料。"""
+
+    formula_source: GeoMetricFormulaSource
+    queries: list[GeoQueryRecord] = Field(default_factory=list)
+    topics: list[GeoTopicRecord] = Field(default_factory=list)
+    filter_options: GeoOverviewFilterOptions = Field(
+        default_factory=GeoOverviewFilterOptions
+    )
+    is_preparing: bool = False
 
 
 class QueryAudience(ContractModel):

@@ -312,9 +312,9 @@ response：
 }
 ```
 
-### Kinsan Overview Report
+### GEO Overview Report
 
-正式 Admin Portal Overview 使用獨立 read model，不修改上述 Dashboard Report 沙盒 contract。兩支 endpoint 都只讀取已保存資料，不會觸發跑題或 semantic extraction。
+正式 Admin Portal Overview 使用獨立 read models，不修改上述 Dashboard Report 沙盒 contract。兩支 endpoint 都只讀取已保存資料，不會觸發跑題或 semantic extraction。
 
 ```http
 GET /api/geo/projects/{projectId}/reports/overview?periodStart=2026-07-01T00:00:00Z&periodEnd=2026-07-08T00:00:00Z&topicIds=<uuid>&providers=gemini&region=TW&metadataIndustry=保健&metadataType=品牌提及&timeZone=Asia/Taipei
@@ -325,8 +325,10 @@ Authorization: Bearer <access-token>
 - `topicIds`、`providers`、`metadataIndustry`、`metadataType` 可重複傳入；同一維度採 OR，不同維度採 AND。
 - 比較期間自動使用目前區間之前的等長期間。
 - `timeZone` 用於每日趨勢分組，預設 `Asia/Taipei`。
-- Overview response 的 `isPreparing` 會檢查該 Project 在台北當日是否仍有 `pending`、`publishing`、`published`、`running_external` 或 `delayed` 的 daily-slot owner Job；`succeeded`、`failed`、`cancelled` 不計入。
+- Overview report 的 `isPreparing` 會檢查該 Project 在台北當日是否仍有 `pending`、`publishing`、`published`、`running_external` 或 `delayed` 的 daily-slot owner Job；`succeeded`、`failed`、`cancelled` 不計入。
 - `mentionStatus` 支援 `all`、`mentioned`、`not_mentioned`。Semantic analysis 尚未完成或失敗時 `mentioned=null`，只會出現在 `all`。
+- Report read model 會在 persistence adapter 套用 tenant、期間、Topic、Provider、地區與 metadata 條件，再把 normalized facts 交給既有純 calculator。
+- Response read model 會先完成相同篩選與品牌提及狀態判斷，再於資料庫計算 total、排序及 offset pagination；只載入當頁的 reference 與 sentiment 計數。
 - Entity SOV 為該 entity mentions 除以全部自有品牌與競品 mentions。
 - 引用回答比例為至少有一筆 citation 的 completed 回答數除以 completed 回答總數。
 - 產業均值、citation content tag、citation page 品牌與競品提及目前沒有資料來源，response 會使用 `null`，前端顯示「尚無資料」或「未分析」。
@@ -448,13 +450,17 @@ routes -> application use case -> workflow persistence port -> infrastructure ad
 
 - `semantic_analysis.py`：Semantic Analysis context、entity detection 與 analysis 保存。
 - `citation_normalization.py`：Citation context、既有 normalization 與 facts 保存。
-- `metrics.py`、`overview_read.py`：Metrics formula source 與 Overview read model 輸入。
+- `metrics.py`：通用 Metrics formula source。
+- `overview_read.py`：`OverviewReportReadModel` 與 `OverviewResponseReadModel`，分別提供報表來源及已分頁回答清單。
 - `run_lifecycle.py`：Dispatch、callback、execution、result read、job management 與 scheduler。
 - `query_planning.py`：Research、Generation、draft selection 與 draft acceptance。
 - `project_setup.py`、`entity_catalog.py`、`query_catalog.py`：Project/Market/Settings、Entity/Alias、Topic/Query/Platform/Schedule。
 - `kmindhub_mapping.py`：Workspace mapping、task mapping 與 legacy extraction persistence。
 
-完整決策與取捨見 `docs/architecture/geo-tracking/adr/0004-use-workflow-specific-persistence-ports.md`。
+完整決策與取捨見：
+
+- `docs/architecture/geo-tracking/adr/0004-use-workflow-specific-persistence-ports.md`
+- `docs/architecture/geo-tracking/adr/0005-use-dedicated-overview-read-models.md`
 
 ### Future Service Standard
 

@@ -35,7 +35,8 @@ from younilab_seo.geo_analysis.application import (
     KMindHubWorkspaceMappingPersistence,
     LegacyAnalysisExtractionPersistence,
     MetricsReadPersistence,
-    OverviewReadPersistence,
+    OverviewReportReadModel,
+    OverviewResponseReadModel,
     ProjectSetupPersistence,
     QueryAudience,
     QueryCatalogPersistence,
@@ -222,7 +223,8 @@ def test_postgres_repository_implements_remaining_workflow_ports() -> None:
         )
     )
 
-    assert isinstance(repository, OverviewReadPersistence)
+    assert isinstance(repository, OverviewReportReadModel)
+    assert isinstance(repository, OverviewResponseReadModel)
     assert isinstance(repository, KMindHubWorkspaceMappingPersistence)
     assert isinstance(repository, KMindHubTaskMappingPersistence)
     assert isinstance(repository, LegacyAnalysisExtractionPersistence)

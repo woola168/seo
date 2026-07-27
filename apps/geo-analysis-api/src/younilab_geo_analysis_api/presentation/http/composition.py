@@ -27,7 +27,8 @@ from younilab_seo.geo_analysis.application import (
     ManageQueryRunJobs,
     MessagePublisher,
     MetricsReadPersistence,
-    OverviewReadPersistence,
+    OverviewReportReadModel,
+    OverviewResponseReadModel,
     PermissionAuthorizer,
     ProjectSetupPersistence,
     QueryCatalogPersistence,
@@ -127,7 +128,6 @@ def build_dependencies(
         active_repository,
     )
     semantic_persistence = cast(SemanticAnalysisPersistence, active_repository)
-    overview_persistence = cast(OverviewReadPersistence, active_repository)
     dispatch_persistence = cast(RunDispatchPersistence, active_repository)
     callback_persistence = cast(RunCallbackPersistence, active_repository)
     kmindhub_workspace_resolver = ManageKMindHubWorkspaceMapping(
@@ -142,6 +142,8 @@ def build_dependencies(
         evidence_text_repairer=active_evidence_text_repairer,
     )
     metric_source_builder = BuildGeoMetricFormulaSource(metrics_persistence)
+    overview_report_read_model = cast(OverviewReportReadModel, active_repository)
+    overview_response_read_model = cast(OverviewResponseReadModel, active_repository)
     closeables = tuple(
         item
         for item in (
@@ -185,13 +187,11 @@ def build_dependencies(
             metric_source_builder,
         ),
         get_geo_overview_report=GetGeoOverviewReport(
-            overview_persistence,
-            metric_source_builder,
+            overview_report_read_model,
             active_clock,
         ),
         list_geo_overview_responses=ListGeoOverviewResponses(
-            overview_persistence,
-            metric_source_builder,
+            overview_response_read_model,
         ),
         dispatch_query_run_job=(
             DispatchQueryRunJob(dispatch_persistence, active_publisher, active_clock)

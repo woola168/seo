@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -8,14 +8,16 @@ from younilab_seo.geo_analysis.application import (
     GeoMetricFormulaSource,
     GeoMetricRunResultInput,
     GeoMetricSentimentInput,
+    GeoOverviewFilterOptions,
     GeoOverviewQuery,
+    GeoOverviewReportSource,
     GeoQueryRecord,
     GeoRunResultCitationFact,
-    GeoRunResultRecord,
     GeoTopicRecord,
     GetGeoOverviewReport,
-    ListGeoOverviewResponses,
-    OverviewReadPersistence,
+)
+from younilab_seo.geo_analysis.application.overview_filters import (
+    overview_filter_options,
 )
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -26,42 +28,38 @@ RESULT_ID = UUID("00000000-0000-4000-8000-000000000005")
 OWN_ID = UUID("00000000-0000-4000-8000-000000000006")
 COMPETITOR_ID = UUID("00000000-0000-4000-8000-000000000007")
 REFERENCE_ID = UUID("00000000-0000-4000-8000-000000000008")
+OTHER_TOPIC_ID = UUID("00000000-0000-4000-8000-000000000011")
+OTHER_QUERY_ID = UUID("00000000-0000-4000-8000-000000000012")
+OTHER_RESULT_ID = UUID("00000000-0000-4000-8000-000000000013")
 
 
 @dataclass
-class FakeSourceBuilder:
+class FakeReportReadModel:
     source: GeoMetricFormulaSource
+    queries: list[GeoQueryRecord]
+    topics: list[GeoTopicRecord]
+    filter_options: GeoOverviewFilterOptions = field(
+        default_factory=GeoOverviewFilterOptions
+    )
+    is_preparing: bool = False
+    preparation_business_date: date | None = None
 
-    async def execute(self, _tenant_id, _project_id, _query):
-        return self.source
-
-
-class FakeRepository:
-    def __init__(self, *, is_preparing: bool = False) -> None:
-        self.is_preparing = is_preparing
-        self.preparation_business_date: date | None = None
-
-    async def list_queries(self, _tenant_id, _project_id):
-        return [_query_record()]
-
-    async def list_topics(self, _tenant_id, _project_id):
-        return [_topic_record()]
-
-    async def list_project_run_results(self, _tenant_id, _project_id):
-        return [_run_result()]
-
-    async def is_project_data_preparing(
+    async def load_overview_report_source(
         self,
         _tenant_id,
         _project_id,
+        _query,
         business_date,
+        _normalizer_version,
     ):
         self.preparation_business_date = business_date
-        return self.is_preparing
-
-
-def test_overview_fake_implements_overview_read_persistence() -> None:
-    assert isinstance(FakeRepository(), OverviewReadPersistence)
+        return GeoOverviewReportSource(
+            formula_source=self.source,
+            queries=self.queries,
+            topics=self.topics,
+            filter_options=self.filter_options,
+            is_preparing=self.is_preparing,
+        )
 
 
 @dataclass
@@ -72,13 +70,17 @@ class FakeClock:
         return self.current
 
 
-def test_overview_report_composes_kinsan_sections_from_existing_facts() -> None:
+def test_overview_report_composes_sections_from_existing_facts() -> None:
     async def run() -> None:
         source = _source()
-        repository = FakeRepository(is_preparing=True)
+        read_model = FakeReportReadModel(
+            source,
+            [_query_record()],
+            [_topic_record()],
+            is_preparing=True,
+        )
         report = await GetGeoOverviewReport(
-            repository,
-            FakeSourceBuilder(source),
+            read_model,
             FakeClock(datetime(2026, 7, 26, 16, tzinfo=UTC)),
         ).execute(TENANT_ID, PROJECT_ID, _overview_query())
 
@@ -94,27 +96,62 @@ def test_overview_report_composes_kinsan_sections_from_existing_facts() -> None:
         assert report.topics[0].queries[0].query_text == "Acme 好嗎？"
         assert report.citation_urls[0].query_count == 1
         assert report.is_preparing is True
-        assert repository.preparation_business_date == date(2026, 7, 27)
+        assert read_model.preparation_business_date == date(2026, 7, 27)
 
     asyncio.run(run())
 
 
-def test_overview_responses_preserve_completed_mention_state() -> None:
+def test_overview_report_applies_selected_filters_to_all_sections() -> None:
     async def run() -> None:
-        page = await ListGeoOverviewResponses(
-            FakeRepository(),
-            FakeSourceBuilder(_source()),
+        overview_query = GeoOverviewQuery(
+            periodStart=datetime(2026, 7, 1, tzinfo=UTC),
+            periodEnd=datetime(2026, 7, 8, tzinfo=UTC),
+            topicIds=[TOPIC_ID],
+            providers=["gemini"],
+            region="TW",
+            metadataIndustry=["保健"],
+            metadataType=["品牌提及"],
+        )
+        all_queries = [_query_record(), _other_query_record()]
+        all_topics = [_topic_record(), _other_topic_record()]
+        read_model = FakeReportReadModel(
+            _source(),
+            [_query_record()],
+            all_topics,
+            filter_options=overview_filter_options(
+                _source_with_other_result(),
+                all_queries,
+                all_topics,
+                overview_query,
+            ),
+        )
+        report = await GetGeoOverviewReport(
+            read_model,
+            FakeClock(datetime(2026, 7, 2, tzinfo=UTC)),
         ).execute(
             TENANT_ID,
             PROJECT_ID,
-            _overview_query(),
-            mention_status="mentioned",
+            overview_query,
         )
 
-        assert page.total == 1
-        assert page.items[0].mentioned is True
-        assert page.items[0].positive_count == 1
-        assert page.items[0].reference_count == 1
+        visibility = next(
+            item for item in report.overview if item.metric_name == "visibility"
+        )
+        assert visibility.value == 100
+        assert report.citation_summary.citation_count == 1
+        assert [item.topic_name for item in report.topics] == ["品牌型"]
+        assert [item.query_text for item in report.topics[0].queries] == ["Acme 好嗎？"]
+        assert [item.value for item in report.citation_urls] == [
+            "https://example.com/acme"
+        ]
+        assert report.sentiment_trend[0].positive_count == 1
+        assert report.sentiment_trend[0].negative_count == 0
+        assert {item.label for item in report.filter_options.platforms} == {
+            "Gemini",
+            "Google AI Overview",
+        }
+        assert report.filter_options.regions == ["TW", "US"]
+        assert report.filter_options.metadata_industries == ["保健", "健身"]
 
     asyncio.run(run())
 
@@ -151,34 +188,27 @@ def _topic_record() -> GeoTopicRecord:
     )
 
 
-def _run_result() -> GeoRunResultRecord:
-    from younilab_seo.geo_analysis.application import GeoRunResultReferenceRecord
+def _other_query_record() -> GeoQueryRecord:
+    return GeoQueryRecord(
+        id=OTHER_QUERY_ID,
+        projectId=PROJECT_ID,
+        topicId=OTHER_TOPIC_ID,
+        queryText="健身房推薦？",
+        region="US",
+        language="en-US",
+        metadata={"industry": "健身", "type": "商業"},
+        createdAt=datetime(2026, 6, 1, tzinfo=UTC),
+        updatedAt=datetime(2026, 6, 1, tzinfo=UTC),
+    )
 
-    return GeoRunResultRecord(
-        id=RESULT_ID,
-        runRequestId=UUID("00000000-0000-4000-8000-000000000009"),
-        jobId=UUID("00000000-0000-4000-8000-000000000010"),
-        trackingResultId="tracking-1",
-        queryId=QUERY_ID,
-        provider="gemini",
-        surface="answer",
-        model="gemini",
-        region="TW",
-        language="zh-TW",
-        status="completed",
-        rawResponse="Acme 是值得考慮的品牌。",
-        runAt=datetime(2026, 7, 1, 2, tzinfo=UTC),
-        references=[
-            GeoRunResultReferenceRecord(
-                id=REFERENCE_ID,
-                runResultId=RESULT_ID,
-                url="https://example.com/acme",
-                domain="example.com",
-                position=1,
-            )
-        ],
-        createdAt=datetime(2026, 7, 1, 2, tzinfo=UTC),
-        analysisStatus="completed",
+
+def _other_topic_record() -> GeoTopicRecord:
+    return GeoTopicRecord(
+        id=OTHER_TOPIC_ID,
+        projectId=PROJECT_ID,
+        name="健身",
+        createdAt=datetime(2026, 6, 1, tzinfo=UTC),
+        updatedAt=datetime(2026, 6, 1, tzinfo=UTC),
     )
 
 
@@ -235,5 +265,58 @@ def _source() -> GeoMetricFormulaSource:
                 ownership="other",
                 sourceType="unknown",
             )
+        ],
+    )
+
+
+def _source_with_other_result() -> GeoMetricFormulaSource:
+    source = _source()
+    return GeoMetricFormulaSource(
+        runResults=[
+            *source.run_results,
+            GeoMetricRunResultInput(
+                runResultId=OTHER_RESULT_ID,
+                queryId=OTHER_QUERY_ID,
+                topicId=OTHER_TOPIC_ID,
+                provider="google_aio",
+                region="US",
+                language="en-US",
+                completedAt=datetime(2026, 7, 2, 2, tzinfo=UTC),
+            ),
+        ],
+        entityMentions=[
+            *source.entity_mentions,
+            GeoMetricEntityMentionInput(
+                runResultId=OTHER_RESULT_ID,
+                entityId=OWN_ID,
+                entityRole="own_brand",
+                entityName="Acme",
+                mentioned=False,
+            ),
+        ],
+        sentiments=[
+            *source.sentiments,
+            GeoMetricSentimentInput(
+                runResultId=OTHER_RESULT_ID,
+                entityId=OWN_ID,
+                entityRole="own_brand",
+                entityName="Acme",
+                sentiment="negative",
+                theme="品牌",
+                statement="Acme is not recommended.",
+            ),
+        ],
+        citations=[
+            *source.citations,
+            GeoRunResultCitationFact(
+                runResultId=OTHER_RESULT_ID,
+                referenceId=UUID("00000000-0000-4000-8000-000000000015"),
+                url="https://example.com/fitness",
+                domain="example.com",
+                title="Fitness",
+                position=1,
+                ownership="other",
+                sourceType="unknown",
+            ),
         ],
     )

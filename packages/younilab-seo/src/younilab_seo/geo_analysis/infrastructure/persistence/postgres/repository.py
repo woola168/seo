@@ -6,9 +6,11 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, delete, exists, or_, select, update
+from sqlalchemy import and_, case, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
 
 from younilab_seo.geo_analysis.application.contracts import (
     AcceptQueryDraftCommand,
@@ -29,6 +31,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoMetricFormulaSource,
     GeoMetricRunResultInput,
     GeoMetricSentimentInput,
+    GeoOverviewQuery,
+    GeoOverviewReportSource,
+    GeoOverviewResponsePage,
+    GeoOverviewResponsePageQuery,
+    GeoOverviewResponseRow,
     GeoProjectCommand,
     GeoProjectOwnBrandSummary,
     GeoProjectQuerySettingsAudience,
@@ -80,6 +87,10 @@ from younilab_seo.geo_analysis.application.interfaces.citation_normalization imp
 )
 from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
     SemanticAnalysisContext,
+)
+from younilab_seo.geo_analysis.application.overview_filters import (
+    overview_filter_options_from_dimensions,
+    overview_formula_query,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 from younilab_seo.geo_analysis.infrastructure.persistence.postgres.models import (
@@ -570,50 +581,178 @@ class PostgresGeoAnalysisRepository:
                 project_id,
                 query,
             )
-            run_result_ids = {row.id for row, _topic_id in run_rows}
-            if not run_result_ids:
-                return GeoMetricFormulaSource()
-
-            analysis_ids_by_result = await _metric_semantic_analysis_ids(
+            return await _metric_formula_source_from_rows(
                 session,
-                run_result_ids,
-            )
-            detection_ids_by_result = await _metric_entity_detection_ids(
-                session,
-                run_result_ids,
-            )
-            normalization_ids = await _metric_citation_normalization_ids(
-                session,
-                run_result_ids,
+                run_rows,
                 normalizer_version,
             )
-            return GeoMetricFormulaSource(
-                run_results=[
-                    GeoMetricRunResultInput(
-                        run_result_id=row.id,
-                        query_id=row.query_id,
-                        topic_id=topic_id,
-                        provider=row.provider,
-                        region=row.region,
-                        language=row.language,
-                        completed_at=row.run_at,
+
+    async def load_overview_report_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoOverviewQuery,
+        business_date: date,
+        normalizer_version: str,
+    ) -> GeoOverviewReportSource | None:
+        async with self._session_scope() as session:
+            if not await session.scalar(
+                select(
+                    exists().where(
+                        GeoProjectRow.id == project_id,
+                        GeoProjectRow.tenant_id == tenant_id,
                     )
-                    for row, topic_id in run_rows
+                )
+            ):
+                return None
+
+            topic_rows = (
+                await session.scalars(
+                    select(GeoTopicRow)
+                    .where(GeoTopicRow.project_id == project_id)
+                    .order_by(GeoTopicRow.name, GeoTopicRow.id)
+                )
+            ).all()
+            query_rows = (
+                await session.scalars(
+                    select(GeoQueryRow)
+                    .where(GeoQueryRow.project_id == project_id)
+                    .order_by(GeoQueryRow.created_at, GeoQueryRow.id)
+                )
+            ).all()
+            selected_query_rows = (
+                await session.scalars(_overview_query_rows_statement(project_id, query))
+            ).all()
+            run_rows = await _overview_run_result_rows(
+                session,
+                tenant_id,
+                project_id,
+                query,
+                {row.id for row in selected_query_rows},
+            )
+            option_rows = (
+                await session.execute(
+                    _overview_option_dimensions_statement(
+                        tenant_id,
+                        project_id,
+                        query,
+                    )
+                )
+            ).all()
+            return GeoOverviewReportSource(
+                formula_source=await _metric_formula_source_from_rows(
+                    session,
+                    run_rows,
+                    normalizer_version,
+                ),
+                queries=[_query_record(row) for row in selected_query_rows],
+                topics=[_topic_record(row) for row in topic_rows],
+                filter_options=overview_filter_options_from_dimensions(
+                    [_query_record(row) for row in query_rows],
+                    [_topic_record(row) for row in topic_rows],
+                    {row.provider for row in option_rows if row.provider},
+                    {row.region for row in option_rows if row.region},
+                ),
+                is_preparing=bool(
+                    await session.scalar(
+                        _project_data_preparing_statement(
+                            tenant_id,
+                            project_id,
+                            business_date,
+                        )
+                    )
+                ),
+            )
+
+    async def load_overview_response_page(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoOverviewResponsePageQuery,
+    ) -> GeoOverviewResponsePage | None:
+        async with self._session_scope() as session:
+            if not await session.scalar(
+                select(
+                    exists().where(
+                        GeoProjectRow.id == project_id,
+                        GeoProjectRow.tenant_id == tenant_id,
+                    )
+                )
+            ):
+                return None
+
+            selected_query_ids = set(
+                await session.scalars(
+                    _overview_query_rows_statement(
+                        project_id,
+                        query.report_query,
+                    ).with_only_columns(GeoQueryRow.id)
+                )
+            )
+            if query.query_id is not None:
+                selected_query_ids.intersection_update({query.query_id})
+            if not selected_query_ids:
+                return GeoOverviewResponsePage(
+                    items=[],
+                    total=0,
+                    page=query.page,
+                    page_size=query.page_size,
+                )
+
+            statement = _overview_response_rows_statement(
+                tenant_id,
+                project_id,
+                query,
+                selected_query_ids,
+            )
+            total = int(
+                await session.scalar(
+                    select(func.count()).select_from(
+                        statement.order_by(None).subquery()
+                    )
+                )
+                or 0
+            )
+            page_rows = (
+                await session.execute(
+                    statement.order_by(
+                        GeoRunResultRow.run_at.desc(), GeoRunResultRow.id.desc()
+                    )
+                    .offset((query.page - 1) * query.page_size)
+                    .limit(query.page_size)
+                )
+            ).all()
+            result_ids = {row[0].id for row in page_rows}
+            reference_counts = await _overview_reference_counts(session, result_ids)
+            sentiment_counts = await _overview_sentiment_counts(session, result_ids)
+            return GeoOverviewResponsePage(
+                items=[
+                    GeoOverviewResponseRow(
+                        run_result_id=row[0].id,
+                        query_id=row[0].query_id,
+                        query_text=row.query_text or "未知 Query",
+                        response_excerpt=_overview_response_excerpt(
+                            row[0].raw_response
+                        ),
+                        mentioned=row.mentioned,
+                        provider=row[0].provider,
+                        region=row[0].region,
+                        completed_at=row[0].run_at,
+                        reference_count=reference_counts.get(row[0].id, 0),
+                        positive_count=sentiment_counts.get(row[0].id, {}).get(
+                            "positive",
+                            0,
+                        ),
+                        negative_count=sentiment_counts.get(row[0].id, {}).get(
+                            "negative",
+                            0,
+                        ),
+                    )
+                    for row in page_rows
                 ],
-                entity_mentions=await _metric_entity_mentions(
-                    session,
-                    detection_ids_by_result,
-                    [
-                        analysis_id
-                        for result_id, analysis_id in analysis_ids_by_result.items()
-                        if result_id not in detection_ids_by_result
-                    ],
-                ),
-                sentiments=await _metric_sentiments(
-                    session,
-                    list(analysis_ids_by_result.values()),
-                ),
-                citations=await _metric_citations(session, normalization_ids),
+                total=total,
+                page=query.page,
+                page_size=query.page_size,
             )
 
     async def get_kmindhub_workspace_mapping(
@@ -1576,26 +1715,16 @@ class PostgresGeoAnalysisRepository:
         project_id: UUID,
         business_date: date,
     ) -> bool:
-        statement = select(
-            exists().where(
-                GeoProjectRow.id == GeoQueryRunJobRow.project_id,
-                GeoProjectRow.tenant_id == tenant_id,
-                GeoQueryRunJobRow.project_id == project_id,
-                GeoQueryRunJobRow.business_date == business_date,
-                GeoQueryRunJobRow.is_daily_slot_owner.is_(True),
-                GeoQueryRunJobRow.status.in_(
-                    {
-                        JobStatus.PENDING,
-                        JobStatus.PUBLISHING,
-                        JobStatus.PUBLISHED,
-                        JobStatus.RUNNING_EXTERNAL,
-                        JobStatus.DELAYED,
-                    }
-                ),
-            )
-        )
         async with self._session_scope() as session:
-            return bool(await session.scalar(statement))
+            return bool(
+                await session.scalar(
+                    _project_data_preparing_statement(
+                        tenant_id,
+                        project_id,
+                        business_date,
+                    )
+                )
+            )
 
     async def get(self, job_id: UUID) -> GeoQueryRunJob:
         async with self._session_scope() as session:
@@ -3301,6 +3430,332 @@ async def _metric_run_result_rows(
 
     rows = (await session.execute(statement)).all()
     return [(row[0], row[1]) for row in rows]
+
+
+def _overview_query_rows_statement(
+    project_id: UUID,
+    query: GeoOverviewQuery,
+) -> Select[tuple[GeoQueryRow]]:
+    statement = select(GeoQueryRow).where(GeoQueryRow.project_id == project_id)
+    if query.topic_ids:
+        statement = statement.where(GeoQueryRow.topic_id.in_(query.topic_ids))
+    if query.metadata_industry:
+        statement = statement.where(
+            _overview_metadata_condition("industry", query.metadata_industry)
+        )
+    if query.metadata_type:
+        statement = statement.where(
+            _overview_metadata_condition("type", query.metadata_type)
+        )
+    return statement.order_by(GeoQueryRow.created_at, GeoQueryRow.id)
+
+
+def _overview_metadata_condition(
+    key: str,
+    selected: list[str],
+) -> ColumnElement[bool]:
+    value = GeoQueryRow.metadata_json[key]
+    return or_(
+        value.astext.in_(selected),
+        *(value.contains([item]) for item in selected),
+    )
+
+
+async def _overview_run_result_rows(
+    session: AsyncSession,
+    tenant_id: UUID,
+    project_id: UUID,
+    query: GeoOverviewQuery,
+    selected_query_ids: set[UUID],
+) -> list[tuple[GeoRunResultRow, UUID | None]]:
+    if not selected_query_ids:
+        return []
+    formula_query = overview_formula_query(query)
+    comparison_start, comparison_end = _metric_comparison_period(formula_query)
+    statement = (
+        select(GeoRunResultRow, GeoQueryRow.topic_id)
+        .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+        .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+        .join(GeoQueryRow, GeoRunResultRow.query_id == GeoQueryRow.id)
+        .where(
+            GeoProjectRow.tenant_id == tenant_id,
+            GeoQueryRunJobRow.project_id == project_id,
+            GeoRunResultRow.query_id.in_(selected_query_ids),
+            GeoRunResultRow.status == "completed",
+            or_(
+                and_(
+                    GeoRunResultRow.run_at >= formula_query.period_start,
+                    GeoRunResultRow.run_at < formula_query.period_end,
+                ),
+                and_(
+                    GeoRunResultRow.run_at >= comparison_start,
+                    GeoRunResultRow.run_at < comparison_end,
+                ),
+            ),
+        )
+        .order_by(GeoRunResultRow.run_at, GeoRunResultRow.id)
+    )
+    if query.providers:
+        statement = statement.where(GeoRunResultRow.provider.in_(query.providers))
+    if query.region:
+        statement = statement.where(GeoRunResultRow.region == query.region)
+    rows = (await session.execute(statement)).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+def _overview_response_rows_statement(
+    tenant_id: UUID,
+    project_id: UUID,
+    query: GeoOverviewResponsePageQuery,
+    selected_query_ids: set[UUID],
+) -> Select:
+    latest_analysis_status = (
+        select(GeoRunResultAnalysisRow.status)
+        .where(
+            GeoRunResultAnalysisRow.run_result_id == GeoRunResultRow.id,
+            GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
+        )
+        .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+        .limit(1)
+        .correlate(GeoRunResultRow)
+        .scalar_subquery()
+    )
+    latest_completed_analysis_id = (
+        select(GeoRunResultAnalysisRow.id)
+        .where(
+            GeoRunResultAnalysisRow.run_result_id == GeoRunResultRow.id,
+            GeoRunResultAnalysisRow.task_key == "geo_semantic_analysis",
+            GeoRunResultAnalysisRow.status == "completed",
+        )
+        .order_by(GeoRunResultAnalysisRow.updated_at.desc())
+        .limit(1)
+        .correlate(GeoRunResultRow)
+        .scalar_subquery()
+    )
+    latest_detection_id = (
+        select(GeoRunResultEntityDetectionRow.id)
+        .where(
+            GeoRunResultEntityDetectionRow.run_result_id == GeoRunResultRow.id,
+            GeoRunResultEntityDetectionRow.status == "completed",
+        )
+        .order_by(GeoRunResultEntityDetectionRow.updated_at.desc())
+        .limit(1)
+        .correlate(GeoRunResultRow)
+        .scalar_subquery()
+    )
+    detected_own_brand = exists().where(
+        GeoRunResultEntityDetectionItemRow.detection_id == latest_detection_id,
+        GeoRunResultEntityDetectionItemRow.entity_role == "own_brand",
+        GeoRunResultEntityDetectionItemRow.mentioned.is_(True),
+    )
+    analyzed_own_brand = exists().where(
+        GeoRunResultEntityMentionRow.analysis_id == latest_completed_analysis_id,
+        or_(
+            GeoRunResultEntityMentionRow.entity_role == "own_brand",
+            and_(
+                GeoRunResultEntityMentionRow.entity_role.is_(None),
+                GeoRunResultEntityMentionRow.entity_type == "own_brand",
+            ),
+        ),
+        or_(
+            GeoRunResultEntityMentionRow.mentioned.is_(True),
+            and_(
+                GeoRunResultEntityMentionRow.mentioned.is_(None),
+                GeoRunResultEntityMentionRow.mention_count > 0,
+            ),
+        ),
+    )
+    own_brand_mentioned = or_(
+        detected_own_brand,
+        and_(latest_detection_id.is_(None), analyzed_own_brand),
+    )
+    mentioned_value = case(
+        (latest_analysis_status == "completed", own_brand_mentioned),
+        else_=None,
+    ).label("mentioned")
+    report_query = query.report_query
+    statement = (
+        select(
+            GeoRunResultRow,
+            GeoQueryRow.query_text.label("query_text"),
+            mentioned_value,
+        )
+        .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+        .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+        .join(GeoQueryRow, GeoRunResultRow.query_id == GeoQueryRow.id)
+        .where(
+            GeoProjectRow.tenant_id == tenant_id,
+            GeoQueryRunJobRow.project_id == project_id,
+            GeoRunResultRow.query_id.in_(selected_query_ids),
+            GeoRunResultRow.status == "completed",
+            GeoRunResultRow.run_at >= report_query.period_start,
+            GeoRunResultRow.run_at < report_query.period_end,
+        )
+    )
+    if report_query.providers:
+        statement = statement.where(
+            GeoRunResultRow.provider.in_(report_query.providers)
+        )
+    if report_query.region:
+        statement = statement.where(GeoRunResultRow.region == report_query.region)
+    if query.mention_status == "mentioned":
+        statement = statement.where(
+            latest_analysis_status == "completed",
+            own_brand_mentioned,
+        )
+    elif query.mention_status == "not_mentioned":
+        statement = statement.where(
+            latest_analysis_status == "completed",
+            ~own_brand_mentioned,
+        )
+    return statement
+
+
+async def _overview_reference_counts(
+    session: AsyncSession,
+    result_ids: set[UUID],
+) -> dict[UUID, int]:
+    if not result_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(
+                GeoRunResultReferenceRow.run_result_id,
+                func.count(GeoRunResultReferenceRow.id),
+            )
+            .where(GeoRunResultReferenceRow.run_result_id.in_(result_ids))
+            .group_by(GeoRunResultReferenceRow.run_result_id)
+        )
+    ).all()
+    return {row[0]: int(row[1]) for row in rows}
+
+
+async def _overview_sentiment_counts(
+    session: AsyncSession,
+    result_ids: set[UUID],
+) -> dict[UUID, dict[str, int]]:
+    if not result_ids:
+        return {}
+    analysis_ids_by_result = await _metric_semantic_analysis_ids(
+        session,
+        result_ids,
+    )
+    counts: dict[UUID, dict[str, int]] = {}
+    for fact in await _metric_sentiments(
+        session,
+        list(analysis_ids_by_result.values()),
+    ):
+        result_counts = counts.setdefault(
+            fact.run_result_id,
+            {"positive": 0, "negative": 0},
+        )
+        result_counts[fact.sentiment] += 1
+    return counts
+
+
+def _overview_response_excerpt(value: str, limit: int = 300) -> str:
+    normalized = " ".join(value.split())
+    return normalized if len(normalized) <= limit else f"{normalized[: limit - 1]}…"
+
+
+def _overview_option_dimensions_statement(
+    tenant_id: UUID,
+    project_id: UUID,
+    query: GeoOverviewQuery,
+) -> Select[tuple[str, str]]:
+    return (
+        select(
+            GeoRunResultRow.provider.label("provider"),
+            GeoRunResultRow.region.label("region"),
+        )
+        .join(GeoQueryRunJobRow, GeoRunResultRow.job_id == GeoQueryRunJobRow.id)
+        .join(GeoProjectRow, GeoQueryRunJobRow.project_id == GeoProjectRow.id)
+        .where(
+            GeoProjectRow.tenant_id == tenant_id,
+            GeoQueryRunJobRow.project_id == project_id,
+            GeoRunResultRow.status == "completed",
+            GeoRunResultRow.run_at >= query.period_start,
+            GeoRunResultRow.run_at < query.period_end,
+        )
+        .distinct()
+    )
+
+
+def _project_data_preparing_statement(
+    tenant_id: UUID,
+    project_id: UUID,
+    business_date: date,
+) -> Select[tuple[bool]]:
+    return select(
+        exists().where(
+            GeoProjectRow.id == GeoQueryRunJobRow.project_id,
+            GeoProjectRow.tenant_id == tenant_id,
+            GeoQueryRunJobRow.project_id == project_id,
+            GeoQueryRunJobRow.business_date == business_date,
+            GeoQueryRunJobRow.is_daily_slot_owner.is_(True),
+            GeoQueryRunJobRow.status.in_(
+                {
+                    JobStatus.PENDING,
+                    JobStatus.PUBLISHING,
+                    JobStatus.PUBLISHED,
+                    JobStatus.RUNNING_EXTERNAL,
+                    JobStatus.DELAYED,
+                }
+            ),
+        )
+    )
+
+
+async def _metric_formula_source_from_rows(
+    session: AsyncSession,
+    run_rows: list[tuple[GeoRunResultRow, UUID | None]],
+    normalizer_version: str,
+) -> GeoMetricFormulaSource:
+    run_result_ids = {row.id for row, _topic_id in run_rows}
+    if not run_result_ids:
+        return GeoMetricFormulaSource()
+
+    analysis_ids_by_result = await _metric_semantic_analysis_ids(
+        session,
+        run_result_ids,
+    )
+    detection_ids_by_result = await _metric_entity_detection_ids(
+        session,
+        run_result_ids,
+    )
+    normalization_ids = await _metric_citation_normalization_ids(
+        session,
+        run_result_ids,
+        normalizer_version,
+    )
+    return GeoMetricFormulaSource(
+        run_results=[
+            GeoMetricRunResultInput(
+                run_result_id=row.id,
+                query_id=row.query_id,
+                topic_id=topic_id,
+                provider=row.provider,
+                region=row.region,
+                language=row.language,
+                completed_at=row.run_at,
+            )
+            for row, topic_id in run_rows
+        ],
+        entity_mentions=await _metric_entity_mentions(
+            session,
+            detection_ids_by_result,
+            [
+                analysis_id
+                for result_id, analysis_id in analysis_ids_by_result.items()
+                if result_id not in detection_ids_by_result
+            ],
+        ),
+        sentiments=await _metric_sentiments(
+            session,
+            list(analysis_ids_by_result.values()),
+        ),
+        citations=await _metric_citations(session, normalization_ids),
+    )
 
 
 def _metric_comparison_period(

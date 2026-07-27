@@ -3,37 +3,34 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from younilab_seo.geo_analysis.application.contracts import (
-    GeoQueryRecord,
-    GeoRunResultRecord,
-    GeoTopicRecord,
+    GeoOverviewQuery,
+    GeoOverviewReportSource,
+    GeoOverviewResponsePage,
+    GeoOverviewResponsePageQuery,
 )
 
 
 @runtime_checkable
-class OverviewReadPersistence(Protocol):
-    """載入 Overview filters、準備狀態與 response page 所需資料。"""
+class OverviewReportReadModel(Protocol):
+    """一次載入 Overview 報表所需的 filtered read source。"""
 
-    async def list_queries(
+    async def load_overview_report_source(
         self,
         tenant_id: UUID,
         project_id: UUID,
-    ) -> list[GeoQueryRecord]: ...
-
-    async def list_topics(
-        self,
-        tenant_id: UUID,
-        project_id: UUID,
-    ) -> list[GeoTopicRecord]: ...
-
-    async def is_project_data_preparing(
-        self,
-        tenant_id: UUID,
-        project_id: UUID,
+        query: GeoOverviewQuery,
         business_date: date,
-    ) -> bool: ...
+        normalizer_version: str,
+    ) -> GeoOverviewReportSource | None: ...
 
-    async def list_project_run_results(
+
+@runtime_checkable
+class OverviewResponseReadModel(Protocol):
+    """回傳已篩選、排序並分頁的 Overview 回答摘要。"""
+
+    async def load_overview_response_page(
         self,
         tenant_id: UUID,
         project_id: UUID,
-    ) -> list[GeoRunResultRecord]: ...
+        query: GeoOverviewResponsePageQuery,
+    ) -> GeoOverviewResponsePage | None: ...

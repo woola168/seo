@@ -20,7 +20,7 @@ Application persistence interface 依 workflow 定義，不依資料表定義。
 | --- | --- |
 | Semantic Analysis | `SemanticAnalysisPersistence` |
 | Citation Normalization | `CitationNormalizationPersistence` |
-| Metrics / Overview | `MetricsReadPersistence`、`OverviewReadPersistence` |
+| Metrics / Overview | `MetricsReadPersistence`、`OverviewReportReadModel`、`OverviewResponseReadModel` |
 | Run lifecycle | `RunDispatchPersistence`、`RunCallbackPersistence`、`RunExecutionPersistence`、`RunResultReadPersistence`、`RunJobManagementPersistence`、`RunSchedulerPersistence` |
 | Query Planning | `QueryPlanningPersistence` |
 | Project setup | `ProjectSetupPersistence`、`EntityCatalogPersistence`、`QueryCatalogPersistence` |
@@ -62,3 +62,5 @@ Port 可以包含跨表 context load 或原子保存操作。Application caller 
 - 不修改 HTTP endpoint、JSON contract、queue payload 或 metrics 公式。
 - 不改 Overview pagination、KMindHub evidence validation 或 provider 行為。
 - 不建立 per-table repositories。
+
+Overview read model 後續深化與 `OverviewReadPersistence` 的移除，見 `0005-use-dedicated-overview-read-models.md`。

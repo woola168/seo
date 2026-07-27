@@ -2143,6 +2143,34 @@ def test_overview_rejects_invalid_time_zone() -> None:
 
 
 @pytest.mark.parametrize(
+    "invalid_params",
+    [
+        {"mentionStatus": "unknown"},
+        {"page": 0},
+        {"pageSize": 101},
+    ],
+)
+def test_overview_responses_preserve_problem_details_for_invalid_query_params(
+    invalid_params: dict[str, object],
+) -> None:
+    client = _client()
+    project = client.post("/api/geo/projects", json={"name": "Overview Project"})
+    params = {
+        "periodStart": "2026-07-01T00:00:00Z",
+        "periodEnd": "2026-07-08T00:00:00Z",
+        **invalid_params,
+    }
+
+    response = client.get(
+        f"/api/geo/projects/{project.json()['id']}/reports/overview/responses",
+        params=params,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+
+
+@pytest.mark.parametrize(
     "status",
     [
         JobStatus.PENDING,

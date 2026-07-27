@@ -21,6 +21,11 @@ from younilab_seo.geo_analysis.application import (
     GeoMetricFormulaSource,
     GeoMetricRunResultInput,
     GeoMetricSentimentInput,
+    GeoOverviewQuery,
+    GeoOverviewReportSource,
+    GeoOverviewResponsePage,
+    GeoOverviewResponsePageQuery,
+    GeoOverviewResponseRow,
     GeoProjectCommand,
     GeoProjectOwnBrandSummary,
     GeoProjectQuerySettingsCommand,
@@ -68,6 +73,12 @@ from younilab_seo.geo_analysis.application.interfaces.citation_normalization imp
 )
 from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
     SemanticAnalysisContext,
+)
+from younilab_seo.geo_analysis.application.overview_filters import (
+    filter_overview_formula_source,
+    overview_filter_options,
+    overview_formula_query,
+    select_overview_queries,
 )
 from younilab_seo.geo_analysis.domain import GeoQueryRunJob, JobStatus
 
@@ -1328,6 +1339,127 @@ class GeoApiStore:
             normalizer_version,
         )
 
+    async def load_overview_report_source(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoOverviewQuery,
+        business_date: date,
+        normalizer_version: str,
+    ) -> GeoOverviewReportSource | None:
+        if not self._project_matches(tenant_id, project_id):
+            return None
+        queries = await self.list_queries(tenant_id, project_id)
+        topics = await self.list_topics(tenant_id, project_id)
+        unfiltered = await self.get_metric_formula_source(
+            tenant_id,
+            project_id,
+            overview_formula_query(query),
+            normalizer_version,
+        )
+        return GeoOverviewReportSource(
+            formula_source=filter_overview_formula_source(
+                unfiltered,
+                queries,
+                query,
+            ),
+            queries=select_overview_queries(queries, query),
+            topics=topics,
+            filter_options=overview_filter_options(
+                unfiltered,
+                queries,
+                topics,
+                query,
+            ),
+            is_preparing=await self.is_project_data_preparing(
+                tenant_id,
+                project_id,
+                business_date,
+            ),
+        )
+
+    async def load_overview_response_page(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        query: GeoOverviewResponsePageQuery,
+    ) -> GeoOverviewResponsePage | None:
+        if not self._project_matches(tenant_id, project_id):
+            return None
+        report_query = query.report_query
+        queries = await self.list_queries(tenant_id, project_id)
+        source = filter_overview_formula_source(
+            await self.get_metric_formula_source(
+                tenant_id,
+                project_id,
+                overview_formula_query(report_query),
+                "url_domain:v2",
+            ),
+            queries,
+            report_query,
+        )
+        allowed_ids = {
+            item.run_result_id
+            for item in source.run_results
+            if report_query.period_start <= item.completed_at < report_query.period_end
+        }
+        query_index = {item.id: item for item in queries}
+        mentions: dict[UUID, list[GeoMetricEntityMentionInput]] = {}
+        sentiments: dict[UUID, list[GeoMetricSentimentInput]] = {}
+        for item in source.entity_mentions:
+            mentions.setdefault(item.run_result_id, []).append(item)
+        for item in source.sentiments:
+            sentiments.setdefault(item.run_result_id, []).append(item)
+
+        job_ids = {job.id for job in self.jobs.values() if job.project_id == project_id}
+        rows: list[GeoOverviewResponseRow] = []
+        for stored_result in self.run_results.values():
+            if (
+                stored_result.job_id not in job_ids
+                or stored_result.id not in allowed_ids
+                or (query.query_id and stored_result.query_id != query.query_id)
+            ):
+                continue
+            result = self._run_result_with_analysis(stored_result)
+            mentioned = _overview_mentioned_state(
+                result.analysis_status,
+                mentions.get(result.id, []),
+            )
+            if query.mention_status == "mentioned" and mentioned is not True:
+                continue
+            if query.mention_status == "not_mentioned" and mentioned is not False:
+                continue
+            result_sentiments = sentiments.get(result.id, [])
+            rows.append(
+                GeoOverviewResponseRow(
+                    run_result_id=result.id,
+                    query_id=result.query_id,
+                    query_text=query_index.get(result.query_id).query_text
+                    if result.query_id in query_index
+                    else "未知 Query",
+                    response_excerpt=_overview_excerpt(result.raw_response),
+                    mentioned=mentioned,
+                    provider=result.provider,
+                    region=result.region,
+                    completed_at=result.run_at,
+                    reference_count=len(result.references),
+                    positive_count=sum(
+                        item.sentiment == "positive" for item in result_sentiments
+                    ),
+                    negative_count=sum(
+                        item.sentiment == "negative" for item in result_sentiments
+                    ),
+                )
+            )
+        rows.sort(key=lambda item: item.completed_at, reverse=True)
+        start = (query.page - 1) * query.page_size
+        return GeoOverviewResponsePage(
+            items=rows[start : start + query.page_size],
+            total=len(rows),
+            page=query.page,
+            page_size=query.page_size,
+        )
+
     async def get_run_result(
         self,
         tenant_id: UUID,
@@ -1881,6 +2013,20 @@ def _scope_fields(record) -> dict:
             fields["last_scheduled_at"] = record.last_scheduled_at
         return fields
     return {}
+
+
+def _overview_mentioned_state(
+    analysis_status: str | None,
+    mentions: list[GeoMetricEntityMentionInput],
+) -> bool | None:
+    if analysis_status != "completed":
+        return None
+    return any(item.entity_role == "own_brand" and item.mentioned for item in mentions)
+
+
+def _overview_excerpt(value: str, limit: int = 300) -> str:
+    normalized = " ".join(value.split())
+    return normalized if len(normalized) <= limit else f"{normalized[: limit - 1]}…"
 
 
 def _now() -> datetime:
