@@ -32,6 +32,7 @@ import {
   resolveStoredGeoProjectId,
   setStoredGeoProjectId,
 } from "../utils/geo-project-selection-storage";
+import { formatSentimentRatio } from "../utils/geo-overview-format";
 
 ChartJS.register(
   CategoryScale,
@@ -781,7 +782,7 @@ function apiMessage(caught: unknown, fallback: string): string {
           <i></i>
           <span>負面提及 <b>{{ ownMentionTotals.negative }}</b></span>
           <i></i>
-          <span>正負比 <b>{{ ownMentionTotals.ratio !== null ? `${Math.round(ownMentionTotals.ratio)}:1` : '—' }}</b></span>
+          <span>正負比 <b>{{ formatSentimentRatio(ownMentionTotals.ratio) }}</b></span>
         </div>
         <div class="sentiment-legend">
           <span v-if="sentimentMode !== 'negative'"><i class="positive"></i>正向提及</span>

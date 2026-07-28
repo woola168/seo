@@ -158,7 +158,12 @@ async function updateProjectStatus(): Promise<void> {
               <td><strong>{{ project.name }}</strong><small>{{ displayDomain(project.ownBrand?.websiteUrl ?? undefined) }}</small></td>
               <td>{{ project.customerName }}</td>
               <td>{{ project.defaultRegion }}/{{ project.defaultLanguage }}</td>
-              <td>{{ project.ownBrand?.aliases.join('、') || '—' }}</td>
+              <td>
+                <span
+                  class="geo-project-aliases"
+                  :title="project.ownBrand?.aliases.join('、') || undefined"
+                >{{ project.ownBrand?.aliases.join('、') || '—' }}</span>
+              </td>
               <td><span class="geo-project-status" :class="`is-${project.status}`"><i></i>{{ statusLabels[project.status] ?? project.status }}</span></td>
               <td class="sticky-action"><div class="geo-row-actions">
                 <button class="geo-row-action" type="button" title="編輯" :disabled="!canUpdate" @click.stop="router.push({ name: projectRoutes.projectEdit, params: { projectId: project.id } })"><AppIcon name="edit" :size="14" /></button>

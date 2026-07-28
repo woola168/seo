@@ -489,6 +489,14 @@
 .geo-project-table .status-col { width: 110px; }
 .geo-project-table .actions-col { width: 140px; }
 
+.geo-project-aliases {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .geo-dialog-backdrop {
   position: fixed;
   z-index: 100;
