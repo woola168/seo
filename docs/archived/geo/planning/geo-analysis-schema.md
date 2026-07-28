@@ -1,5 +1,7 @@
 # GEO Queue / Worker 與基礎設定資料表規劃
 
+> 已於 2026-07-27 封存。本文件不是正式資料庫契約；目前 schema 以 `deploy/local/postgresql/*.sql` 與 Postgres models 為準，整體現況請讀 [GEO Analysis 現況、架構與 Roadmap](../../../geo-analysis-current-state-and-roadmap.md)。
+
 本文件僅作為 Phase 1 規劃用途，尚未代表已實作的 migration 或正式資料庫契約。
 
 Phase 1 邊界：
@@ -11,7 +13,7 @@ Phase 1 邊界：
 規劃依據：
 
 - `20260617開會簡報.pdf` 的 Phase 1 MVP 功能。
-- `docs/geo-analysis-requirements.md` 的需求整理。
+- 同目錄 `geo-analysis-requirements.md` 的需求整理。
 - 根目錄 `AGENTS.md` 與 `references/younilab-kmindhub-main` 的 bounded context 分層參考。
 
 ## 架構摘要

@@ -5,6 +5,9 @@ import type {
 } from "../types";
 import { ApiError, api } from "./api";
 
+export const MAX_GEO_TOPICS = 8;
+export const MAX_GEO_KEYWORDS = 10;
+
 export interface GeoProjectQuerySettingsForm {
   researchProvider: "gemini";
   runProvider: "gemini";
@@ -123,8 +126,9 @@ export function validateQuerySettingsForm(
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   const keywords = normalizeQuerySettingsKeywords(form.keywords);
-  if (keywords.length > 10) errors.keywords = "Keywords 最多 10 筆";
-  else if (keywords.some((keyword) => keyword.length > 200)) {
+  if (keywords.length > MAX_GEO_KEYWORDS) {
+    errors.keywords = `Keywords 最多 ${MAX_GEO_KEYWORDS} 筆`;
+  } else if (keywords.some((keyword) => keyword.length > 200)) {
     errors.keywords = "每筆 Keyword 最多 200 字";
   }
   if (!Number.isInteger(Number(form.maxQueries)) || form.maxQueries < 1 || form.maxQueries > 40) {
@@ -151,7 +155,9 @@ export function validateQueryResearchForm(
   if (!normalizeQuerySettingsKeywords(form.keywords).length) {
     errors.keywords = "請至少輸入一個 Keyword。";
   }
-  if (!topics.some((topic) => topic.name.trim())) {
+  if (topics.length > MAX_GEO_TOPICS) {
+    errors.topics = `Topics 最多 ${MAX_GEO_TOPICS} 筆。`;
+  } else if (!topics.some((topic) => topic.name.trim())) {
     errors.topics = "請至少輸入一個 Topic。";
   }
   return errors;

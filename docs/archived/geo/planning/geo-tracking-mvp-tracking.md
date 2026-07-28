@@ -1,5 +1,7 @@
 # GEO MVP 模組 A/B/C 追蹤清單
 
+> 已於 2026-07-27 封存。本文件保留早期 MVP tracker，不再用來判斷 persistence、queue、worker 或報表完成度；請改讀 [GEO Analysis 現況、架構與 Roadmap](../../../geo-analysis-current-state-and-roadmap.md)。
+
 本文件整理截至目前實作與討論結果，只涵蓋 Phase 1 MVP 需要的模組 A/B/C。Phase 2、Phase 3 項目不列入本輪開發範圍。
 
 ## 已完成項目

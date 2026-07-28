@@ -1,5 +1,7 @@
 # GEO Project Query Settings 後端需求
 
+> 已於 2026-07-27 封存。後端規格與新增 Project／Query Research 串接已完成；剩餘 Project Edit UI 工作請讀 [GEO Analysis 現況、架構與 Roadmap](../../../geo-analysis-current-state-and-roadmap.md)。
+
 > 狀態（2026-07-19）：後端 API、persistence、migration、OpenAPI 與測試已完成；Admin Portal 已串接新增 Project 保存與 Query Search 預帶。Project Edit 因新版參考稿未提供設定區塊，仍待後續產品設計確認。正式環境需先執行 `019_geo_project_query_settings.sql`。
 
 ## 目的

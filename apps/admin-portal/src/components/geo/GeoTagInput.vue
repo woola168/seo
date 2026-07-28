@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import AppIcon from "../ui/AppIcon.vue";
-import { parseGeoTagValues } from "../../utils/geo-tag-values";
+import { mergeGeoTagValues } from "../../utils/geo-tag-values";
 
-defineProps<{ placeholder?: string; invalid?: boolean }>();
+const props = defineProps<{ placeholder?: string; invalid?: boolean; maxTags?: number }>();
 const model = defineModel<string[]>({ required: true });
 const draft = ref("");
 const composing = ref(false);
 const commitAfterComposition = ref(false);
+const atLimit = computed(() => props.maxTags !== undefined && model.value.length >= props.maxTags);
 
 function appendTags(value: string): void {
-  const additions = parseGeoTagValues(value);
-  if (additions.length) model.value = Array.from(new Set([...model.value, ...additions]));
+  model.value = mergeGeoTagValues(model.value, value, props.maxTags);
 }
 
 function commit(): void {
@@ -71,6 +71,7 @@ function onBlur(): void {
     <input
       v-model="draft"
       type="text"
+      :readonly="atLimit"
       :aria-invalid="Boolean(invalid)"
       :placeholder="model.length ? '' : placeholder"
       @blur="onBlur"
