@@ -102,7 +102,7 @@ flowchart LR
 
 - Visibility、Mentions、SOV、Average Position。
 - Citation Count、Used %、Share %。
-- Positive／negative sentiment count。
+- Positive／negative sentiment count；Overview 與 Dashboard 僅聚合 `own_brand`，競品 sentiment facts 仍保留供明細與後續分析使用。
 - 等長前期比較與 delta。
 - Project／Topic／Query／provider／region／language／date filters。
 - Entity comparison、Citation By URL／By Domain、trend 與 response drilldown。

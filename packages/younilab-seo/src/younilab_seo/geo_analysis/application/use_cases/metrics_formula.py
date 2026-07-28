@@ -287,8 +287,11 @@ class CalculateGeoMetricFormulas:
         return metrics
 
     def _sentiment_metrics(self, inputs: _MetricInputs) -> list[GeoMetricValue]:
+        own_brand_sentiments = [
+            item for item in inputs.sentiments if item.entity_role == "own_brand"
+        ]
         counts: dict[str, int] = defaultdict(int)
-        for sentiment in inputs.sentiments:
+        for sentiment in own_brand_sentiments:
             counts[sentiment.sentiment] += 1
 
         return [
@@ -300,7 +303,7 @@ class CalculateGeoMetricFormulas:
                 value=float(count),
                 unit="count",
                 numerator=count,
-                denominator=len(inputs.sentiments),
+                denominator=len(own_brand_sentiments),
             )
             for sentiment, count in sorted(counts.items())
         ]

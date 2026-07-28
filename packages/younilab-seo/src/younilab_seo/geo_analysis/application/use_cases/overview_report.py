@@ -335,7 +335,7 @@ def _sentiment_trend(source, query) -> list[GeoOverviewSentimentPoint]:
     }
     counts = defaultdict(lambda: {"positive": 0, "negative": 0})
     for item in source.sentiments:
-        if item.run_result_id in run_dates:
+        if item.entity_role == "own_brand" and item.run_result_id in run_dates:
             counts[run_dates[item.run_result_id]][item.sentiment] += 1
     return [
         GeoOverviewSentimentPoint(

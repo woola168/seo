@@ -166,14 +166,34 @@ def test_calculates_citation_count_used_percent_and_share_percent() -> None:
     assert domain_share.value == pytest.approx(200 / 3)
 
 
-def test_calculates_sentiment_counts() -> None:
+def test_calculates_sentiment_counts_for_own_brand_only() -> None:
     source = GeoMetricFormulaSource(
         runResults=[_run(RUN_1, datetime(2026, 7, 2, tzinfo=UTC))],
         entityMentions=[_mention(RUN_1, OWN_BRAND_ID, "own_brand", "Acme", True, 1)],
         sentiments=[
             _sentiment(RUN_1, OWN_BRAND_ID, "own_brand", "Acme", "positive"),
             _sentiment(RUN_1, OWN_BRAND_ID, "own_brand", "Acme", "positive"),
-            _sentiment(RUN_1, COMPETITOR_ID, "competitor", "Beta", "negative"),
+            _sentiment(RUN_1, OWN_BRAND_ID, "own_brand", "Acme", "negative"),
+            *[
+                _sentiment(
+                    RUN_1,
+                    COMPETITOR_ID,
+                    "competitor",
+                    "Beta",
+                    "positive",
+                )
+                for _ in range(5)
+            ],
+            *[
+                _sentiment(
+                    RUN_1,
+                    COMPETITOR_ID,
+                    "competitor",
+                    "Beta",
+                    "negative",
+                )
+                for _ in range(4)
+            ],
         ],
     )
 
