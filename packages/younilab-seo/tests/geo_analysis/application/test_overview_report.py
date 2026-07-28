@@ -91,6 +91,10 @@ def test_overview_report_composes_sections_from_existing_facts() -> None:
         assert report.citation_summary.citation_count == 1
         assert report.citation_summary.cited_page_count == 1
         assert report.citation_summary.cited_response_percent == 100
+        assert [item.entity_name for item in report.visibility_trend] == [
+            "Acme",
+            "Beta",
+        ]
         assert report.visibility_trend[0].points[0].date == "2026-07-01"
         assert report.sentiment_trend[0].positive_count == 1
         assert report.topics[0].queries[0].query_text == "Acme 好嗎？"

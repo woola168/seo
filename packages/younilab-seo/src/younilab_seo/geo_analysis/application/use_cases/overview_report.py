@@ -317,7 +317,11 @@ def _visibility_trend(source, query) -> list[GeoOverviewVisibilitySeries]:
             ],
         )
         for entity_id, (name, role) in sorted(
-            entities.items(), key=lambda item: (item[1][1], item[1][0])
+            entities.items(),
+            key=lambda item: (
+                0 if item[1][1] == "own_brand" else 1,
+                item[1][0],
+            ),
         )
     ]
 
