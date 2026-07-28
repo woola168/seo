@@ -105,6 +105,45 @@ def test_overview_report_composes_sections_from_existing_facts() -> None:
     asyncio.run(run())
 
 
+def test_overview_report_sentiment_trend_counts_own_brand_only() -> None:
+    async def run() -> None:
+        source = _source()
+        source = source.model_copy(
+            update={
+                "sentiments": [
+                    *source.sentiments,
+                    GeoMetricSentimentInput(
+                        runResultId=RESULT_ID,
+                        entityId=COMPETITOR_ID,
+                        entityRole="competitor",
+                        entityName="Beta",
+                        sentiment="positive",
+                        theme="品牌",
+                        statement="Beta 值得考慮。",
+                    ),
+                    GeoMetricSentimentInput(
+                        runResultId=RESULT_ID,
+                        entityId=COMPETITOR_ID,
+                        entityRole="competitor",
+                        entityName="Beta",
+                        sentiment="negative",
+                        theme="品牌",
+                        statement="Beta 不值得考慮。",
+                    ),
+                ]
+            }
+        )
+        report = await GetGeoOverviewReport(
+            FakeReportReadModel(source, [_query_record()], [_topic_record()]),
+            FakeClock(datetime(2026, 7, 2, tzinfo=UTC)),
+        ).execute(TENANT_ID, PROJECT_ID, _overview_query())
+
+        assert report.sentiment_trend[0].positive_count == 1
+        assert report.sentiment_trend[0].negative_count == 0
+
+    asyncio.run(run())
+
+
 def test_overview_report_applies_selected_filters_to_all_sections() -> None:
     async def run() -> None:
         overview_query = GeoOverviewQuery(
