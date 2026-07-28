@@ -497,6 +497,27 @@
   white-space: nowrap;
 }
 
+.geo-overview-page .brand-visibility-table th:first-child,
+.geo-overview-page .brand-visibility-table td:first-child {
+  width: 30%;
+}
+
+.geo-overview-page .brand-cell {
+  min-width: 0;
+}
+
+.geo-overview-page .brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.geo-overview-page .self-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .geo-dialog-backdrop {
   position: fixed;
   z-index: 100;

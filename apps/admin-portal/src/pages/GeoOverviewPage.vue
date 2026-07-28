@@ -797,10 +797,10 @@ function apiMessage(caught: unknown, fallback: string): string {
 
       <section class="overview-card table-card">
         <header><div><h2>AI 搜尋品牌能見度</h2><p>本品牌與競品的能見度排名</p></div></header>
-        <div class="table-scroll"><table><thead><tr><th>品牌</th><th>能見度</th><th>較上期</th><th>聲量佔有率</th><th>平均排名</th></tr></thead>
+        <div class="table-scroll"><table class="brand-visibility-table"><thead><tr><th>品牌</th><th>能見度</th><th>較上期</th><th>聲量佔有率</th><th>平均排名</th></tr></thead>
           <tbody>
             <tr v-for="entity in report.entities" :key="entity.entityId">
-              <td><span class="brand-cell"><span class="brand-avatar" :style="{ background: entityColor(entity.entityId) }">{{ entityInitial(entity.entityName) }}</span><strong>{{ entity.entityName }}</strong><small v-if="entity.entityRole === 'own_brand'" class="self-badge">自身</small></span></td>
+              <td><span class="brand-cell"><span class="brand-avatar" :style="{ background: entityColor(entity.entityId) }">{{ entityInitial(entity.entityName) }}</span><strong class="brand-name" :title="entity.entityName">{{ entity.entityName }}</strong><small v-if="entity.entityRole === 'own_brand'" class="self-badge">自身</small></span></td>
               <td>{{ percent(entity.visibilityPercent) }}</td><td :class="entity.visibilityDeltaPp !== null && entity.visibilityDeltaPp >= 0 ? 'positive-text' : 'negative-text'">{{ signedPercent(entity.visibilityDeltaPp) }}</td>
               <td>{{ percent(entity.sovPercent) }}</td><td>{{ entity.averagePosition ? entity.averagePosition.toFixed(1) : '-' }}</td>
             </tr>
