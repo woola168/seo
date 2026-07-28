@@ -1,5 +1,7 @@
 # GEO 分析後端 Workflow 規劃
 
+> 已於 2026-07-27 封存。本文件保留早期後端規劃，其中多項「尚未實作」描述已過期；請改讀 [GEO Analysis 現況、架構與 Roadmap](../../../geo-analysis-current-state-and-roadmap.md)。
+
 本文整理 GEO 功能從品牌與 query 設定、跑題、結果保存到報表計算的後端流程，並以目前既有 API 與資料表規劃評估可支援範圍與缺少的程式模組。
 
 本文不盤點前端缺口，重點放在 `geo-analysis`、`geo-tracking`、資料表、queue、worker 與報表計算流程。
