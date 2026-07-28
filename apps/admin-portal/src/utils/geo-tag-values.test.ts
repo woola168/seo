@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGeoTagValues } from "./geo-tag-values";
+import { mergeGeoTagValues, parseGeoTagValues } from "./geo-tag-values";
 
 describe("GEO tag values", () => {
   it("parses line breaks and Chinese or English commas into trimmed tags", () => {
@@ -9,5 +9,13 @@ describe("GEO tag values", () => {
       "採購",
       "供應商",
     ]);
+  });
+
+  it("keeps only the first unique values up to the configured tag limit", () => {
+    expect(mergeGeoTagValues(
+      ["既有", "重複"],
+      "重複, 新增一, 新增二, 新增三",
+      4,
+    )).toEqual(["既有", "重複", "新增一", "新增二"]);
   });
 });

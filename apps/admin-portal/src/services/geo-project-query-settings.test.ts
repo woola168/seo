@@ -90,6 +90,18 @@ describe("GEO Project Query Settings", () => {
     });
   });
 
+  it("rejects Query Research input with more than eight Topics", () => {
+    const form = settingsService.createDefaultQuerySettingsForm();
+    const topics = Array.from(
+      { length: settingsService.MAX_GEO_TOPICS + 1 },
+      (_, index) => ({ name: `Topic ${index + 1}` }),
+    );
+
+    expect(settingsService.validateQueryResearchForm(form, topics)).toMatchObject({
+      topics: "Topics 最多 8 筆。",
+    });
+  });
+
   it("uses product defaults without warning when settings do not exist", async () => {
     vi.spyOn(apiModule.api.geoAnalysis, "querySettings").mockRejectedValue(
       new apiModule.ApiError("project query settings not found", 404),
