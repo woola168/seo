@@ -1429,7 +1429,11 @@ class GeoApiStore:
                 continue
             if query.mention_status == "not_mentioned" and mentioned is not False:
                 continue
-            result_sentiments = sentiments.get(result.id, [])
+            result_sentiments = [
+                item
+                for item in sentiments.get(result.id, [])
+                if item.entity_role == "own_brand"
+            ]
             rows.append(
                 GeoOverviewResponseRow(
                     run_result_id=result.id,

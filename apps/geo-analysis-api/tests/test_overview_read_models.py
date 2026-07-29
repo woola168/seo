@@ -221,7 +221,15 @@ async def test_in_memory_overview_response_page_preserves_status_and_counts() ->
                 sentiment="positive",
                 theme="品牌",
                 statement="Acme 值得考慮。",
-            )
+            ),
+            GeoSentimentFact(
+                entityId=uuid4(),
+                entityRole="competitor",
+                entityName="Competitor",
+                sentiment="negative",
+                theme="品牌",
+                statement="Competitor 不值得考慮。",
+            ),
         ],
     )
     store.semantic_run_result_analyses[not_mentioned_id] = GeoRunResultAnalysis(
@@ -311,6 +319,7 @@ async def test_in_memory_overview_response_page_preserves_status_and_counts() ->
     assert first_page.items[0].mentioned is True
     assert first_page.items[0].reference_count == 1
     assert first_page.items[0].positive_count == 1
+    assert first_page.items[0].negative_count == 0
     assert second_page.items[0].run_result_id == not_mentioned_id
     assert [item.run_result_id for item in mentioned_page.items] == [mentioned_id]
     assert [item.run_result_id for item in not_mentioned_page.items] == [

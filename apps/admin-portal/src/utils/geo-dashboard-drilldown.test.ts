@@ -8,6 +8,7 @@ import type {
 import {
   buildEvidenceHighlights,
   buildRunResultRows,
+  filterOwnBrandSentiments,
   filterRunResultRows,
   highlightEvidenceInHtml,
   paginateItems,
@@ -116,6 +117,59 @@ describe("geo dashboard drilldown helpers", () => {
     expect(html).toContain("<mark");
   });
 
+  it("highlights evidence that contains inline markdown formatting", () => {
+    const rawResponse =
+      "若貴司重視供應鏈透明度，**善存**是目前風險係數最低的採購對象；";
+    const evidenceText =
+      "若貴司重視供應鏈透明度，**善存**是目前風險係數最低的採購對象；";
+
+    const html = highlightEvidenceInHtml(
+      renderSafeMarkdown(rawResponse),
+      buildEvidenceHighlights(rawResponse, [
+        _sentiment({ evidenceText, sentiment: "positive" }),
+      ]),
+    );
+
+    expect(html).toContain("sentiment-highlight-positive");
+    expect(html).toContain(
+      '<strong><mark class="sentiment-highlight sentiment-highlight-positive">善存</mark></strong>',
+    );
+  });
+
+  it("highlights evidence that is a markdown list item", () => {
+    const rawResponse = "建議如下：\n\n* **Acme ERP** 適合製造業。";
+    const evidenceText = "* **Acme ERP** 適合製造業。";
+
+    const html = highlightEvidenceInHtml(
+      renderSafeMarkdown(rawResponse),
+      buildEvidenceHighlights(rawResponse, [
+        _sentiment({ evidenceText, sentiment: "positive" }),
+      ]),
+    );
+
+    expect(html).toContain("sentiment-highlight-positive");
+    expect(html).toContain(
+      '<strong><mark class="sentiment-highlight sentiment-highlight-positive">Acme ERP</mark></strong>',
+    );
+  });
+
+  it.each([
+    ["blockquote", "前言\n\n> Acme ERP 適合製造業。", "> Acme ERP 適合製造業。"],
+    ["heading", "## Acme ERP 適合製造業。", "## Acme ERP 適合製造業。"],
+  ])(
+    "highlights evidence that is a markdown %s",
+    (_, rawResponse, evidenceText) => {
+      const html = highlightEvidenceInHtml(
+        renderSafeMarkdown(rawResponse),
+        buildEvidenceHighlights(rawResponse, [
+          _sentiment({ evidenceText, sentiment: "positive" }),
+        ]),
+      );
+
+      expect(html).toContain("sentiment-highlight-positive");
+    },
+  );
+
   it("does not highlight evidence inside html attributes", () => {
     const html = highlightEvidenceInHtml(
       '<p><a href="https://example.com/Acme">Acme</a></p>',
@@ -130,6 +184,82 @@ describe("geo dashboard drilldown helpers", () => {
 
     expect(html).toContain('href="https://example.com/Acme"');
     expect(html).toContain(">Acme</mark></a>");
+  });
+
+  it("uses the longest evidence once when highlights overlap", () => {
+    const html = highlightEvidenceInHtml("<p>Acme is recommended.</p>", [
+      {
+        text: "Acme",
+        sentiment: "negative",
+        found: true,
+      },
+      {
+        text: "Acme is recommended.",
+        sentiment: "positive",
+        found: true,
+      },
+    ]);
+
+    expect(html).toBe(
+      '<p><mark class="sentiment-highlight sentiment-highlight-positive">Acme is recommended.</mark></p>',
+    );
+  });
+
+  it("does not nest marks when overlapping evidence both contain markdown", () => {
+    const rawResponse = "Acme is **recommended**.";
+    const html = highlightEvidenceInHtml(renderSafeMarkdown(rawResponse), [
+      {
+        text: "Acme is **recommended**.",
+        sentiment: "positive",
+        found: true,
+      },
+      {
+        text: "**recommended**",
+        sentiment: "negative",
+        found: true,
+      },
+    ]);
+
+    expect(html).toContain("sentiment-highlight-positive");
+    expect(html).not.toContain("sentiment-highlight-negative");
+    expect(html).not.toMatch(/<mark[^>]*>\s*<mark/);
+  });
+
+  it("uses negative sentiment when duplicate evidence conflicts", () => {
+    const html = highlightEvidenceInHtml("<p>Acme</p>", [
+      { text: "Acme", sentiment: "positive", found: true },
+      { text: "Acme", sentiment: "negative", found: true },
+    ]);
+
+    expect(html).toContain("sentiment-highlight-negative");
+    expect(html.match(/<mark/g)).toHaveLength(1);
+  });
+
+  it("ignores blank and missing evidence without changing markdown", () => {
+    const rawResponse = "Acme is recommended.";
+    const highlights = buildEvidenceHighlights(rawResponse, [
+      _sentiment({ evidenceText: "  " }),
+      _sentiment({ evidenceText: null }),
+      _sentiment({ evidenceText: "Missing sentence" }),
+    ]);
+
+    expect(highlights).toEqual([
+      { text: "Missing sentence", sentiment: "positive", found: false },
+    ]);
+    expect(highlightEvidenceInHtml(renderSafeMarkdown(rawResponse), highlights)).toBe(
+      renderSafeMarkdown(rawResponse),
+    );
+  });
+
+  it("keeps only own-brand sentiment facts for Overview annotations", () => {
+    const ownBrand = _sentiment({ entityId: "own-brand" });
+    const competitor = _sentiment({
+      entityId: "competitor",
+      entityRole: "competitor",
+      entityName: "Competitor",
+    });
+
+    expect(filterOwnBrandSentiments([competitor, ownBrand])).toEqual([ownBrand]);
   });
 });
 

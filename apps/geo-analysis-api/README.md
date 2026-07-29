@@ -328,7 +328,7 @@ Authorization: Bearer <access-token>
 - Overview report 的 `isPreparing` 會檢查該 Project 在台北當日是否仍有 `pending`、`publishing`、`published`、`running_external` 或 `delayed` 的 daily-slot owner Job；`succeeded`、`failed`、`cancelled` 不計入。
 - `mentionStatus` 支援 `all`、`mentioned`、`not_mentioned`。Semantic analysis 尚未完成或失敗時 `mentioned=null`，只會出現在 `all`。
 - Report read model 會在 persistence adapter 套用 tenant、期間、Topic、Provider、地區與 metadata 條件，再把 normalized facts 交給既有純 calculator。
-- Response read model 會先完成相同篩選與品牌提及狀態判斷，再於資料庫計算 total、排序及 offset pagination；只載入當頁的 reference 與 sentiment 計數。
+- Response read model 會先完成相同篩選與品牌提及狀態判斷，再於資料庫計算 total、排序及 offset pagination；只載入當頁的 reference 與 `own_brand` positive／negative sentiment 計數。
 - Entity SOV 為該 entity mentions 除以全部自有品牌與競品 mentions。
 - 引用回答比例為至少有一筆 citation 的 completed 回答數除以 completed 回答總數。
 - 產業均值、citation content tag、citation page 品牌與競品提及目前沒有資料來源，response 會使用 `null`，前端顯示「尚無資料」或「未分析」。
