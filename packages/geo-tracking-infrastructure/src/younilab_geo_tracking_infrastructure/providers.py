@@ -1180,7 +1180,10 @@ async def _generate_with_reference_retry(
     *,
     has_remaining_calls: Callable[[], bool] | None = None,
 ) -> tuple[Any, list[Reference]]:
-    response = await generate(query_text, "initial")
+    response = await generate(
+        _initial_grounding_prompt(query_text, language),
+        "initial",
+    )
     references = _grounding_references(response)
     if references:
         return response, references
@@ -1195,6 +1198,37 @@ async def _generate_with_reference_retry(
     if retry_references:
         return retry_response, retry_references
     return response, references
+
+
+def _initial_grounding_prompt(query_text: str, language: str) -> str:
+    if language == "zh-TW":
+        return (
+            "回答前的第一個動作必須是使用 Google Search tool 搜尋網頁。"
+            "請先搜尋原始 query；必要時可使用 query 中的品牌名、產品名、"
+            "供應商名、規範名稱、常見別名或地點作為補充搜尋關鍵字。"
+            "回答中的主要事實必須以本次搜尋取得、目前可查證的網頁內容為依據。"
+            "請讓主要事實能明確對應到實際使用的來源網站或頁面。"
+            "比較多個品牌或供應商時，不要只根據其中一方的資料推論其他對象。"
+            "如果搜尋結果不足，請縮小結論並說明資料限制，"
+            "不要使用模型既有知識補寫無法查證的內容。"
+            "即使 query 模糊，也必須先搜尋，再說明採用的假設與仍需釐清的事項。"
+            "\n\n"
+            f"Query: {query_text}"
+        )
+    return (
+        "Your first action before answering must be to use the Google Search tool. "
+        "Search the original query first. When necessary, use brand names, product "
+        "names, supplier names, regulation names, common aliases, or location context "
+        "from the query as additional search terms. Ground the main factual claims in "
+        "currently verifiable web pages retrieved during this request. Make the main "
+        "claims clearly attributable to the source websites or pages actually used. "
+        "When comparing multiple brands or suppliers, do not infer facts about one "
+        "party solely from sources about another. If the search results are "
+        "insufficient, narrow the conclusion and state the limitation instead of "
+        "filling gaps with prior model knowledge. Even when the query is ambiguous, "
+        "search first, then state the assumptions and remaining uncertainties.\n\n"
+        f"Query: {query_text}"
+    )
 
 
 def _reference_retry_prompt(query_text: str, language: str) -> str:

@@ -704,7 +704,12 @@ async def test_reference_retry_runs_when_first_response_has_no_references() -> N
     assert [reference.url for reference in references] == [
         "https://example.com/reference"
     ]
-    assert calls[0] == "ambiguous supplier query"
+    assert (
+        "first action before answering must be to use the Google Search tool"
+        in calls[0]
+    )
+    assert "Search the original query first" in calls[0]
+    assert "ambiguous supplier query" in calls[0]
     assert "previous response produced no grounding references" in calls[1]
     assert "ambiguous supplier query" in calls[1]
 
@@ -727,7 +732,29 @@ async def test_reference_retry_keeps_first_response_when_references_exist() -> N
     assert [reference.url for reference in references] == [
         "https://example.com/reference"
     ]
-    assert calls == ["clear supplier query"]
+    assert len(calls) == 1
+    assert "Search the original query first" in calls[0]
+    assert "clear supplier query" in calls[0]
+
+
+@pytest.mark.anyio
+async def test_initial_grounding_prompt_uses_traditional_chinese() -> None:
+    calls: list[str] = []
+
+    async def generate(contents: str, request_kind: str) -> FakeResponse:
+        calls.append(contents)
+        return FakeResponse("有來源的回答", "https://example.com/reference")
+
+    await _generate_with_reference_retry(
+        generate,
+        "山華塑膠 氣動管",
+        "zh-TW",
+    )
+
+    assert len(calls) == 1
+    assert "回答前的第一個動作必須是使用 Google Search tool" in calls[0]
+    assert "請先搜尋原始 query" in calls[0]
+    assert "山華塑膠 氣動管" in calls[0]
 
 
 @pytest.mark.anyio
