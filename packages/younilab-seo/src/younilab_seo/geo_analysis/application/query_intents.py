@@ -1,19 +1,30 @@
 from collections.abc import Iterable
+from typing import Protocol
 
-from younilab_seo.geo_analysis.application.contracts import QueryIntent
+
+class QueryIntentLike(Protocol):
+    category: str
 
 
 STANDARD_QUERY_INTENT_ALIASES = {
+    "導航": "navigational",
     "導航型": "navigational",
     "navigational": "navigational",
+    "資訊": "informational",
     "資訊型": "informational",
     "informational": "informational",
+    "商業": "commercial_investigation",
     "商業評估": "commercial_investigation",
     "commercial": "commercial_investigation",
     "commercial_investigation": "commercial_investigation",
+    "交易": "transactional",
     "交易型": "transactional",
     "transactional": "transactional",
 }
+
+STANDARD_QUERY_INTENT_CATEGORIES = frozenset(
+    STANDARD_QUERY_INTENT_ALIASES.values()
+)
 
 
 def normalize_standard_query_intent(value: object) -> str | None:
@@ -24,7 +35,7 @@ def normalize_standard_query_intent(value: object) -> str | None:
 
 def resolve_generated_query_intent(
     value: object,
-    requested_intents: Iterable[QueryIntent],
+    requested_intents: Iterable[QueryIntentLike],
 ) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None

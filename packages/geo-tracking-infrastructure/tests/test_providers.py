@@ -33,6 +33,7 @@ from younilab_geo_tracking_infrastructure.providers import (
     _generate_with_reference_retry,
     _matching_intent,
     _query_generation_prompt,
+    _query_research_prompt,
     _reference_retry_prompt,
 )
 from younilab_provider_request_audit import (
@@ -98,6 +99,105 @@ def test_query_generation_preserves_unmatched_model_intent_for_later_classificat
 
     assert intent.category == "unexpected"
     assert intent.description == "Unexpected category"
+
+
+def test_query_research_prompt_does_not_include_generation_intents() -> None:
+    prompt = _query_research_prompt(
+        QueryResearchCommand(
+            provider="gemini",
+            brandName="Acme",
+            keywords=["erp"],
+            region="TW",
+            language="en-US",
+            marketType="b2b_procurement",
+        ),
+        "en-US",
+    )
+
+    assert "Intents:" not in prompt
+
+
+@pytest.mark.anyio
+async def test_query_generation_retries_once_to_cover_missing_selected_intent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+    responses = iter(
+        [
+            {
+                "items": [
+                    _query_draft_payload("informational", "Learn", "What is ERP?"),
+                    _query_draft_payload("informational", "Learn", "How does ERP work?"),
+                ]
+            },
+            {
+                "items": [
+                    _query_draft_payload(
+                        "transactional",
+                        "Act",
+                        "Where can I buy ERP software?",
+                    )
+                ]
+            },
+        ]
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return type(
+                "Response",
+                (),
+                {
+                    "parsed": None,
+                    "text": json.dumps(next(responses)),
+                    "candidates": [],
+                },
+            )()
+
+    class FakeClient:
+        def __init__(self, **_: Any) -> None:
+            self.models = FakeModels()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+    command = _query_generation_command().model_copy(update={"max_queries": 2})
+    provider = GeminiQueryGenerationProvider(
+        GeoTrackingSettings(vertex_project="test-project"),
+        _recorder(),
+    )
+
+    drafts = await provider.generate_drafts(command)
+
+    assert len(calls) == 2
+    assert [draft.attributes.intent.category for draft in drafts] == [
+        "informational",
+        "transactional",
+    ]
+    retry_payload = json.loads(calls[1]["contents"])
+    assert [intent["category"] for intent in retry_payload["intents"]] == [
+        "transactional"
+    ]
+
+
+def _query_draft_payload(category: str, description: str, query: str) -> dict[str, Any]:
+    return {
+        "attributes": {
+            "intent": {"category": category, "description": description},
+            "keyword": "erp",
+            "topicName": "ERP",
+            "topicDescription": "ERP selection",
+            "audience": {"name": "Buyer", "description": "Software buyer"},
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        },
+        "query": query,
+        "keywords": ["erp"],
+    }
 
 
 @pytest.mark.anyio
@@ -179,12 +279,6 @@ async def test_query_planning_records_each_gemini_request_and_disables_sdk_retry
         "region": "TW",
         "language": "en-US",
         "marketType": "b2b_procurement",
-        "intents": [
-            {
-                "category": "informational",
-                "description": "Understand options",
-            }
-        ],
         "audience": {"name": "Buyer", "description": "Software buyer"},
         "brandMentionRules": {
             "shouldMentionOwnBrand": False,
@@ -196,6 +290,12 @@ async def test_query_planning_records_each_gemini_request_and_disables_sdk_retry
         QueryGenerationCommand.model_validate(
             {
                 **shared,
+                "intents": [
+                    {
+                        "category": "informational",
+                        "description": "Understand options",
+                    }
+                ],
                 "topics": [{"name": "ERP", "description": "ERP selection"}],
                 "topicNames": ["ERP"],
                 "maxQueries": 1,

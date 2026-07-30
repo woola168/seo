@@ -13,7 +13,6 @@ from younilab_seo.geo_analysis.application import (
     GeoSentimentFact,
     GeoProjectQuerySettingsCommand,
     GeoProjectStatusCommand,
-    QueryIntent,
     QueryResearchCommand,
 )
 
@@ -36,12 +35,19 @@ def test_project_query_settings_normalizes_keywords() -> None:
         marketType="b2b_procurement",
         maxQueries=20,
         audience={"name": "採購主管", "description": "負責供應商評估"},
-        intent={"category": "commercial", "description": "比較供應商"},
+        intents=[
+            {"category": "資訊型", "description": "了解產品"},
+            {"category": "transactional", "description": "採取購買行動"},
+        ],
         shouldMentionOwnBrand=True,
         shouldMentionCompetitor=False,
     )
 
     assert command.keywords == ["ERP", "採購"]
+    assert [intent.category for intent in command.intents] == [
+        "informational",
+        "transactional",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -61,7 +67,7 @@ def test_project_query_settings_rejects_invalid_values(field: str, value: object
         "marketType": "b2c",
         "maxQueries": 10,
         "audience": {"name": "消費者", "description": "一般消費者"},
-        "intent": {"category": "informational", "description": "了解產品"},
+        "intents": [{"category": "informational", "description": "了解產品"}],
         "shouldMentionOwnBrand": True,
         "shouldMentionCompetitor": False,
     }
@@ -69,6 +75,34 @@ def test_project_query_settings_rejects_invalid_values(field: str, value: object
 
     with pytest.raises(ValidationError):
         GeoProjectQuerySettingsCommand(**payload)
+
+
+@pytest.mark.parametrize(
+    "intents",
+    [
+        [],
+        [
+            {"category": "informational", "description": "了解產品"},
+            {"category": "資訊型", "description": "重複的資訊意圖"},
+        ],
+        [{"category": "unknown", "description": "未支援的意圖"}],
+    ],
+)
+def test_project_query_settings_rejects_invalid_intent_selection(
+    intents: list[dict[str, str]],
+) -> None:
+    with pytest.raises(ValidationError):
+        GeoProjectQuerySettingsCommand(
+            researchProvider="gemini",
+            runProvider="gemini",
+            keywords=[],
+            marketType="b2c",
+            maxQueries=10,
+            audience={"name": "消費者", "description": "一般消費者"},
+            intents=intents,
+            shouldMentionOwnBrand=True,
+            shouldMentionCompetitor=False,
+        )
 
 
 def test_query_research_command_accepts_tracking_aligned_payload() -> None:
@@ -80,12 +114,22 @@ def test_query_research_command_accepts_tracking_aligned_payload() -> None:
         region="TW",
         language="zh-TW",
         marketType="b2b_procurement",
-        intents=[QueryIntent(category="commercial", description="比較供應商")],
     )
 
     assert command.keywords == ["erp"]
     assert command.competitor_brands == ["Beta"]
-    assert command.intents[0].category == "commercial"
+
+
+def test_query_research_command_rejects_generation_intents() -> None:
+    with pytest.raises(ValidationError):
+        QueryResearchCommand(
+            provider="gemini",
+            brandName="Acme",
+            keywords=["erp"],
+            region="TW",
+            marketType="b2b_procurement",
+            intents=[{"category": "commercial", "description": "比較供應商"}],
+        )
 
 
 @pytest.mark.parametrize(
@@ -94,13 +138,6 @@ def test_query_research_command_accepts_tracking_aligned_payload() -> None:
         ("keywords", []),
         ("keywords", [f"keyword-{index}" for index in range(11)]),
         ("competitorBrands", [f"Competitor {index}" for index in range(9)]),
-        (
-            "intents",
-            [
-                {"category": f"intent-{index}", "description": "比較供應商"}
-                for index in range(9)
-            ],
-        ),
     ],
 )
 def test_query_research_command_rejects_tracking_incompatible_payload(
@@ -115,7 +152,6 @@ def test_query_research_command_rejects_tracking_incompatible_payload(
         "region": "TW",
         "language": "zh-TW",
         "marketType": "b2b_procurement",
-        "intents": [{"category": "commercial", "description": "比較供應商"}],
     }
     payload[field] = value
 

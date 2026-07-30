@@ -854,12 +854,41 @@ class GeminiQueryGenerationProvider:
                 classify_failure=_classify_gemini_failure,
                 read_usage=gemini_request_usage,
             )
+            drafts = _query_drafts_from_gemini(
+                command,
+                _gemini_query_draft_list(response),
+            )
+            missing_intents = _missing_query_intents(command, drafts)
+            if missing_intents:
+                repair_command = command.model_copy(
+                    update={
+                        "intents": missing_intents,
+                        "max_queries": len(missing_intents),
+                    }
+                )
+                repair_response = await operation.execute(
+                    lambda: asyncio.to_thread(
+                        client.models.generate_content,
+                        model=self._settings.gemini_model,
+                        contents=_query_generation_prompt(repair_command, language),
+                        config=config,
+                    ),
+                    request_kind="intent_coverage",
+                    classify_failure=_classify_gemini_failure,
+                    read_usage=gemini_request_usage,
+                )
+                repair_drafts = _query_drafts_from_gemini(
+                    repair_command,
+                    _gemini_query_draft_list(repair_response),
+                )
+                drafts = _merge_intent_coverage_drafts(
+                    command,
+                    drafts,
+                    repair_drafts,
+                )
         finally:
             client.close()
-        parsed = response.parsed
-        if not isinstance(parsed, _GeminiQueryDraftList):
-            parsed = _GeminiQueryDraftList.model_validate_json(response.text or "{}")
-        return _query_drafts_from_gemini(command, parsed)
+        return drafts
 
 
 class GeminiQueryResearchProvider:
@@ -1069,6 +1098,55 @@ def _query_drafts_from_gemini(
     return drafts
 
 
+def _gemini_query_draft_list(response: Any) -> _GeminiQueryDraftList:
+    parsed = response.parsed
+    if isinstance(parsed, _GeminiQueryDraftList):
+        return parsed
+    return _GeminiQueryDraftList.model_validate_json(response.text or "{}")
+
+
+def _missing_query_intents(
+    command: QueryGenerationCommand,
+    drafts: list[QueryDraft],
+) -> list[QueryIntent]:
+    if command.max_queries < len(command.intents):
+        return []
+    generated_categories = {draft.attributes.intent.category for draft in drafts}
+    missing: list[QueryIntent] = []
+    for intent in command.intents:
+        if (
+            intent.category not in generated_categories
+            and all(item.category != intent.category for item in missing)
+        ):
+            missing.append(intent)
+    return missing
+
+
+def _merge_intent_coverage_drafts(
+    command: QueryGenerationCommand,
+    initial_drafts: list[QueryDraft],
+    repair_drafts: list[QueryDraft],
+) -> list[QueryDraft]:
+    selected_categories = list(
+        dict.fromkeys(intent.category for intent in command.intents)
+    )
+    drafts_by_category: dict[str, QueryDraft] = {}
+    for draft in [*initial_drafts, *repair_drafts]:
+        category = draft.attributes.intent.category
+        if category in selected_categories and category not in drafts_by_category:
+            drafts_by_category[category] = draft
+    missing = [
+        category for category in selected_categories if category not in drafts_by_category
+    ]
+    if missing:
+        raise ProviderRequestError("query_intent_coverage_failed")
+
+    required = [drafts_by_category[category] for category in selected_categories]
+    required_ids = {id(draft) for draft in required}
+    extras = [draft for draft in initial_drafts if id(draft) not in required_ids]
+    return [*required, *extras][: command.max_queries]
+
+
 def _command_topics(command: QueryGenerationCommand) -> list[Any]:
     if command.topics:
         return command.topics
@@ -1162,7 +1240,6 @@ def _query_research_prompt(
 ) -> str:
     competitors = ", ".join(command.competitor_brands) or "none"
     audience = command.audience.description if command.audience else "not specified"
-    intents = _query_research_intents(command)
     brand_rules = command.brand_mention_rules
     return (
         "Research current market language and search phrasing.\n"
@@ -1173,22 +1250,12 @@ def _query_research_prompt(
         f"Language: {language}\n"
         f"Market type: {command.market_type}\n"
         f"Audience: {audience}\n"
-        f"Intents: {intents}\n"
         "Brand mention rules: "
         f"ownBrand={brand_rules.should_mention_own_brand}, "
         f"competitor={brand_rules.should_mention_competitor}\n"
         "Return concise researchContext, searchedKeywords actually used or useful for "
         "this research, and sourceUrls from references when available."
     )
-
-
-def _query_research_intents(command: QueryResearchCommand) -> str:
-    if not command.intents:
-        return "not specified"
-    return "; ".join(
-        f"{intent.category}: {intent.description}" for intent in command.intents
-    )
-
 
 async def _generate_with_reference_retry(
     generate: Callable[[str, str], Awaitable[Any]],

@@ -82,12 +82,10 @@ class GeoProjectQuerySettingsRow(SQLModel, table=True):
             name="ck_geo_project_query_settings_audience_description",
         ),
         CheckConstraint(
-            "btrim(intent_category) <> ''",
-            name="ck_geo_project_query_settings_intent_category",
-        ),
-        CheckConstraint(
-            "btrim(intent_description) <> '' AND length(intent_description) <= 2000",
-            name="ck_geo_project_query_settings_intent_description",
+            "jsonb_typeof(intents) = 'array' "
+            "AND jsonb_array_length(intents) BETWEEN 1 AND 4 "
+            "AND max_queries >= jsonb_array_length(intents)",
+            name="ck_geo_project_query_settings_intents",
         ),
     )
 
@@ -104,8 +102,7 @@ class GeoProjectQuerySettingsRow(SQLModel, table=True):
     max_queries: int = Field(sa_column=Column(Integer, nullable=False))
     audience_name: str = Field(sa_column=Column(String(200), nullable=False))
     audience_description: str = Field(sa_column=Column(Text, nullable=False))
-    intent_category: str = Field(sa_column=Column(String(100), nullable=False))
-    intent_description: str = Field(sa_column=Column(Text, nullable=False))
+    intents: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
     should_mention_own_brand: bool = Field(sa_column=Column(Boolean, nullable=False))
     should_mention_competitor: bool = Field(sa_column=Column(Boolean, nullable=False))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))

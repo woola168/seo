@@ -2799,8 +2799,10 @@ def _project_query_settings_values(
         "max_queries": command.max_queries,
         "audience_name": command.audience.name,
         "audience_description": command.audience.description,
-        "intent_category": command.intent.category,
-        "intent_description": command.intent.description,
+        "intents": [
+            intent.model_dump(mode="json", by_alias=True)
+            for intent in command.intents
+        ],
         "should_mention_own_brand": command.should_mention_own_brand,
         "should_mention_competitor": command.should_mention_competitor,
     }
@@ -2851,10 +2853,10 @@ def _project_query_settings_record(
             name=row.audience_name,
             description=row.audience_description,
         ),
-        intent=GeoProjectQuerySettingsIntent(
-            category=row.intent_category,
-            description=row.intent_description,
-        ),
+        intents=[
+            GeoProjectQuerySettingsIntent.model_validate(intent)
+            for intent in row.intents
+        ],
         should_mention_own_brand=row.should_mention_own_brand,
         should_mention_competitor=row.should_mention_competitor,
         created_at=row.created_at,

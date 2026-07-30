@@ -1142,14 +1142,29 @@ class GeoProjectQuerySettingsAudience(ContractModel):
 
 
 class GeoProjectQuerySettingsIntent(ContractModel):
-    """Project Query 預設設定中的主要搜尋意圖。"""
+    """Project Query 預設設定中的搜尋意圖生成角度。"""
 
     category: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1, max_length=2000)
 
-    @field_validator("category", "description")
+    @field_validator("category")
     @classmethod
-    def normalize_text(cls, value: str) -> str:
+    def normalize_category(cls, value: str) -> str:
+        from younilab_seo.geo_analysis.application.query_intents import (
+            normalize_standard_query_intent,
+        )
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        category = normalize_standard_query_intent(normalized)
+        if category is None:
+            raise ValueError("unsupported query intent category")
+        return category
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("value must not be empty")
@@ -1165,7 +1180,7 @@ class GeoProjectQuerySettingsCommand(ContractModel):
     market_type: Literal["b2c", "b2b_procurement"]
     max_queries: int = Field(ge=1, le=40)
     audience: GeoProjectQuerySettingsAudience
-    intent: GeoProjectQuerySettingsIntent
+    intents: list[GeoProjectQuerySettingsIntent] = Field(min_length=1, max_length=4)
     should_mention_own_brand: bool
     should_mention_competitor: bool
 
@@ -1191,6 +1206,15 @@ class GeoProjectQuerySettingsCommand(ContractModel):
                 normalized.append(keyword)
         return normalized
 
+    @model_validator(mode="after")
+    def validate_intent_selection(self):
+        categories = [intent.category for intent in self.intents]
+        if len(categories) != len(set(categories)):
+            raise ValueError("intent categories must be unique")
+        if self.max_queries < len(categories):
+            raise ValueError("max_queries must cover every selected intent")
+        return self
+
 
 class GeoProjectQuerySettingsRecord(GeoProjectQuerySettingsCommand):
     """已保存的 Project Query 預設設定。"""
@@ -1206,6 +1230,8 @@ class BrandMentionRules(ContractModel):
 
 
 class QueryResearchCommand(ContractModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: str = "dummy"
     brand_name: str
     competitor_brands: list[str] = Field(default_factory=list, max_length=8)
@@ -1213,7 +1239,6 @@ class QueryResearchCommand(ContractModel):
     region: str
     language: str | None = None
     market_type: str = "b2b_procurement"
-    intents: list[QueryIntent] = Field(default_factory=list, max_length=8)
     audience: QueryAudience | None = None
     brand_mention_rules: BrandMentionRules = Field(default_factory=BrandMentionRules)
 

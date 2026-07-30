@@ -1175,6 +1175,65 @@
   margin: 0;
 }
 
+.geo-intent-selector {
+  display: grid;
+  gap: 10px;
+}
+
+.geo-intent-selector.invalid {
+  padding: 10px;
+  border: 1px solid var(--error-text);
+  border-radius: 6px;
+  background: rgba(207, 19, 34, 0.03);
+}
+
+.geo-intent-option {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.geo-intent-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.geo-intent-choice input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.geo-intent-option > input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.geo-intent-option > input:disabled {
+  background: var(--surface-secondary);
+  color: var(--text-muted);
+}
+
+.geo-intent-selector .form-error {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .geo-intent-option {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
 .geo-drawer-actions {
   display: flex;
   justify-content: flex-end;

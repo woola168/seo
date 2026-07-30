@@ -410,12 +410,6 @@ async function runResearch(): Promise<void> {
       region: queryForm.region,
       language: valueOrNull(queryForm.language),
       marketType: queryForm.marketType,
-      intents: [
-        {
-          category: queryForm.intentCategory.trim(),
-          description: queryForm.intentDescription.trim(),
-        },
-      ],
       audience: {
         name: queryForm.audienceName.trim(),
         description: queryForm.audienceDescription.trim(),

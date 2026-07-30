@@ -73,7 +73,7 @@ flowchart LR
 
 - Project 已支援 tenant、customer reference、region、language、website、status 與 budget 等基本資料。
 - Market、own brand、competitor、entity aliases、Topic 與 Query 都有正式 CRUD／persistence。
-- Project Query Settings 已保存 research provider、run provider、keywords、market type、audience、intent、最大 Query 數與 brand mention rules。
+- 每個 Project 只有一筆 Project Query Settings；其中的 `intents[]` 可保存 1–4 個 intent，不會為每個 intent 建立獨立設定。設定另保存 research provider、run provider、keywords、market type、audience、最大 Query 數與 brand mention rules。正式 UI 顯示導航／資訊／商業／交易中文標籤，API 保存穩定代碼；Intent 只作為 Query Generation 的生成角度，不傳入 Query Research。
 - Query Research 與 Query Generation run 會保存 request、result、錯誤與 timestamps。
 - Generated Query 先保存為 draft，可 shortlisted／rejected，接受後才建立正式 Query。
 

@@ -207,6 +207,11 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/0
 psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/014_geo_analysis_gemini_model_alignment.sql
 ```
 
+Project Query Settings 支援多選 Intent 前，需停止舊版 GEO API writers，接著手動執行
+`deploy/local/postgresql/025_geo_project_query_settings_intents.sql`，再部署新版 API 與
+Admin Portal。這份 migration 會將既有單一 Intent 正規化並回填為 `intents[]`；若資料中
+包含四個正式分類以外的值，migration 會中止，需先人工修正該筆設定。
+
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
 
 `009_geo_analysis_tenant_patch.sql` 會替 `geo_project` 新增 `tenant_id`，既有資料回填 default tenant，並建立 tenant 查詢 index。建議先完成 Access Control tenant patch、Resource Catalog tenant patch，再執行 GEO Analysis tenant patch。

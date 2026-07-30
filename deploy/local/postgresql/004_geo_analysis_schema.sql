@@ -32,8 +32,7 @@ CREATE TABLE IF NOT EXISTS geo_project_query_settings (
     max_queries integer NOT NULL,
     audience_name varchar(200) NOT NULL,
     audience_description text NOT NULL,
-    intent_category varchar(100) NOT NULL,
-    intent_description text NOT NULL,
+    intents jsonb NOT NULL,
     should_mention_own_brand boolean NOT NULL,
     should_mention_competitor boolean NOT NULL,
     created_at timestamptz NOT NULL,
@@ -52,10 +51,10 @@ CREATE TABLE IF NOT EXISTS geo_project_query_settings (
         CHECK (btrim(audience_name) <> ''),
     CONSTRAINT ck_geo_project_query_settings_audience_description
         CHECK (btrim(audience_description) <> '' AND length(audience_description) <= 2000),
-    CONSTRAINT ck_geo_project_query_settings_intent_category
-        CHECK (btrim(intent_category) <> ''),
-    CONSTRAINT ck_geo_project_query_settings_intent_description
-        CHECK (btrim(intent_description) <> '' AND length(intent_description) <= 2000)
+    CONSTRAINT ck_geo_project_query_settings_intents
+        CHECK (jsonb_typeof(intents) = 'array'
+            AND jsonb_array_length(intents) BETWEEN 1 AND 4
+            AND max_queries >= jsonb_array_length(intents))
 );
 
 CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping (

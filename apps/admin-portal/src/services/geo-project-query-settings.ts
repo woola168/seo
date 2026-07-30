@@ -8,6 +8,36 @@ import { ApiError, api } from "./api";
 export const MAX_GEO_TOPICS = 8;
 export const MAX_GEO_KEYWORDS = 10;
 
+export const GEO_QUERY_INTENT_OPTIONS = [
+  {
+    category: "navigational",
+    label: "導航",
+    defaultDescription: "尋找特定品牌的官網、地址或官方頁面",
+  },
+  {
+    category: "informational",
+    label: "資訊",
+    defaultDescription: "查詢知識、定義、教學或特定問題的解答",
+  },
+  {
+    category: "commercial_investigation",
+    label: "商業",
+    defaultDescription: "比較供應商、產品方案、評價或購買條件",
+  },
+  {
+    category: "transactional",
+    label: "交易",
+    defaultDescription: "尋找購買、預約、詢價或其他可採取行動的方式",
+  },
+] as const;
+
+export interface GeoProjectQueryIntentForm {
+  category: string;
+  label: string;
+  description: string;
+  selected: boolean;
+}
+
 export interface GeoProjectQuerySettingsForm {
   researchProvider: "gemini";
   runProvider: "gemini";
@@ -16,8 +46,7 @@ export interface GeoProjectQuerySettingsForm {
   maxQueries: number;
   audienceName: string;
   audienceDescription: string;
-  intentCategory: string;
-  intentDescription: string;
+  intents: GeoProjectQueryIntentForm[];
   shouldMentionOwnBrand: boolean;
   shouldMentionCompetitor: boolean;
 }
@@ -36,8 +65,7 @@ export function createDefaultQuerySettingsForm(): GeoProjectQuerySettingsForm {
     maxQueries: 8,
     audienceName: "B2B 採購",
     audienceDescription: "正在評估供應商、產品規格與導入風險的採購或決策者",
-    intentCategory: "商業評估",
-    intentDescription: "比較供應商、產品方案或導入條件",
+    intents: createIntentForm(),
     shouldMentionOwnBrand: true,
     shouldMentionCompetitor: true,
   };
@@ -75,8 +103,7 @@ export function querySettingsResourceToForm(
     maxQueries: settings.maxQueries,
     audienceName: settings.audience.name,
     audienceDescription: settings.audience.description,
-    intentCategory: settings.intent.category,
-    intentDescription: settings.intent.description,
+    intents: createIntentForm(settings.intents),
     shouldMentionOwnBrand: settings.shouldMentionOwnBrand,
     shouldMentionCompetitor: settings.shouldMentionCompetitor,
   };
@@ -95,10 +122,7 @@ export function querySettingsFormToRequest(
       name: form.audienceName.trim(),
       description: form.audienceDescription.trim(),
     },
-    intent: {
-      category: form.intentCategory.trim(),
-      description: form.intentDescription.trim(),
-    },
+    intents: selectedQueryIntents(form),
     shouldMentionOwnBrand: form.shouldMentionOwnBrand,
     shouldMentionCompetitor: form.shouldMentionCompetitor,
   };
@@ -142,9 +166,68 @@ export function validateQuerySettingsForm(
     2000,
     "Audience Description",
   );
-  validateText(errors, "intentCategory", form.intentCategory, 100, "Intent 分類");
-  validateText(errors, "intentDescription", form.intentDescription, 2000, "Intent 描述");
+  const intents = selectedQueryIntents(form);
+  if (!intents.length) {
+    errors.intents = "請至少選擇一個 Intent";
+  } else if (intents.some((intent) => !intent.description)) {
+    errors.intents = "請填寫所有已選 Intent 的描述";
+  } else if (intents.some((intent) => intent.description.length > 2000)) {
+    errors.intents = "每個 Intent 描述最多 2000 字";
+  } else if (Number(form.maxQueries) < intents.length) {
+    errors.maxQueries = `Max Queries 不得少於已選 Intent 數量（${intents.length}）`;
+  }
   return errors;
+}
+
+export function selectedQueryIntents(
+  form: GeoProjectQuerySettingsForm,
+): GeoProjectQuerySettingsRequest["intents"] {
+  return form.intents
+    .filter((intent) => intent.selected)
+    .map((intent) => ({
+      category: intent.category,
+      description: intent.description.trim(),
+    }));
+}
+
+export function queryIntentLabel(category: string | null): string {
+  if (!category) return "未分類";
+  const normalized = normalizeIntentCategory(category);
+  return GEO_QUERY_INTENT_OPTIONS.find(
+    (option) => option.category === normalized,
+  )?.label ?? "未分類";
+}
+
+function createIntentForm(
+  savedIntents: GeoProjectQuerySettingsRequest["intents"] = [],
+): GeoProjectQueryIntentForm[] {
+  const savedByCategory = new Map(
+    savedIntents.map((intent) => [normalizeIntentCategory(intent.category), intent]),
+  );
+  return GEO_QUERY_INTENT_OPTIONS.map((option) => {
+    const saved = savedByCategory.get(option.category);
+    return {
+      category: option.category,
+      label: option.label,
+      description: saved?.description ?? option.defaultDescription,
+      selected: saved ? true : option.category === "commercial_investigation" && !savedIntents.length,
+    };
+  });
+}
+
+function normalizeIntentCategory(category: string): string {
+  const aliases: Record<string, string> = {
+    導航: "navigational",
+    導航型: "navigational",
+    資訊: "informational",
+    資訊型: "informational",
+    商業: "commercial_investigation",
+    商業評估: "commercial_investigation",
+    commercial: "commercial_investigation",
+    交易: "transactional",
+    交易型: "transactional",
+  };
+  return aliases[category.trim()] ?? category.trim();
 }
 
 export function validateQueryResearchForm(

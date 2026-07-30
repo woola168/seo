@@ -864,10 +864,7 @@ export interface GeoProjectQuerySettingsRequest {
     name: string;
     description: string;
   };
-  intent: {
-    category: string;
-    description: string;
-  };
+  intents: GeoQueryIntentRequest[];
   shouldMentionOwnBrand: boolean;
   shouldMentionCompetitor: boolean;
 }
@@ -997,7 +994,6 @@ export interface GeoQueryResearchRunRequest {
   region: GeoRegion;
   language: string | null;
   marketType: GeoMarketType;
-  intents: GeoQueryIntentRequest[];
   audience: GeoQueryAudienceRequest | null;
   brandMentionRules: GeoBrandMentionRulesRequest;
 }

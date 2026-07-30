@@ -36,7 +36,7 @@ describe("GEO Project Query Settings", () => {
   });
 
   it("maps a saved resource into the editable form", () => {
-    expect(settingsService.querySettingsResourceToForm({
+    const form = settingsService.querySettingsResourceToForm({
       projectId: "project-1",
       researchProvider: "gemini",
       runProvider: "gemini",
@@ -44,17 +44,46 @@ describe("GEO Project Query Settings", () => {
       marketType: "b2b_procurement",
       maxQueries: 20,
       audience: { name: "採購主管", description: "負責供應商評估" },
-      intent: { category: "商業評估", description: "比較供應商" },
+      intents: [
+        { category: "informational", description: "了解產品" },
+        { category: "transactional", description: "採取購買行動" },
+      ],
       shouldMentionOwnBrand: true,
       shouldMentionCompetitor: false,
       updatedAt: "2026-07-19T00:00:00Z",
-    })).toMatchObject({
+    });
+
+    expect(form).toMatchObject({
       keywords: "ERP\n採購",
       maxQueries: 20,
       audienceName: "採購主管",
-      intentCategory: "商業評估",
       shouldMentionCompetitor: false,
     });
+    expect(form.intents.filter((intent) => intent.selected)).toEqual([
+      expect.objectContaining({ category: "informational", selected: true }),
+      expect.objectContaining({ category: "transactional", selected: true }),
+    ]);
+  });
+
+  it("sends only selected intents with stable category codes", () => {
+    const form = settingsService.createDefaultQuerySettingsForm();
+    form.intents = form.intents.map((intent) => ({
+      ...intent,
+      selected: ["navigational", "transactional"].includes(intent.category),
+    }));
+
+    expect(settingsService.querySettingsFormToRequest(form).intents).toEqual([
+      expect.objectContaining({ category: "navigational" }),
+      expect.objectContaining({ category: "transactional" }),
+    ]);
+  });
+
+  it("maps saved intent codes and legacy labels to Chinese UI labels", () => {
+    expect(settingsService.queryIntentLabel("navigational")).toBe("導航");
+    expect(settingsService.queryIntentLabel("資訊型")).toBe("資訊");
+    expect(settingsService.queryIntentLabel("commercial_investigation")).toBe("商業");
+    expect(settingsService.queryIntentLabel("transactional")).toBe("交易");
+    expect(settingsService.queryIntentLabel(null)).toBe("未分類");
   });
 
   it("validates all API length and range boundaries before creating a Project", () => {
@@ -62,13 +91,15 @@ describe("GEO Project Query Settings", () => {
     form.keywords = Array.from({ length: 11 }, (_, index) => `keyword-${index}`).join("\n");
     form.maxQueries = 41;
     form.audienceName = "";
-    form.intentDescription = "x".repeat(2001);
+    form.intents = form.intents.map((intent) => intent.selected
+      ? { ...intent, description: "x".repeat(2001) }
+      : intent);
 
     expect(settingsService.validateQuerySettingsForm(form)).toEqual({
       keywords: "Keywords 最多 10 筆",
       maxQueries: "Max Queries 必須是 1–40 的整數",
       audienceName: "請輸入 Audience",
-      intentDescription: "Intent 描述 最多 2000 字",
+      intents: "每個 Intent 描述最多 2000 字",
     });
   });
 
@@ -77,15 +108,13 @@ describe("GEO Project Query Settings", () => {
     form.keywords = "";
     form.audienceName = "";
     form.audienceDescription = "";
-    form.intentCategory = "";
-    form.intentDescription = "";
+    form.intents = form.intents.map((intent) => ({ ...intent, selected: false }));
 
     expect(settingsService.validateQueryResearchForm(form, [{ name: "  " }])).toEqual({
       keywords: "請至少輸入一個 Keyword。",
       audienceName: "請輸入 Audience",
       audienceDescription: "請輸入 Audience Description",
-      intentCategory: "請輸入 Intent 分類",
-      intentDescription: "請輸入 Intent 描述",
+      intents: "請至少選擇一個 Intent",
       topics: "請至少輸入一個 Topic。",
     });
   });

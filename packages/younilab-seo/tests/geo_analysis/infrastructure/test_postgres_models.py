@@ -240,7 +240,13 @@ def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -
             marketType="b2b_procurement",
             maxQueries=20,
             audience={"name": "採購主管", "description": "負責供應商評估"},
-            intent={"category": "commercial", "description": "比較供應商"},
+            intents=[
+                {
+                    "category": "commercial_investigation",
+                    "description": "比較供應商",
+                },
+                {"category": "transactional", "description": "採取購買行動"},
+            ],
             shouldMentionOwnBrand=True,
             shouldMentionCompetitor=False,
         ),
@@ -251,6 +257,7 @@ def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -
 
     assert "ON CONFLICT (project_id) DO UPDATE" in sql
     assert "IS DISTINCT FROM excluded.research_provider" in sql
+    assert "IS DISTINCT FROM excluded.intents" in sql
     assert "IS DISTINCT FROM excluded.should_mention_competitor" in sql
 
 
@@ -278,6 +285,9 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     preparation_lookup_path = (
         postgres_dir / "024_geo_query_run_job_preparation_lookup.sql"
     )
+    query_settings_intents_path = (
+        postgres_dir / "025_geo_project_query_settings_intents.sql"
+    )
     schema = schema_path.read_text(encoding="utf-8")
     patch = patch_path.read_text(encoding="utf-8")
     analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
@@ -289,6 +299,7 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
     entity_detection = entity_detection_path.read_text(encoding="utf-8")
     preparation_lookup = preparation_lookup_path.read_text(encoding="utf-8")
+    query_settings_intents = query_settings_intents_path.read_text(encoding="utf-8")
     compose = compose_path.read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
@@ -318,12 +329,18 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert seo_task_contract.rstrip().endswith("COMMIT;")
     assert seo_task_contract.count("DROP COLUMN IF EXISTS seo_task_id") == 2
     assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in schema
+    assert "intents jsonb NOT NULL" in schema
+    assert "intent_category" not in schema
     assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in query_settings
     assert "project_id uuid PRIMARY KEY" in query_settings
     assert "ON DELETE CASCADE" in query_settings
     assert "jsonb_array_length(keywords) <= 10" in query_settings
     assert query_settings.startswith("BEGIN;")
     assert query_settings.rstrip().endswith("COMMIT;")
+    assert "ADD COLUMN intents jsonb" in query_settings_intents
+    assert "DROP COLUMN intent_category" in query_settings_intents
+    assert query_settings_intents.startswith("BEGIN;")
+    assert query_settings_intents.rstrip().endswith("COMMIT;")
     assert "business_date date GENERATED ALWAYS" in schema
     assert "ux_geo_query_run_job_daily_slot" in schema
     assert "ix_geo_query_run_job_project_preparing" in schema
@@ -523,6 +540,76 @@ async def test_run_result_record_uses_semantic_analysis_status() -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_postgres_repository_project_query_settings_multi_intent_round_trip() -> (
+    None
+):
+    database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip(POSTGRES_INTEGRATION_SKIP_MESSAGE)
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=True,
+    )
+    repository = PostgresGeoAnalysisRepository(session_factory)
+
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    project = await repository.create_project(
+        GeoProjectCommand(tenant_id=TENANT_ID, name=f"Multi Intent {uuid4()}")
+    )
+    command = GeoProjectQuerySettingsCommand(
+        researchProvider="gemini",
+        runProvider="gemini",
+        keywords=["ERP", "採購"],
+        marketType="b2b_procurement",
+        maxQueries=8,
+        audience={"name": "採購主管", "description": "負責供應商評估"},
+        intents=[
+            {"category": "資訊型", "description": "了解產品與技術"},
+            {"category": "商業評估", "description": "比較供應商"},
+            {"category": "交易型", "description": "尋找詢價方式"},
+        ],
+        shouldMentionOwnBrand=True,
+        shouldMentionCompetitor=False,
+    )
+
+    try:
+        created = await repository.upsert_project_query_settings(
+            TENANT_ID,
+            project.id,
+            command,
+        )
+        fetched = await repository.get_project_query_settings(TENANT_ID, project.id)
+        repeated = await repository.upsert_project_query_settings(
+            TENANT_ID,
+            project.id,
+            command,
+        )
+
+        assert created is not None
+        assert fetched is not None
+        assert repeated is not None
+        assert [intent.category for intent in fetched.intents] == [
+            "informational",
+            "commercial_investigation",
+            "transactional",
+        ]
+        assert [intent.description for intent in fetched.intents] == [
+            "了解產品與技術",
+            "比較供應商",
+            "尋找詢價方式",
+        ]
+        assert repeated.updated_at == created.updated_at
+    finally:
+        await repository.delete_project(TENANT_ID, project.id)
+        await engine.dispose()
 
 
 @pytest.mark.anyio

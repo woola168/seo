@@ -488,7 +488,10 @@ describe("api.geoAnalysis.dashboardReport", () => {
                 marketType: "b2b_procurement",
                 maxQueries: 8,
                 audience: { name: "採購", description: "採購主管" },
-                intent: { category: "商業評估", description: "比較供應商" },
+                intents: [
+                  { category: "commercial_investigation", description: "比較供應商" },
+                  { category: "transactional", description: "尋找詢價方式" },
+                ],
                 shouldMentionOwnBrand: true,
                 shouldMentionCompetitor: false,
                 updatedAt: "2026-07-19T00:00:00Z",
@@ -504,7 +507,10 @@ describe("api.geoAnalysis.dashboardReport", () => {
       marketType: "b2b_procurement" as const,
       maxQueries: 8,
       audience: { name: "採購", description: "採購主管" },
-      intent: { category: "商業評估", description: "比較供應商" },
+      intents: [
+        { category: "commercial_investigation", description: "比較供應商" },
+        { category: "transactional", description: "尋找詢價方式" },
+      ],
       shouldMentionOwnBrand: true,
       shouldMentionCompetitor: false,
     };
@@ -637,7 +643,9 @@ describe("api.geoAnalysis.dashboardReport", () => {
       marketType: "b2c",
       maxQueries: 41,
       audience: { name: "採購", description: "採購主管" },
-      intent: { category: "商業評估", description: "比較供應商" },
+      intents: [
+        { category: "commercial_investigation", description: "比較供應商" },
+      ],
       shouldMentionOwnBrand: true,
       shouldMentionCompetitor: false,
     })).rejects.toMatchObject({

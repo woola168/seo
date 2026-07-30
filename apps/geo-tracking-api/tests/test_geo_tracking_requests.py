@@ -394,12 +394,6 @@ def test_query_research_request_returns_search_context() -> None:
                 "name": "B2B 採購",
                 "description": "正在評估供應商的採購人員",
             },
-            "intents": [
-                {
-                    "category": "commercial_investigation",
-                    "description": "比較供應商",
-                }
-            ],
             "brandMentionRules": {
                 "shouldMentionOwnBrand": True,
                 "shouldMentionCompetitor": True,
@@ -413,7 +407,6 @@ def test_query_research_request_returns_search_context() -> None:
     assert body["searchedKeywords"] == ["山華塑膠 氣動管", "台灣 氣動管 供應商"]
     assert body["sourceUrls"] == ["https://example.com/source"]
     assert provider.last_command is not None
-    assert provider.last_command.intents[0].category == "commercial_investigation"
     assert provider.last_command.brand_mention_rules.should_mention_own_brand is True
     assert provider.last_command.brand_mention_rules.should_mention_competitor is True
 
@@ -431,6 +424,29 @@ def test_query_research_request_rejects_google_aio_provider() -> None:
             "region": "TW",
             "language": "zh-TW",
             "marketType": "b2b_procurement",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_query_research_request_rejects_generation_intents() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-research",
+        json={
+            "provider": "dummy",
+            "brandName": "山華塑膠",
+            "keywords": ["氣動管"],
+            "region": "TW",
+            "marketType": "b2b_procurement",
+            "intents": [
+                {
+                    "category": "commercial_investigation",
+                    "description": "比較供應商",
+                }
+            ],
         },
     )
 

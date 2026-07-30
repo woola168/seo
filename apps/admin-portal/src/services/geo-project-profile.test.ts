@@ -253,7 +253,10 @@ function querySettingsRequest() {
     marketType: "b2b_procurement" as const,
     maxQueries: 8,
     audience: { name: "B2B 採購", description: "採購決策者" },
-    intent: { category: "商業評估", description: "比較方案" },
+    intents: [
+      { category: "commercial_investigation", description: "比較方案" },
+      { category: "transactional", description: "尋找詢價方式" },
+    ],
     shouldMentionOwnBrand: true,
     shouldMentionCompetitor: true,
   };

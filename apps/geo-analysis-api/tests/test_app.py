@@ -791,6 +791,10 @@ def test_project_query_settings_crud_is_idempotent_and_scope_safe() -> None:
     assert missing.status_code == 404
     assert first.status_code == 200
     assert first.json()["keywords"] == ["ERP", "採購"]
+    assert [intent["category"] for intent in first.json()["intents"]] == [
+        "commercial_investigation",
+        "transactional",
+    ]
     assert repeated.json()["updatedAt"] == first.json()["updatedAt"]
     assert fetched.json() == first.json()
     assert not store.query_research_runs
@@ -922,6 +926,26 @@ def test_project_query_settings_rejects_invalid_payload(
     assert response.status_code == 422
     assert response.headers["content-type"] == "application/problem+json"
     assert invalid_name in _invalid_param_names(response.json())
+
+
+def test_project_query_settings_accepts_legacy_single_intent_request() -> None:
+    client = _client()
+    project_id = _create_project(client)
+    payload = _query_settings_payload()
+    legacy_intent = payload.pop("intents")[0]
+
+    response = client.put(
+        f"/api/geo/projects/{project_id}/query-settings",
+        json={**payload, "intent": legacy_intent},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intents"] == [
+        {
+            "category": "commercial_investigation",
+            "description": "比較供應商",
+        }
+    ]
 
 
 def test_openapi_describes_project_summary_and_query_settings() -> None:
@@ -1104,7 +1128,6 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
             "region": "TW",
             "language": "zh-TW",
             "marketType": "b2b_procurement",
-            "intents": [{"category": "commercial", "description": "比較供應商"}],
             "audience": {"name": "採購", "description": "B2B 採購人員"},
             "brandMentionRules": {
                 "shouldMentionOwnBrand": True,
@@ -1118,7 +1141,7 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     assert research_body["status"] == "completed"
     assert research_body["result"]["researchContext"] == "研究摘要"
     assert research_body["result"]["sourceUrls"] == ["https://example.com/source"]
-    assert research_body["requestPayload"]["intents"][0]["category"] == "commercial"
+    assert "intents" not in research_body["requestPayload"]
     assert research_body["requestPayload"]["brandMentionRules"] == {
         "shouldMentionOwnBrand": True,
         "shouldMentionCompetitor": True,
@@ -1238,13 +1261,6 @@ def test_query_research_rejects_oversized_arrays() -> None:
     cases = [
         ("keywords", [f"keyword-{index}" for index in range(11)]),
         ("competitorBrands", [f"Competitor {index}" for index in range(9)]),
-        (
-            "intents",
-            [
-                {"category": f"intent-{index}", "description": "比較供應商"}
-                for index in range(9)
-            ],
-        ),
     ]
 
     for field_name, value in cases:
@@ -1257,6 +1273,23 @@ def test_query_research_rejects_oversized_arrays() -> None:
 
         assert response.status_code == 422
         assert response.headers["content-type"] == "application/problem+json"
+
+
+def test_query_research_rejects_generation_intents() -> None:
+    client = _client(planning_client=FakePlanningClient())
+    project_id = _create_project(client)
+    payload = _query_research_payload()
+    payload["intents"] = [
+        {"category": "commercial_investigation", "description": "比較供應商"}
+    ]
+
+    response = client.post(
+        f"/api/geo/projects/{project_id}/query-research-runs",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
 
 
 def test_missing_resource_returns_problem_details() -> None:
@@ -2434,10 +2467,10 @@ def _query_settings_payload() -> dict:
             "name": "採購主管",
             "description": "負責供應商評估",
         },
-        "intent": {
-            "category": "commercial",
-            "description": "比較供應商",
-        },
+        "intents": [
+            {"category": "commercial", "description": "比較供應商"},
+            {"category": "交易型", "description": "尋找購買或洽詢方式"},
+        ],
         "shouldMentionOwnBrand": True,
         "shouldMentionCompetitor": False,
     }
@@ -2524,7 +2557,6 @@ def _query_research_payload() -> dict:
         "region": "TW",
         "language": "zh-TW",
         "marketType": "b2b_procurement",
-        "intents": [{"category": "commercial", "description": "比較供應商"}],
         "audience": {"name": "採購", "description": "B2B 採購人員"},
         "brandMentionRules": {
             "shouldMentionOwnBrand": True,

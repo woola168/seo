@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _camel_case(value: str) -> str:
@@ -141,9 +141,24 @@ class QuerySettingsIntent(ApiModel):
     category: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1, max_length=2000)
 
-    @field_validator("category", "description")
+    @field_validator("category")
     @classmethod
-    def normalize_text(cls, value: str) -> str:
+    def normalize_category(cls, value: str) -> str:
+        from younilab_seo.geo_analysis.application.query_intents import (
+            normalize_standard_query_intent,
+        )
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        category = normalize_standard_query_intent(normalized)
+        if category is None:
+            raise ValueError("unsupported query intent category")
+        return category
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("value must not be empty")
@@ -163,7 +178,7 @@ class ProjectQuerySettingsRequest(ApiModel):
     market_type: Literal["b2c", "b2b_procurement"]
     max_queries: int = Field(ge=1, le=40)
     audience: QuerySettingsAudience
-    intent: QuerySettingsIntent
+    intents: list[QuerySettingsIntent] = Field(min_length=1, max_length=4)
     should_mention_own_brand: bool
     should_mention_competitor: bool
 
@@ -186,6 +201,24 @@ class ProjectQuerySettingsRequest(ApiModel):
             seen.add(keyword.casefold())
             normalized.append(keyword)
         return normalized
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_single_intent(cls, value: object) -> object:
+        if not isinstance(value, dict) or "intents" in value or "intent" not in value:
+            return value
+        normalized = dict(value)
+        normalized["intents"] = [normalized.pop("intent")]
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_intent_selection(self):
+        categories = [intent.category for intent in self.intents]
+        if len(categories) != len(set(categories)):
+            raise ValueError("intent categories must be unique")
+        if self.max_queries < len(categories):
+            raise ValueError("maxQueries must cover every selected intent")
+        return self
 
 
 class ProjectQuerySettingsResponse(ProjectQuerySettingsRequest):
@@ -376,6 +409,8 @@ class BrandMentionRulesRequest(ApiModel):
 
 
 class QueryResearchRunRequest(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
     competitor_brands: list[str] = Field(default_factory=list, max_length=8)
@@ -383,7 +418,6 @@ class QueryResearchRunRequest(ApiModel):
     region: str = Field(min_length=1, max_length=16)
     language: str | None = None
     market_type: str = Field(default="b2b_procurement", max_length=32)
-    intents: list[QueryIntentRequest] = Field(default_factory=list, max_length=8)
     audience: QueryAudienceRequest | None = None
     brand_mention_rules: BrandMentionRulesRequest = Field(
         default_factory=BrandMentionRulesRequest

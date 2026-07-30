@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
+import GeoIntentSelector from "../components/geo/GeoIntentSelector.vue";
 import GeoTagInput from "../components/geo/GeoTagInput.vue";
 import { api } from "../services/api";
 import {
@@ -12,7 +13,9 @@ import {
   MAX_GEO_KEYWORDS,
   MAX_GEO_TOPICS,
   normalizeQuerySettingsKeywords,
+  queryIntentLabel,
   querySettingsKeywordTagsToText,
+  selectedQueryIntents,
   validateQueryResearchForm,
 } from "../services/geo-project-query-settings";
 import { useGeoFormErrors } from "../composables/geo-form-errors";
@@ -104,7 +107,6 @@ const keywordTags = computed<string[]>({
     clearFieldError("keywords");
   },
 });
-const standardIntentCategories = ["導航型", "資訊型", "商業評估"];
 const canRunJobs = computed(() => props.permissions.includes("geo.jobs.run"));
 
 onMounted(() => void load());
@@ -421,7 +423,6 @@ function researchPayload() {
     region: profile.value!.project.defaultRegion as "TW" | "US",
     language: profile.value!.project.defaultLanguage || null,
     marketType: form.marketType,
-    intents: [{ category: form.intentCategory, description: form.intentDescription.trim() }],
     audience: { name: form.audienceName.trim(), description: form.audienceDescription.trim() },
     brandMentionRules: {
       shouldMentionOwnBrand: form.shouldMentionOwnBrand,
@@ -442,7 +443,7 @@ function generationPayload(researchContext: string) {
     marketType: form.marketType,
     topics: activeTopics,
     topicNames: activeTopics.map((topic) => topic.name),
-    intents: [{ category: form.intentCategory, description: form.intentDescription.trim() }],
+    intents: selectedQueryIntents(form),
     audience: { name: form.audienceName.trim(), description: form.audienceDescription.trim() },
     brandMentionRules: {
       shouldMentionOwnBrand: form.shouldMentionOwnBrand,
@@ -521,10 +522,10 @@ function toggleAll(): void {
           <section class="geo-form-card"><header><strong>Keywords</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header><div class="geo-card-body"><GeoTagInput v-model="keywordTags" :invalid="Boolean(formErrors.keywords)" :max-tags="MAX_GEO_KEYWORDS" placeholder="請輸入 Keyword" /><small v-if="formErrors.keywords" class="form-error">{{ formErrors.keywords }}</small><small>輸入後按 Enter 或逗號新增，最多 10 筆；也可貼上多行內容。</small></div></section>
           <section class="geo-form-card"><header><strong>Topics</strong><div><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button><button class="button button-secondary button-small" type="button" :disabled="topics.length >= MAX_GEO_TOPICS" @click="addTopic">新增 Topic</button></div></header><div class="geo-card-body geo-topic-list"><div v-for="(topic, index) in topics" :key="index"><label><span>Topic 名稱</span><input v-model="topic.name" type="text" :class="{ invalid: formErrors.topics && !topic.name.trim() }" :aria-invalid="Boolean(formErrors.topics && !topic.name.trim())" placeholder="例如 產品、採購評估、供應商" @input="clearTopicError" /><small v-if="formErrors.topics && !topic.name.trim()" class="form-error">{{ formErrors.topics }}</small></label><label><span>Topic 描述</span><input v-model="topic.description" type="text" placeholder="描述此 Topic" /></label><button class="button button-secondary button-small" type="button" @click="topics.splice(index, 1)">移除</button></div><p v-if="!topics.length">尚未新增 Topic，點右上「新增 Topic」開始</p><small v-if="formErrors.topics && !topics.length" class="form-error">{{ formErrors.topics }}</small></div></section>
           <section class="geo-form-card"><header><strong>市場與受眾</strong></header><div class="geo-form-grid"><GeoFormField label="Market Type"><select v-model="form.marketType"><option value="b2b_procurement">B2B 採購</option><option value="b2c">B2C 消費</option></select></GeoFormField><GeoFormField label="Max Queries" required :error="formErrors.maxQueries"><input v-model.number="form.maxQueries" type="number" min="1" max="40" :class="{ invalid: formErrors.maxQueries }" :aria-invalid="Boolean(formErrors.maxQueries)" @input="clearFieldError('maxQueries')" /></GeoFormField><GeoFormField label="Audience" required :error="formErrors.audienceName"><input v-model="form.audienceName" type="text" :class="{ invalid: formErrors.audienceName }" :aria-invalid="Boolean(formErrors.audienceName)" @input="clearFieldError('audienceName')" /></GeoFormField><GeoFormField label="Audience Description" required :error="formErrors.audienceDescription"><input v-model="form.audienceDescription" type="text" :class="{ invalid: formErrors.audienceDescription }" :aria-invalid="Boolean(formErrors.audienceDescription)" @input="clearFieldError('audienceDescription')" /></GeoFormField></div></section>
-          <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-form-grid"><GeoFormField label="Intent 分類" required :error="formErrors.intentCategory"><select v-model="form.intentCategory" :class="{ invalid: formErrors.intentCategory }" :aria-invalid="Boolean(formErrors.intentCategory)" @change="clearFieldError('intentCategory')"><option v-if="!standardIntentCategories.includes(form.intentCategory)" :value="form.intentCategory">{{ form.intentCategory }}</option><option v-for="category in standardIntentCategories" :key="category" :value="category">{{ category }}</option></select></GeoFormField><GeoFormField label="Intent 描述" required :error="formErrors.intentDescription"><input v-model="form.intentDescription" type="text" :class="{ invalid: formErrors.intentDescription }" :aria-invalid="Boolean(formErrors.intentDescription)" @input="clearFieldError('intentDescription')" /></GeoFormField></div></section>
+          <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-card-body"><GeoIntentSelector v-model="form.intents" :error="formErrors.intents" @change="clearFieldError('intents')" /></div></section>
           <section class="geo-form-card"><header><strong>提示詞風格</strong></header><div class="geo-toggle-list"><label><span class="geo-toggle-copy"><strong>提及自身品牌</strong><small>生成的 query 需包含自家品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionOwnBrand" type="checkbox" /><span aria-hidden="true"></span></span></label><label><span class="geo-toggle-copy"><strong>提及競品</strong><small>生成的 query 需包含競爭品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionCompetitor" type="checkbox" /><span aria-hidden="true"></span></span></label></div></section>
         </template>
-        <section v-else class="geo-form-card geo-generation-results"><header><strong>生成結果</strong><div><span>已選 {{ selectedDraftIds.length }} / {{ selectableDrafts.length }}</span><button class="button button-secondary button-small" type="button" :disabled="loading || selectionUpdating" @click="regenerate">重新生成</button></div></header><div class="geo-result-head"><input type="checkbox" :checked="allChecked" :indeterminate.prop="someChecked" :disabled="selectionUpdating" @change="toggleAll" /><span>Query list</span></div><button v-for="draft in drafts" :key="draft.id" class="geo-result-row" :class="{ selected: selectedDraftIds.includes(draft.id), accepted: draft.acceptedQueryId }" type="button" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" @click="toggleDraft(draft)"><input type="checkbox" :checked="selectedDraftIds.includes(draft.id)" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" tabindex="-1" /><span><strong>{{ draft.queryText }}</strong><small>{{ draft.region }}/{{ draft.language }}<template v-if="draft.acceptedQueryId"> · 已建立</template></small></span></button><div v-if="!drafts.length" class="geo-table-empty">沒有生成結果</div></section>
+        <section v-else class="geo-form-card geo-generation-results"><header><strong>生成結果</strong><div><span>已選 {{ selectedDraftIds.length }} / {{ selectableDrafts.length }}</span><button class="button button-secondary button-small" type="button" :disabled="loading || selectionUpdating" @click="regenerate">重新生成</button></div></header><div class="geo-result-head"><input type="checkbox" :checked="allChecked" :indeterminate.prop="someChecked" :disabled="selectionUpdating" @change="toggleAll" /><span>Query list</span></div><button v-for="draft in drafts" :key="draft.id" class="geo-result-row" :class="{ selected: selectedDraftIds.includes(draft.id), accepted: draft.acceptedQueryId }" type="button" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" @click="toggleDraft(draft)"><input type="checkbox" :checked="selectedDraftIds.includes(draft.id)" :disabled="Boolean(draft.acceptedQueryId) || selectionUpdatingIds.has(draft.id)" tabindex="-1" /><span><strong>{{ draft.queryText }}</strong><small>{{ draft.region }}/{{ draft.language }} · {{ queryIntentLabel(draft.intent) }}<template v-if="draft.acceptedQueryId"> · 已建立</template></small></span></button><div v-if="!drafts.length" class="geo-table-empty">沒有生成結果</div></section>
       </div>
     </div>
     <GeoConfirmDialog :open="showEmptyAlert" single title="尚未選擇 Query" message="請至少勾選一筆 Query，再進行生成。" confirm-label="我知道了" @cancel="showEmptyAlert = false" @confirm="showEmptyAlert = false" />
