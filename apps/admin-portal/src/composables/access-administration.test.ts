@@ -51,4 +51,36 @@ describe("access administration", () => {
     expect(api.roles).toHaveBeenCalledTimes(1);
     expect(api.permissions).toHaveBeenCalledTimes(1);
   });
+
+  it("clears cached data and ignores an earlier session request", async () => {
+    const session = createSession();
+    await session.restore();
+    let resolveRoles: ((roles: never[]) => void) | undefined;
+    const api = {
+      roles: vi
+        .fn()
+        .mockImplementationOnce(
+          () => new Promise<never[]>((resolve) => {
+            resolveRoles = resolve;
+          }),
+        )
+        .mockResolvedValueOnce([]),
+      permissions: vi.fn(async () => ["roles.read"]),
+    } as unknown as PortalAccessApi;
+    const access = createAccessAdministration(
+      api,
+      session,
+      createPortalNotifications(),
+    );
+
+    const loading = access.ensureView("roles");
+    await vi.waitFor(() => expect(resolveRoles).toBeDefined());
+    access.clear();
+    resolveRoles?.([{ id: "role-1", name: "舊角色", permissions: [] }] as never[]);
+    await loading;
+
+    expect(access.roles.value).toEqual([]);
+    await access.ensureView("roles");
+    expect(api.roles).toHaveBeenCalledTimes(2);
+  });
 });

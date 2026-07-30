@@ -77,6 +77,7 @@ export function createAccessAdministration(
   const loaded = new Set<DataKey>();
   const pending = new Map<DataKey, Promise<void>>();
   let activeView: AccessView | null = null;
+  let sessionGeneration = 0;
 
   function can(permission: string): boolean {
     return Boolean(
@@ -113,37 +114,61 @@ export function createAccessAdministration(
     if (!force && loaded.has(key)) return;
     const existing = pending.get(key);
     if (!force && existing) return existing;
-    const request = fetchData(key)
+    const generation = sessionGeneration;
+    const request = fetchData(key, generation)
       .then(() => {
-        loaded.add(key);
+        if (generation === sessionGeneration) loaded.add(key);
       })
-      .finally(() => pending.delete(key));
+      .finally(() => {
+        if (pending.get(key) === request) pending.delete(key);
+      });
     pending.set(key, request);
     await request;
   }
 
-  async function fetchData(key: DataKey): Promise<void> {
+  async function fetchData(key: DataKey, generation: number): Promise<void> {
     if (key === "roles") {
-      roles.value = can("roles.read") ? await api.roles() : [];
+      const value = can("roles.read") ? await api.roles() : [];
+      if (generation === sessionGeneration) roles.value = value;
     } else if (key === "users") {
-      users.value = can("users.read") ? await api.users() : [];
+      const value = can("users.read") ? await api.users() : [];
+      if (generation === sessionGeneration) users.value = value;
     } else if (key === "permissions") {
-      permissions.value = can("permissions.read")
+      const value = can("permissions.read")
         ? await api.permissions()
         : filterAssignablePermissions(session.capabilities.value?.permissions ?? []);
+      if (generation === sessionGeneration) permissions.value = value;
     } else if (key === "departments") {
-      departments.value = can("departments.read")
+      const value = can("departments.read")
         ? await api.departments().catch(() => [])
         : [];
+      if (generation === sessionGeneration) departments.value = value;
     } else if (key === "customers") {
-      customers.value = can("customers.read")
+      const value = can("customers.read")
         ? await api.customers().then((value) => value.items).catch(() => [])
         : [];
+      if (generation === sessionGeneration) customers.value = value;
     } else {
-      tasks.value = can("tasks.read")
+      const value = can("tasks.read")
         ? await api.tasks().then((value) => value.items).catch(() => [])
         : [];
+      if (generation === sessionGeneration) tasks.value = value;
     }
+  }
+
+  function clear(): void {
+    sessionGeneration += 1;
+    roles.value = [];
+    users.value = [];
+    permissions.value = [];
+    departments.value = [];
+    customers.value = [];
+    tasks.value = [];
+    decision.value = null;
+    loading.value = false;
+    loaded.clear();
+    pending.clear();
+    activeView = null;
   }
 
   async function refreshActiveView(): Promise<void> {
@@ -285,6 +310,7 @@ export function createAccessAdministration(
     tasks,
     decision,
     loading,
+    clear,
     ensureView,
     refreshActiveView,
     createRole,

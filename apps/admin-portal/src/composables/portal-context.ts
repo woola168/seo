@@ -11,11 +11,18 @@ export type PortalApi = PortalSessionApi & PortalAccessApi;
 
 export function createPortalContext(api: PortalApi) {
   const notifications = createPortalNotifications();
-  const session = createPortalSession(api, notifications);
-  const access = createAccessAdministration(api, session, notifications);
   const shell = {
     sidebarCollapsed: ref(false),
     search: ref(""),
+  };
+  let clearSessionState = () => {
+    shell.search.value = "";
+  };
+  const session = createPortalSession(api, notifications, () => clearSessionState());
+  const access = createAccessAdministration(api, session, notifications);
+  clearSessionState = () => {
+    access.clear();
+    shell.search.value = "";
   };
   return { session, notifications, access, shell };
 }

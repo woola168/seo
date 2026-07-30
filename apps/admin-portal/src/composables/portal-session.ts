@@ -19,6 +19,7 @@ export interface PortalSessionApi {
 export function createPortalSession(
   api: PortalSessionApi,
   notifications: PortalNotifications,
+  onClear: () => void = () => undefined,
 ) {
   const user = ref<SessionUser | null>(null);
   const capabilities = ref<Capabilities | null>(null);
@@ -63,6 +64,7 @@ export function createPortalSession(
     user.value = null;
     capabilities.value = null;
     pendingCapabilities = null;
+    onClear();
   }
 
   async function restore(): Promise<boolean> {
