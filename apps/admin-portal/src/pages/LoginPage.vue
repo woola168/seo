@@ -1,27 +1,30 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
+import { usePortalNotifications, usePortalSession } from "../composables/portal-context";
+import { getLoginRedirect } from "../router/routes";
 import { getRememberedLoginEmail } from "../utils/remembered-login-email";
 
-defineProps<{
-  loading: boolean;
-  error: string;
-}>();
-
-const emit = defineEmits<{
-  login: [email: string, password: string, rememberEmail: boolean];
-  forgot: [];
-  unavailable: [label: string];
-}>();
-
+const route = useRoute();
+const router = useRouter();
+const session = usePortalSession();
+const notifications = usePortalNotifications();
+const { loading, error } = session;
 const rememberedEmail = getRememberedLoginEmail();
 const email = ref(rememberedEmail);
 const password = ref("");
 const remember = ref(Boolean(rememberedEmail));
 const showPassword = ref(false);
 
-function submit(): void {
-  emit("login", email.value.trim(), password.value, remember.value);
+async function submit(): Promise<void> {
+  if (await session.login(email.value.trim(), password.value, remember.value)) {
+    await router.replace(getLoginRedirect(route.query.redirect));
+  }
+}
+
+function unavailable(label: string): void {
+  notifications.notify(`${label}尚未開放，待 API 完成後提供。`, "warning");
 }
 </script>
 
@@ -44,7 +47,7 @@ function submit(): void {
         <button
           class="button button-secondary google-button"
           type="button"
-          @click="$emit('unavailable', 'Google 登入')"
+          @click="unavailable('Google 登入')"
         >
           <svg class="google-mark" viewBox="0 0 18 18" aria-hidden="true">
             <path
@@ -113,7 +116,7 @@ function submit(): void {
             <button
               class="text-button"
               type="button"
-              @click="$emit('forgot')"
+              @click="router.push({ name: 'forgot-password' })"
             >
               忘記密碼？
             </button>
@@ -134,7 +137,7 @@ function submit(): void {
           <button
             class="text-button"
             type="button"
-            @click="$emit('unavailable', '申請試用')"
+            @click="unavailable('申請試用')"
           >
             申請試用
           </button>

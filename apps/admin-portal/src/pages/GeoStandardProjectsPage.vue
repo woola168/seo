@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { usePortalNotifications, usePortalSession } from "../composables/portal-context";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFilterDropdown from "../components/geo/GeoFilterDropdown.vue";
 import GeoPageHeader from "../components/geo/GeoPageHeader.vue";
@@ -15,10 +16,11 @@ import {
   geoProjectStatusAction,
   updateGeoProjectStatus as updateGeoProjectStatusRequest,
 } from "../utils/geo-project-status";
-import type { GeoProject, ToastTone } from "../types";
+import type { GeoProject } from "../types";
 
-const props = defineProps<{ permissions: readonly string[] }>();
-const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
+const session = usePortalSession();
+const { notify } = usePortalNotifications();
+const permissions = computed(() => session.capabilities.value?.permissions ?? []);
 const route = useRoute();
 const router = useRouter();
 const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
@@ -38,9 +40,9 @@ const customerFilters = ref<string[]>([]);
 const archiveTarget = ref<GeoProject | null>(null);
 const statusUpdateState = reactive({ updatingId: "" });
 
-const canCreate = computed(() => hasPermission(props.permissions, "geo.projects.create"));
-const canUpdate = computed(() => hasPermission(props.permissions, "geo.projects.update"));
-const canResearch = computed(() => hasPermission(props.permissions, "geo.queries.manage"));
+const canCreate = computed(() => hasPermission(permissions.value, "geo.projects.create"));
+const canUpdate = computed(() => hasPermission(permissions.value, "geo.projects.update"));
+const canResearch = computed(() => hasPermission(permissions.value, "geo.queries.manage"));
 const localeOptions = computed(() =>
   Array.from(new Set(workspace.projects.value.map((project) => `${project.defaultRegion} / ${project.defaultLanguage}`))),
 );
@@ -112,10 +114,10 @@ async function updateProjectStatus(): Promise<void> {
       result.response,
     );
     archiveTarget.value = null;
-    emit("notify", `「${project.name}」已${geoProjectStatusAction(project.status)}。`, "success");
+    notify(`「${project.name}」已${geoProjectStatusAction(project.status)}。`, "success");
   } else if (result.status === "failed") {
     const action = geoProjectStatusAction(project.status);
-    emit("notify", result.error instanceof Error ? result.error.message : `Project ${action}失敗。`, "error");
+    notify(result.error instanceof Error ? result.error.message : `Project ${action}失敗。`, "error");
   }
 }
 </script>

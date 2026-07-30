@@ -1,32 +1,28 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
+import { RouterView } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
-import type {
-  NavigationItem,
-  PageId,
-  SessionUser,
-} from "../types";
+import { usePortalShell } from "../composables/portal-shell";
+import SessionLoadingPage from "../pages/SessionLoadingPage.vue";
+import type { NavigationItem } from "../types";
 import { getFocusTargetIndex } from "../utils/focus-trap";
 
 type CommandFocusElement = HTMLInputElement | HTMLButtonElement;
 
-const props = defineProps<{
-  user: SessionUser;
-  activePage: PageId;
-  currentTitle: string;
-  navigation: NavigationItem[];
-  collapsed: boolean;
-  search: string;
-}>();
-
-const emit = defineEmits<{
-  navigate: [page: PageId];
-  logout: [];
-  refresh: [];
-  "toggle-sidebar": [];
-  "update:search": [value: string];
-  unavailable: [label: string];
-}>();
+const {
+  user,
+  capabilities,
+  restoring,
+  activePage,
+  currentTitle,
+  navigation,
+  sidebarCollapsed,
+  search,
+  navigate,
+  logout,
+  refresh,
+  unavailable,
+} = usePortalShell();
 
 const showSearch = ref(false);
 const showUserMenu = ref(false);
@@ -40,33 +36,33 @@ const expandedNavigationIds = ref<Set<string>>(
 );
 
 const primaryNavigation = computed(() =>
-  props.navigation.filter((item) => !item.group),
+  navigation.value.filter((item) => !item.group),
 );
 const navigationGroups = computed(() => {
   const groups = new Map<string, NavigationItem[]>();
-  for (const item of props.navigation) {
+  for (const item of navigation.value) {
     if (!item.group) continue;
     groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
   }
   return [...groups.entries()].map(([label, items]) => ({ label, items }));
 });
 const commandNavigationItems = computed(() =>
-  props.navigation.flatMap((item) => [
+  navigation.value.flatMap((item) => [
     ...(item.page && !item.disabled ? [item] : []),
     ...(item.children?.filter((child) => child.page && !child.disabled) ?? []),
   ]),
 );
 const breadcrumbSegments = computed(() => {
-  if (props.activePage.startsWith("permissions-")) {
-    return ["系統", "權限管理", props.currentTitle];
+  if (activePage.value.startsWith("permissions-")) {
+    return ["系統", "權限管理", currentTitle.value];
   }
-  if (props.activePage.startsWith("geo-analysis-")) {
-    return ["分析工具", "GEO分析-RD", props.currentTitle];
+  if (activePage.value.startsWith("geo-analysis-")) {
+    return ["分析工具", "GEO分析-RD", currentTitle.value];
   }
-  if (props.activePage.startsWith("geo-")) {
-    return ["分析工具", "GEO分析", props.currentTitle];
+  if (activePage.value.startsWith("geo-")) {
+    return ["分析工具", "GEO分析", currentTitle.value];
   }
-  return [props.currentTitle];
+  return [currentTitle.value];
 });
 
 function selectNavigation(item: NavigationItem): void {
@@ -76,30 +72,30 @@ function selectNavigation(item: NavigationItem): void {
     return;
   }
   if (item.page && !item.disabled) {
-    emit("navigate", item.page);
+    navigate(item.page);
     return;
   }
-  emit("unavailable", item.label);
+  unavailable(item.label);
 }
 
 function isNavigationActive(item: NavigationItem): boolean {
   return (
-    item.page === props.activePage ||
-    Boolean(item.children?.some((child) => child.page === props.activePage))
+    item.page === activePage.value ||
+    Boolean(item.children?.some((child) => child.page === activePage.value))
   );
 }
 
 function isNavigationExpanded(item: NavigationItem): boolean {
   return (
     expandedNavigationIds.value.has(item.id) ||
-    Boolean(item.children?.some((child) => child.page === props.activePage))
+    Boolean(item.children?.some((child) => child.page === activePage.value))
   );
 }
 
 function toggleNavigationGroup(item: NavigationItem): void {
-  if (props.collapsed) {
+  if (sidebarCollapsed.value) {
     const firstChild = item.children?.find((child) => child.page && !child.disabled);
-    if (firstChild?.page) emit("navigate", firstChild.page);
+    if (firstChild?.page) navigate(firstChild.page);
     return;
   }
   const next = new Set(expandedNavigationIds.value);
@@ -165,29 +161,34 @@ function closeUserMenu(): void {
 
 function selectUserAction(label: string): void {
   closeUserMenu();
-  emit("unavailable", label);
+  unavailable(label);
 }
 
-function logout(): void {
+function handleLogout(): void {
   closeUserMenu();
-  emit("logout");
+  void logout();
 }
 </script>
 
 <template>
-  <div class="layout" :class="{ 'layout-collapsed': collapsed }">
+  <SessionLoadingPage v-if="restoring" />
+  <div
+    v-else-if="user && capabilities"
+    class="layout"
+    :class="{ 'layout-collapsed': sidebarCollapsed }"
+  >
     <aside class="layout-sidebar">
       <div class="layout-logo">
-        <strong v-if="!collapsed" class="layout-wordmark">Younilab SEO</strong>
+        <strong v-if="!sidebarCollapsed" class="layout-wordmark">Younilab SEO</strong>
         <span v-else class="logo-mark">Y</span>
         <button
           class="icon-button"
           type="button"
-          :aria-label="collapsed ? '展開側欄' : '收合側欄'"
-          @click="$emit('toggle-sidebar')"
+          :aria-label="sidebarCollapsed ? '展開側欄' : '收合側欄'"
+          @click="sidebarCollapsed = !sidebarCollapsed"
         >
           <AppIcon
-            :name="collapsed ? 'chevron-right' : 'chevron-left'"
+            :name="sidebarCollapsed ? 'chevron-right' : 'chevron-left'"
             :size="17"
           />
         </button>
@@ -199,12 +200,12 @@ function logout(): void {
             class="navigation-item"
             :class="{ active: isNavigationActive(item), disabled: item.disabled }"
             type="button"
-            :title="collapsed ? item.label : undefined"
+            :title="sidebarCollapsed ? item.label : undefined"
             @click="selectNavigation(item)"
           >
             <AppIcon :name="item.icon" :size="19" />
-            <span v-if="!collapsed">{{ item.label }}</span>
-            <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
+            <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+            <small v-if="item.badge && !sidebarCollapsed">{{ item.badge }}</small>
           </button>
         </template>
         <section
@@ -212,7 +213,7 @@ function logout(): void {
           :key="group.label"
           class="navigation-group"
         >
-          <p v-if="!collapsed">{{ group.label }}</p>
+          <p v-if="!sidebarCollapsed">{{ group.label }}</p>
           <template v-for="item in group.items" :key="item.id">
             <button
               class="navigation-item"
@@ -222,14 +223,14 @@ function logout(): void {
                 'has-children': item.children?.length,
               }"
               type="button"
-              :title="collapsed ? item.label : undefined"
+              :title="sidebarCollapsed ? item.label : undefined"
               @click="selectNavigation(item)"
             >
               <AppIcon :name="item.icon" :size="17" />
-              <span v-if="!collapsed">{{ item.label }}</span>
-              <small v-if="item.badge && !collapsed">{{ item.badge }}</small>
+              <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+              <small v-if="item.badge && !sidebarCollapsed">{{ item.badge }}</small>
               <AppIcon
-                v-if="item.children?.length && !collapsed"
+                v-if="item.children?.length && !sidebarCollapsed"
                 class="navigation-expand-icon"
                 :class="{ expanded: isNavigationExpanded(item) }"
                 name="chevron-right"
@@ -237,7 +238,7 @@ function logout(): void {
               />
             </button>
             <div
-              v-if="item.children?.length && !collapsed && isNavigationExpanded(item)"
+              v-if="item.children?.length && !sidebarCollapsed && isNavigationExpanded(item)"
               class="navigation-submenu"
             >
               <button
@@ -290,7 +291,7 @@ function logout(): void {
           class="icon-button"
           type="button"
           aria-label="重新整理"
-          @click="$emit('refresh')"
+          @click="refresh"
         >
           <AppIcon name="refresh" :size="18" />
         </button>
@@ -298,7 +299,7 @@ function logout(): void {
           class="icon-button notification-button"
           type="button"
           aria-label="通知"
-          @click="$emit('unavailable', '通知中心')"
+          @click="unavailable('通知中心')"
         >
           <AppIcon name="bell" :size="18" />
           <span>2</span>
@@ -333,7 +334,7 @@ function logout(): void {
             <button type="button" role="menuitem" @click="selectUserAction('帳號設定')">
               <AppIcon name="settings" :size="16" />帳號設定
             </button>
-            <button class="danger" type="button" role="menuitem" @click="logout">
+            <button class="danger" type="button" role="menuitem" @click="handleLogout">
               <AppIcon name="logout" :size="16" />登出
             </button>
           </div>
@@ -342,7 +343,7 @@ function logout(): void {
     </header>
 
     <main class="layout-content">
-      <slot />
+      <RouterView />
     </main>
 
     <div
@@ -366,10 +367,7 @@ function logout(): void {
             autofocus
             placeholder="搜尋客戶、任務、關鍵字..."
             @input="
-              $emit(
-                'update:search',
-                ($event.target as HTMLInputElement).value,
-              )
+              search = ($event.target as HTMLInputElement).value
             "
           />
           <button ref="commandEscapeButton" type="button" @click="closeSearch()">
@@ -381,14 +379,14 @@ function logout(): void {
           <button
             ref="commandQuickActions"
             type="button"
-            @click="$emit('unavailable', '新增客戶')"
+            @click="unavailable('新增客戶')"
           >
             <AppIcon name="plus" :size="16" />新增客戶
           </button>
           <button
             ref="commandQuickActions"
             type="button"
-            @click="$emit('unavailable', '新增任務')"
+            @click="unavailable('新增任務')"
           >
             <AppIcon name="plus" :size="16" />新增任務
           </button>

@@ -128,6 +128,25 @@ describe("portal router", () => {
     expect(getRoutePage(router.currentRoute.value.meta.page)).toBe(
       "geo-analysis-query-research",
     );
+    expect(router.currentRoute.value.meta.title).toBe("GEO Query Research");
+    expect(router.currentRoute.value.matched).toHaveLength(3);
+  });
+
+  it("removes the public GEO tracking route", async () => {
+    const unauthenticated = createPortalRouter(createMemoryHistory(), () => false);
+    await unauthenticated.push("/geo-tracking");
+    await unauthenticated.isReady();
+    expect(unauthenticated.currentRoute.value.name).toBe("login");
+
+    const authenticated = createPortalRouter(
+      createMemoryHistory(),
+      () => true,
+      async () => ["geo.projects.read"],
+    );
+    await authenticated.push("/geo-tracking");
+    await authenticated.isReady();
+    expect(authenticated.currentRoute.value.name).toBe("geo-overview");
+    expect(authenticated.hasRoute("geo-tracking")).toBe(false);
   });
 
   it("protects GEO flow check and keeps it under GEO navigation", async () => {

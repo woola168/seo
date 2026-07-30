@@ -9,16 +9,42 @@ import type { PageId } from "../types";
 
 type PermissionLoader = () => Promise<readonly string[]>;
 const DEFAULT_AUTHENTICATED_PATH = "/geo/overview";
+const routeTitles: Record<string, string> = {
+  login: "登入",
+  "forgot-password": "忘記密碼",
+  "reset-password": "重設密碼",
+  "accept-invitation": "設定帳號密碼",
+  dashboard: "總覽",
+  "permissions-members": "成員管理",
+  "permissions-roles": "角色管理",
+  "permissions-departments": "部門管理",
+  "permissions-authorization": "授權判斷",
+  "permission-user-new": "新增員工",
+  "permission-role-new": "建立角色",
+  "geo-overview": "GEO Overview",
+  "geo-projects": "GEO Projects",
+  "geo-project-new": "新增 GEO Project",
+  "geo-project-edit": "編輯 GEO Project",
+  "geo-query-research": "GEO Query Research",
+  "geo-analysis-overview": "GEO Overview",
+  "geo-analysis-projects": "GEO Projects",
+  "geo-analysis-project-new": "新增 GEO Project",
+  "geo-analysis-project-edit": "編輯 GEO Project",
+  "geo-analysis-project-query-research": "GEO Query Research",
+  "geo-analysis-entities": "GEO Entities",
+  "geo-analysis-queries": "GEO Topics & Queries",
+  "geo-analysis-schedules": "GEO Platforms & Schedules",
+  "geo-analysis-jobs": "GEO Run Jobs",
+  "geo-analysis-report-design": "GEO Report Design",
+  "geo-analysis-flow-check": "GEO Flow Check",
+  "geo-analysis-query-research": "GEO Query Research",
+};
 
 function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
   const defaultRoute = () =>
     hasSession() ? DEFAULT_AUTHENTICATED_PATH : "/login";
 
-  return [
-    {
-      path: "/",
-      redirect: defaultRoute,
-    },
+  const pageRoutes: RouteRecordRaw[] = [
     {
       path: "/login",
       name: "login",
@@ -48,12 +74,6 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       name: "dashboard",
       component: () => import("../pages/DashboardPage.vue"),
       meta: { requiresAuth: true, page: "dashboard" },
-    },
-    {
-      path: "/geo-tracking",
-      name: "geo-tracking",
-      component: () => import("../pages/GeoTrackingPage.vue"),
-      meta: { public: true, page: "geo-tracking" },
     },
     {
       path: "/permissions",
@@ -229,11 +249,43 @@ function createRoutes(hasSession: () => boolean): RouteRecordRaw[] {
       component: () => import("../pages/RoleCreationPage.vue"),
       meta: { requiresAuth: true, page: "permissions-roles" },
     },
+  ];
+
+  const publicRoutes = pageRoutes
+    .filter((route) => route.meta?.public)
+    .map(nestedRoute);
+  const protectedRoutes = pageRoutes
+    .filter((route) => !route.meta?.public)
+    .map(nestedRoute);
+
+  return [
     {
-      path: "/:pathMatch(.*)*",
-      redirect: defaultRoute,
+      path: "/",
+      component: () => import("../layouts/PortalRootLayout.vue"),
+      children: [
+        { path: "", redirect: defaultRoute },
+        ...publicRoutes,
+        {
+          path: "",
+          component: () => import("../layouts/Layout.vue"),
+          children: protectedRoutes,
+        },
+        { path: ":pathMatch(.*)*", redirect: defaultRoute },
+      ],
     },
   ];
+}
+
+function nestedRoute(route: RouteRecordRaw): RouteRecordRaw {
+  const name = typeof route.name === "string" ? route.name : "";
+  return {
+    ...route,
+    path: route.path.replace(/^\//, ""),
+    meta: {
+      ...route.meta,
+      ...(routeTitles[name] ? { title: routeTitles[name] } : {}),
+    },
+  };
 }
 
 export function createPortalRouter(
@@ -309,7 +361,6 @@ export function getRoutePage(page: unknown): PageId {
   if (page === "geo-analysis-query-research") {
     return "geo-analysis-query-research";
   }
-  if (page === "geo-tracking") return "geo-tracking";
   return "dashboard";
 }
 

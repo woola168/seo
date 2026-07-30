@@ -4,23 +4,16 @@ import NotificationList from "../components/dashboard/NotificationList.vue";
 import StatCard from "../components/dashboard/StatCard.vue";
 import TaskTable from "../components/dashboard/TaskTable.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
+import { usePortalNotifications, usePortalShellState } from "../composables/portal-context";
 import {
   mockDashboardNotifications,
   mockDashboardTasks,
 } from "../mocks/dashboard";
 import { createDashboardStats } from "../utils/dashboard-stats";
-import type {
-  Capabilities,
-  DashboardNotification,
-  DashboardTask,
-} from "../types";
+import type { DashboardNotification, DashboardTask } from "../types";
 
-const props = defineProps<{
-  capabilities: Capabilities;
-  search: string;
-}>();
-
-defineEmits<{ unavailable: [label: string] }>();
+const { search } = usePortalShellState();
+const portalNotifications = usePortalNotifications();
 
 const taskFilter = ref<"all" | DashboardTask["status"]>("all");
 const notifications = ref<DashboardNotification[]>(
@@ -29,14 +22,14 @@ const notifications = ref<DashboardNotification[]>(
 const dashboardStats = createDashboardStats(mockDashboardTasks);
 
 const filteredTasks = computed(() => {
-  const search = props.search.trim().toLocaleLowerCase("zh-TW");
+  const keyword = search.value.trim().toLocaleLowerCase("zh-TW");
   return mockDashboardTasks.filter((task) => {
     const matchesFilter =
       taskFilter.value === "all" || task.status === taskFilter.value;
     const matchesSearch =
-      !search ||
-      task.name.toLocaleLowerCase("zh-TW").includes(search) ||
-      task.client.toLocaleLowerCase("zh-TW").includes(search);
+      !keyword ||
+      task.name.toLocaleLowerCase("zh-TW").includes(keyword) ||
+      task.client.toLocaleLowerCase("zh-TW").includes(keyword);
     return matchesFilter && matchesSearch;
   });
 });
@@ -52,6 +45,10 @@ function markNotificationRead(id: number): void {
   const notification = notifications.value.find((item) => item.id === id);
   if (notification) notification.unread = false;
 }
+
+function unavailable(label: string): void {
+  portalNotifications.notify(`${label}尚未開放，待 API 完成後提供。`, "warning");
+}
 </script>
 
 <template>
@@ -65,21 +62,21 @@ function markNotificationRead(id: number): void {
         <button
           class="button button-secondary"
           type="button"
-          @click="$emit('unavailable', '繼續上次工作')"
+          @click="unavailable('繼續上次工作')"
         >
           繼續上次工作
         </button>
         <button
           class="button button-primary"
           type="button"
-          @click="$emit('unavailable', '新增客戶')"
+          @click="unavailable('新增客戶')"
         >
           <AppIcon name="plus" :size="16" />新增客戶
         </button>
         <button
           class="button button-secondary"
           type="button"
-          @click="$emit('unavailable', '新增任務')"
+          @click="unavailable('新增任務')"
         >
           <AppIcon name="plus" :size="16" />新增任務
         </button>
@@ -133,7 +130,7 @@ function markNotificationRead(id: number): void {
         </header>
         <TaskTable
           :tasks="filteredTasks"
-          @unavailable="$emit('unavailable', $event)"
+          @unavailable="unavailable"
         />
       </article>
 
@@ -144,7 +141,7 @@ function markNotificationRead(id: number): void {
             <button
               class="text-button"
               type="button"
-              @click="$emit('unavailable', '所有通知')"
+              @click="unavailable('所有通知')"
             >
               查看全部
             </button>
@@ -158,16 +155,16 @@ function markNotificationRead(id: number): void {
         <article class="card">
           <header class="card-header"><h2>快速操作</h2></header>
           <div class="quick-actions">
-            <button type="button" @click="$emit('unavailable', '新增任務')">
+            <button type="button" @click="unavailable('新增任務')">
               <AppIcon name="briefcase" />新增任務
             </button>
-            <button type="button" @click="$emit('unavailable', '新增客戶')">
+            <button type="button" @click="unavailable('新增客戶')">
               <AppIcon name="users" />新增客戶
             </button>
-            <button type="button" @click="$emit('unavailable', '戰情室')">
+            <button type="button" @click="unavailable('戰情室')">
               <AppIcon name="activity" />戰情室
             </button>
-            <button type="button" @click="$emit('unavailable', '策略分析')">
+            <button type="button" @click="unavailable('策略分析')">
               <AppIcon name="sparkles" />策略分析
             </button>
           </div>

@@ -14,8 +14,7 @@ export type PageId =
   | "geo-analysis-jobs"
   | "geo-analysis-report-design"
   | "geo-analysis-flow-check"
-  | "geo-analysis-query-research"
-  | "geo-tracking";
+  | "geo-analysis-query-research";
 
 export interface NavigationItem {
   id: string;

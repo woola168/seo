@@ -1,37 +1,30 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import PermissionGroupSelector from "../components/permissions/PermissionGroupSelector.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
+import { useAccessAdministration, usePortalSession } from "../composables/portal-context";
 import { useRoleCreationForm } from "../composables/role-creation-form";
-import type { Capabilities } from "../types";
 import { hasPermission } from "../utils/permissions";
 
-const props = defineProps<{
-  capabilities: Capabilities;
-  permissions: string[];
-  loading: boolean;
-}>();
-
-const emit = defineEmits<{
-  back: [];
-  submit: [
-    name: string,
-    permissions: string[],
-    onSuccess: () => void,
-  ];
-}>();
-
+const router = useRouter();
+const session = usePortalSession();
+const access = useAccessAdministration();
+const { permissions, loading } = access;
 const role = useRoleCreationForm();
 const canCreate = computed(() =>
-  hasPermission(props.capabilities.permissions, "roles.manage"),
+  hasPermission(session.capabilities.value?.permissions ?? [], "roles.manage"),
 );
+
+onMounted(() => void access.ensureView("role-creation"));
 
 function submit(): void {
   if (!canCreate.value) return;
   role.submit((name, permissions, onSuccess) => {
-    emit("submit", name, permissions, () => {
+    void access.createRole(name, permissions).then(async (created) => {
+      if (!created) return;
       onSuccess();
-      emit("back");
+      await router.replace({ name: "permissions-roles" });
     });
   });
 }
@@ -39,7 +32,7 @@ function submit(): void {
 
 <template>
   <section class="page role-creation-page">
-    <button class="form-back" type="button" @click="$emit('back')">
+    <button class="form-back" type="button" @click="router.replace({ name: 'permissions-roles' })">
       <AppIcon name="chevron-left" :size="14" />
       返回角色管理
     </button>
@@ -86,7 +79,7 @@ function submit(): void {
           <button
             class="button button-secondary"
             type="button"
-            @click="$emit('back')"
+            @click="router.replace({ name: 'permissions-roles' })"
           >
             取消
           </button>

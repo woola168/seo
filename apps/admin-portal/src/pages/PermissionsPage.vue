@@ -1,116 +1,88 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import AuthorizationEvaluator from "../components/permissions/AuthorizationEvaluator.vue";
 import DepartmentManagement from "../components/permissions/DepartmentManagement.vue";
 import MemberManagement from "../components/permissions/MemberManagement.vue";
 import RoleManagement from "../components/permissions/RoleManagement.vue";
 import AppIcon from "../components/ui/AppIcon.vue";
+import {
+  useAccessAdministration,
+  usePortalNotifications,
+  usePortalSession,
+} from "../composables/portal-context";
 import { mergeMemberMetadata } from "../mocks/permissions";
-import type {
-  AuthorizationDecision,
-  Capabilities,
-  CustomerSummary,
-  Department,
-  PageId,
-  Role,
-  SessionUser,
-  TaskSummary,
-  UserAccess,
-} from "../types";
+import { getRoutePage } from "../router/routes";
 import { canManageUserRoles } from "../utils/permission-guards";
 import { hasPermission } from "../utils/permissions";
 
-const props = defineProps<{
-  currentUser: SessionUser;
-  capabilities: Capabilities;
-  users: UserAccess[];
-  roles: Role[];
-  permissions: string[];
-  customers: CustomerSummary[];
-  tasks: TaskSummary[];
-  departments: Department[];
-  decision: AuthorizationDecision | null;
-  loading: boolean;
-  activePage: PageId;
-}>();
-
-const emit = defineEmits<{
-  unavailable: [label: string];
-  "open-role-creation": [];
-  "update-role": [roleId: string, permissions: string[]];
-  "delete-role": [roleId: string];
-  "update-user-roles": [userId: string, roleIds: string[]];
-  "update-customers": [userId: string, customerIds: string[]];
-  "update-tasks": [userId: string, taskIds: string[]];
-  "open-invitation": [];
-  "create-department": [name: string, description: string, onSuccess: () => void];
-  "update-department": [
-    departmentId: string,
-    name: string,
-    description: string,
-    onSuccess: () => void,
-  ];
-  "delete-department": [departmentId: string];
-  "create-customer": [name: string, onSuccess: () => void];
-  "create-task": [customerId: string, name: string, onSuccess: () => void];
-  evaluate: [
-    userId: string,
-    permission: string,
-    resource:
-      | { type: "customer"; id: string }
-      | { type: "task"; id: string; customerId: string },
-  ];
-}>();
-
 type PermissionTab = "members" | "roles" | "departments" | "evaluate";
+const route = useRoute();
+const router = useRouter();
+const session = usePortalSession();
+const access = useAccessAdministration();
+const notifications = usePortalNotifications();
+const {
+  users,
+  roles,
+  permissions,
+  customers,
+  tasks,
+  departments,
+  decision,
+  loading,
+} = access;
+const currentUser = computed(() => session.user.value!);
+const capabilities = computed(() => session.capabilities.value!);
+const activePage = computed(() => getRoutePage(route.meta.page));
 const resourceModal = ref<"customer" | "task" | null>(null);
 const resourceForm = reactive({ name: "", customerId: "" });
 
 const departmentNames = computed(
-  () => new Map(props.departments.map((department) => [department.id, department.name])),
+  () => new Map(departments.value.map((department) => [department.id, department.name])),
 );
 const members = computed(() =>
-  mergeMemberMetadata(props.users, props.roles, departmentNames.value),
+  mergeMemberMetadata(users.value, roles.value, departmentNames.value),
 );
 const canReadUsers = computed(() =>
-  hasPermission(props.capabilities.permissions, "users.read"),
+  hasPermission(capabilities.value.permissions, "users.read"),
 );
 const canEditMemberRoles = computed(() =>
-  canManageUserRoles(props.capabilities.permissions),
+  canManageUserRoles(capabilities.value.permissions),
 );
 const canReadRoles = computed(() =>
-  hasPermission(props.capabilities.permissions, "roles.read"),
+  hasPermission(capabilities.value.permissions, "roles.read"),
 );
 const canManageRoles = computed(() =>
-  hasPermission(props.capabilities.permissions, "roles.manage"),
+  hasPermission(capabilities.value.permissions, "roles.manage"),
 );
 const canManageGrants = computed(() =>
-  hasPermission(props.capabilities.permissions, "access-grants.manage"),
+  hasPermission(capabilities.value.permissions, "access-grants.manage"),
 );
 const canInviteUsers = computed(() =>
-  hasPermission(props.capabilities.permissions, "users.manage") &&
-  hasPermission(props.capabilities.permissions, "roles.read"),
+  hasPermission(capabilities.value.permissions, "users.manage") &&
+  hasPermission(capabilities.value.permissions, "roles.read"),
 );
 const canReadDepartments = computed(() =>
-  hasPermission(props.capabilities.permissions, "departments.read"),
+  hasPermission(capabilities.value.permissions, "departments.read"),
 );
 const canManageDepartments = computed(() =>
-  hasPermission(props.capabilities.permissions, "departments.manage"),
+  hasPermission(capabilities.value.permissions, "departments.manage"),
 );
 const canCreateCustomers = computed(() =>
-  hasPermission(props.capabilities.permissions, "customers.create"),
+  hasPermission(capabilities.value.permissions, "customers.create"),
 );
 const canCreateTasks = computed(() =>
-  hasPermission(props.capabilities.permissions, "tasks.create"),
+  hasPermission(capabilities.value.permissions, "tasks.create"),
 );
 const canEvaluateOthers = computed(() =>
-  hasPermission(props.capabilities.permissions, "authorization.evaluate"),
+  hasPermission(capabilities.value.permissions, "authorization.evaluate"),
 );
 
 const activeTab = computed<PermissionTab>(() => {
-  if (props.activePage === "permissions-roles") return "roles";
-  if (props.activePage === "permissions-departments") return "departments";
-  if (props.activePage === "permissions-authorization") return "evaluate";
+  if (activePage.value === "permissions-roles") return "roles";
+  if (activePage.value === "permissions-departments") return "departments";
+  if (activePage.value === "permissions-authorization") return "evaluate";
   return "members";
 });
 
@@ -118,7 +90,7 @@ const pageHeader = computed(() => {
   if (activeTab.value === "roles") {
     return {
       title: "角色管理",
-      description: `管理系統角色與權限範圍，共 ${props.roles.length} 個角色。`,
+      description: `管理系統角色與權限範圍，共 ${roles.value.length} 個角色。`,
     };
   }
   if (activeTab.value === "departments") {
@@ -139,25 +111,11 @@ const pageHeader = computed(() => {
   };
 });
 
-function updateUserRoles(userId: string, roleIds: string[]): void {
-  emit("update-user-roles", userId, roleIds);
-}
-
-function updateCustomers(userId: string, customerIds: string[]): void {
-  emit("update-customers", userId, customerIds);
-}
-
-function updateTasks(userId: string, taskIds: string[]): void {
-  emit("update-tasks", userId, taskIds);
-}
-
-function updateRole(roleId: string, selectedPermissions: string[]): void {
-  emit("update-role", roleId, selectedPermissions);
-}
-
-function deleteRole(roleId: string): void {
-  emit("delete-role", roleId);
-}
+const updateUserRoles = access.updateUserRoles;
+const updateCustomers = access.updateCustomerGrants;
+const updateTasks = access.updateTaskGrants;
+const updateRole = access.updateRole;
+const deleteRole = access.deleteRole;
 
 function evaluate(
   userId: string,
@@ -166,26 +124,22 @@ function evaluate(
     | { type: "customer"; id: string }
     | { type: "task"; id: string; customerId: string },
 ): void {
-  emit("evaluate", userId, permission, resource);
+  void access.evaluate(userId, permission, resource);
 }
 
 function openResourceModal(type: "customer" | "task"): void {
   resourceForm.name = "";
-  resourceForm.customerId = props.customers[0]?.id ?? "";
+  resourceForm.customerId = customers.value[0]?.id ?? "";
   resourceModal.value = type;
 }
 
-function submitResource(): void {
+async function submitResource(): Promise<void> {
   const name = resourceForm.name.trim();
   if (!name) return;
   if (resourceModal.value === "customer") {
-    emit("create-customer", name, () => {
-      resourceModal.value = null;
-    });
+    if (await access.createCustomer(name)) resourceModal.value = null;
   } else if (resourceModal.value === "task" && resourceForm.customerId) {
-    emit("create-task", resourceForm.customerId, name, () => {
-      resourceModal.value = null;
-    });
+    if (await access.createTask(resourceForm.customerId, name)) resourceModal.value = null;
   }
 }
 
@@ -194,7 +148,9 @@ function createDepartment(
   description: string,
   onSuccess: () => void,
 ): void {
-  emit("create-department", name, description, onSuccess);
+  void access.createDepartment(name, description).then((created) => {
+    if (created) onSuccess();
+  });
 }
 
 function updateDepartment(
@@ -203,7 +159,19 @@ function updateDepartment(
   description: string,
   onSuccess: () => void,
 ): void {
-  emit("update-department", departmentId, name, description, onSuccess);
+  void access.updateDepartment(departmentId, name, description).then((updated) => {
+    if (updated) onSuccess();
+  });
+}
+
+watch(
+  activeTab,
+  (tab) => void access.ensureView(tab === "evaluate" ? "authorization" : tab),
+  { immediate: true },
+);
+
+function unavailable(label: string): void {
+  notifications.notify(`${label}尚未開放，待 API 完成後提供。`, "warning");
 }
 </script>
 
@@ -249,8 +217,8 @@ function updateDepartment(
       @update-roles="updateUserRoles"
       @update-customers="updateCustomers"
       @update-tasks="updateTasks"
-      @invite="$emit('open-invitation')"
-      @unavailable="$emit('unavailable', $event)"
+      @invite="router.push({ name: 'permission-user-new' })"
+      @unavailable="unavailable"
     />
     <RoleManagement
       v-else-if="activeTab === 'roles' && canReadRoles"
@@ -258,7 +226,7 @@ function updateDepartment(
       :permissions="permissions"
       :can-manage="canManageRoles"
       :loading="loading"
-      @open-create="$emit('open-role-creation')"
+      @open-create="router.push({ name: 'permission-role-new' })"
       @update="updateRole"
       @delete="deleteRole"
     />
@@ -269,7 +237,7 @@ function updateDepartment(
       :loading="loading"
       @create="createDepartment"
       @update="updateDepartment"
-      @delete="$emit('delete-department', $event)"
+      @delete="access.deleteDepartment"
     />
     <AuthorizationEvaluator
       v-else-if="activeTab === 'evaluate'"

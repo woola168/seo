@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { usePortalNotifications, usePortalSession } from "../composables/portal-context";
 import AppIcon from "../components/ui/AppIcon.vue";
 import GeoConfirmDialog from "../components/geo/GeoConfirmDialog.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
@@ -38,13 +39,12 @@ import type {
   GeoQueryGenerationRunResource,
   GeoQueryResource,
   GeoQueryResearchRunResource,
-  ToastTone,
 } from "../types";
 
-const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
+const session = usePortalSession();
+const { notify } = usePortalNotifications();
 const props = withDefaults(
   defineProps<{
-    permissions: readonly string[];
     projectId?: string;
     autoRun?: boolean;
     recoverable?: boolean;
@@ -107,7 +107,7 @@ const keywordTags = computed<string[]>({
     clearFieldError("keywords");
   },
 });
-const canRunJobs = computed(() => props.permissions.includes("geo.jobs.run"));
+const canRunJobs = computed(() => session.capabilities.value?.permissions.includes("geo.jobs.run") ?? false);
 
 onMounted(() => void load());
 
@@ -125,7 +125,7 @@ async function load(): Promise<void> {
     ]);
     profile.value = loadedProfile;
     Object.assign(form, settings.form);
-    if (settings.warning) emit("notify", settings.warning, "warning");
+    if (settings.warning) notify(settings.warning, "warning");
     topics.value = profile.value.topics.map((topic) => ({ name: topic.name, description: topic.description }));
     if (props.autoRun) await executeSearch();
     else if (props.recoverable) await restorePersistedRuns();
@@ -319,7 +319,7 @@ async function persistRecoveryRoute(phase: string): Promise<void> {
       },
     });
   } catch {
-    emit("notify", "執行結果已保存，但瀏覽器恢復狀態更新失敗。", "warning");
+    notify("執行結果已保存，但瀏覽器恢復狀態更新失敗。", "warning");
   }
 }
 
@@ -391,12 +391,11 @@ async function confirmDrafts(): Promise<void> {
   const failures = [...failuresByDraftId.values()];
   if (failures.length) {
     errorMessage.value = `部分 Query 已建立，${failures.length} 筆建立失敗：${failures.join("；")}`;
-    emit("notify", `${resultParts.join("；")}；${errorMessage.value}`, "error");
+    notify(`${resultParts.join("；")}；${errorMessage.value}`, "error");
     return;
   }
   const runFailures = firstRunSummary?.failures ?? [];
-  emit(
-    "notify",
+  notify(
     `${resultParts.join("；")}${runFailures.length ? `：${runFailures.join("；")}` : "。"}`,
     firstRunError || firstRunSummary?.retryScheduled || runFailures.length ? "warning" : "success",
   );
@@ -477,8 +476,7 @@ async function toggleDraft(draft: GeoQueryDraftResource): Promise<void> {
     selectedDraftIds.value = wasSelected
       ? [...selectedDraftIds.value, draft.id]
       : selectedDraftIds.value.filter((id) => id !== draft.id);
-    emit(
-      "notify",
+    notify(
       error instanceof Error ? error.message : "Draft 選取狀態保存失敗。",
       "error",
     );

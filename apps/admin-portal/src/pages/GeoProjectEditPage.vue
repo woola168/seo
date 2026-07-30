@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { usePortalNotifications, usePortalSession } from "../composables/portal-context";
 import AppIcon from "../components/ui/AppIcon.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
 import GeoIntentSelector from "../components/geo/GeoIntentSelector.vue";
@@ -24,7 +25,7 @@ import {
   updateGeoProjectProfile,
   type GeoProjectProfile,
 } from "../services/geo-project-profile";
-import type { CustomerSummary, ToastTone } from "../types";
+import type { CustomerSummary } from "../types";
 import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import { hasPermission } from "../utils/permissions";
 
@@ -36,14 +37,15 @@ interface CompetitorDraft {
   aliases: string[];
 }
 
-const emit = defineEmits<{ notify: [message: string, tone?: ToastTone] }>();
-const props = defineProps<{ permissions: readonly string[] }>();
+const session = usePortalSession();
+const { notify } = usePortalNotifications();
+const permissions = computed(() => session.capabilities.value?.permissions ?? []);
 const route = useRoute();
 const router = useRouter();
 const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProjectArea));
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
-const canResearch = computed(() => hasPermission(props.permissions, "geo.queries.manage"));
+const canResearch = computed(() => hasPermission(permissions.value, "geo.queries.manage"));
 const isRecoveringQueryResearch = computed(
   () =>
     route.query.mode === "query-research" &&
@@ -178,13 +180,6 @@ function openQueryResearch(): void {
   });
 }
 
-function forwardQueryResearchNotification(
-  message: string,
-  tone?: ToastTone,
-): void {
-  emit("notify", message, tone);
-}
-
 async function save(): Promise<void> {
   loading.value = true;
   errorMessage.value = "";
@@ -210,33 +205,32 @@ async function save(): Promise<void> {
   try {
     if (currentProfile.value) {
       await updateGeoProjectProfile(currentProfile.value, input);
-      emit("notify", "Project 已更新。", "success");
+      notify("Project 已更新。", "success");
     } else {
       const result = await createGeoProjectWithQuerySettings(
         input,
         querySettingsFormToRequest(form),
-        hasPermission(props.permissions, "geo.projects.update"),
+        hasPermission(permissions.value, "geo.projects.update"),
       );
       if (result.querySettingsStatus === "skipped") {
-        emit("notify", "Project 已建立，但目前權限無法保存 Query Settings。", "warning");
+        notify("Project 已建立，但目前權限無法保存 Query Settings。", "warning");
         await router.push({ name: projectRoutes.value.projects });
         return;
       }
       if (result.querySettingsStatus === "failed") {
-        emit("notify", `Project 已建立，但 Query Settings 保存失敗：${result.querySettingsError}`, "error");
+        notify(`Project 已建立，但 Query Settings 保存失敗：${result.querySettingsError}`, "error");
         await router.push({ name: projectRoutes.value.projects });
         return;
       }
-      if (!hasPermission(props.permissions, "geo.queries.manage")) {
-        emit(
-          "notify",
+      if (!hasPermission(permissions.value, "geo.queries.manage")) {
+        notify(
           "Project 與 Query Research 預設設定已建立，但目前權限無法執行 Query Research。",
           "warning",
         );
         await router.push({ name: projectRoutes.value.projects });
         return;
       }
-      emit("notify", "Project 與 Query Research 預設設定已建立，正在執行 Query Research。", "success");
+      notify("Project 與 Query Research 預設設定已建立，正在執行 Query Research。", "success");
       await router.replace({
         name: projectRoutes.value.projectEdit,
         params: { projectId: result.project.id },
@@ -250,7 +244,7 @@ async function save(): Promise<void> {
   } catch (error) {
     if (error instanceof GeoProjectProfileSaveError) {
       errorMessage.value = `Project 核心資料已保存，但部分關聯資料失敗：${error.message}`;
-      emit("notify", errorMessage.value, "error");
+      notify(errorMessage.value, "error");
       await router.replace({ name: projectRoutes.value.projectEdit, params: { projectId: error.project.id } });
       await load();
     } else {
@@ -295,13 +289,11 @@ function addTopic(): void {
 <template>
   <GeoQueryResearchPage
     v-if="queryResearchProjectId"
-    :permissions="permissions"
     :project-id="queryResearchProjectId"
     :auto-run="autoRunQueryResearch"
     recoverable
     :research-run-id="typeof route.query.researchRunId === 'string' ? route.query.researchRunId : ''"
     :generation-run-id="typeof route.query.generationRunId === 'string' ? route.query.generationRunId : ''"
-    @notify="forwardQueryResearchNotification"
   />
   <main v-else class="geo-form-page">
     <div class="geo-form-shell">

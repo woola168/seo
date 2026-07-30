@@ -1,30 +1,35 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { usePortalSession } from "../composables/portal-context";
+import type { RecoveryMode } from "../utils/session-bootstrap";
 
-const props = defineProps<{
-  mode: "request" | "reset" | "accept";
-  loading: boolean;
-  error: string;
-}>();
-
-const emit = defineEmits<{
-  submit: [value: string];
-  back: [];
-}>();
-
+const route = useRoute();
+const router = useRouter();
+const session = usePortalSession();
+const { loading, error } = session;
+const mode = computed<Exclude<RecoveryMode, null>>(() => {
+  if (route.meta.recoveryMode === "reset") return "reset";
+  if (route.meta.recoveryMode === "accept") return "accept";
+  return "request";
+});
+const token = computed(() => typeof route.query.token === "string" ? route.query.token : "");
 const email = ref("");
 const password = ref("");
 const confirmation = ref("");
 const localError = ref("");
-const isPasswordMode = computed(() => props.mode !== "request");
+const isPasswordMode = computed(() => mode.value !== "request");
 
-function submit(): void {
+async function submit(): Promise<void> {
   localError.value = "";
   if (isPasswordMode.value && password.value !== confirmation.value) {
     localError.value = "兩次輸入的密碼不一致。";
     return;
   }
-  emit("submit", isPasswordMode.value ? password.value : email.value.trim());
+  const value = isPasswordMode.value ? password.value : email.value.trim();
+  if (await session.recover(mode.value, token.value, value)) {
+    await router.replace({ name: "login" });
+  }
 }
 </script>
 
@@ -89,7 +94,7 @@ function submit(): void {
           <button class="button button-primary login-submit" :disabled="loading">
             {{ loading ? "處理中..." : "送出" }}
           </button>
-          <button class="text-button" type="button" @click="$emit('back')">
+          <button class="text-button" type="button" @click="router.replace({ name: 'login' })">
             返回登入
           </button>
         </form>

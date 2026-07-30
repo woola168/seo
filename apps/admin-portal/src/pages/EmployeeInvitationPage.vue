@@ -1,52 +1,37 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import AppIcon from "../components/ui/AppIcon.vue";
+import { useAccessAdministration, usePortalSession } from "../composables/portal-context";
 import { useEmployeeInvitationForm } from "../composables/employee-invitation-form";
-import type {
-  Capabilities,
-  CreateInvitationInput,
-  CustomerSummary,
-  Department,
-  Role,
-  TaskSummary,
-} from "../types";
 import { hasPermission } from "../utils/permissions";
 
-const props = defineProps<{
-  capabilities: Capabilities;
-  roles: Role[];
-  departments: Department[];
-  customers: CustomerSummary[];
-  tasks: TaskSummary[];
-  loading: boolean;
-}>();
-
-const emit = defineEmits<{
-  back: [];
-  submit: [input: CreateInvitationInput, onSuccess: () => void];
-}>();
-
-const invitation = useEmployeeInvitationForm(() => props.tasks);
+const router = useRouter();
+const session = usePortalSession();
+const access = useAccessAdministration();
+const { roles, departments, customers, tasks, loading } = access;
+const invitation = useEmployeeInvitationForm(() => tasks.value);
 const canInvite = computed(
   () =>
-    hasPermission(props.capabilities.permissions, "users.manage") &&
-    hasPermission(props.capabilities.permissions, "roles.read"),
+    hasPermission(session.capabilities.value?.permissions ?? [], "users.manage") &&
+    hasPermission(session.capabilities.value?.permissions ?? [], "roles.read"),
 );
 
-function submit(): void {
+onMounted(() => void access.ensureView("invitation"));
+
+async function submit(): Promise<void> {
   const payload = invitation.createPayload();
   if (!payload || !canInvite.value) return;
-
-  emit("submit", payload, () => {
+  if (await access.inviteUser(payload)) {
     invitation.reset();
-    emit("back");
-  });
+    await router.replace({ name: "permissions-members" });
+  }
 }
 </script>
 
 <template>
   <section class="page employee-invitation-page">
-    <button class="form-back" type="button" @click="$emit('back')">
+    <button class="form-back" type="button" @click="router.replace({ name: 'permissions-members' })">
       <AppIcon name="chevron-left" :size="14" />
       返回員工列表
     </button>
@@ -196,7 +181,7 @@ function submit(): void {
         </p>
 
         <div class="form-actions">
-          <button class="button button-secondary" type="button" @click="$emit('back')">
+          <button class="button button-secondary" type="button" @click="router.replace({ name: 'permissions-members' })">
             取消
           </button>
           <button
