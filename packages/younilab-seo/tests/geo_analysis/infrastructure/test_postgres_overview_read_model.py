@@ -276,6 +276,7 @@ async def test_postgres_overview_response_page_filters_before_pagination() -> No
             mentioned_id,
             mentioned=True,
             sentiment="positive",
+            competitor_sentiment="negative",
         )
         await _add_semantic_analysis(
             session_factory,
@@ -347,6 +348,7 @@ async def test_postgres_overview_response_page_filters_before_pagination() -> No
         assert first_page.items[0].mentioned is True
         assert first_page.items[0].reference_count == 1
         assert first_page.items[0].positive_count == 1
+        assert first_page.items[0].negative_count == 0
         assert second_page.items[0].run_result_id == not_mentioned_id
         assert [item.run_result_id for item in mentioned_page.items] == [mentioned_id]
         assert [item.run_result_id for item in not_mentioned_page.items] == [
@@ -493,6 +495,7 @@ async def _add_semantic_analysis(
     *,
     mentioned: bool,
     sentiment: str,
+    competitor_sentiment: str | None = None,
 ) -> None:
     now = datetime.now(UTC).replace(microsecond=0)
     analysis_id = uuid4()
@@ -543,3 +546,18 @@ async def _add_semantic_analysis(
                     created_at=now,
                 )
             )
+            if competitor_sentiment is not None:
+                session.add(
+                    GeoRunResultStatementRow(
+                        id=uuid4(),
+                        run_result_id=result_id,
+                        analysis_id=analysis_id,
+                        statement_text="Competitor statement",
+                        entity_id=uuid4(),
+                        entity_role="competitor",
+                        entity_name="Competitor",
+                        theme="品牌",
+                        sentiment=competitor_sentiment,
+                        created_at=now,
+                    )
+                )

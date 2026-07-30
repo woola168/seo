@@ -3645,6 +3645,8 @@ async def _overview_sentiment_counts(
         session,
         list(analysis_ids_by_result.values()),
     ):
+        if fact.entity_role != "own_brand":
+            continue
         result_counts = counts.setdefault(
             fact.run_result_id,
             {"positive": 0, "negative": 0},

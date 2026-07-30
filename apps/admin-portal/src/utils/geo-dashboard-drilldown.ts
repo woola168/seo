@@ -117,30 +117,65 @@ export function buildEvidenceHighlights(
     });
 }
 
+export function filterOwnBrandSentiments(
+  sentiments: GeoRunResultSentimentFact[],
+): GeoRunResultSentimentFact[] {
+  return sentiments.filter((sentiment) => sentiment.entityRole === "own_brand");
+}
+
 export function highlightEvidenceInHtml(
   sanitizedHtml: string,
   highlights: EvidenceHighlight[],
 ): string {
+  const replacementByText = new Map<
+    string,
+    EvidenceHighlight["sentiment"]
+  >();
   const replacements = highlights
     .filter((highlight) => highlight.found)
     .map((highlight) => ({
-      escapedText: escapeHtml(highlight.text),
+      text: renderedMarkdownText(highlight.text),
       sentiment: highlight.sentiment,
     }))
-    .filter((highlight) => highlight.escapedText.length > 0);
-  if (replacements.length === 0) return sanitizedHtml;
-  return sanitizedHtml
-    .split(/(<[^>]+>)/g)
-    .map((segment) => {
-      if (segment.startsWith("<") && segment.endsWith(">")) return segment;
-      return replacements.reduce((text, highlight) => {
-        return text.replace(
-          new RegExp(escapeRegExp(highlight.escapedText), "g"),
-          `<mark class="sentiment-highlight sentiment-highlight-${highlight.sentiment}">${highlight.escapedText}</mark>`,
-        );
-      }, segment);
-    })
-    .join("");
+    .filter((highlight) => highlight.text.length > 0)
+    .sort((left, right) => {
+      const lengthDifference = right.text.length - left.text.length;
+      if (lengthDifference !== 0) return lengthDifference;
+      return left.sentiment === right.sentiment
+        ? 0
+        : left.sentiment === "negative"
+          ? -1
+          : 1;
+    });
+  for (const replacement of replacements) {
+    if (!replacementByText.has(replacement.text)) {
+      replacementByText.set(replacement.text, replacement.sentiment);
+    }
+  }
+  if (replacementByText.size === 0) return sanitizedHtml;
+
+  const segments = htmlTextSegments(sanitizedHtml);
+  const visibleHtml = segments.map((segment) => segment.text).join("");
+  const ranges = selectHighlightRanges(visibleHtml, replacementByText);
+  if (ranges.length === 0) return sanitizedHtml;
+
+  let visibleOffset = 0;
+  let htmlOffset = 0;
+  let highlightedHtml = "";
+  for (const segment of segments) {
+    highlightedHtml += sanitizedHtml.slice(htmlOffset, segment.htmlStart);
+    const segmentStart = visibleOffset;
+    const segmentEnd = segmentStart + segment.text.length;
+    highlightedHtml += highlightTextSegment(
+      segment.text,
+      segmentStart,
+      segmentEnd,
+      ranges,
+    );
+    visibleOffset = segmentEnd;
+    htmlOffset = segment.htmlEnd;
+  }
+  return highlightedHtml + sanitizedHtml.slice(htmlOffset);
 }
 
 function sanitizeHtml(html: string): string {
@@ -169,17 +204,75 @@ function sanitizeHtml(html: string): string {
   });
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+interface HtmlTextSegment {
+  text: string;
+  htmlStart: number;
+  htmlEnd: number;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+interface HighlightRange {
+  start: number;
+  end: number;
+  sentiment: EvidenceHighlight["sentiment"];
+}
+
+function renderedMarkdownText(raw: string): string {
+  return renderSafeMarkdown(raw).replace(/<[^>]+>/g, "").trim();
+}
+
+function htmlTextSegments(html: string): HtmlTextSegment[] {
+  const segments: HtmlTextSegment[] = [];
+  for (const match of html.matchAll(/<[^>]*>|[^<]+/g)) {
+    const text = match[0];
+    if (text.startsWith("<")) continue;
+    const htmlStart = match.index;
+    const htmlEnd = htmlStart + text.length;
+    segments.push({ text, htmlStart, htmlEnd });
+  }
+  return segments;
+}
+
+function selectHighlightRanges(
+  text: string,
+  replacements: Map<string, EvidenceHighlight["sentiment"]>,
+): HighlightRange[] {
+  const selected: HighlightRange[] = [];
+  for (const [evidence, sentiment] of replacements.entries()) {
+    let start = text.indexOf(evidence);
+    while (start >= 0) {
+      const candidate = { start, end: start + evidence.length, sentiment };
+      if (
+        !selected.some(
+          (range) => candidate.start < range.end && candidate.end > range.start,
+        )
+      ) {
+        selected.push(candidate);
+      }
+      start = text.indexOf(evidence, start + evidence.length);
+    }
+  }
+  return selected.sort((left, right) => left.start - right.start);
+}
+
+function highlightTextSegment(
+  text: string,
+  segmentStart: number,
+  segmentEnd: number,
+  ranges: HighlightRange[],
+): string {
+  let offset = 0;
+  let highlighted = "";
+  for (const range of ranges) {
+    const start = Math.max(range.start, segmentStart);
+    const end = Math.min(range.end, segmentEnd);
+    if (start >= end) continue;
+    const localStart = start - segmentStart;
+    const localEnd = end - segmentStart;
+    highlighted += text.slice(offset, localStart);
+    highlighted += `<mark class="sentiment-highlight sentiment-highlight-${range.sentiment}">${text.slice(localStart, localEnd)}</mark>`;
+    offset = localEnd;
+  }
+  return highlighted + text.slice(offset);
 }
 
 function fallbackSanitizeHtml(html: string): string {

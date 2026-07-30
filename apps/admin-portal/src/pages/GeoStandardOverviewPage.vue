@@ -15,6 +15,8 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import AppIcon from "../components/ui/AppIcon.vue";
 import DateRangePicker from "../components/ui/DateRangePicker.vue";
 import GeoDataPreparationNotice from "../components/geo/GeoDataPreparationNotice.vue";
+import GeoResponseSentimentBadges from "../components/geo/GeoResponseSentimentBadges.vue";
+import GeoSentimentAnnotatedResponse from "../components/geo/GeoSentimentAnnotatedResponse.vue";
 import { ApiError, api } from "../services/api";
 import type {
   GeoAnalysisRunResult,
@@ -27,7 +29,6 @@ import type {
   GeoProjectResource,
   GeoRunResultSemanticAnalysis,
 } from "../types";
-import { renderSafeMarkdown } from "../utils/geo-dashboard-drilldown";
 import {
   resolveStoredGeoProjectId,
   setStoredGeoProjectId,
@@ -837,13 +838,13 @@ function apiMessage(caught: unknown, fallback: string): string {
         </nav>
         </div>
         <div class="table-scroll"><table class="response-table">
-          <colgroup><col /><col style="width:90px" /><col style="width:150px" /><col style="width:70px" /><col style="width:110px" /></colgroup>
-          <thead><tr><th>回應</th><th>已提及</th><th>平台</th><th>地區</th><th>日期 (UTC+8)</th></tr></thead>
+          <colgroup><col /><col style="width:90px" /><col style="width:120px" /><col style="width:150px" /><col style="width:70px" /><col style="width:110px" /></colgroup>
+          <thead><tr><th>回應</th><th>已提及</th><th>情緒</th><th>平台</th><th>地區</th><th>日期 (UTC+8)</th></tr></thead>
           <tbody>
             <tr v-for="row in responses?.items ?? []" :key="row.runResultId" class="clickable-row" @click="openResponse(row)">
-              <td><span>{{ row.responseExcerpt }}</span></td><td><span :class="['mention-icon', mentionClass(row.mentioned)]"><AppIcon :name="row.mentioned ? 'check' : row.mentioned === false ? 'x' : 'more'" :size="16" /></span></td><td><span class="platform-pill">{{ providerLabel(row.provider) }}</span></td><td>{{ row.region }}</td><td>{{ formatTaipeiDate(row.completedAt) }}</td>
+              <td><span>{{ row.responseExcerpt }}</span></td><td><span :class="['mention-icon', mentionClass(row.mentioned)]"><AppIcon :name="row.mentioned ? 'check' : row.mentioned === false ? 'x' : 'more'" :size="16" /></span></td><td><GeoResponseSentimentBadges :positive-count="row.positiveCount" :negative-count="row.negativeCount" :analyzed="row.mentioned !== null" /></td><td><span class="platform-pill">{{ providerLabel(row.provider) }}</span></td><td>{{ row.region }}</td><td>{{ formatTaipeiDate(row.completedAt) }}</td>
             </tr>
-            <tr v-if="!responsesLoading && !responses?.items.length"><td colspan="5" class="empty-cell">此條件沒有 Query 回答</td></tr>
+            <tr v-if="!responsesLoading && !responses?.items.length"><td colspan="6" class="empty-cell">此條件沒有 Query 回答</td></tr>
           </tbody>
         </table></div>
         <footer class="pagination"><span>共 {{ responses?.total ?? 0 }} 筆</span><div><button type="button" :disabled="responsePage <= 1" @click="responsePage--"><AppIcon name="chevron-left" :size="15" /></button><span>第 {{ responsePage }} 頁</span><button type="button" :disabled="responsePage * 20 >= (responses?.total ?? 0)" @click="responsePage++"><AppIcon name="chevron-right" :size="15" /></button></div></footer>
@@ -901,7 +902,10 @@ function apiMessage(caught: unknown, fallback: string): string {
         <div v-else class="modal-content">
           <div v-if="modalError" class="overview-error">{{ modalError }}</div>
           <dl><div><dt>平台</dt><dd>{{ providerLabel(selectedResponse.provider) }}</dd></div><div><dt>地區</dt><dd>{{ selectedResponse.region }}</dd></div><div><dt>時間</dt><dd>{{ formatDateTime(selectedResponse.completedAt) }}</dd></div><div><dt>品牌提及</dt><dd>{{ mentionLabel(selectedResponse.mentioned) }}</dd></div></dl>
-          <article><h3>AI 回答</h3><div class="raw-response" v-html="renderSafeMarkdown(selectedResult?.rawResponse ?? selectedResponse.responseExcerpt)"></div></article>
+          <GeoSentimentAnnotatedResponse
+            :raw-response="selectedResult?.rawResponse ?? selectedResponse.responseExcerpt"
+            :sentiments="selectedAnalysis?.sentiments ?? []"
+          />
           <article><h3>品牌與競品</h3><div class="fact-list"><span v-for="mention in selectedAnalysis?.entityMentions ?? []" :key="mention.entityId">{{ mention.entityName }}：{{ mention.mentioned ? `第 ${mention.firstMentionOrder ?? '-'} 順位` : '未提及' }}</span><span v-if="!selectedAnalysis?.entityMentions.length">尚無 semantic analysis</span></div></article>
           <article><h3>Citations</h3><ul><li v-for="reference in selectedResult?.references ?? []" :key="`${reference.url}-${reference.position}`"><a :href="reference.url" target="_blank" rel="noreferrer">{{ reference.title ?? reference.url }}</a></li></ul><p v-if="!selectedResult?.references.length">沒有 citations</p></article>
         </div>
@@ -931,4 +935,26 @@ function apiMessage(caught: unknown, fallback: string): string {
 .overview-heading p,.overview-card header p,.kpi-title,.citation-kpi-card span{line-height:20px}
 .overview-card h2{font-weight:600}
 .secondary-button{font-size:14px}
+</style>
+
+<style scoped>
+.response-table th:nth-child(3),
+.response-table td:nth-child(3) {
+  width: 120px;
+}
+
+.response-table th:nth-child(4),
+.response-table td:nth-child(4) {
+  width: 150px;
+}
+
+.response-table th:nth-child(5),
+.response-table td:nth-child(5) {
+  width: 70px;
+}
+
+.response-table th:nth-child(6),
+.response-table td:nth-child(6) {
+  width: 110px;
+}
 </style>
