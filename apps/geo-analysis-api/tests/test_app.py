@@ -1173,6 +1173,50 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
     assert rejected_after_accept.json()["detail"] == "query draft already accepted"
 
 
+def test_unselected_generated_intent_remains_acceptable_as_unclassified() -> None:
+    class UnclassifiedPlanningClient(FakePlanningClient):
+        async def generate(self, command) -> dict:
+            result = await super().generate(command)
+            result["queries"][0]["attributes"]["intent"] = {
+                "category": "transactional",
+                "description": "立即購買",
+            }
+            return result
+
+    client = _client(planning_client=UnclassifiedPlanningClient())
+    project_id = _create_project(client)
+    response = client.post(
+        f"/api/geo/projects/{project_id}/query-generation-runs",
+        json={
+            "provider": "gemini",
+            "brandName": "Acme",
+            "keywords": ["erp"],
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2b_procurement",
+            "topicNames": ["ERP 導入"],
+            "intents": [
+                {"category": "informational", "description": "了解 ERP"}
+            ],
+            "audience": {"name": "採購", "description": "B2B 採購人員"},
+            "maxQueries": 1,
+        },
+    )
+
+    assert response.status_code == 201
+    draft = response.json()["drafts"][0]
+    assert draft["intent"] is None
+    assert draft["metadata"]["rawIntentCategory"] == "transactional"
+
+    accepted = client.post(
+        f"/api/geo/query-drafts/{draft['id']}/accept",
+        json={"createTopicIfMissing": True},
+    )
+
+    assert accepted.status_code == 200
+    assert accepted.json()["intent"] is None
+
+
 def test_query_research_rejects_empty_keywords() -> None:
     client = _client(planning_client=FakePlanningClient())
     project_id = _create_project(client)

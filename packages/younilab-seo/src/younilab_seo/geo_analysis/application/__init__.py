@@ -139,6 +139,11 @@ from younilab_seo.geo_analysis.application.interfaces import (
     ResourceTaskReference,
     TrackingRunClient,
 )
+from younilab_seo.geo_analysis.application.query_intents import (
+    generated_query_intent_metadata,
+    normalize_standard_query_intent,
+    resolve_generated_query_intent,
+)
 from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
     CitationNormalizationContext,
     CitationNormalizationPersistence,
@@ -357,6 +362,9 @@ __all__ = [
     "QueryIntent",
     "QueryPlanningClient",
     "QueryPlanningPersistence",
+    "generated_query_intent_metadata",
+    "normalize_standard_query_intent",
+    "resolve_generated_query_intent",
     "ProjectSetupPersistence",
     "QueryCatalogPersistence",
     "ResourceCatalogCustomerReader",

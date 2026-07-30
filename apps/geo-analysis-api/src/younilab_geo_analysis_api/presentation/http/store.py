@@ -58,6 +58,7 @@ from younilab_seo.geo_analysis.application import (
     QueryDraftSelectionCommand,
     QueryGenerationCommand,
     QueryGenerationRunRecord,
+    QueryIntent,
     QueryResearchCommand,
     QueryResearchResultRecord,
     QueryResearchRunRecord,
@@ -67,6 +68,8 @@ from younilab_seo.geo_analysis.application import (
     SaveRunResultEntityDetectionCommand,
     SaveSemanticRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
+    generated_query_intent_metadata,
+    resolve_generated_query_intent,
 )
 from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
     CitationNormalizationContext,
@@ -1680,7 +1683,7 @@ class GeoApiStore:
             return None
         run_id = uuid4()
         drafts = [
-            self._draft_record(project_id, run_id, query, occurred_at)
+            self._draft_record(project_id, run_id, query, occurred_at, command.intents)
             for query in (result or {}).get("queries", [])
         ]
         record = QueryGenerationRunRecord(
@@ -1827,9 +1830,15 @@ class GeoApiStore:
         run_id: UUID,
         query: dict,
         occurred_at: datetime,
+        requested_intents: list[QueryIntent],
     ) -> QueryDraftRecord:
         attributes = query.get("attributes") or {}
         intent = attributes.get("intent") or {}
+        raw_intent_category = intent.get("category")
+        resolved_intent = resolve_generated_query_intent(
+            raw_intent_category,
+            requested_intents,
+        )
         return QueryDraftRecord(
             id=uuid4(),
             generation_run_id=run_id,
@@ -1844,9 +1853,13 @@ class GeoApiStore:
             region=query.get("region", "TW"),
             language=query.get("language", "zh-TW"),
             market_type=query.get("marketType", "b2b_procurement"),
-            intent=intent.get("category"),
+            intent=resolved_intent,
             is_branded=query.get("isBranded", False),
-            metadata=query.get("metadata", {}),
+            metadata=generated_query_intent_metadata(
+                query.get("metadata", {}),
+                raw_intent_category,
+                resolved_intent,
+            ),
             created_at=occurred_at,
             updated_at=occurred_at,
         )

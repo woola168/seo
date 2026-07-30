@@ -72,6 +72,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     QueryDraftSelectionCommand,
     QueryGenerationCommand,
     QueryGenerationRunRecord,
+    QueryIntent,
     QueryResearchCommand,
     QueryResearchResultRecord,
     QueryResearchRunRecord,
@@ -87,6 +88,10 @@ from younilab_seo.geo_analysis.application.interfaces.citation_normalization imp
 )
 from younilab_seo.geo_analysis.application.interfaces.semantic_analysis import (
     SemanticAnalysisContext,
+)
+from younilab_seo.geo_analysis.application.query_intents import (
+    generated_query_intent_metadata,
+    resolve_generated_query_intent,
 )
 from younilab_seo.geo_analysis.application.overview_filters import (
     overview_filter_options_from_dimensions,
@@ -2479,6 +2484,7 @@ class PostgresGeoAnalysisRepository:
                     query,
                     occurred_at,
                     await _existing_topic_id(session, query.get("topicId")),
+                    command.intents,
                 )
                 for query in (result or {}).get("queries", [])
             ]
@@ -3007,9 +3013,15 @@ def _draft_row(
     query: dict,
     occurred_at: datetime,
     topic_id: UUID | None,
+    requested_intents: list[QueryIntent],
 ) -> GeoQueryDraftRow:
     attributes = query.get("attributes") or {}
     intent = attributes.get("intent") or {}
+    raw_intent_category = intent.get("category")
+    resolved_intent = resolve_generated_query_intent(
+        raw_intent_category,
+        requested_intents,
+    )
     return GeoQueryDraftRow(
         id=uuid4(),
         generation_run_id=run_id,
@@ -3024,10 +3036,14 @@ def _draft_row(
         region=query.get("region", "TW"),
         language=query.get("language", "zh-TW"),
         market_type=query.get("marketType", "b2b_procurement"),
-        intent=intent.get("category"),
+        intent=resolved_intent,
         is_branded=query.get("isBranded", False),
         status="draft",
-        metadata_json=query.get("metadata", {}),
+        metadata_json=generated_query_intent_metadata(
+            query.get("metadata", {}),
+            raw_intent_category,
+            resolved_intent,
+        ),
         created_at=occurred_at,
         updated_at=occurred_at,
     )

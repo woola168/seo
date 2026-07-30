@@ -1035,6 +1035,7 @@ def _query_generation_prompt(
             "maxQueries": command.max_queries,
             "queryLanguage": language,
         },
+        "intentGuidance": _intent_generation_guidance(language),
         "researchContext": command.research_context or "",
     }
     return json.dumps(payload, ensure_ascii=False)
@@ -1087,7 +1088,23 @@ def _matching_intent(
     for candidate in command.intents:
         if candidate.category == intent.category:
             return candidate
-    return command.intents[0]
+    return QueryIntent(category=intent.category, description=intent.description)
+
+
+def _intent_generation_guidance(language: str) -> list[str]:
+    if language == "en-US":
+        return [
+            "Treat every selected intent equally; array order does not indicate priority.",
+            "When maxQueries allows, generate at least one query for every selected intent.",
+            "When maxQueries is lower than the number of selected intents, choose the most relevant intents from the keyword, topic, audience, and market context.",
+            "Allocate remaining queries naturally; equal distribution is not required.",
+        ]
+    return [
+        "所有選取的 intent 皆同等重要；陣列順序不代表優先順序。",
+        "當 maxQueries 容量足夠時，每個選取的 intent 至少生成一筆 query。",
+        "當 maxQueries 少於選取的 intent 數量時，依 keyword、topic、audience 與 market context 選擇最相關的 intent。",
+        "其餘 query 依情境自然分配，不要求平均分配。",
+    ]
 
 
 def _matching_value(value: str, allowed_values: list[str]) -> str:

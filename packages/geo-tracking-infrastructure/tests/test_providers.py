@@ -29,7 +29,10 @@ from younilab_geo_tracking_infrastructure import (
 )
 from younilab_geo_tracking_infrastructure.providers import (
     _GeminiApiCallBudget,
+    _GeminiIntent,
     _generate_with_reference_retry,
+    _matching_intent,
+    _query_generation_prompt,
     _reference_retry_prompt,
 )
 from younilab_provider_request_audit import (
@@ -54,6 +57,47 @@ def _gemini_executor() -> ProviderRequestExecutor:
             source_service="test",
         ),
     )
+
+
+def _query_generation_command() -> QueryGenerationCommand:
+    return QueryGenerationCommand.model_validate(
+        {
+            "provider": "gemini",
+            "brandName": "Acme",
+            "competitorBrands": [],
+            "keywords": ["erp"],
+            "region": "TW",
+            "language": "en-US",
+            "marketType": "b2b_procurement",
+            "topics": [{"name": "ERP", "description": "ERP selection"}],
+            "intents": [
+                {"category": "informational", "description": "Learn"},
+                {"category": "transactional", "description": "Act"},
+            ],
+            "audience": {"name": "Buyer", "description": "Software buyer"},
+            "maxQueries": 1,
+        }
+    )
+
+
+def test_query_generation_prompt_guides_intent_coverage_without_equal_allocation() -> None:
+    payload = json.loads(_query_generation_prompt(_query_generation_command(), "en-US"))
+
+    guidance = " ".join(payload["intentGuidance"])
+    assert "at least one query for every selected intent" in guidance
+    assert "maxQueries is lower" in guidance
+    assert "equal distribution is not required" in guidance
+    assert "array order does not indicate priority" in guidance
+
+
+def test_query_generation_preserves_unmatched_model_intent_for_later_classification() -> None:
+    intent = _matching_intent(
+        _query_generation_command(),
+        _GeminiIntent(category="unexpected", description="Unexpected category"),
+    )
+
+    assert intent.category == "unexpected"
+    assert intent.description == "Unexpected category"
 
 
 @pytest.mark.anyio
