@@ -33,7 +33,9 @@ from younilab_geo_tracking_infrastructure.providers import (
     _generate_with_reference_retry,
     _matching_intent,
     _query_generation_prompt,
+    _query_generation_system_prompt,
     _query_research_prompt,
+    _query_research_system_prompt,
     _reference_retry_prompt,
 )
 from younilab_provider_request_audit import (
@@ -89,6 +91,36 @@ def test_query_generation_prompt_guides_intent_coverage_without_equal_allocation
     assert "maxQueries is lower" in guidance
     assert "equal distribution is not required" in guidance
     assert "array order does not indicate priority" in guidance
+
+
+def test_query_generation_system_prompt_prioritizes_natural_user_queries() -> None:
+    prompt = _query_generation_system_prompt("en-US")
+    traditional_chinese_prompt = _query_generation_system_prompt("zh-TW")
+
+    assert "real user" in prompt
+    assert "one concrete need" in prompt
+    assert "keyword fragments" in prompt
+    assert "marketing copy" in prompt
+    assert "brandMentionRules" in prompt
+    assert "真實使用者" in traditional_chinese_prompt
+    assert "只表達一個具體需求" in traditional_chinese_prompt
+    assert "短關鍵字片段" in traditional_chinese_prompt
+    assert "行銷文案" in traditional_chinese_prompt
+
+
+def test_query_research_system_prompt_separates_observed_and_inferred_language() -> None:
+    prompt = _query_research_system_prompt("en-US")
+    traditional_chinese_prompt = _query_research_system_prompt("zh-TW")
+
+    assert "real users" in prompt
+    assert "short keyword fragments" in prompt
+    assert "observed" in prompt
+    assert "inferred" in prompt
+    assert "search-volume claims" in prompt
+    assert "真實使用者" in traditional_chinese_prompt
+    assert "實際觀察到的措辭" in traditional_chinese_prompt
+    assert "推論出的措辭" in traditional_chinese_prompt
+    assert "不得捏造搜尋量" in traditional_chinese_prompt
 
 
 def test_query_generation_preserves_unmatched_model_intent_for_later_classification() -> None:
