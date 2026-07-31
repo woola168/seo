@@ -105,6 +105,55 @@ def test_overview_report_composes_sections_from_existing_facts() -> None:
     asyncio.run(run())
 
 
+def test_overview_report_groups_queries_into_five_intent_categories() -> None:
+    async def run() -> None:
+        for unclassified_intent in ("unexpected", None):
+            queries = [
+                _query_record().model_copy(update={"intent": "commercial"}),
+                _other_query_record().model_copy(
+                    update={"intent": unclassified_intent}
+                ),
+            ]
+            report = await GetGeoOverviewReport(
+                FakeReportReadModel(
+                    _source(),
+                    queries,
+                    [_topic_record(), _other_topic_record()],
+                ),
+                FakeClock(datetime(2026, 7, 2, tzinfo=UTC)),
+            ).execute(TENANT_ID, PROJECT_ID, _overview_query())
+
+            assert [group.intent_category for group in report.intent_groups] == [
+                "navigational",
+                "informational",
+                "commercial_investigation",
+                "transactional",
+                "unclassified",
+            ]
+            assert all(
+                group.queries == []
+                and group.visibility_percent == 0
+                and group.sov_percent == 0
+                and group.citation_count == 0
+                for group in report.intent_groups[:2]
+                + report.intent_groups[3:4]
+            )
+            assert [
+                query.query_text for query in report.intent_groups[2].queries
+            ] == ["Acme 好嗎？"]
+            assert report.intent_groups[2].visibility_percent == 100
+            assert report.intent_groups[2].sov_percent == 50
+            assert report.intent_groups[2].citation_count == 1
+            assert [
+                query.query_text for query in report.intent_groups[4].queries
+            ] == ["健身房推薦？"]
+            assert report.intent_groups[4].visibility_percent == 0
+            assert report.intent_groups[4].sov_percent == 0
+            assert report.intent_groups[4].citation_count == 0
+
+    asyncio.run(run())
+
+
 def test_overview_report_sentiment_trend_counts_own_brand_only() -> None:
     async def run() -> None:
         source = _source()

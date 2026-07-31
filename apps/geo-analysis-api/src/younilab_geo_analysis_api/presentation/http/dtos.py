@@ -831,6 +831,20 @@ class OverviewQueryRowResponse(ApiModel):
     citation_count: int
 
 
+class OverviewIntentGroupRowResponse(ApiModel):
+    intent_category: Literal[
+        "navigational",
+        "informational",
+        "commercial_investigation",
+        "transactional",
+        "unclassified",
+    ]
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+    queries: list[OverviewQueryRowResponse]
+
+
 class OverviewTopicRowResponse(ApiModel):
     topic_id: UUID | None = None
     topic_name: str
@@ -868,6 +882,7 @@ class OverviewReportResponse(ApiModel):
     sentiment_trend: list[OverviewSentimentPointResponse]
     entities: list[OverviewEntityRowResponse]
     topics: list[OverviewTopicRowResponse]
+    intent_groups: list[OverviewIntentGroupRowResponse]
     citation_urls: list[OverviewCitationRowResponse]
     citation_domains: list[OverviewCitationRowResponse]
 

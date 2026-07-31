@@ -686,6 +686,20 @@ class GeoOverviewQueryRow(ContractModel):
     citation_count: int
 
 
+class GeoOverviewIntentGroupRow(ContractModel):
+    intent_category: Literal[
+        "navigational",
+        "informational",
+        "commercial_investigation",
+        "transactional",
+        "unclassified",
+    ]
+    visibility_percent: float
+    sov_percent: float
+    citation_count: int
+    queries: list[GeoOverviewQueryRow] = Field(default_factory=list)
+
+
 class GeoOverviewTopicRow(ContractModel):
     topic_id: UUID | None = None
     topic_name: str
@@ -723,6 +737,7 @@ class GeoOverviewReport(ContractModel):
     sentiment_trend: list[GeoOverviewSentimentPoint] = Field(default_factory=list)
     entities: list[GeoOverviewEntityRow] = Field(default_factory=list)
     topics: list[GeoOverviewTopicRow] = Field(default_factory=list)
+    intent_groups: list[GeoOverviewIntentGroupRow] = Field(default_factory=list)
     citation_urls: list[GeoOverviewCitationRow] = Field(default_factory=list)
     citation_domains: list[GeoOverviewCitationRow] = Field(default_factory=list)
 

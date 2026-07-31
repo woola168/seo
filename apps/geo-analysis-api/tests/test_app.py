@@ -2197,6 +2197,23 @@ def test_overview_endpoints_return_stable_empty_read_models() -> None:
     assert report.status_code == 200
     assert report.json()["isPreparing"] is False
     assert report.json()["filterOptions"]["topics"] == []
+    assert report.json()["topics"] == []
+    assert [
+        group["intentCategory"] for group in report.json()["intentGroups"]
+    ] == [
+        "navigational",
+        "informational",
+        "commercial_investigation",
+        "transactional",
+        "unclassified",
+    ]
+    assert all(
+        group["queries"] == []
+        and group["visibilityPercent"] == 0
+        and group["sovPercent"] == 0
+        and group["citationCount"] == 0
+        for group in report.json()["intentGroups"]
+    )
     assert report.json()["citationSummary"]["citationCount"] == 0
     assert responses.status_code == 200
     assert responses.json() == {"items": [], "total": 0, "page": 1, "pageSize": 20}
