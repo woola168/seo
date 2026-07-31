@@ -9,6 +9,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoOverviewCitationRow,
     GeoOverviewCitationSummary,
     GeoOverviewEntityRow,
+    GeoOverviewIntentGroupRow,
     GeoOverviewKpi,
     GeoOverviewQuery,
     GeoOverviewQueryRow,
@@ -24,6 +25,9 @@ from younilab_seo.geo_analysis.application.interfaces import Clock
 from younilab_seo.geo_analysis.application.interfaces.overview_read import (
     OverviewReportReadModel,
     OverviewResponseReadModel,
+)
+from younilab_seo.geo_analysis.application.query_intents import (
+    normalize_standard_query_intent,
 )
 from younilab_seo.geo_analysis.application.overview_filters import (
     overview_formula_query,
@@ -77,6 +81,10 @@ class GetGeoOverviewReport:
         query_index = {item.id: item for item in queries}
         topic_index = {item.id: item for item in topics}
         entity_sov = _entity_sov(current)
+        query_rows = {
+            item.id: _query_row(current, item, self.calculator, query)
+            for item in queries
+        }
         return GeoOverviewReport(
             period_start=query.period_start,
             period_end=query.period_end,
@@ -93,6 +101,14 @@ class GetGeoOverviewReport:
                 current,
                 queries,
                 topic_index,
+                query_rows,
+                self.calculator,
+                query,
+            ),
+            intent_groups=_intent_group_rows(
+                current,
+                queries,
+                query_rows,
                 self.calculator,
                 query,
             ),
@@ -374,16 +390,19 @@ def _time_zone(value: str):
         raise
 
 
-def _topic_rows(source, queries, topic_index, calculator, overview_query):
+def _topic_rows(
+    source,
+    queries,
+    topic_index,
+    query_rows,
+    calculator,
+    overview_query,
+):
     rows = []
     grouped = defaultdict(list)
     for item in queries:
         grouped[item.topic_id].append(item)
     for topic_id, topic_queries in grouped.items():
-        query_rows = [
-            _query_row(source, item, calculator, overview_query)
-            for item in topic_queries
-        ]
         topic_source = _source_for_query_ids(
             source, {item.id for item in topic_queries}
         )
@@ -397,10 +416,43 @@ def _topic_rows(source, queries, topic_index, calculator, overview_query):
                 visibility_percent=stats[0],
                 sov_percent=stats[1],
                 citation_count=len(topic_source.citations),
-                queries=query_rows,
+                queries=[query_rows[item.id] for item in topic_queries],
             )
         )
     return sorted(rows, key=lambda item: item.topic_name)
+
+
+def _intent_group_rows(source, queries, query_rows, calculator, overview_query):
+    categories = (
+        "navigational",
+        "informational",
+        "commercial_investigation",
+        "transactional",
+        "unclassified",
+    )
+    grouped = {category: [] for category in categories}
+    for item in queries:
+        category = normalize_standard_query_intent(item.intent) or "unclassified"
+        grouped[category].append(item)
+
+    rows = []
+    for category in categories:
+        intent_queries = grouped[category]
+        intent_source = _source_for_query_ids(
+            source,
+            {item.id for item in intent_queries},
+        )
+        visibility, sov = _scope_stats(intent_source, calculator, overview_query)
+        rows.append(
+            GeoOverviewIntentGroupRow(
+                intent_category=category,
+                visibility_percent=visibility,
+                sov_percent=sov,
+                citation_count=len(intent_source.citations),
+                queries=[query_rows[item.id] for item in intent_queries],
+            )
+        )
+    return rows
 
 
 def _query_row(source, query_record, calculator, overview_query):

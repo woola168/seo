@@ -335,6 +335,7 @@ Authorization: Bearer <access-token>
 - 比較期間自動使用目前區間之前的等長期間。
 - `timeZone` 用於每日趨勢分組，預設 `Asia/Taipei`。
 - Overview report 的 `isPreparing` 會檢查該 Project 在台北當日是否仍有 `pending`、`publishing`、`published`、`running_external` 或 `delayed` 的 daily-slot owner Job；`succeeded`、`failed`、`cancelled` 不計入。
+- Overview report 的 `intentGroups` 固定依導航型、資訊型、商業評估、交易型、未分類排序，並以各組 Query 的原始 facts 重新計算指標；既有 `topics` 欄位保留相容性。
 - `mentionStatus` 支援 `all`、`mentioned`、`not_mentioned`。Semantic analysis 尚未完成或失敗時 `mentioned=null`，只會出現在 `all`。
 - Report read model 會在 persistence adapter 套用 tenant、期間、Topic、Provider、地區與 metadata 條件，再把 normalized facts 交給既有純 calculator。
 - Response read model 會先完成相同篩選與品牌提及狀態判斷，再於資料庫計算 total、排序及 offset pagination；只載入當頁的 reference 與 `own_brand` positive／negative sentiment 計數。
