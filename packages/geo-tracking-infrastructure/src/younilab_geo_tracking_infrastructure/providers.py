@@ -234,7 +234,10 @@ class _GeminiQueryDraft(BaseModel):
         description="Generation constraints copied from the provided input."
     )
     query: str = Field(
-        description="The generated AI-search question for GEO tracking."
+        description=(
+            "A concise query that a real user would naturally type into a search "
+            "engine or AI assistant to express one concrete need."
+        )
     )
     keywords: list[str] = Field(
         default_factory=list,
@@ -1017,13 +1020,26 @@ def _query_generation_system_prompt(language: str | None) -> str:
     if language == "en-US":
         return (
             "You generate AI-search query candidates for GEO "
-            "(Generative Engine Optimization) tracking. "
-            "Use the provided JSON parameters and optional researchContext."
+            "(Generative Engine Optimization) tracking. Write each candidate as "
+            "something a real user in the specified audience and market would "
+            "naturally type into a search engine or AI assistant, not as SEO or "
+            "marketing copy. Express one concrete need per query. Prefer concise, "
+            "everyday wording; short keyword fragments and complete questions are "
+            "both valid. Avoid report titles, campaign briefs, procurement prose, "
+            "stacked clauses, and forcing unrelated input constraints into one "
+            "query. Use the provided JSON parameters and optional researchContext "
+            "as context, obey explicit brandMentionRules, and classify each finished "
+            "query with its most fitting selected intent."
         )
     return (
         "你負責產生 GEO（Generative Engine Optimization）追蹤用的"
-        " AI 搜尋 query 候選。"
-        "請依據提供的 JSON 參數與可選 researchContext 生成。"
+        " AI 搜尋 query 候選。每一筆都要像指定 audience 與 market 中的真實"
+        "使用者會在搜尋引擎或 AI 助理輸入的內容，而不是 SEO 或行銷文案。"
+        "每筆 query 只表達一個具體需求，優先使用簡潔、日常的措辭；短關鍵字"
+        "片段與完整問句都可以。避免報告標題、活動企劃、採購公文式語氣、堆疊"
+        "多個子句，以及為了塞入條件而把不相關資訊放進同一筆 query。請將提供"
+        "的 JSON 參數與可選 researchContext 作為情境，遵守明確的"
+        " brandMentionRules，並在完成 query 後標示最符合的已選 intent。"
     )
 
 
@@ -1222,13 +1238,25 @@ def _default_topic_names(market_type: MarketType) -> list[str]:
 def _query_research_system_prompt(language: str | None) -> str:
     if language == "en-US":
         return (
-            "You research market language for GEO query generation. "
-            "You must use the Google Search tool as a reference. Return only "
-            "structured JSON with researchContext, searchedKeywords, and sourceUrls."
+            "You research current search language used by real users for GEO query "
+            "generation. You must use the Google Search tool as a reference. Look "
+            "for short keyword fragments, natural questions, pain points, "
+            "comparisons, recommendation wording, and related-question or "
+            "related-search phrasing when available. Keep only language relevant to "
+            "the specified brand, audience, keywords, and market; exclude adjacent "
+            "but irrelevant needs. In researchContext, distinguish wording observed "
+            "in search references from wording you inferred. Do not fabricate "
+            "search-volume claims. Return only structured JSON with researchContext, "
+            "searchedKeywords, and sourceUrls."
         )
     return (
-        "你負責研究 GEO query generation 需要的市場語氣與搜尋語言。"
+        "你負責研究真實使用者目前用於搜尋的語言，供 GEO query generation"
+        " 使用。"
         "你必須使用 Google Search tool 作為 reference。"
+        "研究短關鍵字片段、自然問句、痛點、比較、推薦，以及可取得時的相關問題"
+        "或相關搜尋措辭。只保留與指定品牌、audience、keywords 和 market 有關的"
+        "語言，排除相鄰但不相關的需求。researchContext 必須區分搜尋 reference"
+        " 中實際觀察到的措辭與推論出的措辭，不得捏造搜尋量資訊。"
         "只回傳符合 schema 的 structured JSON，包含 researchContext、"
         "searchedKeywords、sourceUrls。"
     )
@@ -1242,7 +1270,9 @@ def _query_research_prompt(
     audience = command.audience.description if command.audience else "not specified"
     brand_rules = command.brand_mention_rules
     return (
-        "Research current market language and search phrasing.\n"
+        "Research current market language and natural search phrasing used by real "
+        "users. Preserve concise fragments and conversational questions instead of "
+        "rewriting them into formal or promotional sentences.\n"
         f"Brand: {command.brand_name}\n"
         f"Competitors: {competitors}\n"
         f"Keywords: {', '.join(command.keywords)}\n"
@@ -1253,8 +1283,10 @@ def _query_research_prompt(
         "Brand mention rules: "
         f"ownBrand={brand_rules.should_mention_own_brand}, "
         f"competitor={brand_rules.should_mention_competitor}\n"
-        "Return concise researchContext, searchedKeywords actually used or useful for "
-        "this research, and sourceUrls from references when available."
+        "Return concise researchContext with representative phrasing patterns, "
+        "searchedKeywords actually used or useful for this research, and sourceUrls "
+        "from references when available. Do not claim that inferred wording has "
+        "measured popularity or search volume."
     )
 
 async def _generate_with_reference_retry(
