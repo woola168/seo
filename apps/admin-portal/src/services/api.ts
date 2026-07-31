@@ -484,13 +484,23 @@ export const api = {
         `/api/geo/projects/${projectId}/reports/dashboard?${params.toString()}`,
       );
     },
-    overviewReport: (projectId: string, input: GeoOverviewQuery) =>
+    overviewReport: (
+      projectId: string,
+      input: GeoOverviewQuery,
+      signal?: AbortSignal,
+    ) =>
       request<GeoOverviewReport>(
         `/api/geo/projects/${projectId}/reports/overview?${overviewParams(input)}`,
+        { signal },
       ),
-    overviewResponses: (projectId: string, input: GeoOverviewResponseQuery) =>
+    overviewResponses: (
+      projectId: string,
+      input: GeoOverviewResponseQuery,
+      signal?: AbortSignal,
+    ) =>
       request<GeoOverviewResponsePage>(
         `/api/geo/projects/${projectId}/reports/overview/responses?${overviewParams(input)}`,
+        { signal },
       ),
     dispatchJob: (jobId: string) =>
       request<GeoJobResource>(`/api/geo/jobs/${jobId}/dispatch`, {
