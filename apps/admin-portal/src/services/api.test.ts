@@ -216,6 +216,35 @@ describe("api.geoAnalysis.dashboardReport", () => {
     expect(url.searchParams.getAll("metadataType")).toEqual(["品牌提及", "資訊引用"]);
   });
 
+  it("forwards abort signals to both Overview requests", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const { api } = await import("./api");
+    const controller = new AbortController();
+    const query = {
+      periodStart: "2026-07-01T00:00:00Z",
+      periodEnd: "2026-07-08T00:00:00Z",
+    };
+
+    await api.geoAnalysis.overviewReport("project-1", query, controller.signal);
+    await api.geoAnalysis.overviewResponses("project-1", query, controller.signal);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("requests the KMindHub workspace mapping endpoint", async () => {
     let requestedPath = "";
     vi.stubGlobal(

@@ -17,6 +17,7 @@ import DateRangePicker from "../components/ui/DateRangePicker.vue";
 import GeoDataPreparationNotice from "../components/geo/GeoDataPreparationNotice.vue";
 import GeoResponseSentimentBadges from "../components/geo/GeoResponseSentimentBadges.vue";
 import GeoSentimentAnnotatedResponse from "../components/geo/GeoSentimentAnnotatedResponse.vue";
+import { useLatestRequest } from "../composables/latest-request";
 import { ApiError, api } from "../services/api";
 import type {
   GeoAnalysisRunResult,
@@ -25,6 +26,7 @@ import type {
   GeoOverviewQuery,
   GeoOverviewReport,
   GeoOverviewResponsePage,
+  GeoOverviewResponseQuery,
   GeoOverviewResponseRow,
   GeoProjectResource,
   GeoRunResultSemanticAnalysis,
@@ -59,8 +61,11 @@ const responses = ref<GeoOverviewResponsePage | null>(null);
 const selectedResponse = ref<GeoOverviewResponseRow | null>(null);
 const selectedResult = ref<GeoAnalysisRunResult | null>(null);
 const selectedAnalysis = ref<GeoRunResultSemanticAnalysis | null>(null);
-const loading = ref(false);
-const responsesLoading = ref(false);
+const projectsLoading = ref(false);
+const reportRequest = useLatestRequest();
+const responseRequest = useLatestRequest();
+const loading = computed(() => projectsLoading.value || reportRequest.loading.value);
+const responsesLoading = responseRequest.loading;
 const modalLoading = ref(false);
 const errorMessage = ref("");
 const modalError = ref("");
@@ -80,8 +85,6 @@ const sentimentMode = ref<SentimentMode>("all");
 const responsePage = ref(1);
 const hiddenVisibilitySeries = ref<Set<string>>(new Set());
 const openFilterMenu = ref<FilterMenu | null>(null);
-let reportRequestId = 0;
-let responseRequestId = 0;
 
 const filters = reactive({
   region: "",
@@ -92,8 +95,28 @@ const filters = reactive({
 });
 
 const queryOptions = computed(() =>
-  (report.value?.topics ?? []).flatMap((topic) => topic.queries),
+  (report.value?.intentGroups ?? []).flatMap((group) => group.queries),
 );
+const overviewRequest = computed(() => {
+  const period = periodQuery();
+  if (!selectedProjectId.value || !period) return null;
+  return {
+    projectId: selectedProjectId.value,
+    query: {
+      ...period,
+      topicIds: [...filters.topicIds],
+      providers: [...filters.providers],
+      region: filters.region || undefined,
+      metadataIndustry: [...filters.metadataIndustry],
+      metadataType: [...filters.metadataType],
+      timeZone: "Asia/Taipei",
+    } satisfies GeoOverviewQuery,
+  };
+});
+const overviewRequestKey = computed(() => {
+  const input = overviewRequest.value;
+  return input ? requestKey(input.projectId, input.query) : "";
+});
 const selectedProjectLabel = computed(() =>
   projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? "選擇 Project",
 );
@@ -227,96 +250,83 @@ onMounted(() => void loadProjects());
 watch(selectedProjectId, (projectId) => {
   setStoredGeoProjectId(projectId);
   resetDimensionFilters();
-  void loadOverview();
 });
-watch(
-  () => [filters.region, ...filters.topicIds, ...filters.providers, ...filters.metadataIndustry, ...filters.metadataType],
-  () => {
-    responsePage.value = 1;
-    void loadOverview();
-  },
-);
-watch([responseQueryId, mentionStatus, responsePage], () => void loadResponses());
+watch(overviewRequestKey, (key) => {
+  const input = overviewRequest.value;
+  if (!key || !input) return;
+  responsePage.value = 1;
+  void loadOverview(input.projectId, input.query, key);
+});
 watch([citationView, citationSearch], () => {
   citationPage.value = 1;
 });
 
 async function loadProjects(): Promise<void> {
-  loading.value = true;
+  projectsLoading.value = true;
   errorMessage.value = "";
   try {
     const response = await api.geoAnalysis.projects();
     projects.value = response.items;
     selectedProjectId.value = resolveStoredGeoProjectId(response.items);
-    if (!selectedProjectId.value) loading.value = false;
   } catch (caught) {
-    loading.value = false;
     errorMessage.value = apiMessage(caught, "無法載入 GEO 專案。");
+  } finally {
+    projectsLoading.value = false;
   }
 }
 
-async function loadOverview(): Promise<void> {
-  if (!selectedProjectId.value || !periodQuery()) return;
-  const requestId = ++reportRequestId;
-  loading.value = true;
+async function loadOverview(
+  projectId: string,
+  query: GeoOverviewQuery,
+  key: string,
+): Promise<void> {
+  responseRequest.abort();
   errorMessage.value = "";
-  try {
-    const nextReport = await api.geoAnalysis.overviewReport(
-      selectedProjectId.value,
-      buildQuery(),
-    );
-    if (requestId !== reportRequestId) return;
-    report.value = nextReport;
+  const result = await reportRequest.run(
+    key,
+    (signal) => api.geoAnalysis.overviewReport(projectId, query, signal),
+  );
+  if (result.status === "completed") {
+    report.value = result.value;
     citationPage.value = 1;
-    sanitizeFilters();
+    if (sanitizeFilters()) return;
     await loadResponses();
-  } catch (caught) {
-    if (requestId !== reportRequestId) return;
+  } else if (result.status === "failed") {
     report.value = null;
     responses.value = null;
-    errorMessage.value = apiMessage(caught, "無法載入 Overview 報表。");
-  } finally {
-    if (requestId === reportRequestId) loading.value = false;
+    errorMessage.value = apiMessage(result.error, "無法載入 Overview 報表。");
   }
 }
 
 async function loadResponses(): Promise<void> {
-  if (!selectedProjectId.value || !periodQuery()) return;
-  const requestId = ++responseRequestId;
-  responsesLoading.value = true;
-  try {
-    const nextResponses = await api.geoAnalysis.overviewResponses(
-      selectedProjectId.value,
+  const input = overviewRequest.value;
+  if (!input) return;
+  const key = requestKey(input.projectId, {
+    ...input.query,
+    queryId: responseQueryId.value || undefined,
+    mentionStatus: mentionStatus.value,
+    page: responsePage.value,
+    pageSize: 20,
+  });
+  const result = await responseRequest.run(
+    key,
+    (signal) => api.geoAnalysis.overviewResponses(
+      input.projectId,
       {
-        ...buildQuery(),
+        ...input.query,
         queryId: responseQueryId.value || undefined,
         mentionStatus: mentionStatus.value,
         page: responsePage.value,
         pageSize: 20,
       },
-    );
-    if (requestId === responseRequestId) responses.value = nextResponses;
-  } catch (caught) {
-    if (requestId === responseRequestId) {
-      errorMessage.value = apiMessage(caught, "無法載入 Query 回答紀錄。");
-    }
-  } finally {
-    if (requestId === responseRequestId) responsesLoading.value = false;
+      signal,
+    ),
+  );
+  if (result.status === "completed") {
+    responses.value = result.value;
+  } else if (result.status === "failed") {
+    errorMessage.value = apiMessage(result.error, "無法載入 Query 回答紀錄。");
   }
-}
-
-function buildQuery(): GeoOverviewQuery {
-  const period = periodQuery();
-  if (!period) throw new Error("日期區間尚未完成");
-  return {
-    ...period,
-    topicIds: filters.topicIds,
-    providers: filters.providers,
-    region: filters.region || undefined,
-    metadataIndustry: filters.metadataIndustry,
-    metadataType: filters.metadataType,
-    timeZone: "Asia/Taipei",
-  };
 }
 
 function periodQuery(): Pick<GeoOverviewQuery, "periodStart" | "periodEnd"> | null {
@@ -345,15 +355,10 @@ function periodQuery(): Pick<GeoOverviewQuery, "periodStart" | "periodEnd"> | nu
   return { periodStart: start.toISOString(), periodEnd: end.toISOString() };
 }
 
-function applyTimePreset(): void {
-  if (timePreset.value !== "custom") void loadOverview();
-}
-
 function applyCustomRange(range: { start: string; end: string }): void {
   customStart.value = range.start;
   customEnd.value = range.end;
   customDatePickerOpen.value = false;
-  void loadOverview();
 }
 
 function cancelCustomRange(): void {
@@ -366,7 +371,6 @@ function resetFilters(): void {
   customStart.value = "";
   customEnd.value = "";
   resetDimensionFilters();
-  void loadOverview();
 }
 
 function resetDimensionFilters(): void {
@@ -385,14 +389,26 @@ function resetDimensionFilters(): void {
   customDatePickerOpen.value = false;
 }
 
-function sanitizeFilters(): void {
-  if (!report.value) return;
+function sanitizeFilters(): boolean {
+  if (!report.value) return false;
   const validTopics = new Set(report.value.filterOptions.topics.map((item) => item.value));
   const validPlatforms = new Set(report.value.filterOptions.platforms.map((item) => item.value));
+  const validQueries = new Set(queryOptions.value.map((item) => item.queryId));
   const nextTopics = filters.topicIds.filter((item) => validTopics.has(item));
   const nextProviders = filters.providers.filter((item) => validPlatforms.has(item));
-  if (nextTopics.length !== filters.topicIds.length) filters.topicIds = nextTopics;
-  if (nextProviders.length !== filters.providers.length) filters.providers = nextProviders;
+  let reportFiltersChanged = false;
+  if (nextTopics.length !== filters.topicIds.length) {
+    filters.topicIds = nextTopics;
+    reportFiltersChanged = true;
+  }
+  if (nextProviders.length !== filters.providers.length) {
+    filters.providers = nextProviders;
+    reportFiltersChanged = true;
+  }
+  if (responseQueryId.value && !validQueries.has(responseQueryId.value)) {
+    responseQueryId.value = "";
+  }
+  return reportFiltersChanged;
 }
 
 function toggleSelection(values: string[], value: string): void {
@@ -430,7 +446,6 @@ function selectTimePreset(preset: TimePreset, event: Event): void {
     return;
   }
   customDatePickerOpen.value = false;
-  applyTimePreset();
 }
 
 function selectRegion(region: string, event: Event): void {
@@ -446,8 +461,25 @@ function toggleIntent(intentCategory: string): void {
 }
 
 function selectResponseQuery(queryId: string, event: Event): void {
-  responseQueryId.value = queryId;
+  const changed = responseQueryId.value !== queryId;
   (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+  if (!changed) return;
+  responseQueryId.value = queryId;
+  responsePage.value = 1;
+  void loadResponses();
+}
+
+function selectMentionStatus(value: MentionStatus): void {
+  if (mentionStatus.value === value) return;
+  mentionStatus.value = value;
+  responsePage.value = 1;
+  void loadResponses();
+}
+
+function changeResponsePage(page: number): void {
+  if (page === responsePage.value) return;
+  responsePage.value = page;
+  void loadResponses();
 }
 
 function selectCitationView(view: "url" | "domain"): void {
@@ -599,13 +631,28 @@ function addDays(value: Date, days: number): Date {
   return next;
 }
 
+function requestKey(projectId: string, query: GeoOverviewQuery | GeoOverviewResponseQuery): string {
+  return JSON.stringify({
+    projectId,
+    ...query,
+    topicIds: [...(query.topicIds ?? [])].sort(),
+    providers: [...(query.providers ?? [])].sort(),
+    metadataIndustry: [...(query.metadataIndustry ?? [])].sort(),
+    metadataType: [...(query.metadataType ?? [])].sort(),
+  });
+}
+
 function apiMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
 }
 </script>
 
 <template>
-  <main class="geo-overview-page">
+  <main
+    class="geo-overview-page"
+    :inert="loading ? true : undefined"
+    :aria-busy="loading"
+  >
     <header class="overview-heading">
       <div>
         <h1>Overview</h1>
@@ -826,7 +873,16 @@ function apiMessage(caught: unknown, fallback: string): string {
         </table></div>
       </section>
 
-      <section class="overview-card table-card">
+      <section class="overview-card table-card responses-card" :aria-busy="responsesLoading">
+        <div
+          v-if="responsesLoading && !loading"
+          class="overview-section-loading"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="session-loading-spinner" aria-hidden="true"></span>
+          <strong>正在載入回答</strong>
+        </div>
         <header><div><h2>回應</h2><p>選擇查詢，並查看來自不同 LLM 模型的所有 AI 回應</p></div></header>
         <div class="response-controls">
           <details class="response-query-select">
@@ -837,7 +893,7 @@ function apiMessage(caught: unknown, fallback: string): string {
             </div>
           </details>
         <nav class="segmented-control" aria-label="回答提及篩選">
-          <button v-for="tab in [{value:'all',label:'全部'},{value:'mentioned',label:'已提及'},{value:'not_mentioned',label:'未提及'}]" :key="tab.value" :class="{ active: mentionStatus === tab.value }" type="button" @click="mentionStatus = tab.value as MentionStatus">{{ tab.label }}</button>
+          <button v-for="tab in [{value:'all',label:'全部'},{value:'mentioned',label:'已提及'},{value:'not_mentioned',label:'未提及'}]" :key="tab.value" :class="{ active: mentionStatus === tab.value }" type="button" @click="selectMentionStatus(tab.value as MentionStatus)">{{ tab.label }}</button>
         </nav>
         </div>
         <div class="table-scroll"><table class="response-table">
@@ -850,7 +906,7 @@ function apiMessage(caught: unknown, fallback: string): string {
             <tr v-if="!responsesLoading && !responses?.items.length"><td colspan="6" class="empty-cell">此條件沒有 Query 回答</td></tr>
           </tbody>
         </table></div>
-        <footer class="pagination"><span>共 {{ responses?.total ?? 0 }} 筆</span><div><button type="button" :disabled="responsePage <= 1" @click="responsePage--"><AppIcon name="chevron-left" :size="15" /></button><span>第 {{ responsePage }} 頁</span><button type="button" :disabled="responsePage * 20 >= (responses?.total ?? 0)" @click="responsePage++"><AppIcon name="chevron-right" :size="15" /></button></div></footer>
+        <footer class="pagination"><span>共 {{ responses?.total ?? 0 }} 筆</span><div><button type="button" :disabled="responsePage <= 1" @click="changeResponsePage(responsePage - 1)"><AppIcon name="chevron-left" :size="15" /></button><span>第 {{ responsePage }} 頁</span><button type="button" :disabled="responsePage * 20 >= (responses?.total ?? 0)" @click="changeResponsePage(responsePage + 1)"><AppIcon name="chevron-right" :size="15" /></button></div></footer>
       </section>
 
       <section class="overview-card table-card citation-card">
@@ -914,8 +970,47 @@ function apiMessage(caught: unknown, fallback: string): string {
         </div>
       </section>
     </div>
+    <Teleport to="body">
+      <div
+        v-if="loading"
+        class="geo-operation-loading-overlay"
+        role="status"
+        aria-live="polite"
+        aria-label="正在載入 Overview"
+      >
+        <div class="geo-operation-loading-card">
+          <span class="session-loading-spinner" aria-hidden="true"></span>
+          <strong>正在載入 Overview</strong>
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
+
+<style scoped>
+.responses-card {
+  position: relative;
+}
+
+.overview-section-loading {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.82);
+  cursor: wait;
+}
+
+.overview-section-loading .session-loading-spinner {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+</style>
 
 <style scoped>
 .geo-overview-page{min-height:100%;background:#f7f8fa;padding:24px 32px;color:#1f1f1f}.overview-heading{max-width:1200px;margin:0 auto 16px}.overview-heading h1{margin:0;font-size:20px;line-height:28px}.overview-heading p,.overview-card header p{margin:4px 0 0;color:#8c8c8c;font-size:13px}.overview-toolbar{max-width:1200px;margin:0 auto 20px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}.filter-control{display:flex;flex-direction:column;gap:5px}.filter-control>span{font-size:11px;color:#8c8c8c}.filter-control select,.responses-header select{height:34px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 30px 0 10px;color:#434343}.project-filter select{min-width:190px}.custom-range{display:flex;align-items:center;gap:6px;height:34px}.custom-range input{height:34px;border:1px solid #d9d9d9;border-radius:6px;padding:0 8px}.filter-menu{position:relative}.filter-menu summary{height:34px;display:flex;align-items:center;gap:6px;padding:0 10px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;list-style:none}.filter-menu summary span{min-width:18px;height:18px;border-radius:9px;background:#e6f4ff;color:#0958d9;text-align:center;font-size:11px;line-height:18px}.filter-menu-panel{position:absolute;z-index:20;top:39px;left:0;min-width:210px;max-height:280px;overflow:auto;padding:10px;background:#fff;border:1px solid #e7eaec;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.12)}.filter-menu-panel label{display:flex;gap:8px;align-items:center;padding:7px 4px;font-size:13px}.filter-menu-panel strong{display:block;padding:8px 4px 3px;font-size:11px;color:#8c8c8c}.filter-menu-panel p{padding:6px;margin:0;color:#8c8c8c;font-size:12px}.toolbar-actions{display:flex;gap:8px;margin-left:auto}.secondary-button{height:34px;display:inline-flex;align-items:center;gap:6px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;padding:0 12px;color:#595959;cursor:pointer}.secondary-button:disabled{opacity:.45;cursor:not-allowed}.icon-button{width:34px;height:34px;display:inline-grid;place-items:center;border:1px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer}.overview-error,.overview-empty{max-width:1200px;margin:0 auto 16px;padding:14px 16px;border-radius:6px;display:flex;gap:8px;align-items:center}.overview-error{background:#fff2f0;color:#a8071a;border:1px solid #ffccc7}.overview-empty{min-height:160px;justify-content:center;flex-direction:column;background:#fff;border:1px dashed #d9d9d9}.kpi-grid,.overview-card{max-width:1200px;margin-left:auto;margin-right:auto}.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}.overview-card{box-sizing:border-box;background:#fff;border:1px solid #e7eaec;border-radius:8px;margin-bottom:16px}.kpi-card{padding:18px 20px}.kpi-label{display:flex;align-items:center;gap:10px;color:#8c8c8c;font-size:13px;margin-bottom:14px}.kpi-icon{width:36px;height:36px;border-radius:8px;display:grid;place-items:center}.kpi-icon.blue,.kpi-icon.cyan{background:#e6f4ff;color:#1677ff}.kpi-icon.green{background:#f6ffed;color:#389e0d}.kpi-icon.gold{background:#fffbe6;color:#d68c24}.kpi-card>strong{font-size:28px}.kpi-card>strong small{font-size:15px;color:#bfbfbf;font-weight:400}.kpi-card p{font-size:12px;color:#8c8c8c;margin:10px 0 0}.kpi-card p b{color:#434343}.citation-summary{display:grid;grid-template-columns:repeat(4,1fr);padding:16px 20px}.citation-summary div{display:flex;flex-direction:column;gap:5px;padding:0 20px;border-right:1px solid #f0f0f0}.citation-summary div:first-child{padding-left:0}.citation-summary div:last-child{border:0}.citation-summary span{font-size:12px;color:#8c8c8c}.citation-summary strong{font-size:20px}.chart-card,.table-card{padding:20px 24px}.overview-card header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.overview-card h2{font-size:16px;margin:0}.chart-frame{height:300px}.sentiment-totals{display:flex;gap:28px;margin-bottom:14px;font-size:13px;color:#8c8c8c}.sentiment-totals b{display:block;margin-top:3px;font-size:21px;color:#262626}.inline-empty,.empty-cell{text-align:center;color:#8c8c8c;padding:28px}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:720px}th{padding:10px 8px;text-align:left;color:#8c8c8c;font-size:12px;font-weight:500;background:#fafafa;border-bottom:1px solid #f0f0f0}td{padding:12px 8px;border-bottom:1px solid #f5f5f5;font-size:13px}td strong,td small{display:block}td small{color:#8c8c8c;margin-top:3px}.entity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:#7c3aed}.entity-dot.own_brand{background:#1677ff}.positive-text{color:#389e0d}.negative-text{color:#cf1322}.topic-row,.clickable-row{cursor:pointer}.topic-row:hover,.clickable-row:hover{background:#f5faff}.topic-row td:first-child{display:flex;align-items:center;gap:7px}.query-child-row td:first-child{padding-left:44px;color:#595959}.responses-header select{max-width:300px}.table-tabs{display:flex;gap:20px;border-bottom:1px solid #f0f0f0;margin-bottom:8px}.table-tabs button{border:0;background:transparent;padding:8px 2px;color:#8c8c8c;cursor:pointer;border-bottom:2px solid transparent}.table-tabs button.active{color:#1677ff;border-color:#1677ff}.clickable-row td:first-child{max-width:540px}.clickable-row td p{margin:4px 0 0;color:#8c8c8c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status-pill,.source-pill{display:inline-block;border-radius:999px;padding:3px 8px;font-size:11px}.status-positive{background:#f6ffed;color:#237804}.status-muted{background:#f5f5f5;color:#595959}.status-warning{background:#fffbe6;color:#ad6800}.source-pill{background:#e6f4ff;color:#0958d9}.pagination{display:flex;align-items:center;justify-content:space-between;padding-top:14px;color:#8c8c8c;font-size:12px}.pagination div{display:flex;align-items:center;gap:8px}.pagination button{width:30px;height:30px;border:1px solid #d9d9d9;border-radius:6px;background:#fff}.citation-search{display:flex;align-items:center;gap:6px;border:1px solid #d9d9d9;border-radius:6px;padding:0 8px}.citation-search input{height:32px;border:0;outline:0}.citation-table{min-width:1120px}.modal-backdrop{position:fixed;z-index:100;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:24px}.response-modal{width:min(920px,100%);max-height:90vh;overflow:hidden;background:#fff;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.2)}.response-modal>header{display:flex;justify-content:space-between;gap:20px;padding:18px 22px;border-bottom:1px solid #f0f0f0}.response-modal header span{font-size:12px;color:#8c8c8c}.response-modal h2{font-size:17px;margin:4px 0 0}.modal-content{padding:20px 22px;max-height:calc(90vh - 78px);overflow:auto}.modal-content dl{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 20px}.modal-content dl div{background:#fafafa;padding:10px;border-radius:6px}.modal-content dt{font-size:11px;color:#8c8c8c}.modal-content dd{margin:4px 0 0;font-size:13px}.modal-content article{margin-top:22px}.modal-content h3{font-size:14px}.raw-response{line-height:1.75;color:#434343}.fact-list{display:flex;flex-wrap:wrap;gap:8px}.fact-list span{padding:5px 9px;background:#f5f5f5;border-radius:6px;font-size:12px}.modal-content a{color:#1677ff;word-break:break-all}@media(max-width:1023px){.geo-overview-page{padding:20px}.kpi-grid{grid-template-columns:repeat(2,1fr)}.toolbar-actions{margin-left:0}.citation-summary{grid-template-columns:repeat(2,1fr);row-gap:18px}.citation-summary div:nth-child(2){border:0}.modal-content dl{grid-template-columns:repeat(2,1fr)}}@media(max-width:639px){.geo-overview-page{padding:16px}.kpi-grid{grid-template-columns:1fr}.overview-toolbar>*{width:100%}.filter-control select,.filter-menu summary{width:100%}.toolbar-actions{display:grid;grid-template-columns:1fr 1fr}.citation-summary{grid-template-columns:1fr}.citation-summary div{padding:0 0 12px;border-right:0;border-bottom:1px solid #f0f0f0}.chart-card,.table-card{padding:16px}.chart-frame{height:250px}.overview-card header,.responses-header{align-items:flex-start;flex-direction:column}.responses-header select,.citation-search{width:100%;max-width:none}.modal-content dl{grid-template-columns:1fr}}
