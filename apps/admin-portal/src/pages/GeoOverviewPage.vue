@@ -34,6 +34,7 @@ import {
   setStoredGeoProjectId,
 } from "../utils/geo-project-selection-storage";
 import { formatSentimentRatio } from "../utils/geo-overview-format";
+import { geoOverviewIntentLabel } from "../utils/geo-overview-intents";
 
 ChartJS.register(
   CategoryScale,
@@ -63,7 +64,7 @@ const responsesLoading = ref(false);
 const modalLoading = ref(false);
 const errorMessage = ref("");
 const modalError = ref("");
-const expandedTopics = ref<Set<string>>(new Set());
+const expandedIntents = ref<Set<string>>(new Set());
 const citationView = ref<"url" | "domain">("url");
 const citationSearch = ref("");
 const citationPage = ref(1);
@@ -377,7 +378,7 @@ function resetDimensionFilters(): void {
   responseQueryId.value = "";
   mentionStatus.value = "all";
   responsePage.value = 1;
-  expandedTopics.value = new Set();
+  expandedIntents.value = new Set();
   hiddenVisibilitySeries.value = new Set();
   sentimentMode.value = "all";
   openFilterMenu.value = null;
@@ -437,11 +438,11 @@ function selectRegion(region: string, event: Event): void {
   closeSingleFilter(event);
 }
 
-function toggleTopic(topicKey: string): void {
-  const next = new Set(expandedTopics.value);
-  if (next.has(topicKey)) next.delete(topicKey);
-  else next.add(topicKey);
-  expandedTopics.value = next;
+function toggleIntent(intentCategory: string): void {
+  const next = new Set(expandedIntents.value);
+  if (next.has(intentCategory)) next.delete(intentCategory);
+  else next.add(intentCategory);
+  expandedIntents.value = next;
 }
 
 function selectResponseQuery(queryId: string, event: Event): void {
@@ -812,13 +813,13 @@ function apiMessage(caught: unknown, fallback: string): string {
 
       <section class="overview-card table-card">
         <header><div><h2>追蹤問題分析</h2><p>了解個別追蹤問題的相關數據</p></div></header>
-        <div class="table-scroll"><table class="topic-table"><thead><tr><th>主題</th><th>能見度</th><th>聲量佔有率</th><th>引用次數</th></tr></thead>
-          <tbody v-for="topic in report.topics" :key="topic.topicId ?? 'none'">
-            <tr class="topic-row" @click="toggleTopic(topic.topicId ?? 'none')">
-              <td><AppIcon name="chevron-right" :class="{ 'topic-chevron-expanded': expandedTopics.has(topic.topicId ?? 'none') }" :size="15" /><span><strong>{{ topic.topicName }}</strong><small>{{ topic.queries.length }} 追蹤問題清單</small></span></td>
-              <td>{{ percent(topic.visibilityPercent) }}</td><td>{{ percent(topic.sovPercent) }}</td><td>{{ topic.citationCount }}</td>
+        <div class="table-scroll"><table class="topic-table"><thead><tr><th>Intent</th><th>能見度</th><th>聲量佔有率</th><th>引用次數</th></tr></thead>
+          <tbody v-for="group in report.intentGroups" :key="group.intentCategory">
+            <tr class="topic-row" @click="toggleIntent(group.intentCategory)">
+              <td><AppIcon name="chevron-right" :class="{ 'topic-chevron-expanded': expandedIntents.has(group.intentCategory) }" :size="15" /><span><strong>{{ geoOverviewIntentLabel(group.intentCategory) }}</strong><small>{{ group.queries.length }} 追蹤問題清單</small></span></td>
+              <td>{{ percent(group.visibilityPercent) }}</td><td>{{ percent(group.sovPercent) }}</td><td>{{ group.citationCount }}</td>
             </tr>
-            <tr v-for="queryRow in expandedTopics.has(topic.topicId ?? 'none') ? topic.queries : []" :key="queryRow.queryId" class="query-child-row">
+            <tr v-for="queryRow in expandedIntents.has(group.intentCategory) ? group.queries : []" :key="queryRow.queryId" class="query-child-row">
               <td>{{ queryRow.queryText }}</td><td>{{ percent(queryRow.visibilityPercent) }}</td><td>{{ percent(queryRow.sovPercent) }}</td><td>{{ queryRow.citationCount }}</td>
             </tr>
           </tbody>
