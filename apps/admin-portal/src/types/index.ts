@@ -770,9 +770,29 @@ export interface GeoOverviewReport {
       citationCount: number;
     }>;
   }>;
+  intentGroups: Array<{
+    intentCategory: GeoOverviewIntentCategory;
+    visibilityPercent: number;
+    sovPercent: number;
+    citationCount: number;
+    queries: Array<{
+      queryId: string;
+      queryText: string;
+      visibilityPercent: number;
+      sovPercent: number;
+      citationCount: number;
+    }>;
+  }>;
   citationUrls: GeoOverviewCitationRow[];
   citationDomains: GeoOverviewCitationRow[];
 }
+
+export type GeoOverviewIntentCategory =
+  | "navigational"
+  | "informational"
+  | "commercial_investigation"
+  | "transactional"
+  | "unclassified";
 
 export interface GeoOverviewCitationRow {
   scopeType: "url" | "domain";
