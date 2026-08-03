@@ -14,7 +14,7 @@ SEMANTIC_FACT_TYPE_VALUES = frozenset(
 ANALYSIS_TASK_KEY = "geo_answer_analysis"
 ANALYSIS_SCHEMA_VERSION = 1
 SEMANTIC_ANALYSIS_TASK_KEY = "geo_semantic_analysis"
-SEMANTIC_ANALYSIS_SCHEMA_VERSION = 5
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = 6
 
 
 def geo_answer_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
@@ -124,7 +124,7 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
     return KMindHubExtractionTaskDefinition(
         task_key=SEMANTIC_ANALYSIS_TASK_KEY,
         schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
-        name="GEO semantic analysis v5",
+        name="GEO semantic analysis v6",
         task=(
             "Extract statement sentiment and semantic labels from one AI answer "
             "using the supplied entity context. Copy entity "
@@ -145,7 +145,11 @@ def geo_semantic_analysis_task_definition() -> KMindHubExtractionTaskDefinition:
                     "Copy the exact UUID from Entity context for the matching own "
                     "brand or competitor. Do not use the entity name, website, or "
                     "an invented id. If no listed entity matches, do not emit an "
-                    "entity fact."
+                    "entity fact. Identify the entity being evaluated, not merely "
+                    "the speaker or source of the opinion. The speaker is not "
+                    "necessarily the sentiment target. For 'A criticizes B', A is "
+                    "the speaker and B is the sentiment target; assign the negative "
+                    "sentiment to B, not A, unless A is separately evaluated."
                 ),
                 "00000000-0000-4000-8000-000000000001",
                 0,

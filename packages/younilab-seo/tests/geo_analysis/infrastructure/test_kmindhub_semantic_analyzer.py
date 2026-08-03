@@ -140,14 +140,14 @@ def test_kmindhub_semantic_analyzer_maps_preview_to_facts() -> None:
 
         assert result.status == "completed"
         assert result.analyzer == "kmindhub"
-        assert result.analyzer_version == "geo_semantic_analysis:v5"
+        assert result.analyzer_version == "geo_semantic_analysis:v6"
         assert result.entity_mentions == []
         assert result.sentiments[0].entity_id == OWN_BRAND_ID
         assert result.sentiments[0].entity_name == "Acme"
         assert result.sentiments[0].sentiment == "positive"
         assert result.semantic_facts[0].fact_type == "product"
         assert repository.upserts[0].task_key == SEMANTIC_ANALYSIS_TASK_KEY
-        assert repository.upserts[0].schema_version == 5
+        assert repository.upserts[0].schema_version == 6
         assert client.created_tasks == 1
         assert client.committed_items is not None
 
@@ -214,8 +214,8 @@ def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> N
     definition = geo_semantic_analysis_task_definition()
     fields = {field.name: field for field in definition.fields}
 
-    assert definition.schema_version == 5
-    assert definition.name == "GEO semantic analysis v5"
+    assert definition.schema_version == 6
+    assert definition.name == "GEO semantic analysis v6"
     assert "preserve all Markdown delimiters" in definition.task
     assert "including Markdown formatting syntax" in definition.description
     assert "confidence" not in fields
@@ -250,6 +250,17 @@ def test_kmindhub_semantic_task_definition_preserves_markdown_in_evidence() -> N
     assert "**Acme**" in fields["evidenceText"].normalization["instruction"]
 
 
+def test_kmindhub_semantic_task_definition_distinguishes_speaker_from_target() -> None:
+    definition = geo_semantic_analysis_task_definition()
+    fields = {field.name: field for field in definition.fields}
+    entity_instruction = fields["entityId"].normalization["instruction"]
+
+    assert "speaker" in entity_instruction
+    assert "sentiment target" in entity_instruction
+    assert "A criticizes B" in entity_instruction
+    assert "assign the negative sentiment to B" in entity_instruction
+
+
 def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
     async def run() -> None:
         client = FakeKMindHubClient(preview_items=[])
@@ -269,6 +280,8 @@ def test_kmindhub_semantic_analyzer_sends_entity_context_to_preview() -> None:
         assert f"entityId: {COMPETITOR_ID}" in client.preview_text
         assert "entityRole: competitor" in client.preview_text
         assert "entityName: Rival" in client.preview_text
+        assert "speaker is not necessarily the sentiment target" in client.preview_text
+        assert "A criticizes B" in client.preview_text
         assert "AI answer:" in client.preview_text
         assert "--- BEGIN AI ANSWER ---" in client.preview_text
         assert "Acme ERP" in client.preview_text

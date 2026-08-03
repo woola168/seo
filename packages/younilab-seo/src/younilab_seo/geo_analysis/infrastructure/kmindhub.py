@@ -564,6 +564,12 @@ def _semantic_extraction_text(command: AnalyzeGeoRunResultCommand) -> str:
                 "do not emit an entity fact for it."
             ),
             (
+                "- The speaker is not necessarily the sentiment target. For "
+                "'A criticizes B', A is the speaker and B is the sentiment target; "
+                "assign the negative sentiment to B, not A, unless A is separately "
+                "evaluated."
+            ),
+            (
                 "- evidenceText must be copied from the AI answer section, "
                 "not from this context."
             ),
