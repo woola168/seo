@@ -1312,7 +1312,7 @@ function openReportDesign(): void {
               </label>
               <label class="check-row">
                 <input v-model="queryForm.shouldMentionCompetitor" type="checkbox" />
-                <span>query 需提及競品</span>
+                <span>query 可視情境提及競品</span>
               </label>
             </div>
           </section>
@@ -1353,7 +1353,7 @@ function openReportDesign(): void {
           <dt>品牌提及</dt>
           <dd>
             自身品牌：{{ queryForm.shouldMentionOwnBrand ? "需要" : "不限制" }} /
-            競品：{{ queryForm.shouldMentionCompetitor ? "需要" : "不限制" }}
+            競品：{{ queryForm.shouldMentionCompetitor ? "允許" : "不允許" }}
           </dd>
         </dl>
         <h3>Source URLs</h3>

@@ -515,7 +515,7 @@ async function run(action: () => Promise<void>): Promise<void> {
               </label>
               <label class="check-row">
                 <input v-model="form.shouldMentionCompetitor" type="checkbox" />
-                <span>query 需提及競品</span>
+                <span>query 可視情境提及競品</span>
               </label>
             </div>
             <label>

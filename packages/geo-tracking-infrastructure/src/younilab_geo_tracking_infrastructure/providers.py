@@ -199,7 +199,10 @@ class _GeminiBrandMentionRules(BaseModel):
         description="Copy whether the query should mention the user's own brand."
     )
     shouldMentionCompetitor: bool = Field(
-        description="Copy whether the query should mention a competitor brand."
+        description=(
+            "Copy whether mentioning a competitor brand is allowed. True permits "
+            "a mention when relevant and natural but does not require one."
+        )
     )
 
 
@@ -889,6 +892,8 @@ class GeminiQueryGenerationProvider:
                     drafts,
                     repair_drafts,
                 )
+            if not drafts:
+                raise ProviderRequestError("query_generation_no_valid_drafts")
         finally:
             client.close()
         return drafts
@@ -1029,7 +1034,10 @@ def _query_generation_system_prompt(language: str | None) -> str:
             "stacked clauses, and forcing unrelated input constraints into one "
             "query. Use the provided JSON parameters and optional researchContext "
             "as context, obey explicit brandMentionRules, and classify each finished "
-            "query with its most fitting selected intent."
+            "query with its most fitting selected intent. Treat "
+            "shouldMentionCompetitor=true as permission, not a requirement: mention "
+            "a competitor only when it is relevant and natural. When it is false, "
+            "do not mention competitors."
         )
     return (
         "你負責產生 GEO（Generative Engine Optimization）追蹤用的"
@@ -1040,6 +1048,8 @@ def _query_generation_system_prompt(language: str | None) -> str:
         "多個子句，以及為了塞入條件而把不相關資訊放進同一筆 query。請將提供"
         "的 JSON 參數與可選 researchContext 作為情境，遵守明確的"
         " brandMentionRules，並在完成 query 後標示最符合的已選 intent。"
+        "shouldMentionCompetitor=true 表示允許提及競品，不代表每筆都必須提及；"
+        "只有在相關且自然時才提及競品。設為 false 時不得提及競品。"
     )
 
 
@@ -1092,7 +1102,9 @@ def _query_drafts_from_gemini(
 ) -> list[QueryDraft]:
     allowed_topics = command.topic_names or _default_topic_names(command.market_type)
     drafts: list[QueryDraft] = []
-    for item in parsed.items[: command.max_queries]:
+    for item in parsed.items:
+        if _mentions_disallowed_competitor(command, item.query):
+            continue
         attributes = item.attributes
         intent = _matching_intent(command, attributes.intent)
         allowed_topics = _command_topics(command)
@@ -1111,7 +1123,36 @@ def _query_drafts_from_gemini(
                 keywords=_matching_keywords(item.keywords, command.keywords),
             )
         )
+        if len(drafts) >= command.max_queries:
+            break
     return drafts
+
+
+def _mentions_disallowed_competitor(
+    command: QueryGenerationCommand,
+    query: str,
+) -> bool:
+    if command.brand_mention_rules.should_mention_competitor:
+        return False
+    return any(
+        _contains_brand_name(query, competitor)
+        for competitor in command.competitor_brands
+    )
+
+
+def _contains_brand_name(query: str, brand_name: str) -> bool:
+    brand_name = brand_name.strip()
+    if not brand_name:
+        return False
+    if any(not character.isascii() for character in brand_name):
+        return brand_name.casefold() in query.casefold()
+    return bool(
+        re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(brand_name)}(?![A-Za-z0-9])",
+            query,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def _gemini_query_draft_list(response: Any) -> _GeminiQueryDraftList:
@@ -1269,6 +1310,11 @@ def _query_research_prompt(
     competitors = ", ".join(command.competitor_brands) or "none"
     audience = command.audience.description if command.audience else "not specified"
     brand_rules = command.brand_mention_rules
+    competitor_policy = (
+        "allowed when relevant and natural, but not required"
+        if brand_rules.should_mention_competitor
+        else "not allowed"
+    )
     return (
         "Research current market language and natural search phrasing used by real "
         "users. Preserve concise fragments and conversational questions instead of "
@@ -1282,7 +1328,7 @@ def _query_research_prompt(
         f"Audience: {audience}\n"
         "Brand mention rules: "
         f"ownBrand={brand_rules.should_mention_own_brand}, "
-        f"competitor={brand_rules.should_mention_competitor}\n"
+        f"competitorMention={competitor_policy}\n"
         "Return concise researchContext with representative phrasing patterns, "
         "searchedKeywords actually used or useful for this research, and sourceUrls "
         "from references when available. Do not claim that inferred wording has "
