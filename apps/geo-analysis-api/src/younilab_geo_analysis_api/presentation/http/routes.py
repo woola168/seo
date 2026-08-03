@@ -46,6 +46,8 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
     QueryResearchRunRequest,
     QueryResearchRunResponse,
     QueryResponse,
+    QueryStatusRequest,
+    QueryStatusResponse,
     RunResultResponse,
     RunResultSemanticAnalysisResponse,
     ScheduleRequest,
@@ -55,6 +57,7 @@ from younilab_geo_analysis_api.presentation.http.dtos import (
 )
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    ArchivedGeoQueryStatusError,
     CalculateGeoReportMetrics,
     CreateQueryRunJobCommand,
     DispatchQueryRunJob,
@@ -69,6 +72,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryCommand,
     GeoQueryPlatformCommand,
     GeoQueryScheduleCommand,
+    GeoQueryStatusCommand,
     GeoMetricFormulaQuery,
     GeoMetricFormulaSourceProjectNotFound,
     GeoOverviewQuery,
@@ -816,6 +820,40 @@ async def update_query(
     if query is None:
         raise HTTPException(status_code=404, detail="query not found")
     return QueryResponse(**_record_data(query))
+
+
+@router.patch(
+    "/queries/{query_id}/status",
+    response_model=QueryStatusResponse,
+    responses={
+        401: {"model": ProblemDetailsResponse},
+        403: {"model": ProblemDetailsResponse},
+        404: {"model": ProblemDetailsResponse},
+        409: {"model": ProblemDetailsResponse},
+        422: {"model": ProblemDetailsResponse},
+    },
+)
+async def update_query_status(
+    request: Request,
+    query_id: UUID,
+    payload: QueryStatusRequest,
+) -> QueryStatusResponse:
+    principal = await _principal(request, "geo.queries.manage")
+    try:
+        query = await _setup(request).update_query_status(
+            principal,
+            query_id,
+            GeoQueryStatusCommand(**payload.model_dump()),
+        )
+    except ArchivedGeoQueryStatusError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if query is None:
+        raise HTTPException(status_code=404, detail="query not found")
+    return QueryStatusResponse(
+        query_id=query.id,
+        status=query.status,
+        updated_at=query.updated_at,
+    )
 
 
 @router.delete("/queries/{query_id}", status_code=status.HTTP_204_NO_CONTENT)

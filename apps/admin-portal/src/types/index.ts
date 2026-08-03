@@ -963,6 +963,15 @@ export interface GeoAnalysisQueryRequest {
   metadata: Record<string, unknown>;
 }
 
+export interface GeoQueryStatusRequest {
+  status: "active" | "paused";
+}
+
+export interface GeoQueryStatusResource extends GeoQueryStatusRequest {
+  queryId: string;
+  updatedAt: string;
+}
+
 export interface GeoQueryPlatformResource extends GeoQueryPlatform {
   createdAt: string;
   updatedAt: string;

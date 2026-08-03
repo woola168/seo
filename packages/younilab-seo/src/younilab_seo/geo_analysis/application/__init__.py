@@ -68,6 +68,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoQueryStatusCommand,
     GeoResponseSemanticFact,
     GeoRunRequestRecord,
     GeoRunResultAnalysis,
@@ -140,6 +141,7 @@ from younilab_seo.geo_analysis.application.interfaces import (
     ResourceTaskReference,
     TrackingRunClient,
 )
+from younilab_seo.geo_analysis.application.errors import ArchivedGeoQueryStatusError
 from younilab_seo.geo_analysis.application.query_intents import (
     generated_query_intent_metadata,
     normalize_standard_query_intent,
@@ -216,6 +218,7 @@ from younilab_seo.geo_analysis.application.use_cases import (
 )
 
 __all__ = [
+    "ArchivedGeoQueryStatusError",
     "Clock",
     "CitationUrlResolver",
     "CitationNormalizationContext",
@@ -305,6 +308,7 @@ __all__ = [
     "GeoQueryRunJobDispatchContext",
     "GeoQueryScheduleCommand",
     "GeoQueryScheduleRecord",
+    "GeoQueryStatusCommand",
     "GeoResponseSemanticFact",
     "GeoRunResultCitationFact",
     "GeoRunResultCitationNormalization",

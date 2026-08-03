@@ -902,6 +902,78 @@ def test_project_status_api_hides_project_outside_resource_scope() -> None:
     assert current.json()["status"] == "active"
 
 
+def test_query_status_api_pauses_without_replacing_query() -> None:
+    client, _, query_id = _client_with_query(market_type="b2c")
+    before = client.get(f"/api/geo/queries/{query_id}").json()
+
+    paused = client.patch(
+        f"/api/geo/queries/{query_id}/status",
+        json={"status": "paused"},
+    )
+    repeated = client.patch(
+        f"/api/geo/queries/{query_id}/status",
+        json={"status": "paused"},
+    )
+    after = client.get(f"/api/geo/queries/{query_id}").json()
+
+    assert paused.status_code == 200
+    assert paused.json()["queryId"] == query_id
+    assert paused.json()["status"] == "paused"
+    assert repeated.json()["updatedAt"] == paused.json()["updatedAt"]
+    assert after == {**before, "status": "paused", "updatedAt": paused.json()["updatedAt"]}
+
+
+@pytest.mark.parametrize("payload", [{"status": "archived"}, {"status": ""}, {}])
+def test_query_status_api_rejects_unsupported_status(payload: dict) -> None:
+    client, _, query_id = _client_with_query()
+
+    response = client.patch(
+        f"/api/geo/queries/{query_id}/status",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert "body.status" in _invalid_param_names(response.json())
+
+
+def test_query_status_api_does_not_restore_archived_query() -> None:
+    client, store, query_id = _client_with_query()
+    query_uuid = UUID(query_id)
+    store.queries[query_uuid] = store.queries[query_uuid].model_copy(
+        update={"status": "archived"}
+    )
+
+    response = client.patch(
+        f"/api/geo/queries/{query_id}/status",
+        json={"status": "active"},
+    )
+
+    assert response.status_code == 409
+    assert store.queries[query_uuid].status == "archived"
+
+
+def test_query_status_api_hides_query_outside_resource_scope() -> None:
+    store = GeoApiStore()
+    customer_id = uuid4()
+    admin = _client(repository=store)
+    query_id = _create_query_for_customer(admin, customer_id)
+    restricted = _client(
+        repository=store,
+        authorizer=FakeAuthorizer(
+            has_global_resource_access=False,
+            customer_ids=frozenset({uuid4()}),
+        ),
+    )
+
+    response = restricted.patch(
+        f"/api/geo/queries/{query_id}/status",
+        json={"status": "paused"},
+    )
+
+    assert response.status_code == 404
+    assert admin.get(f"/api/geo/queries/{query_id}").json()["status"] == "active"
+
+
 @pytest.mark.parametrize(
     ("override", "invalid_name"),
     [
@@ -954,6 +1026,7 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     projects = schema["paths"]["/api/geo/projects"]["get"]
     settings_path = schema["paths"]["/api/geo/projects/{project_id}/query-settings"]
     status_path = schema["paths"]["/api/geo/projects/{project_id}/status"]
+    query_status_path = schema["paths"]["/api/geo/queries/{query_id}/status"]
     create_job_path = schema["paths"]["/api/geo/queries/{query_id}/jobs"]["post"]
     aliases_path = schema["paths"]["/api/geo/entities/{entity_id}/aliases"]
     overview_response = schema["components"]["schemas"]["OverviewReportResponse"]
@@ -965,6 +1038,9 @@ def test_openapi_describes_project_summary_and_query_settings() -> None:
     assert "ProblemDetailsResponse" in str(settings_path["put"]["responses"]["422"])
     assert "ProjectStatusRequest" in str(status_path["patch"]["requestBody"])
     assert "ProjectStatusResponse" in str(status_path["patch"]["responses"]["200"])
+    assert "QueryStatusRequest" in str(query_status_path["patch"]["requestBody"])
+    assert "QueryStatusResponse" in str(query_status_path["patch"]["responses"]["200"])
+    assert "ProblemDetailsResponse" in str(query_status_path["patch"]["responses"]["409"])
     assert "CreateJobResponse" in str(create_job_path["responses"]["200"])
     assert "CreateJobResponse" in str(create_job_path["responses"]["201"])
     assert "AliasCollectionResponse" in str(aliases_path["get"]["responses"]["200"])

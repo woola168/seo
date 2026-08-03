@@ -52,6 +52,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoQueryStatusCommand,
     GeoResponseSemanticFact,
     GeoRunResultAnalysis,
     GeoRunResultAnalysisRecord,
@@ -83,6 +84,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     SaveSemanticRunResultAnalysisCommand,
     SaveTrackingRunResultCommand,
 )
+from younilab_seo.geo_analysis.application.errors import ArchivedGeoQueryStatusError
 from younilab_seo.geo_analysis.application.interfaces.citation_normalization import (
     CitationNormalizationContext,
 )
@@ -1461,6 +1463,32 @@ class PostgresGeoAnalysisRepository:
             row.priority = command.priority
             row.status = command.status
             row.metadata_json = command.metadata
+            row.updated_at = _now()
+            return _query_record(row)
+
+    async def update_query_status(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+        command: GeoQueryStatusCommand,
+    ) -> GeoQueryRecord | None:
+        async with self._session_scope() as session:
+            row = await session.scalar(
+                select(GeoQueryRow)
+                .join(GeoProjectRow, GeoProjectRow.id == GeoQueryRow.project_id)
+                .where(
+                    GeoQueryRow.id == query_id,
+                    GeoProjectRow.tenant_id == tenant_id,
+                )
+                .with_for_update(of=GeoQueryRow)
+            )
+            if row is None:
+                return None
+            if row.status == "archived":
+                raise ArchivedGeoQueryStatusError()
+            if row.status == command.status:
+                return _query_record(row)
+            row.status = command.status
             row.updated_at = _now()
             return _query_record(row)
 

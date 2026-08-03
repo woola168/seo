@@ -599,6 +599,27 @@ describe("api.geoAnalysis.dashboardReport", () => {
     );
   });
 
+  it("patches only a tracked Query schedule status", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "query-1", status: "paused" }),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const { api } = await import("./api");
+    const input = { status: "paused" as const };
+
+    await api.geoAnalysis.updateQueryStatus("query-1", input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/geo/queries/query-1/status",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    );
+  });
+
   it("loads persisted Query Research and Generation runs", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

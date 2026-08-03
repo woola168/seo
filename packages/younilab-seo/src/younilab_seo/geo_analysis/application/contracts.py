@@ -1110,6 +1110,12 @@ class GeoQueryCommand(ContractModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class GeoQueryStatusCommand(ContractModel):
+    """切換 Query 是否參與後續排程。"""
+
+    status: Literal["active", "paused"]
+
+
 class GeoQueryRecord(GeoQueryCommand):
     """已保存的 tracked query 記錄。"""
 

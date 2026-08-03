@@ -46,6 +46,8 @@
   GeoQueryPlatformRequest,
   GeoQueryPlatformResource,
   GeoQueryResource,
+  GeoQueryStatusRequest,
+  GeoQueryStatusResource,
   GeoQueryProvider,
   GeoQueryResearchRunRequest,
   GeoQueryResearchRunResource,
@@ -380,6 +382,11 @@ export const api = {
     createQuery: (projectId: string, input: GeoAnalysisQueryRequest) =>
       request<GeoQueryResource>(`/api/geo/projects/${projectId}/queries`, {
         method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateQueryStatus: (queryId: string, input: GeoQueryStatusRequest) =>
+      request<GeoQueryStatusResource>(`/api/geo/queries/${queryId}/status`, {
+        method: "PATCH",
         body: JSON.stringify(input),
       }),
     deleteQuery: (queryId: string) =>

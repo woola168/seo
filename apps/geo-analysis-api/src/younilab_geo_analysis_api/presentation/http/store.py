@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from younilab_seo.geo_analysis.application import (
     AcceptQueryDraftCommand,
+    ArchivedGeoQueryStatusError,
     CreateQueryRunJobCommand,
     ExternalRunCallback,
     GeoAiPlatformRecord,
@@ -40,6 +41,7 @@ from younilab_seo.geo_analysis.application import (
     GeoQueryRunJobDispatchContext,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoQueryStatusCommand,
     GeoRunResultAnalysis,
     GeoRunResultAnalysisRecord,
     GeoRunResultCitationFact,
@@ -834,6 +836,25 @@ class GeoApiStore:
         if await self.get_query(tenant_id, query_id) is None:
             return None
         return self._replace_record(query_id, command, self.queries, GeoQueryRecord)
+
+    async def update_query_status(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+        command: GeoQueryStatusCommand,
+    ) -> GeoQueryRecord | None:
+        query = await self.get_query(tenant_id, query_id)
+        if query is None:
+            return None
+        if query.status == "archived":
+            raise ArchivedGeoQueryStatusError()
+        if query.status == command.status:
+            return query
+        updated = query.model_copy(
+            update={"status": command.status, "updated_at": _now()}
+        )
+        self.queries[query_id] = updated
+        return updated
 
     async def delete_query(self, tenant_id: UUID, query_id: UUID) -> bool:
         if await self.get_query(tenant_id, query_id) is None:

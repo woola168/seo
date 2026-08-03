@@ -5,6 +5,7 @@ import { usePortalNotifications, usePortalSession } from "../composables/portal-
 import AppIcon from "../components/ui/AppIcon.vue";
 import GeoFormField from "../components/geo/GeoFormField.vue";
 import GeoIntentSelector from "../components/geo/GeoIntentSelector.vue";
+import GeoStatusBadge from "../components/geo/GeoStatusBadge.vue";
 import GeoTagInput from "../components/geo/GeoTagInput.vue";
 import GeoQueryResearchPage from "./GeoQueryResearchPage.vue";
 import { api } from "../services/api";
@@ -25,7 +26,7 @@ import {
   updateGeoProjectProfile,
   type GeoProjectProfile,
 } from "../services/geo-project-profile";
-import type { CustomerSummary } from "../types";
+import type { CustomerSummary, GeoQueryResource } from "../types";
 import { findCompetitorOwnBrandConflicts } from "../utils/geo-brand-identity";
 import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import { hasPermission } from "../utils/permissions";
@@ -47,6 +48,11 @@ const projectRoutes = computed(() => getGeoProjectRouteNames(route.meta.geoProje
 const projectId = computed(() => typeof route.params.projectId === "string" ? route.params.projectId : "");
 const isEdit = computed(() => Boolean(projectId.value));
 const canResearch = computed(() => hasPermission(permissions.value, "geo.queries.manage"));
+const queryStatusLabels: Record<GeoQueryResource["status"], string> = {
+  active: "進行中",
+  paused: "已暫停",
+  archived: "已下架",
+};
 const isRecoveringQueryResearch = computed(
   () =>
     route.query.mode === "query-research" &&
@@ -55,6 +61,7 @@ const isRecoveringQueryResearch = computed(
 );
 const step = ref<1 | 2>(1);
 const loading = ref(false);
+const updatingQueryId = ref("");
 const errorMessage = ref("");
 const customers = ref<CustomerSummary[]>([]);
 const currentProfile = ref<GeoProjectProfile | null>(null);
@@ -212,6 +219,29 @@ function openQueryResearch(): void {
     name: projectRoutes.value.queryResearch,
     params: { projectId: projectId.value },
   });
+}
+
+async function toggleQuerySchedule(query: GeoQueryResource): Promise<void> {
+  if (!canResearch.value || updatingQueryId.value || query.status === "archived") return;
+  const status = query.status === "active" ? "paused" : "active";
+  updatingQueryId.value = query.id;
+  errorMessage.value = "";
+  try {
+    const updated = await api.geoAnalysis.updateQueryStatus(query.id, { status });
+    if (currentProfile.value) {
+      currentProfile.value.queries = currentProfile.value.queries.map((item) =>
+        item.id === updated.queryId
+          ? { ...item, status: updated.status, updatedAt: updated.updatedAt }
+          : item,
+      );
+    }
+    notify(status === "active" ? "Query 排程已開啟。" : "Query 排程已關閉。", "success");
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "Query 排程狀態更新失敗。";
+    notify(errorMessage.value, "error");
+  } finally {
+    updatingQueryId.value = "";
+  }
 }
 
 async function save(): Promise<void> {
@@ -395,9 +425,9 @@ function addTopic(): void {
 
         <section v-if="isEdit" class="geo-form-card">
           <header><strong>Query list</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header>
-          <div class="geo-card-table-wrap geo-query-table-wrap"><table class="geo-project-settings-table geo-query-summary-table"><colgroup><col class="query-text-col" /><col class="query-topic-col" /><col class="query-intent-col" /><col class="query-stage-col" /><col class="query-branded-col" /><col class="query-priority-col" /></colgroup><thead><tr><th>Query</th><th>Topic</th><th>Intent</th><th>Stage</th><th>Branded</th><th>Priority</th></tr></thead><tbody>
-            <tr v-for="query in currentProfile?.queries ?? []" :key="query.id"><td>{{ query.queryText }}</td><td>{{ currentProfile?.topics.find((topic) => topic.id === query.topicId)?.name || "—" }}</td><td>{{ query.intent || "—" }}</td><td>{{ query.buyerStage || "—" }}</td><td>{{ query.isBranded ? "是" : "否" }}</td><td>{{ query.priority }}</td></tr>
-            <tr v-if="!currentProfile?.queries.length"><td colspan="6" class="geo-table-empty">尚未有任何 Query</td></tr>
+          <div class="geo-card-table-wrap geo-query-table-wrap"><table class="geo-project-settings-table geo-query-summary-table"><colgroup><col class="query-text-col" /><col class="query-topic-col" /><col class="query-intent-col" /><col class="query-stage-col" /><col class="query-branded-col" /><col class="query-priority-col" /><col class="query-status-col" /><col class="query-actions-col" /></colgroup><thead><tr><th>Query</th><th>Topic</th><th>Intent</th><th>Stage</th><th>Branded</th><th>Priority</th><th>狀態</th><th>操作</th></tr></thead><tbody>
+            <tr v-for="query in currentProfile?.queries ?? []" :key="query.id"><td>{{ query.queryText }}</td><td>{{ currentProfile?.topics.find((topic) => topic.id === query.topicId)?.name || "—" }}</td><td>{{ query.intent || "—" }}</td><td>{{ query.buyerStage || "—" }}</td><td>{{ query.isBranded ? "是" : "否" }}</td><td>{{ query.priority }}</td><td><GeoStatusBadge :value="query.status" :label="queryStatusLabels[query.status]" /></td><td><div class="geo-row-actions"><button class="geo-row-action" type="button" :title="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :aria-label="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :disabled="!canResearch || query.status === 'archived' || Boolean(updatingQueryId)" @click="toggleQuerySchedule(query)"><AppIcon :name="query.status === 'active' ? 'x' : query.status === 'paused' ? 'check' : 'lock'" :size="14" /></button></div></td></tr>
+            <tr v-if="!currentProfile?.queries.length"><td colspan="8" class="geo-table-empty">尚未有任何 Query</td></tr>
           </tbody></table></div>
         </section>
 

@@ -393,6 +393,21 @@ class QueryResponse(QueryRequest):
     updated_at: datetime
 
 
+class QueryStatusRequest(ApiModel):
+    model_config = ConfigDict(
+        alias_generator=_camel_case,
+        populate_by_name=True,
+        extra="forbid",
+    )
+
+    status: Literal["active", "paused"]
+
+
+class QueryStatusResponse(QueryStatusRequest):
+    query_id: UUID
+    updated_at: datetime
+
+
 class QueryAudienceRequest(ApiModel):
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)

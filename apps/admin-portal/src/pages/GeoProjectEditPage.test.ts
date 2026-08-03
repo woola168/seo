@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   loadProfile: vi.fn(),
   createProfile: vi.fn(),
   updateProfile: vi.fn(),
+  updateQueryStatus: vi.fn(),
 }));
 
 vi.mock("vue-router", () => ({
@@ -35,6 +36,9 @@ vi.mock("../composables/portal-context", () => ({
 vi.mock("../services/api", () => ({
   api: {
     customers: mocks.customers,
+    geoAnalysis: {
+      updateQueryStatus: mocks.updateQueryStatus,
+    },
   },
 }));
 
@@ -71,6 +75,11 @@ beforeEach(() => {
   });
   mocks.loadProfile.mockResolvedValue(profile());
   mocks.updateProfile.mockResolvedValue({ id: "project-1" });
+  mocks.updateQueryStatus.mockImplementation(async (queryId, input) => ({
+    queryId,
+    ...input,
+    updatedAt: "2026-08-02T00:00:00Z",
+  }));
 });
 
 describe("GeoProjectEditPage brand identity validation", () => {
@@ -129,6 +138,39 @@ describe("GeoProjectEditPage brand identity validation", () => {
   });
 });
 
+describe("GeoProjectEditPage query scheduling", () => {
+  it("pauses an active query from the project query list", async () => {
+    mocks.loadProfile.mockResolvedValue(profile({ queryStatus: "active" }));
+    const wrapper = await mountPage();
+
+    expect(wrapper.get(".geo-query-summary-table .badge-success").text()).toBe("進行中");
+    await buttonWithTitle(wrapper, "關閉排程").trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateQueryStatus).toHaveBeenCalledWith("query-1", {
+      status: "paused",
+    });
+    expect(wrapper.find('button[title="開啟排程"]').exists()).toBe(true);
+    expect(wrapper.get(".geo-query-summary-table .badge-warning").text()).toBe("已暫停");
+    expect(mocks.notify).toHaveBeenCalledWith("Query 排程已關閉。", "success");
+  });
+
+  it("reactivates a paused query", async () => {
+    mocks.loadProfile.mockResolvedValue(profile({ queryStatus: "paused" }));
+    const wrapper = await mountPage();
+
+    await buttonWithTitle(wrapper, "開啟排程").trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateQueryStatus).toHaveBeenCalledWith(
+      "query-1",
+      expect.objectContaining({ status: "active" }),
+    );
+    expect(wrapper.find('button[title="關閉排程"]').exists()).toBe(true);
+    expect(mocks.notify).toHaveBeenCalledWith("Query 排程已開啟。", "success");
+  });
+});
+
 async function mountPage() {
   const wrapper = mount(GeoProjectEditPage, {
     global: {
@@ -154,7 +196,10 @@ function buttonWithText(
   return button;
 }
 
-function profile(options: { competitorName?: string } = {}) {
+function profile(options: {
+  competitorName?: string;
+  queryStatus?: "active" | "paused";
+} = {}) {
   const competitors = options.competitorName
     ? [
         {
@@ -184,7 +229,38 @@ function profile(options: { competitorName?: string } = {}) {
       aliases: [{ alias: "Brand Alias" }],
     },
     competitors,
-    topics: [],
-    queries: [],
+    topics: options.queryStatus
+      ? [{ id: "topic-1", name: "政策", description: "", status: "active" }]
+      : [],
+    queries: options.queryStatus
+      ? [scheduledQuery(options.queryStatus)]
+      : [],
+  };
+}
+
+function buttonWithTitle(
+  wrapper: ReturnType<typeof mount>,
+  title: string,
+) {
+  return wrapper.get(`button[title="${title}"]`);
+}
+
+function scheduledQuery(status: "active" | "paused" = "active") {
+  return {
+    id: "query-1",
+    projectId: "project-1",
+    topicId: "topic-1",
+    queryText: "沈伯洋的交通政策是什麼？",
+    region: "TW",
+    language: "zh-TW",
+    marketType: "b2c",
+    intent: "informational",
+    buyerStage: null,
+    isBranded: false,
+    priority: "normal",
+    status,
+    metadata: {},
+    createdAt: "2026-08-01T00:00:00Z",
+    updatedAt: "2026-08-01T00:00:00Z",
   };
 }

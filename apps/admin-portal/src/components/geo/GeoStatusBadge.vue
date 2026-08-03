@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 const props = defineProps<{
   value: string | null | undefined;
+  label?: string;
 }>();
 
 const badgeClass = computed(() => {
@@ -25,5 +26,5 @@ const badgeClass = computed(() => {
 </script>
 
 <template>
-  <span :class="badgeClass">{{ value ?? "-" }}</span>
+  <span :class="badgeClass">{{ label ?? value ?? "-" }}</span>
 </template>

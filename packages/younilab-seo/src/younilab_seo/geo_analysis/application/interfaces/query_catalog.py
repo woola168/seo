@@ -10,6 +10,7 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRecord,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoQueryStatusCommand,
     GeoTopicCommand,
     GeoTopicRecord,
 )
@@ -83,6 +84,13 @@ class QueryCatalogPersistence(Protocol):
         tenant_id: UUID,
         query_id: UUID,
         command: GeoQueryCommand,
+    ) -> GeoQueryRecord | None: ...
+
+    async def update_query_status(
+        self,
+        tenant_id: UUID,
+        query_id: UUID,
+        command: GeoQueryStatusCommand,
     ) -> GeoQueryRecord | None: ...
 
     async def delete_query(self, tenant_id: UUID, query_id: UUID) -> bool: ...

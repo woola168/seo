@@ -829,12 +829,14 @@
 .geo-table-placeholder { color: #bfbfbf; font-size: 13px; }
 
 .geo-query-table-wrap { padding-bottom: 8px; }
-.geo-query-summary-table { min-width: 720px !important; table-layout: fixed; font-size: 13px; }
+.geo-query-summary-table { min-width: 890px !important; table-layout: fixed; font-size: 13px; }
 .geo-query-summary-table .query-topic-col { width: 140px; }
 .geo-query-summary-table .query-intent-col { width: 150px; }
 .geo-query-summary-table .query-stage-col { width: 150px; }
 .geo-query-summary-table .query-branded-col { width: 90px; }
 .geo-query-summary-table .query-priority-col { width: 100px; }
+.geo-query-summary-table .query-status-col { width: 90px; }
+.geo-query-summary-table .query-actions-col { width: 72px; }
 .geo-query-summary-table th { line-height: 15px; }
 .geo-query-summary-table th:nth-child(5),
 .geo-query-summary-table td:nth-child(5) { text-align: center; }
@@ -850,6 +852,9 @@
 }
 .geo-query-summary-table td:first-child { font-weight: 500; }
 .geo-query-summary-table td:nth-child(2) { color: #8c8c8c; }
+.geo-query-summary-table th:last-child,
+.geo-query-summary-table td:last-child { text-align: center; }
+.geo-query-summary-table td:last-child .geo-row-actions { justify-content: center; }
 
 .geo-read-grid > div { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
 .geo-read-grid > div > span { color: #8c8c8c; font-size: 13px; font-weight: 500; }

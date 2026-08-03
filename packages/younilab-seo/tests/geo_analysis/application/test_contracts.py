@@ -13,6 +13,7 @@ from younilab_seo.geo_analysis.application import (
     GeoSentimentFact,
     GeoProjectQuerySettingsCommand,
     GeoProjectStatusCommand,
+    GeoQueryStatusCommand,
     QueryResearchCommand,
 )
 
@@ -25,6 +26,16 @@ def test_project_status_command_accepts_supported_status(status: str) -> None:
 def test_project_status_command_rejects_archived() -> None:
     with pytest.raises(ValidationError):
         GeoProjectStatusCommand(status="archived")
+
+
+@pytest.mark.parametrize("status", ["active", "paused"])
+def test_query_status_command_accepts_supported_status(status: str) -> None:
+    assert GeoQueryStatusCommand(status=status).status == status
+
+
+def test_query_status_command_rejects_archived() -> None:
+    with pytest.raises(ValidationError):
+        GeoQueryStatusCommand(status="archived")
 
 
 def test_project_query_settings_normalizes_keywords() -> None:

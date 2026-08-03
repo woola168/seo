@@ -22,9 +22,11 @@ from younilab_seo.geo_analysis.application.contracts import (
     GeoQueryRecord,
     GeoQueryScheduleCommand,
     GeoQueryScheduleRecord,
+    GeoQueryStatusCommand,
     GeoTopicCommand,
     GeoTopicRecord,
 )
+from younilab_seo.geo_analysis.application.errors import ArchivedGeoQueryStatusError
 from younilab_seo.geo_analysis.application.interfaces import (
     AuthorizedPrincipal,
     ResourceCatalogCustomerReader,
@@ -504,6 +506,23 @@ class ManageGeoSetup:
         if await self.get_query(principal, query_id) is None:
             return None
         return await self.query_catalog_persistence.update_query(
+            principal.tenant_id,
+            query_id,
+            command,
+        )
+
+    async def update_query_status(
+        self,
+        principal: AuthorizedPrincipal,
+        query_id: UUID,
+        command: GeoQueryStatusCommand,
+    ) -> GeoQueryRecord | None:
+        query = await self.get_query(principal, query_id)
+        if query is None:
+            return None
+        if query.status == "archived":
+            raise ArchivedGeoQueryStatusError()
+        return await self.query_catalog_persistence.update_query_status(
             principal.tenant_id,
             query_id,
             command,

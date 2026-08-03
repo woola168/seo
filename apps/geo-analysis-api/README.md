@@ -567,6 +567,7 @@ Problem Details 格式：
 | `POST` | `/api/geo/projects/{projectId}/queries` | 建立 tracked query。 |
 | `GET` | `/api/geo/queries/{queryId}` | 取得單一 tracked query。 |
 | `PATCH` | `/api/geo/queries/{queryId}` | 更新 tracked query。 |
+| `PATCH` | `/api/geo/queries/{queryId}/status` | 僅切換 Query 是否參與後續排程。 |
 | `DELETE` | `/api/geo/queries/{queryId}` | 刪除 tracked query。 |
 | `POST` | `/api/geo/projects/{projectId}/query-research-runs` | 呼叫 `geo-tracking-api` Query Research 並保存 research context、searched keywords、source URLs。 |
 | `GET` | `/api/geo/projects/{projectId}/query-research-runs` | 列出 project 的 Query Research runs。 |
@@ -743,7 +744,10 @@ GEO Analysis API 必須在同一發布批次部署，舊瀏覽器頁面需重新
 | `POST` | `/api/geo/projects/{projectId}/queries` | `QueryRequest` | `201 QueryResponse` |
 | `GET` | `/api/geo/queries/{queryId}` | 無 | `QueryResponse` |
 | `PATCH` | `/api/geo/queries/{queryId}` | `QueryRequest` | `QueryResponse` |
+| `PATCH` | `/api/geo/queries/{queryId}/status` | `QueryStatusRequest` | `QueryStatusResponse` |
 | `DELETE` | `/api/geo/queries/{queryId}` | 無 | `204` |
+
+Query 排程狀態 endpoint 僅接受 `active` 或 `paused`，不會覆寫 Query 的文字、Topic、Intent 或 metadata。已下架的 `archived` Query 不可透過此 endpoint 恢復，會回傳 RFC 7807 `409`；切換狀態不會取消已建立的 jobs。
 
 ```json
 // TopicRequest
