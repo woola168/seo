@@ -1,4 +1,9 @@
 from younilab_geo_tracking_infrastructure.config import GeoTrackingSettings
+from younilab_geo_tracking_infrastructure.openai_providers import (
+    OpenAIClientManager,
+    OpenAIQueryGenerationProvider,
+    OpenAIQueryResearchProvider,
+)
 from younilab_geo_tracking_infrastructure.project_discovery import (
     GeminiProjectDiscoveryProvider,
 )
@@ -22,6 +27,9 @@ __all__ = [
     "GeminiQueryResearchProvider",
     "GeminiVertexAnswerProvider",
     "GeoTrackingSettings",
+    "OpenAIClientManager",
+    "OpenAIQueryGenerationProvider",
+    "OpenAIQueryResearchProvider",
     "SerpApiGoogleAioAnswerProvider",
     "SystemClock",
     "UuidGenerator",

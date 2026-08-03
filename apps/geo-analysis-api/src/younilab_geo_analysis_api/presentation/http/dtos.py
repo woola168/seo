@@ -172,7 +172,7 @@ class ProjectQuerySettingsRequest(ApiModel):
         extra="forbid",
     )
 
-    research_provider: Literal["gemini"]
+    research_provider: Literal["gemini", "openai"]
     run_provider: Literal["gemini"]
     keywords: list[str] = Field(max_length=10)
     market_type: Literal["b2c", "b2b_procurement"]

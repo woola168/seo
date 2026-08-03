@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.13,<5",
     "google-genai[aiohttp]>=1.0",
     "httpx>=0.28,<1",
+    "openai[aiohttp]>=1.0,<2",
     "younilab-geo-tracking-application",
     "younilab-geo-tracking-domain",
     "younilab-provider-request-audit",

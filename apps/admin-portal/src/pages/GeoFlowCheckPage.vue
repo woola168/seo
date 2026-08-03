@@ -1192,8 +1192,9 @@ function openReportDesign(): void {
               <label>
                 Research / Generation Provider
                 <select v-model="queryForm.provider">
-                  <option value="gemini">Gemini</option>
                   <option value="dummy">Dummy</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="openai">OpenAI</option>
                 </select>
               </label>
               <label>

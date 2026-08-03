@@ -212,6 +212,37 @@ Project Query Settings 支援多選 Intent 前，需停止舊版 GEO API writers
 Admin Portal。這份 migration 會將既有單一 Intent 正規化並回填為 `intents[]`；若資料中
 包含四個正式分類以外的值，migration 會中止，需先人工修正該筆設定。
 
+啟用 OpenAI Query Research／Generation Provider 前，既有資料庫需在 `025` 後執行：
+
+```powershell
+psql "postgresql://USER:PASSWORD@HOST:PORT/DB_NAME" -f deploy/local/postgresql/026_geo_project_query_settings_openai.sql
+```
+
+`026` 只調整 `geo_project_query_settings.research_provider` 的 check constraint，允許
+`gemini` 與 `openai`；不修改既有設定資料。部署時需透過 GitHub Actions Secret 注入
+`OPENAI_API_KEY`，不可將 key 寫入環境檔、Compose 或 repository。Compose 只將該值
+提供給實際呼叫 OpenAI 的 `geo-tracking-api`：
+
+```powershell
+$openAiKey = Read-Host "OpenAI API key" -AsSecureString
+$pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($openAiKey)
+try {
+    $plainText = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    $plainText | gh secret set OPENAI_API_KEY --repo younilab/younilab-seo
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+    Remove-Variable plainText, openAiKey, pointer -ErrorAction SilentlyContinue
+}
+```
+
+設定完成後可用 `gh secret list --repo younilab/younilab-seo` 確認 secret 名稱存在；
+GitHub 不會回傳 secret 值。部署後只檢查變數是否存在，不可輸出內容：
+
+```bash
+docker exec geo-tracking-api sh -lc \
+  'printenv OPENAI_API_KEY >/dev/null 2>&1 && echo configured || echo missing'
+```
+
 這份 patch 會移除 `geo_project.customer_id` 的 `NOT NULL`，並建立 `geo_query_research_run`、`geo_query_generation_run`、`geo_query_draft`、`geo_query_draft_selection` 與必要 indexes。新環境可直接使用更新後的 `deploy/local/postgresql/004_geo_analysis_schema.sql` 初始化 schema。
 
 `009_geo_analysis_tenant_patch.sql` 會替 `geo_project` 新增 `tenant_id`，既有資料回填 default tenant，並建立 tenant 查詢 index。建議先完成 Access Control tenant patch、Resource Catalog tenant patch，再執行 GEO Analysis tenant patch。

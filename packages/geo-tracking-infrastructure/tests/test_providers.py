@@ -4,10 +4,10 @@ from uuid import UUID
 
 import httpx
 import pytest
-from google import genai
-from google.genai.errors import APIError, ClientError
 import younilab_geo_tracking_infrastructure.project_discovery as discovery_module
 import younilab_geo_tracking_infrastructure.providers as providers_module
+from google import genai
+from google.genai.errors import APIError, ClientError
 from younilab_geo_tracking_application import (
     AnswerRequest,
     ConfirmedProjectIdentity,
@@ -29,10 +29,8 @@ from younilab_geo_tracking_infrastructure import (
 )
 from younilab_geo_tracking_infrastructure.providers import (
     _GeminiApiCallBudget,
-    _GeminiIntent,
     _GeminiQueryDraftList,
     _generate_with_reference_retry,
-    _matching_intent,
     _query_drafts_from_gemini,
     _query_generation_prompt,
     _query_generation_system_prompt,
@@ -80,6 +78,10 @@ def _query_generation_command() -> QueryGenerationCommand:
                 {"category": "transactional", "description": "Act"},
             ],
             "audience": {"name": "Buyer", "description": "Software buyer"},
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": False,
+                "shouldMentionCompetitor": False,
+            },
             "maxQueries": 1,
         }
     )
@@ -106,12 +108,16 @@ def test_query_generation_system_prompt_prioritizes_natural_user_queries() -> No
     assert "brandMentionRules" in prompt
     assert "permission, not a requirement" in prompt
     assert "only when it is relevant and natural" in prompt
+    assert "copy that selected intent unchanged" in prompt
+    assert "classify each finished query" not in prompt
     assert "真實使用者" in traditional_chinese_prompt
     assert "只表達一個具體需求" in traditional_chinese_prompt
     assert "短關鍵字片段" in traditional_chinese_prompt
     assert "行銷文案" in traditional_chinese_prompt
     assert "允許提及競品，不代表每筆都必須提及" in traditional_chinese_prompt
     assert "相關且自然" in traditional_chinese_prompt
+    assert "原樣複製該 intent" in traditional_chinese_prompt
+    assert "標示最符合" not in traditional_chinese_prompt
 
 
 def test_query_research_system_prompt_separates_observed_and_inferred_language() -> None:
@@ -127,16 +133,6 @@ def test_query_research_system_prompt_separates_observed_and_inferred_language()
     assert "實際觀察到的措辭" in traditional_chinese_prompt
     assert "推論出的措辭" in traditional_chinese_prompt
     assert "不得捏造搜尋量" in traditional_chinese_prompt
-
-
-def test_query_generation_preserves_unmatched_model_intent_for_later_classification() -> None:
-    intent = _matching_intent(
-        _query_generation_command(),
-        _GeminiIntent(category="unexpected", description="Unexpected category"),
-    )
-
-    assert intent.category == "unexpected"
-    assert intent.description == "Unexpected category"
 
 
 def test_query_generation_rejects_drafts_that_mention_disallowed_competitors() -> None:
@@ -193,6 +189,14 @@ def test_query_generation_keeps_allowed_competitor_mentions() -> None:
     command = command.model_copy(
         update={
             "competitor_brands": ["Rival ERP"],
+            "intents": [
+                command.intents[0].model_copy(
+                    update={
+                        "category": "commercial_investigation",
+                        "description": "Compare",
+                    }
+                )
+            ],
             "brand_mention_rules": command.brand_mention_rules.model_copy(
                 update={"should_mention_competitor": True}
             ),
@@ -205,6 +209,7 @@ def test_query_generation_keeps_allowed_competitor_mentions() -> None:
                     "commercial_investigation",
                     "Compare",
                     "How does Rival ERP compare?",
+                    should_mention_competitor=True,
                 )
             ]
         }
@@ -309,7 +314,79 @@ async def test_query_generation_retries_once_to_cover_missing_selected_intent(
     ]
 
 
-def _query_draft_payload(category: str, description: str, query: str) -> dict[str, Any]:
+@pytest.mark.anyio
+async def test_query_generation_repairs_when_every_initial_draft_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+    responses = iter(
+        [
+            {
+                "items": [
+                    _query_draft_payload(
+                        "informational",
+                        "Rewritten by model",
+                        "What is ERP?",
+                    )
+                ]
+            },
+            {
+                "items": [
+                    _query_draft_payload("informational", "Learn", "What is ERP?"),
+                    _query_draft_payload(
+                        "transactional",
+                        "Act",
+                        "Where can I buy ERP software?",
+                    ),
+                ]
+            },
+        ]
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return type(
+                "Response",
+                (),
+                {
+                    "parsed": None,
+                    "text": json.dumps(next(responses)),
+                    "candidates": [],
+                },
+            )()
+
+    class FakeClient:
+        def __init__(self, **_: Any) -> None:
+            self.models = FakeModels()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+    command = _query_generation_command().model_copy(update={"max_queries": 2})
+    provider = GeminiQueryGenerationProvider(
+        GeoTrackingSettings(vertex_project="test-project"),
+        _recorder(),
+    )
+
+    drafts = await provider.generate_drafts(command)
+
+    assert len(calls) == 2
+    assert [draft.attributes.intent.category for draft in drafts] == [
+        "informational",
+        "transactional",
+    ]
+
+
+def _query_draft_payload(
+    category: str,
+    description: str,
+    query: str,
+    *,
+    should_mention_own_brand: bool = False,
+    should_mention_competitor: bool = False,
+) -> dict[str, Any]:
     return {
         "attributes": {
             "intent": {"category": category, "description": description},
@@ -318,8 +395,8 @@ def _query_draft_payload(category: str, description: str, query: str) -> dict[st
             "topicDescription": "ERP selection",
             "audience": {"name": "Buyer", "description": "Software buyer"},
             "brandMentionRules": {
-                "shouldMentionOwnBrand": True,
-                "shouldMentionCompetitor": False,
+                "shouldMentionOwnBrand": should_mention_own_brand,
+                "shouldMentionCompetitor": should_mention_competitor,
             },
         },
         "query": query,

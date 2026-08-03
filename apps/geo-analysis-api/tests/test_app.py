@@ -977,7 +977,7 @@ def test_query_status_api_hides_query_outside_resource_scope() -> None:
 @pytest.mark.parametrize(
     ("override", "invalid_name"),
     [
-        ({"researchProvider": "openai"}, "body.researchProvider"),
+        ({"researchProvider": "claude"}, "body.researchProvider"),
         ({"marketType": "consumer"}, "body.marketType"),
         ({"maxQueries": 0}, "body.maxQueries"),
         ({"unknown": True}, "body.unknown"),
@@ -1018,6 +1018,21 @@ def test_project_query_settings_accepts_legacy_single_intent_request() -> None:
             "description": "比較供應商",
         }
     ]
+
+
+def test_project_query_settings_saves_and_returns_openai_provider() -> None:
+    client = _client()
+    project_id = _create_project(client)
+
+    saved = client.put(
+        f"/api/geo/projects/{project_id}/query-settings",
+        json={**_query_settings_payload(), "researchProvider": "openai"},
+    )
+    fetched = client.get(f"/api/geo/projects/{project_id}/query-settings")
+
+    assert saved.status_code == 200
+    assert saved.json()["researchProvider"] == "openai"
+    assert fetched.json()["researchProvider"] == "openai"
 
 
 def test_openapi_describes_project_summary_and_query_settings() -> None:

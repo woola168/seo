@@ -2,18 +2,17 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from younilab_seo.geo_analysis.application import (
     AnalyzeGeoRunResultCommand,
     GeoAnalysisEntityContext,
     GeoAnalysisEntityInput,
     GeoEntityMentionFact,
-    GeoResponseSemanticFact,
-    GeoRunResultAnalysis,
-    GeoSentimentFact,
     GeoProjectQuerySettingsCommand,
     GeoProjectStatusCommand,
     GeoQueryStatusCommand,
+    GeoResponseSemanticFact,
+    GeoRunResultAnalysis,
+    GeoSentimentFact,
     QueryResearchCommand,
 )
 
@@ -61,10 +60,26 @@ def test_project_query_settings_normalizes_keywords() -> None:
     ]
 
 
+def test_project_query_settings_accepts_openai_research_provider() -> None:
+    command = GeoProjectQuerySettingsCommand(
+        researchProvider="openai",
+        runProvider="gemini",
+        keywords=["ERP"],
+        marketType="b2b_procurement",
+        maxQueries=10,
+        audience={"name": "採購主管", "description": "負責供應商評估"},
+        intents=[{"category": "transactional", "description": "採取購買行動"}],
+        shouldMentionOwnBrand=True,
+        shouldMentionCompetitor=False,
+    )
+
+    assert command.research_provider == "openai"
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("researchProvider", "openai"),
+        ("researchProvider", "claude"),
         ("marketType", "consumer"),
         ("maxQueries", 0),
         ("keywords", [str(index) for index in range(11)]),

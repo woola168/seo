@@ -44,6 +44,42 @@
 | --- | --- |
 | `dummy` | 本機假資料 provider，用於測試流程，不會呼叫外部 AI。 |
 | `gemini` | Gemini Vertex AI provider，會依設定呼叫 Gemini。 |
+| `openai` | OpenAI Responses API provider，只用於 Query Research 與 Query Generation。 |
+| `google_aio` | SerpApi Google AI Overview provider，只用於 Runner。 |
+
+### Provider 能力
+
+| Provider | Query Research | Query Generation | Runner |
+| --- | --- | --- | --- |
+| `dummy` | 是 | 是 | 是 |
+| `gemini` | 是，使用 Google Search grounding | 是，不使用搜尋工具 | 是 |
+| `openai` | 是，使用 OpenAI web search | 是，不使用搜尋工具 | 否 |
+| `google_aio` | 否 | 否 | 是 |
+
+### Provider 環境變數
+
+Gemini 使用 Vertex AI service account JSON。環境變數只保存檔案路徑，JSON
+憑證檔應由部署環境唯讀掛載，不可提交到 repository：
+
+```env
+GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-key.json
+VERTEX_AI_PROJECT=
+VERTEX_AI_LOCATION=global
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+`VERTEX_AI_PROJECT` 未設定時，adapter 會讀取 service account JSON 的
+`project_id`。本機 PowerShell 也可讓 `GOOGLE_APPLICATION_CREDENTIALS` 直接指向
+工作站上的 JSON 絕對路徑。
+
+OpenAI 使用下列環境變數：
+
+```env
+OPENAI_API_KEY=
+OPENAI_QUERY_GENERATION_MODEL=gpt-5.6-luna
+OPENAI_QUERY_RESEARCH_MODEL=gpt-5.6-luna
+OPENAI_TIMEOUT_SECONDS=60
+```
 
 ### region
 
@@ -202,7 +238,8 @@ Project Discovery 不接受 Query Generation 的 `audience`。Stage 2 只依使�
 
 根據品牌、競品、keyword、市場、受眾資訊，產生 query generation 可參考的研究上下文。
 
-Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳假資料。
+Gemini provider 會使用 Google Search grounding；OpenAI provider 會使用 OpenAI
+web search 與 structured output。Dummy provider 只會回傳假資料。
 
 ### Request
 
@@ -230,7 +267,7 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 
 | 欄位 | 型態 | 必填 | 限制 | 說明 |
 | --- | --- | --- | --- | --- |
-| `provider` | string | 否 | `dummy` / `gemini` | 使用哪個 provider。預設 `dummy`。 |
+| `provider` | string | 否 | `dummy` / `gemini` / `openai` | 使用哪個 provider。預設 `dummy`。 |
 | `brandName` | string | 是 | 1-200 字 | 自有品牌名稱。由 analysis 從 primary brand / entity 組出。 |
 | `competitorBrands` | string[] | 否 | 最多 8 筆 | 競品品牌名稱。由 analysis 從 competitor entities 組出。 |
 | `keywords` | string[] | 是 | 1-10 筆 | query research 使用的 seed keywords。 |
@@ -268,8 +305,8 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 | 欄位 | 型態 | 說明 |
 | --- | --- | --- |
 | `researchContext` | string | 給 query generation 使用的市場研究摘要。analysis 可保存到 research run。 |
-| `searchedKeywords` | string[] | provider 實際搜尋或建議使用的 keyword。 |
-| `sourceUrls` | string[] | research 使用的來源 URL。 |
+| `searchedKeywords` | string[] | 優先使用 provider 搜尋工具實際執行的搜尋字串。 |
+| `sourceUrls` | string[] | 優先使用 citation annotations 或搜尋工具來源；工具未提供時才使用 structured output 內的 URL。 |
 
 ### analysis 建議保存
 
@@ -331,7 +368,7 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 | 欄位 | 型態 | 必填 | 限制 | 說明 |
 | --- | --- | --- | --- | --- |
 | `seoTaskId` | string UUID | 是 |  | analysis 端 SEO task id 或 project 關聯 id。tracking 不會查 DB，只原樣帶入 response。 |
-| `provider` | string | 否 | `dummy` / `gemini` | query generation provider。預設 `dummy`。 |
+| `provider` | string | 否 | `dummy` / `gemini` / `openai` | query generation provider。預設 `dummy`。 |
 | `brandName` | string | 是 | 1-200 字 | 自有品牌名稱。 |
 | `competitorBrands` | string[] | 否 | 最多 8 筆 | 競品品牌名稱。 |
 | `keywords` | string[] | 是 | 1-10 筆 | 產生 query 的核心 keyword。 |
@@ -345,6 +382,12 @@ Gemini provider 會使用 Google Search grounding。Dummy provider 只會回傳�
 | `brandMentionRules` | object | 否 |  | 控制生成 query 是否應提到自有品牌或競品。 |
 | `researchContext` | string \| null | 否 | 最多 5000 字 | `/query-research` 回傳的市場研究摘要，可提升生成品質。 |
 | `maxQueries` | number | 否 | 1-40 | 最多產生 query 數量。預設 12。 |
+
+Gemini 與 OpenAI Query Generation 都不掛搜尋工具。模型回傳後，service 會驗證
+Intent、Audience、品牌提及規則、Keyword 與 Topic 是否精確複製輸入，並確認
+`keywords` 只包含實際出現在 query 的 seed keywords。不合格 draft 會被淘汰；若
+容量足夠但缺少使用者選擇的 Intent，provider 只會再執行一次 intent coverage
+repair。第二次仍缺少時回傳 `query_intent_coverage_failed`。
 
 ### topic 欄位
 

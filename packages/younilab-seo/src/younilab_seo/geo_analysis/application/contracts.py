@@ -1195,7 +1195,7 @@ class GeoProjectQuerySettingsIntent(ContractModel):
 class GeoProjectQuerySettingsCommand(ContractModel):
     """完整替換一個 Project 的 Query Research 與 Generation 預設值。"""
 
-    research_provider: Literal["gemini"]
+    research_provider: Literal["gemini", "openai"]
     run_provider: Literal["gemini"]
     keywords: list[str] = Field(default_factory=list, max_length=10)
     market_type: Literal["b2c", "b2b_procurement"]

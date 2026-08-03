@@ -9,6 +9,7 @@ jobs:
     runs-on: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
     env:
       DEPLOY_ENV_FILE: ${{ github.ref_name == 'main' && format('{0}/deploy/.env.prod', github.workspace) || format('{0}/deploy/.env.develop', github.workspace) }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
 
     steps:

@@ -533,6 +533,7 @@ async function run(action: () => Promise<void>): Promise<void> {
             >
               <option value="dummy">Dummy</option>
               <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
             </select>
           </label>
           <button

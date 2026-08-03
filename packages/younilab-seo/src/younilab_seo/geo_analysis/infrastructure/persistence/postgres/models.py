@@ -54,7 +54,7 @@ class GeoProjectQuerySettingsRow(SQLModel, table=True):
     __tablename__ = "geo_project_query_settings"
     __table_args__ = (
         CheckConstraint(
-            "research_provider IN ('gemini')",
+            "research_provider IN ('gemini', 'openai')",
             name="ck_geo_project_query_settings_research_provider",
         ),
         CheckConstraint(

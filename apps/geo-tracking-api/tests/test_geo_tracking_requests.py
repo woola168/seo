@@ -409,6 +409,26 @@ def test_query_generation_request_can_use_gemini_structured_provider() -> None:
     assert "searchedKeywords" not in query["attributes"]
 
 
+def test_query_generation_request_can_use_openai_structured_provider() -> None:
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            query_generation_providers={
+                ProviderCode.DUMMY: GeminiQueryGenerationStubProvider(),
+                ProviderCode.OPENAI: GeminiQueryGenerationStubProvider(),
+            },
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-generation",
+        json=_generation_payload(provider="openai", brandName="山華塑膠"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["queries"][0]["text"].startswith("山華塑膠")
+
+
 def test_query_generation_request_rejects_google_aio_provider() -> None:
     client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
 
@@ -461,6 +481,35 @@ def test_query_research_request_returns_search_context() -> None:
     assert provider.last_command is not None
     assert provider.last_command.brand_mention_rules.should_mention_own_brand is True
     assert provider.last_command.brand_mention_rules.should_mention_competitor is True
+
+
+def test_query_research_request_can_use_openai_provider() -> None:
+    provider = GeminiQueryResearchStubProvider()
+    client = TestClient(
+        create_app(
+            answer_provider=DummyAnswerProvider(),
+            query_research_providers={
+                ProviderCode.DUMMY: GeminiQueryResearchStubProvider(),
+                ProviderCode.OPENAI: provider,
+            },
+        )
+    )
+
+    response = client.post(
+        "/api/v1/geo-tracking/query-research",
+        json={
+            "provider": "openai",
+            "brandName": "山華塑膠",
+            "keywords": ["氣動管"],
+            "region": "TW",
+            "language": "zh-TW",
+            "marketType": "b2b_procurement",
+        },
+    )
+
+    assert response.status_code == 200
+    assert provider.last_command is not None
+    assert provider.last_command.provider == ProviderCode.OPENAI
 
 
 def test_query_research_request_rejects_google_aio_provider() -> None:
@@ -741,6 +790,32 @@ def test_run_request_does_not_require_or_return_seo_task_id() -> None:
     body = response.json()
     assert "seoTaskId" not in body
     assert body["results"][0]["status"] == "completed"
+
+
+def test_run_request_rejects_openai_provider() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+
+    response = client.post(
+        "/api/v1/geo-tracking/run-requests",
+        json={
+            "provider": "openai",
+            "timing": "run_now",
+            "queries": [
+                {
+                    "id": "44444444-4444-4444-8444-444444444444",
+                    "text": "OpenAI runner boundary test",
+                    "topicName": "產品型",
+                    "region": "TW",
+                    "language": "zh-TW",
+                    "marketType": "b2c",
+                    "isBranded": False,
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_run_request_does_not_trust_metadata_for_audit_attribution() -> None:
