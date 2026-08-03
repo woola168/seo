@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS geo_project_query_settings (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     CONSTRAINT ck_geo_project_query_settings_research_provider
-        CHECK (research_provider IN ('gemini')),
+        CHECK (research_provider IN ('gemini', 'openai')),
     CONSTRAINT ck_geo_project_query_settings_run_provider
         CHECK (run_provider IN ('gemini')),
     CONSTRAINT ck_geo_project_query_settings_keywords

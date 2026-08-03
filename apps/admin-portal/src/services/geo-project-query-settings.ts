@@ -39,7 +39,7 @@ export interface GeoProjectQueryIntentForm {
 }
 
 export interface GeoProjectQuerySettingsForm {
-  researchProvider: "gemini";
+  researchProvider: "gemini" | "openai";
   runProvider: "gemini";
   keywords: string;
   marketType: GeoMarketType;

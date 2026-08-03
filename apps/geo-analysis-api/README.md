@@ -172,11 +172,12 @@ await fetch(`/api/geo/projects/${projectId}/query-settings`, {
 - 不存在、跨 tenant 或超出 customer scope 的 Project 一律回 RFC 7807 `404`。Settings 尚未建立時 GET 也回 `404`。
 - PUT 是完整替換；相同正規化 payload 不更新 `updatedAt`，且不觸發 Research、Generation、Draft、Query、Job 或 Schedule。
 - 未知欄位與驗證失敗回 RFC 7807 `422`，並在 `invalidParams` 提供欄位路徑。
-- Provider 目前只允許 `gemini`；keywords 去空白、移除空值與不分大小寫重複值，最多 10 筆且每筆 200 字；`maxQueries` 為 1–40；`marketType` 只允許 `b2c`、`b2b_procurement`。
+- Research／Generation Provider 允許 `gemini`、`openai`；Runner Provider 目前仍只允許 `gemini`。Keywords 去空白、移除空值與不分大小寫重複值，最多 10 筆且每筆 200 字；`maxQueries` 為 1–40；`marketType` 只允許 `b2c`、`b2b_procurement`。
 - 每個 Project 仍只保存一筆 Query Settings；多選 Intent 是該筆設定內的 `intents[]`，不是每個 Intent 各建立一筆設定。
 - `intents` 必須選擇 1–4 個不重複的正式分類，`maxQueries` 不得少於所選分類數量。API 暫時接受舊版單一 `intent` request 並正規化，但 response 一律回傳 `intents[]`。
 - 既有資料庫需手動執行 `deploy/local/postgresql/019_geo_project_query_settings.sql`；fresh schema 已同步更新 `004_geo_analysis_schema.sql`。
 - 已套用舊版 Query Settings schema 的環境，需在部署新版 API 前執行 `deploy/local/postgresql/025_geo_project_query_settings_intents.sql`。
+- 啟用 OpenAI Research／Generation Provider 前，既有資料庫需再執行 `deploy/local/postgresql/026_geo_project_query_settings_openai.sql`，讓 `research_provider` 接受 `openai`。
 - Rollback 可先停止使用兩支 settings endpoint，再執行 `DROP TABLE geo_project_query_settings;`；這只移除 settings，不影響 Project、Entity、Alias、Topic、Query 或 runs。正式環境 rollback 前應先備份設定資料。
 - 舊版前端未呼叫 settings API 時行為不變；列表既有欄位保持相容，只新增 `customerName` 與 `ownBrand`。
 

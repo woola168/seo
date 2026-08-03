@@ -262,6 +262,13 @@ class RunRequestCommand(ContractModel):
     provider: ProviderCode = ProviderCode.DUMMY
     timing: RunTiming = RunTiming.RUN_NOW
 
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, provider: ProviderCode) -> ProviderCode:
+        if provider == ProviderCode.OPENAI:
+            raise ValueError("openai is only supported by query generation and research")
+        return provider
+
 
 class AnswerRequest(ContractModel):
     query_id: UUID

@@ -140,6 +140,7 @@ services:
       - ${DEPLOY_ENV_FILE}
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/gcp-key.json
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
     volumes:
       - ${GCP_CREDENTIALS_FILE_HOST}:/app/config/gcp-key.json:ro

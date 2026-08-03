@@ -11,12 +11,6 @@ import aiohttp
 import httpx
 from google.genai.errors import APIError
 from pydantic import BaseModel, Field
-from younilab_provider_request_audit import (
-    ProviderRequestContext,
-    ProviderRequestExecutor,
-    ProviderRequestFailure,
-    ProviderRequestRecorder,
-)
 from younilab_geo_tracking_application import (
     AnswerProvider,
     AnswerRequest,
@@ -27,7 +21,6 @@ from younilab_geo_tracking_application import (
     QueryDraft,
     QueryGenerationCommand,
     QueryGenerationProvider,
-    QueryIntent,
     QueryResearchCommand,
     QueryResearchProvider,
     QueryResearchResult,
@@ -35,6 +28,12 @@ from younilab_geo_tracking_application import (
 )
 from younilab_geo_tracking_application.prompt_templates import default_language
 from younilab_geo_tracking_domain import MarketType, ProviderCode, RegionCode
+from younilab_provider_request_audit import (
+    ProviderRequestContext,
+    ProviderRequestExecutor,
+    ProviderRequestFailure,
+    ProviderRequestRecorder,
+)
 
 from younilab_geo_tracking_infrastructure.config import (
     SERPAPI_LOCALE_PROFILES,
@@ -44,7 +43,11 @@ from younilab_geo_tracking_infrastructure.config import (
 from younilab_geo_tracking_infrastructure.gemini_usage import (
     gemini_request_usage,
 )
-
+from younilab_geo_tracking_infrastructure.query_generation_validation import (
+    merge_intent_coverage_drafts,
+    missing_query_intents,
+    validated_query_drafts_or_empty,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +221,6 @@ class _GeminiQueryAttributes(BaseModel):
     )
     topicName: str = Field(description="Copy one input topic name exactly.")
     topicDescription: str = Field(
-        default="",
         description=(
             "Copy the selected topic description and use it as a generation "
             "constraint."
@@ -243,7 +245,6 @@ class _GeminiQueryDraft(BaseModel):
         )
     )
     keywords: list[str] = Field(
-        default_factory=list,
         description=(
             "Seed keywords from the input keywords used by this query; "
             "do not invent keywords."
@@ -860,11 +861,11 @@ class GeminiQueryGenerationProvider:
                 classify_failure=_classify_gemini_failure,
                 read_usage=gemini_request_usage,
             )
-            drafts = _query_drafts_from_gemini(
+            drafts = validated_query_drafts_or_empty(
                 command,
-                _gemini_query_draft_list(response),
+                _gemini_query_draft_list(response).items,
             )
-            missing_intents = _missing_query_intents(command, drafts)
+            missing_intents = missing_query_intents(command, drafts)
             if missing_intents:
                 repair_command = command.model_copy(
                     update={
@@ -883,17 +884,17 @@ class GeminiQueryGenerationProvider:
                     classify_failure=_classify_gemini_failure,
                     read_usage=gemini_request_usage,
                 )
-                repair_drafts = _query_drafts_from_gemini(
+                repair_drafts = validated_query_drafts_or_empty(
                     repair_command,
-                    _gemini_query_draft_list(repair_response),
+                    _gemini_query_draft_list(repair_response).items,
                 )
-                drafts = _merge_intent_coverage_drafts(
+                drafts = merge_intent_coverage_drafts(
                     command,
                     drafts,
                     repair_drafts,
                 )
             if not drafts:
-                raise ProviderRequestError("query_generation_no_valid_drafts")
+                raise ProviderRequestError("query_generation_constraints_invalid")
         finally:
             client.close()
         return drafts
@@ -1004,20 +1005,40 @@ def build_answer_providers(
 def build_query_research_providers(
     settings: GeoTrackingSettings,
     recorder: ProviderRequestRecorder,
+    openai_client_manager: Any | None = None,
 ) -> dict[ProviderCode, QueryResearchProvider]:
+    from younilab_geo_tracking_infrastructure.openai_providers import (
+        OpenAIQueryResearchProvider,
+    )
+
     return {
         ProviderCode.DUMMY: DummyQueryResearchProvider(),
         ProviderCode.GEMINI: GeminiQueryResearchProvider(settings, recorder),
+        ProviderCode.OPENAI: OpenAIQueryResearchProvider(
+            settings,
+            recorder,
+            client_manager=openai_client_manager,
+        ),
     }
 
 
 def build_query_generation_providers(
     settings: GeoTrackingSettings,
     recorder: ProviderRequestRecorder,
+    openai_client_manager: Any | None = None,
 ) -> dict[ProviderCode, QueryGenerationProvider]:
+    from younilab_geo_tracking_infrastructure.openai_providers import (
+        OpenAIQueryGenerationProvider,
+    )
+
     return {
         ProviderCode.DUMMY: DummyQueryGenerationProvider(),
         ProviderCode.GEMINI: GeminiQueryGenerationProvider(settings, recorder),
+        ProviderCode.OPENAI: OpenAIQueryGenerationProvider(
+            settings,
+            recorder,
+            client_manager=openai_client_manager,
+        ),
     }
 
 
@@ -1033,9 +1054,11 @@ def _query_generation_system_prompt(language: str | None) -> str:
             "both valid. Avoid report titles, campaign briefs, procurement prose, "
             "stacked clauses, and forcing unrelated input constraints into one "
             "query. Use the provided JSON parameters and optional researchContext "
-            "as context, obey explicit brandMentionRules, and classify each finished "
-            "query with its most fitting selected intent. Treat "
-            "shouldMentionCompetitor=true as permission, not a requirement: mention "
+            "as context and obey explicit brandMentionRules. Generate each query "
+            "from one provided intent and copy that "
+            "selected intent unchanged into attributes; never infer or rewrite an "
+            "intent. When shouldMentionOwnBrand=true, include the own brand name. "
+            "Treat shouldMentionCompetitor=true as permission, not a requirement: mention "
             "a competitor only when it is relevant and natural. When it is false, "
             "do not mention competitors."
         )
@@ -1047,7 +1070,9 @@ def _query_generation_system_prompt(language: str | None) -> str:
         "片段與完整問句都可以。避免報告標題、活動企劃、採購公文式語氣、堆疊"
         "多個子句，以及為了塞入條件而把不相關資訊放進同一筆 query。請將提供"
         "的 JSON 參數與可選 researchContext 作為情境，遵守明確的"
-        " brandMentionRules，並在完成 query 後標示最符合的已選 intent。"
+        " brandMentionRules。每筆 query 必須以一個使用者提供的 intent 作為生成"
+        "角度，並在 attributes 原樣複製該 intent，不得自行推論或改寫。"
+        "shouldMentionOwnBrand=true 時必須包含自有品牌名稱。"
         "shouldMentionCompetitor=true 表示允許提及競品，不代表每筆都必須提及；"
         "只有在相關且自然時才提及競品。設為 false 時不得提及競品。"
     )
@@ -1100,59 +1125,7 @@ def _query_drafts_from_gemini(
     command: QueryGenerationCommand,
     parsed: _GeminiQueryDraftList,
 ) -> list[QueryDraft]:
-    allowed_topics = command.topic_names or _default_topic_names(command.market_type)
-    drafts: list[QueryDraft] = []
-    for item in parsed.items:
-        if _mentions_disallowed_competitor(command, item.query):
-            continue
-        attributes = item.attributes
-        intent = _matching_intent(command, attributes.intent)
-        allowed_topics = _command_topics(command)
-        topic = _matching_topic(attributes.topicName, allowed_topics)
-        drafts.append(
-            QueryDraft(
-                attributes={
-                    "intent": intent,
-                    "keyword": _matching_value(attributes.keyword, command.keywords),
-                    "topicName": topic.name,
-                    "topicDescription": topic.description,
-                    "audience": command.audience,
-                    "brandMentionRules": command.brand_mention_rules,
-                },
-                query=item.query,
-                keywords=_matching_keywords(item.keywords, command.keywords),
-            )
-        )
-        if len(drafts) >= command.max_queries:
-            break
-    return drafts
-
-
-def _mentions_disallowed_competitor(
-    command: QueryGenerationCommand,
-    query: str,
-) -> bool:
-    if command.brand_mention_rules.should_mention_competitor:
-        return False
-    return any(
-        _contains_brand_name(query, competitor)
-        for competitor in command.competitor_brands
-    )
-
-
-def _contains_brand_name(query: str, brand_name: str) -> bool:
-    brand_name = brand_name.strip()
-    if not brand_name:
-        return False
-    if any(not character.isascii() for character in brand_name):
-        return brand_name.casefold() in query.casefold()
-    return bool(
-        re.search(
-            rf"(?<![A-Za-z0-9]){re.escape(brand_name)}(?![A-Za-z0-9])",
-            query,
-            flags=re.IGNORECASE,
-        )
-    )
+    return validated_query_drafts_or_empty(command, parsed.items)
 
 
 def _gemini_query_draft_list(response: Any) -> _GeminiQueryDraftList:
@@ -1160,48 +1133,6 @@ def _gemini_query_draft_list(response: Any) -> _GeminiQueryDraftList:
     if isinstance(parsed, _GeminiQueryDraftList):
         return parsed
     return _GeminiQueryDraftList.model_validate_json(response.text or "{}")
-
-
-def _missing_query_intents(
-    command: QueryGenerationCommand,
-    drafts: list[QueryDraft],
-) -> list[QueryIntent]:
-    if command.max_queries < len(command.intents):
-        return []
-    generated_categories = {draft.attributes.intent.category for draft in drafts}
-    missing: list[QueryIntent] = []
-    for intent in command.intents:
-        if (
-            intent.category not in generated_categories
-            and all(item.category != intent.category for item in missing)
-        ):
-            missing.append(intent)
-    return missing
-
-
-def _merge_intent_coverage_drafts(
-    command: QueryGenerationCommand,
-    initial_drafts: list[QueryDraft],
-    repair_drafts: list[QueryDraft],
-) -> list[QueryDraft]:
-    selected_categories = list(
-        dict.fromkeys(intent.category for intent in command.intents)
-    )
-    drafts_by_category: dict[str, QueryDraft] = {}
-    for draft in [*initial_drafts, *repair_drafts]:
-        category = draft.attributes.intent.category
-        if category in selected_categories and category not in drafts_by_category:
-            drafts_by_category[category] = draft
-    missing = [
-        category for category in selected_categories if category not in drafts_by_category
-    ]
-    if missing:
-        raise ProviderRequestError("query_intent_coverage_failed")
-
-    required = [drafts_by_category[category] for category in selected_categories]
-    required_ids = {id(draft) for draft in required}
-    extras = [draft for draft in initial_drafts if id(draft) not in required_ids]
-    return [*required, *extras][: command.max_queries]
 
 
 def _command_topics(command: QueryGenerationCommand) -> list[Any]:
@@ -1214,16 +1145,6 @@ def _command_topics(command: QueryGenerationCommand) -> list[Any]:
 class _TopicLike(BaseModel):
     name: str
     description: str = ""
-
-
-def _matching_intent(
-    command: QueryGenerationCommand,
-    intent: _GeminiIntent,
-) -> QueryIntent:
-    for candidate in command.intents:
-        if candidate.category == intent.category:
-            return candidate
-    return QueryIntent(category=intent.category, description=intent.description)
 
 
 def _intent_generation_guidance(language: str) -> list[str]:
@@ -1240,34 +1161,6 @@ def _intent_generation_guidance(language: str) -> list[str]:
         "當 maxQueries 少於選取的 intent 數量時，依 keyword、topic、audience 與 market context 選擇最相關的 intent。",
         "其餘 query 依情境自然分配，不要求平均分配。",
     ]
-
-
-def _matching_value(value: str, allowed_values: list[str]) -> str:
-    if value in allowed_values:
-        return value
-    for allowed_value in allowed_values:
-        if allowed_value and allowed_value in value:
-            return allowed_value
-    return allowed_values[0]
-
-
-def _matching_keywords(values: list[str], allowed_values: list[str]) -> list[str]:
-    keywords: list[str] = []
-    for value in values:
-        matched = _matching_value(value, allowed_values)
-        if matched not in keywords:
-            keywords.append(matched)
-    return keywords or [allowed_values[0]]
-
-
-def _matching_topic(value: str, allowed_topics: list[Any]) -> Any:
-    for topic in allowed_topics:
-        if value == topic.name:
-            return topic
-    for topic in allowed_topics:
-        if topic.name and topic.name in value:
-            return topic
-    return allowed_topics[0]
 
 
 def _default_topic_names(market_type: MarketType) -> list[str]:

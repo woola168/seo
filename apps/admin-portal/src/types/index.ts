@@ -239,8 +239,8 @@ export interface CollectionResponse<T> {
 
 export type GeoRegion = "TW" | "US";
 export type GeoMarketType = "b2c" | "b2b_procurement";
-export type GeoQueryProvider = "dummy" | "gemini";
-export type GeoProvider = GeoQueryProvider | "google_aio";
+export type GeoQueryProvider = "dummy" | "gemini" | "openai";
+export type GeoProvider = "dummy" | "gemini" | "google_aio";
 
 export interface GeoDummyProject {
   brandName: string;
@@ -874,7 +874,7 @@ export interface GeoProjectStatusResource extends GeoProjectStatusRequest {
 }
 
 export interface GeoProjectQuerySettingsRequest {
-  researchProvider: "gemini";
+  researchProvider: "gemini" | "openai";
   runProvider: "gemini";
   keywords: string[];
   marketType: GeoMarketType;

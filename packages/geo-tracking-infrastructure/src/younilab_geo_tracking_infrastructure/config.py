@@ -62,6 +62,24 @@ class GeoTrackingSettings:
     gemini_thinking_level: str = field(
         default_factory=lambda: os.getenv("GEMINI_THINKING_LEVEL", "medium")
     )
+    openai_api_key: str = field(
+        default_factory=lambda: os.getenv("OPENAI_API_KEY", "")
+    )
+    openai_query_generation_model: str = field(
+        default_factory=lambda: os.getenv(
+            "OPENAI_QUERY_GENERATION_MODEL",
+            "gpt-5.6-luna",
+        )
+    )
+    openai_query_research_model: str = field(
+        default_factory=lambda: os.getenv(
+            "OPENAI_QUERY_RESEARCH_MODEL",
+            "gpt-5.6-luna",
+        )
+    )
+    openai_timeout_seconds: float = field(
+        default_factory=lambda: _float_from_env("OPENAI_TIMEOUT_SECONDS", "60")
+    )
     serpapi_api_key: str = field(
         default_factory=lambda: os.getenv("SERPAPI_API_KEY", "")
     )

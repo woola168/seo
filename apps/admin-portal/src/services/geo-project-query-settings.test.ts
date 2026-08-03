@@ -65,6 +65,27 @@ describe("GEO Project Query Settings", () => {
     ]);
   });
 
+  it("keeps OpenAI as the saved Query Research and Generation provider", () => {
+    const form = settingsService.querySettingsResourceToForm({
+      projectId: "project-1",
+      researchProvider: "openai",
+      runProvider: "gemini",
+      keywords: ["ERP"],
+      marketType: "b2b_procurement",
+      maxQueries: 10,
+      audience: { name: "採購主管", description: "負責供應商評估" },
+      intents: [{ category: "transactional", description: "採取購買行動" }],
+      shouldMentionOwnBrand: true,
+      shouldMentionCompetitor: false,
+      updatedAt: "2026-08-03T00:00:00Z",
+    });
+
+    expect(form.researchProvider).toBe("openai");
+    expect(settingsService.querySettingsFormToRequest(form).researchProvider).toBe(
+      "openai",
+    );
+  });
+
   it("sends only selected intents with stable category codes", () => {
     const form = settingsService.createDefaultQuerySettingsForm();
     form.intents = form.intents.map((intent) => ({

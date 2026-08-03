@@ -12,19 +12,20 @@ from younilab_geo_tracking_application import (
     RunEngineService,
 )
 from younilab_geo_tracking_domain import ProviderCode
-from younilab_provider_request_audit import (
-    PostgresProviderRequestRecorder,
-    ProviderRequestRecorder,
-    UnconfiguredProviderRequestRecorder,
-)
 from younilab_geo_tracking_infrastructure import (
     GeminiProjectDiscoveryProvider,
     GeoTrackingSettings,
+    OpenAIClientManager,
     SystemClock,
     UuidGenerator,
     build_answer_providers,
     build_query_generation_providers,
     build_query_research_providers,
+)
+from younilab_provider_request_audit import (
+    PostgresProviderRequestRecorder,
+    ProviderRequestRecorder,
+    UnconfiguredProviderRequestRecorder,
 )
 
 
@@ -59,6 +60,7 @@ def build_dependencies(
     id_generator = UuidGenerator()
     resolved_settings = settings or GeoTrackingSettings()
     resolved_recorder = provider_request_recorder or _build_provider_request_recorder()
+    openai_client_manager = OpenAIClientManager(resolved_settings)
     resolved_providers = (
         dict(answer_providers)
         if answer_providers is not None
@@ -71,12 +73,20 @@ def build_dependencies(
     resolved_query_research_providers = (
         dict(query_research_providers)
         if query_research_providers is not None
-        else build_query_research_providers(resolved_settings, resolved_recorder)
+        else build_query_research_providers(
+            resolved_settings,
+            resolved_recorder,
+            openai_client_manager,
+        )
     )
     resolved_query_generation_providers = (
         dict(query_generation_providers)
         if query_generation_providers is not None
-        else build_query_generation_providers(resolved_settings, resolved_recorder)
+        else build_query_generation_providers(
+            resolved_settings,
+            resolved_recorder,
+            openai_client_manager,
+        )
     )
     resolved_project_discovery_provider = (
         project_discovery_provider
@@ -108,6 +118,7 @@ def build_dependencies(
                     + list(resolved_query_generation_providers.values())
                     + [resolved_project_discovery_provider]
                     + [resolved_recorder]
+                    + [openai_client_manager]
                 )
             }.values()
         ),
