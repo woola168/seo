@@ -10,6 +10,7 @@ from younilab_geo_tracking_application.contracts import (
     QueryDraft,
     QueryGenerationCommand,
     QueryGenerationResult,
+    QueryIntent,
     TopicInput,
     TopicSummary,
 )
@@ -119,9 +120,7 @@ class DummyQueryGenerationProvider:
                                 "audience": command.audience,
                                 "brandMentionRules": command.brand_mention_rules,
                             },
-                            query=self._query_text(
-                                command, keyword, intent.description
-                            ),
+                            query=self._query_text(command, keyword, intent),
                             keywords=[keyword],
                         )
                     )
@@ -138,50 +137,55 @@ class DummyQueryGenerationProvider:
         self,
         command: QueryGenerationCommand,
         keyword: str,
-        intent_description: str,
+        intent: QueryIntent,
     ) -> str:
         competitor = command.competitor_brands[0] if command.competitor_brands else ""
         rules = command.brand_mention_rules
         language = command.language or default_language(command.region)
         if language == "en-US":
-            return self._english_query(command, keyword, intent_description, competitor)
-        if rules.should_mention_own_brand and rules.should_mention_competitor:
-            return (
-                f"{command.brand_name} 和 {competitor} 在 {keyword} 的"
-                f"{intent_description}上有什麼差異？"
-            )
+            return self._english_query(command, keyword, intent, competitor)
+        if (
+            rules.should_mention_competitor
+            and competitor
+            and intent.category == "commercial_investigation"
+        ):
+            if rules.should_mention_own_brand:
+                return (
+                    f"{command.brand_name} 和 {competitor} 在 {keyword} 的"
+                    f"{intent.description}上有什麼差異？"
+                )
+            return f"{competitor} 的 {keyword} 有哪些值得比較的地方？"
         if rules.should_mention_own_brand:
             return (
-                f"{command.brand_name} 的 {keyword} 在{intent_description}"
+                f"{command.brand_name} 的 {keyword} 在{intent.description}"
                 "上應該怎麼評估？"
             )
-        if rules.should_mention_competitor and competitor:
-            return (
-                f"{competitor} 的 {keyword} 在{intent_description}"
-                "上有哪些值得比較的地方？"
-            )
-        return f"{keyword} 在{intent_description}上有哪些推薦品牌或評估重點？"
+        return f"{keyword} 在{intent.description}上有哪些推薦品牌或評估重點？"
 
     def _english_query(
         self,
         command: QueryGenerationCommand,
         keyword: str,
-        intent_description: str,
+        intent: QueryIntent,
         competitor: str,
     ) -> str:
         rules = command.brand_mention_rules
-        if rules.should_mention_own_brand and rules.should_mention_competitor:
-            return (
-                f"How does {command.brand_name} compare with {competitor} "
-                f"for {keyword} {intent_description}?"
-            )
+        if (
+            rules.should_mention_competitor
+            and competitor
+            and intent.category == "commercial_investigation"
+        ):
+            if rules.should_mention_own_brand:
+                return (
+                    f"How does {command.brand_name} compare with {competitor} "
+                    f"for {keyword}?"
+                )
+            return f"How does {competitor} compare with other {keyword} options?"
         if rules.should_mention_own_brand:
             return (
                 f"What should buyers evaluate about {command.brand_name} for {keyword}?"
             )
-        if rules.should_mention_competitor and competitor:
-            return f"What should buyers know about {competitor} for {keyword}?"
-        return f"What are the best {keyword} options for {intent_description}?"
+        return f"What are the best {keyword} options for {intent.description}?"
 
 
 def _topic_inputs(

@@ -26,6 +26,7 @@ import {
   type GeoProjectProfile,
 } from "../services/geo-project-profile";
 import type { CustomerSummary } from "../types";
+import { findCompetitorOwnBrandConflicts } from "../utils/geo-brand-identity";
 import { getGeoProjectRouteNames } from "../utils/geo-project-routes";
 import { hasPermission } from "../utils/permissions";
 
@@ -77,13 +78,14 @@ const competitorNames = computed<string[]>({
         aliases: [],
       };
     });
-    if (competitors.value.length) delete errors.competitors;
+    clearCompetitorIdentityError();
   },
 });
 const topics = ref<Array<{ name: string; description: string }>>([]);
 const competitorModalOpen = ref(false);
 const editingCompetitorId = ref("");
 const competitorForm = reactive({ name: "", websiteUrl: "", aliases: [] as string[] });
+const competitorFormErrors = reactive<{ name?: string; aliases?: string }>({});
 const ownBrandAliases = ref<string[]>([]);
 const form = reactive({
   name: "",
@@ -145,7 +147,39 @@ function validateStepOne(): boolean {
   if (!form.defaultRegion.trim()) errors.defaultRegion = "請輸入地區";
   if (!form.defaultLanguage.trim()) errors.defaultLanguage = "請輸入語系";
   if (!isEdit.value && !competitors.value.length) errors.competitors = "請至少輸入一個競品";
+  const conflicts = brandIdentityConflicts(competitors.value);
+  if (conflicts.length) {
+    errors.competitors = `競品名稱或別名不可與自有品牌名稱或別名相同：${conflicts.join("、")}`;
+  }
   return Object.keys(errors).length === 0;
+}
+
+function brandIdentityConflicts(items: CompetitorDraft[]): string[] {
+  return Array.from(new Set(
+    items.flatMap((competitor) =>
+      findCompetitorOwnBrandConflicts(
+        {
+          names: [currentProfile.value?.ownBrand.name ?? "", form.name],
+          aliases: ownBrandAliases.value,
+        },
+        competitor,
+      ).map((conflict) => conflict.value),
+    ),
+  ));
+}
+
+function clearCompetitorIdentityError(): void {
+  delete errors.competitors;
+}
+
+function clearProjectNameErrors(): void {
+  delete errors.name;
+  clearCompetitorIdentityError();
+}
+
+function removeCompetitor(clientId: string): void {
+  competitors.value = competitors.value.filter((competitor) => competitor.clientId !== clientId);
+  clearCompetitorIdentityError();
 }
 
 function primaryAction(): void {
@@ -256,6 +290,8 @@ async function save(): Promise<void> {
 }
 
 function openCompetitor(competitor?: CompetitorDraft): void {
+  delete competitorFormErrors.name;
+  delete competitorFormErrors.aliases;
   editingCompetitorId.value = competitor?.clientId ?? "";
   competitorForm.name = competitor?.name ?? "";
   competitorForm.websiteUrl = competitor?.websiteUrl ?? "";
@@ -265,6 +301,25 @@ function openCompetitor(competitor?: CompetitorDraft): void {
 
 function saveCompetitor(): void {
   if (!competitorForm.name.trim()) return;
+  delete competitorFormErrors.name;
+  delete competitorFormErrors.aliases;
+  const conflicts = findCompetitorOwnBrandConflicts(
+    {
+      names: [currentProfile.value?.ownBrand.name ?? "", form.name],
+      aliases: ownBrandAliases.value,
+    },
+    { name: competitorForm.name, aliases: competitorForm.aliases },
+  );
+  if (conflicts.some((conflict) => conflict.field === "name")) {
+    competitorFormErrors.name = "競品名稱不可與自有品牌名稱或別名相同";
+  }
+  const conflictingAliases = conflicts
+    .filter((conflict) => conflict.field === "alias")
+    .map((conflict) => conflict.value);
+  if (conflictingAliases.length) {
+    competitorFormErrors.aliases = `競品別名不可與自有品牌名稱或別名相同：${conflictingAliases.join("、")}`;
+  }
+  if (Object.keys(competitorFormErrors).length) return;
   const existing = competitors.value.find((competitor) => competitor.clientId === editingCompetitorId.value);
   const next: CompetitorDraft = {
     clientId: existing?.clientId ?? `new-${Date.now()}`,
@@ -277,7 +332,7 @@ function saveCompetitor(): void {
     ? competitors.value.map((competitor) => competitor.clientId === existing.clientId ? next : competitor)
     : [...competitors.value, next];
   competitorModalOpen.value = false;
-  delete errors.competitors;
+  clearCompetitorIdentityError();
 }
 
 function addTopic(): void {
@@ -312,13 +367,13 @@ function addTopic(): void {
         <section v-if="isEdit || step === 1" class="geo-form-card">
           <header><strong>品牌基本資料</strong></header>
           <div class="geo-form-grid">
-            <GeoFormField label="Project 名稱" required :error="errors.name"><input v-model="form.name" type="text" placeholder="請輸入名稱" :class="{ invalid: errors.name }" /></GeoFormField>
+            <GeoFormField label="Project 名稱" required :error="errors.name"><input v-model="form.name" type="text" placeholder="請輸入名稱" :class="{ invalid: errors.name }" @input="clearProjectNameErrors" /></GeoFormField>
             <GeoFormField label="網址/網域" required :error="errors.websiteUrl"><input v-model="form.websiteUrl" type="text" placeholder="請輸入網址/網域" :class="{ invalid: errors.websiteUrl }" /></GeoFormField>
             <GeoFormField label="客戶" required :error="errors.customerId"><select v-model="form.customerId" :class="{ invalid: errors.customerId }"><option value="">請選擇客戶</option><option v-for="customer in customers" :key="customer.id" :value="customer.id">{{ customer.name }}</option></select></GeoFormField>
             <GeoFormField label="地區" required :error="errors.defaultRegion"><input v-model="form.defaultRegion" type="text" placeholder="例如：TW" /></GeoFormField>
             <GeoFormField label="語系" required :error="errors.defaultLanguage"><input v-model="form.defaultLanguage" type="text" placeholder="例如：zh-TW" /></GeoFormField>
             <GeoFormField label="別名">
-              <GeoTagInput v-model="ownBrandAliases" placeholder="請輸入別名" />
+              <GeoTagInput v-model="ownBrandAliases" placeholder="請輸入別名" @update:model-value="clearCompetitorIdentityError" />
               <small class="geo-form-helper" @click.prevent.stop>輸入別名後按 Enter 或逗號新增，可加入多組</small>
             </GeoFormField>
             <GeoFormField v-if="!isEdit" class="geo-form-full" label="競品" required :error="errors.competitors">
@@ -331,8 +386,9 @@ function addTopic(): void {
 
         <section v-if="isEdit" class="geo-form-card">
           <header><strong>競品</strong><button class="button button-secondary button-small" type="button" @click="openCompetitor()"><AppIcon name="plus" :size="14" />新增</button></header>
+          <small v-if="errors.competitors" class="form-error">{{ errors.competitors }}</small>
           <div class="geo-card-table-wrap"><table class="geo-project-settings-table geo-competitor-table"><colgroup><col class="competitor-name-col" /><col class="competitor-alias-col" /><col class="competitor-actions-col" /></colgroup><thead><tr><th>競品名稱 / 網址</th><th>別名</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="competitor in competitors" :key="competitor.clientId"><td><strong>{{ competitor.name }}</strong><small>{{ competitor.websiteUrl || "—" }}</small></td><td><div v-if="competitor.aliases.length" class="geo-alias-list"><span v-for="alias in competitor.aliases" :key="alias" class="geo-read-tag">{{ alias }}</span></div><span v-else class="geo-table-placeholder">—</span></td><td><div class="geo-row-actions"><button class="geo-row-action" type="button" title="編輯" @click="openCompetitor(competitor)"><AppIcon name="edit" :size="14" /></button><button class="geo-row-action" type="button" title="刪除" @click="competitors = competitors.filter((item) => item.clientId !== competitor.clientId)"><AppIcon name="trash" :size="14" /></button></div></td></tr>
+            <tr v-for="competitor in competitors" :key="competitor.clientId"><td><strong>{{ competitor.name }}</strong><small>{{ competitor.websiteUrl || "—" }}</small></td><td><div v-if="competitor.aliases.length" class="geo-alias-list"><span v-for="alias in competitor.aliases" :key="alias" class="geo-read-tag">{{ alias }}</span></div><span v-else class="geo-table-placeholder">—</span></td><td><div class="geo-row-actions"><button class="geo-row-action" type="button" title="編輯" @click="openCompetitor(competitor)"><AppIcon name="edit" :size="14" /></button><button class="geo-row-action" type="button" title="刪除" @click="removeCompetitor(competitor.clientId)"><AppIcon name="trash" :size="14" /></button></div></td></tr>
             <tr v-if="!competitors.length"><td colspan="3" class="geo-table-empty">尚未新增競品，點右上「新增」開始</td></tr>
           </tbody></table></div>
         </section>
@@ -352,11 +408,11 @@ function addTopic(): void {
           <section class="geo-form-card"><header><strong>Topics</strong><div><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button><button class="button button-secondary button-small" type="button" :disabled="topics.length >= MAX_GEO_TOPICS" @click="addTopic">新增 Topic</button></div></header><div class="geo-card-body geo-topic-list"><div v-for="(topic, index) in topics" :key="index"><label><span>Topic 名稱</span><input v-model="topic.name" type="text" placeholder="例如 產品、採購評估、供應商" /></label><label><span>Topic 描述</span><input v-model="topic.description" type="text" placeholder="描述此 Topic" /></label><button class="button button-secondary button-small" type="button" @click="topics.splice(index, 1)">移除</button></div><p v-if="!topics.length">尚未新增 Topic，點右上「新增 Topic」開始</p></div></section>
           <section class="geo-form-card"><header><strong>市場與受眾</strong></header><div class="geo-form-grid"><GeoFormField label="Market Type"><select v-model="form.marketType"><option value="b2b_procurement">B2B 採購</option><option value="b2c">B2C 消費</option></select></GeoFormField><GeoFormField label="Max Queries" :error="errors.maxQueries"><input v-model.number="form.maxQueries" type="number" min="1" max="40" :class="{ invalid: errors.maxQueries }" /></GeoFormField><GeoFormField label="Audience" :error="errors.audienceName"><input v-model="form.audienceName" type="text" :class="{ invalid: errors.audienceName }" /></GeoFormField><GeoFormField label="Audience Description" :error="errors.audienceDescription"><input v-model="form.audienceDescription" type="text" :class="{ invalid: errors.audienceDescription }" /></GeoFormField></div></section>
           <section class="geo-form-card"><header><strong>Intent 與提及規則</strong></header><div class="geo-card-body"><GeoIntentSelector v-model="form.intents" :error="errors.intents" @change="delete errors.intents" /></div></section>
-          <section class="geo-form-card"><header><strong>提示詞風格</strong></header><div class="geo-toggle-list"><label><span class="geo-toggle-copy"><strong>提及自身品牌</strong><small>生成的 query 需包含自家品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionOwnBrand" type="checkbox" /><span aria-hidden="true"></span></span></label><label><span class="geo-toggle-copy"><strong>提及競品</strong><small>生成的 query 需包含競爭品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionCompetitor" type="checkbox" /><span aria-hidden="true"></span></span></label></div></section>
+          <section class="geo-form-card"><header><strong>提示詞風格</strong></header><div class="geo-toggle-list"><label><span class="geo-toggle-copy"><strong>提及自身品牌</strong><small>生成的 query 需包含自家品牌名稱</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionOwnBrand" type="checkbox" /><span aria-hidden="true"></span></span></label><label><span class="geo-toggle-copy"><strong>允許提及競品</strong><small>可在相關且自然時包含競爭品牌，不要求每筆提及</small></span><span class="geo-toggle-switch"><input v-model="form.shouldMentionCompetitor" type="checkbox" /><span aria-hidden="true"></span></span></label></div></section>
         </template>
       </div>
     </div>
 
-    <Teleport to="body"><div v-if="competitorModalOpen" class="geo-dialog-backdrop geo-competitor-backdrop" @click.self="competitorModalOpen = false"><section class="geo-dialog geo-competitor-dialog"><header><strong>{{ editingCompetitorId ? "編輯競品" : "新增競品" }}</strong></header><div class="geo-dialog-form"><GeoFormField label="競品名稱" required><input v-model="competitorForm.name" type="text" placeholder="請輸入競品名稱" /></GeoFormField><GeoFormField label="網址"><input v-model="competitorForm.websiteUrl" type="text" placeholder="https://example.com" /></GeoFormField><GeoFormField label="別名"><GeoTagInput v-model="competitorForm.aliases" placeholder="請輸入別名" /><small class="geo-form-helper" @click.prevent.stop>輸入別名後按 Enter 或逗號新增，可加入多組</small></GeoFormField></div><footer><button class="button button-secondary" type="button" @click="competitorModalOpen = false">取消</button><button class="button button-primary" type="button" :disabled="!competitorForm.name.trim()" @click="saveCompetitor">儲存</button></footer></section></div></Teleport>
+    <Teleport to="body"><div v-if="competitorModalOpen" class="geo-dialog-backdrop geo-competitor-backdrop" @click.self="competitorModalOpen = false"><section class="geo-dialog geo-competitor-dialog"><header><strong>{{ editingCompetitorId ? "編輯競品" : "新增競品" }}</strong></header><div class="geo-dialog-form"><GeoFormField label="競品名稱" required :error="competitorFormErrors.name"><input v-model="competitorForm.name" type="text" :class="{ invalid: competitorFormErrors.name }" placeholder="請輸入競品名稱" @input="delete competitorFormErrors.name" /></GeoFormField><GeoFormField label="網址"><input v-model="competitorForm.websiteUrl" type="text" placeholder="https://example.com" /></GeoFormField><GeoFormField label="別名" :error="competitorFormErrors.aliases"><GeoTagInput v-model="competitorForm.aliases" :invalid="Boolean(competitorFormErrors.aliases)" placeholder="請輸入別名" @update:model-value="delete competitorFormErrors.aliases" /><small class="geo-form-helper" @click.prevent.stop>輸入別名後按 Enter 或逗號新增，可加入多組</small></GeoFormField></div><footer><button class="button button-secondary" type="button" @click="competitorModalOpen = false">取消</button><button class="button button-primary" type="button" :disabled="!competitorForm.name.trim()" @click="saveCompetitor">儲存</button></footer></section></div></Teleport>
   </main>
 </template>

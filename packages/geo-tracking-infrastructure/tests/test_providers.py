@@ -30,8 +30,10 @@ from younilab_geo_tracking_infrastructure import (
 from younilab_geo_tracking_infrastructure.providers import (
     _GeminiApiCallBudget,
     _GeminiIntent,
+    _GeminiQueryDraftList,
     _generate_with_reference_retry,
     _matching_intent,
+    _query_drafts_from_gemini,
     _query_generation_prompt,
     _query_generation_system_prompt,
     _query_research_prompt,
@@ -102,10 +104,14 @@ def test_query_generation_system_prompt_prioritizes_natural_user_queries() -> No
     assert "keyword fragments" in prompt
     assert "marketing copy" in prompt
     assert "brandMentionRules" in prompt
+    assert "permission, not a requirement" in prompt
+    assert "only when it is relevant and natural" in prompt
     assert "真實使用者" in traditional_chinese_prompt
     assert "只表達一個具體需求" in traditional_chinese_prompt
     assert "短關鍵字片段" in traditional_chinese_prompt
     assert "行銷文案" in traditional_chinese_prompt
+    assert "允許提及競品，不代表每筆都必須提及" in traditional_chinese_prompt
+    assert "相關且自然" in traditional_chinese_prompt
 
 
 def test_query_research_system_prompt_separates_observed_and_inferred_language() -> None:
@@ -133,20 +139,109 @@ def test_query_generation_preserves_unmatched_model_intent_for_later_classificat
     assert intent.description == "Unexpected category"
 
 
+def test_query_generation_rejects_drafts_that_mention_disallowed_competitors() -> None:
+    command = _query_generation_command().model_copy(
+        update={"competitor_brands": ["Rival ERP"], "max_queries": 1}
+    )
+    parsed = _GeminiQueryDraftList.model_validate(
+        {
+            "items": [
+                _query_draft_payload(
+                    "informational",
+                    "Learn",
+                    "How does Rival ERP work?",
+                ),
+                _query_draft_payload(
+                    "informational",
+                    "Learn",
+                    "How does ERP work?",
+                ),
+            ]
+        }
+    )
+
+    drafts = _query_drafts_from_gemini(command, parsed)
+
+    assert [draft.query for draft in drafts] == ["How does ERP work?"]
+
+
+def test_query_generation_does_not_reject_partial_competitor_name_matches() -> None:
+    command = _query_generation_command().model_copy(
+        update={"competitor_brands": ["SAP"], "max_queries": 1}
+    )
+    parsed = _GeminiQueryDraftList.model_validate(
+        {
+            "items": [
+                _query_draft_payload(
+                    "informational",
+                    "Learn",
+                    "What is a sapphire ERP dashboard?",
+                )
+            ]
+        }
+    )
+
+    drafts = _query_drafts_from_gemini(command, parsed)
+
+    assert [draft.query for draft in drafts] == [
+        "What is a sapphire ERP dashboard?"
+    ]
+
+
+def test_query_generation_keeps_allowed_competitor_mentions() -> None:
+    command = _query_generation_command()
+    command = command.model_copy(
+        update={
+            "competitor_brands": ["Rival ERP"],
+            "brand_mention_rules": command.brand_mention_rules.model_copy(
+                update={"should_mention_competitor": True}
+            ),
+        }
+    )
+    parsed = _GeminiQueryDraftList.model_validate(
+        {
+            "items": [
+                _query_draft_payload(
+                    "commercial_investigation",
+                    "Compare",
+                    "How does Rival ERP compare?",
+                )
+            ]
+        }
+    )
+
+    drafts = _query_drafts_from_gemini(command, parsed)
+
+    assert [draft.query for draft in drafts] == ["How does Rival ERP compare?"]
+
+
 def test_query_research_prompt_does_not_include_generation_intents() -> None:
-    prompt = _query_research_prompt(
-        QueryResearchCommand(
-            provider="gemini",
-            brandName="Acme",
-            keywords=["erp"],
-            region="TW",
-            language="en-US",
-            marketType="b2b_procurement",
+    command = QueryResearchCommand(
+        provider="gemini",
+        brandName="Acme",
+        keywords=["erp"],
+        region="TW",
+        language="en-US",
+        marketType="b2b_procurement",
+    )
+    prompt = _query_research_prompt(command, "en-US")
+    competitor_allowed_prompt = _query_research_prompt(
+        command.model_copy(
+            update={
+                "brand_mention_rules": command.brand_mention_rules.model_copy(
+                    update={"should_mention_competitor": True}
+                )
+            }
         ),
         "en-US",
     )
 
     assert "Intents:" not in prompt
+    assert "competitorMention=not allowed" in prompt
+    assert (
+        "competitorMention=allowed when relevant and natural, but not required"
+        in competitor_allowed_prompt
+    )
 
 
 @pytest.mark.anyio

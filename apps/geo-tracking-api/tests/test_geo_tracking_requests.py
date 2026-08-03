@@ -326,8 +326,60 @@ def test_query_generation_request_generates_b2b_taiwan_queries_in_chinese() -> N
     assert query["region"] == "TW"
     assert query["language"] == "zh-TW"
     assert "山華塑膠" in query["text"]
+    assert "主要競品" in query["text"]
     assert "氣動管" in query["text"]
     assert query["keywords"] == ["氣動管"]
+
+
+def test_query_generation_allows_competitor_only_for_relevant_dummy_intent() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+    payload = _generation_payload(
+        brandName="山華塑膠",
+        competitorBrands=["主要競品"],
+        keywords=["氣動管"],
+        region="TW",
+        language="zh-TW",
+        intents=[
+            {
+                "category": "commercial_investigation",
+                "description": "比較品牌差異",
+            },
+            {
+                "category": "informational",
+                "description": "了解產品用途",
+            },
+        ],
+        maxQueries=2,
+    )
+
+    response = client.post("/api/v1/geo-tracking/query-generation", json=payload)
+
+    assert response.status_code == 200
+    queries = response.json()["queries"]
+    assert "主要競品" in queries[0]["text"]
+    assert "主要競品" not in queries[1]["text"]
+
+
+def test_query_generation_disallows_competitor_when_switch_is_off() -> None:
+    client = TestClient(create_app(answer_provider=DummyAnswerProvider()))
+    payload = _generation_payload(
+        brandName="山華塑膠",
+        competitorBrands=["主要競品"],
+        keywords=["氣動管"],
+        region="TW",
+        language="zh-TW",
+        brandMentionRules={
+            "shouldMentionOwnBrand": True,
+            "shouldMentionCompetitor": False,
+        },
+    )
+
+    response = client.post("/api/v1/geo-tracking/query-generation", json=payload)
+
+    assert response.status_code == 200
+    assert all(
+        "主要競品" not in query["text"] for query in response.json()["queries"]
+    )
 
 
 def test_query_generation_request_can_use_gemini_structured_provider() -> None:
