@@ -139,6 +139,21 @@ describe("GeoProjectEditPage brand identity validation", () => {
 });
 
 describe("GeoProjectEditPage query scheduling", () => {
+  it("normalizes query intent labels and omits Stage and Priority columns", async () => {
+    mocks.loadProfile.mockResolvedValue(profile({
+      queryStatus: "active",
+      queryIntents: ["informational", "資訊型"],
+    }));
+
+    const wrapper = await mountPage();
+    const table = wrapper.get(".geo-query-summary-table");
+    const headers = table.findAll("th").map((header) => header.text());
+    const intentCells = table.findAll("tbody tr").map((row) => row.findAll("td")[2]?.text());
+
+    expect(headers).toEqual(["Query", "Topic", "Intent", "Branded", "狀態", "操作"]);
+    expect(intentCells).toEqual(["資訊", "資訊"]);
+  });
+
   it("pauses an active query from the project query list", async () => {
     mocks.loadProfile.mockResolvedValue(profile({ queryStatus: "active" }));
     const wrapper = await mountPage();
@@ -199,6 +214,7 @@ function buttonWithText(
 function profile(options: {
   competitorName?: string;
   queryStatus?: "active" | "paused";
+  queryIntents?: Array<string | null>;
 } = {}) {
   const competitors = options.competitorName
     ? [
@@ -233,7 +249,12 @@ function profile(options: {
       ? [{ id: "topic-1", name: "政策", description: "", status: "active" }]
       : [],
     queries: options.queryStatus
-      ? [scheduledQuery(options.queryStatus)]
+      ? (options.queryIntents ?? ["informational"]).map((intent, index) => ({
+          ...scheduledQuery(options.queryStatus),
+          id: `query-${index + 1}`,
+          queryText: `Query ${index + 1}`,
+          intent,
+        }))
       : [],
   };
 }

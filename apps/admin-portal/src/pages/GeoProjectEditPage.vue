@@ -14,6 +14,7 @@ import {
   MAX_GEO_KEYWORDS,
   MAX_GEO_TOPICS,
   normalizeQuerySettingsKeywords,
+  queryIntentLabel,
   querySettingsKeywordTagsToText,
   querySettingsFormToRequest,
   validateQuerySettingsForm,
@@ -425,9 +426,9 @@ function addTopic(): void {
 
         <section v-if="isEdit" class="geo-form-card">
           <header><strong>Query list</strong><button class="button button-secondary button-small" type="button" disabled><AppIcon name="sparkles" :size="14" />AI生成</button></header>
-          <div class="geo-card-table-wrap geo-query-table-wrap"><table class="geo-project-settings-table geo-query-summary-table"><colgroup><col class="query-text-col" /><col class="query-topic-col" /><col class="query-intent-col" /><col class="query-stage-col" /><col class="query-branded-col" /><col class="query-priority-col" /><col class="query-status-col" /><col class="query-actions-col" /></colgroup><thead><tr><th>Query</th><th>Topic</th><th>Intent</th><th>Stage</th><th>Branded</th><th>Priority</th><th>狀態</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="query in currentProfile?.queries ?? []" :key="query.id"><td>{{ query.queryText }}</td><td>{{ currentProfile?.topics.find((topic) => topic.id === query.topicId)?.name || "—" }}</td><td>{{ query.intent || "—" }}</td><td>{{ query.buyerStage || "—" }}</td><td>{{ query.isBranded ? "是" : "否" }}</td><td>{{ query.priority }}</td><td><GeoStatusBadge :value="query.status" :label="queryStatusLabels[query.status]" /></td><td><div class="geo-row-actions"><button class="geo-row-action" type="button" :title="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :aria-label="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :disabled="!canResearch || query.status === 'archived' || Boolean(updatingQueryId)" @click="toggleQuerySchedule(query)"><AppIcon :name="query.status === 'active' ? 'x' : query.status === 'paused' ? 'check' : 'lock'" :size="14" /></button></div></td></tr>
-            <tr v-if="!currentProfile?.queries.length"><td colspan="8" class="geo-table-empty">尚未有任何 Query</td></tr>
+          <div class="geo-card-table-wrap geo-query-table-wrap"><table class="geo-project-settings-table geo-query-summary-table"><colgroup><col class="query-text-col" /><col class="query-topic-col" /><col class="query-intent-col" /><col class="query-branded-col" /><col class="query-status-col" /><col class="query-actions-col" /></colgroup><thead><tr><th>Query</th><th>Topic</th><th>Intent</th><th>Branded</th><th>狀態</th><th>操作</th></tr></thead><tbody>
+            <tr v-for="query in currentProfile?.queries ?? []" :key="query.id"><td>{{ query.queryText }}</td><td>{{ currentProfile?.topics.find((topic) => topic.id === query.topicId)?.name || "—" }}</td><td>{{ queryIntentLabel(query.intent) }}</td><td>{{ query.isBranded ? "是" : "否" }}</td><td><GeoStatusBadge :value="query.status" :label="queryStatusLabels[query.status]" /></td><td><div class="geo-row-actions"><button class="geo-row-action" type="button" :title="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :aria-label="query.status === 'archived' ? '已封存' : query.status === 'active' ? '關閉排程' : '開啟排程'" :disabled="!canResearch || query.status === 'archived' || Boolean(updatingQueryId)" @click="toggleQuerySchedule(query)"><AppIcon :name="query.status === 'active' ? 'x' : query.status === 'paused' ? 'check' : 'lock'" :size="14" /></button></div></td></tr>
+            <tr v-if="!currentProfile?.queries.length"><td colspan="6" class="geo-table-empty">尚未有任何 Query</td></tr>
           </tbody></table></div>
         </section>
 

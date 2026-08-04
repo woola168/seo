@@ -829,17 +829,15 @@
 .geo-table-placeholder { color: #bfbfbf; font-size: 13px; }
 
 .geo-query-table-wrap { padding-bottom: 8px; }
-.geo-query-summary-table { min-width: 890px !important; table-layout: fixed; font-size: 13px; }
+.geo-query-summary-table { min-width: 720px !important; table-layout: fixed; font-size: 13px; }
 .geo-query-summary-table .query-topic-col { width: 140px; }
 .geo-query-summary-table .query-intent-col { width: 150px; }
-.geo-query-summary-table .query-stage-col { width: 150px; }
 .geo-query-summary-table .query-branded-col { width: 90px; }
-.geo-query-summary-table .query-priority-col { width: 100px; }
 .geo-query-summary-table .query-status-col { width: 90px; }
 .geo-query-summary-table .query-actions-col { width: 72px; }
 .geo-query-summary-table th { line-height: 15px; }
-.geo-query-summary-table th:nth-child(5),
-.geo-query-summary-table td:nth-child(5) { text-align: center; }
+.geo-query-summary-table th:nth-child(4),
+.geo-query-summary-table td:nth-child(4) { text-align: center; }
 .geo-query-summary-table td {
   height: 44px;
   box-sizing: border-box;
