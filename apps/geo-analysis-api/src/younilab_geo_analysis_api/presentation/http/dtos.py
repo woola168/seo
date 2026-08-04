@@ -423,6 +423,11 @@ class BrandMentionRulesRequest(ApiModel):
     should_mention_competitor: bool = False
 
 
+class BrandAliasRequest(ApiModel):
+    alias: str
+    match_type: Literal["exact", "case_insensitive", "contains", "domain"]
+
+
 class QueryResearchRunRequest(ApiModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -461,7 +466,9 @@ class QueryResearchRunResponse(ApiModel):
 class QueryGenerationRunRequest(ApiModel):
     provider: str = Field(default="dummy", min_length=1)
     brand_name: str = Field(min_length=1, max_length=200)
+    own_brand_aliases: list[BrandAliasRequest] = Field(default_factory=list)
     competitor_brands: list[str] = Field(default_factory=list)
+    competitor_aliases: list[BrandAliasRequest] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     region: str = Field(min_length=1, max_length=16)
     language: str | None = None

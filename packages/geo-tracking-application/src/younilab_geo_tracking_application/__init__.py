@@ -1,6 +1,7 @@
 from younilab_geo_tracking_application.contracts import (
     AnswerRequest,
     AnswerResponse,
+    BrandAlias,
     BrandMentionRules,
     ConfirmedProjectIdentity,
     GeneratedQuery,
@@ -55,6 +56,7 @@ __all__ = [
     "AnswerProvider",
     "AnswerRequest",
     "AnswerResponse",
+    "BrandAlias",
     "BrandMentionRules",
     "ConfirmedProjectIdentity",
     "DummyQueryGenerationProvider",

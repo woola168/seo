@@ -88,9 +88,26 @@ def _query_generation_command() -> QueryGenerationCommand:
 
 
 def test_query_generation_prompt_guides_intent_coverage_without_equal_allocation() -> None:
-    payload = json.loads(_query_generation_prompt(_query_generation_command(), "en-US"))
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_query_generation_command().model_dump(mode="json", by_alias=True),
+            "ownBrandAliases": [
+                {"alias": "Acme Taiwan", "matchType": "exact"}
+            ],
+            "competitorAliases": [
+                {"alias": "Rival", "matchType": "contains"}
+            ],
+        }
+    )
+    payload = json.loads(_query_generation_prompt(command, "en-US"))
 
     guidance = " ".join(payload["intentGuidance"])
+    assert payload["brand"]["ownBrandAliases"] == [
+        {"alias": "Acme Taiwan", "matchType": "exact"}
+    ]
+    assert payload["brand"]["competitorAliases"] == [
+        {"alias": "Rival", "matchType": "contains"}
+    ]
     assert "at least one query for every selected intent" in guidance
     assert "maxQueries is lower" in guidance
     assert "equal distribution is not required" in guidance

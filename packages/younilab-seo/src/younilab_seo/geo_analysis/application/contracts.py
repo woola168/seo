@@ -1250,6 +1250,11 @@ class BrandMentionRules(ContractModel):
     should_mention_competitor: bool = False
 
 
+class BrandAlias(ContractModel):
+    alias: str
+    match_type: Literal["exact", "case_insensitive", "contains", "domain"]
+
+
 class QueryResearchCommand(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1286,7 +1291,9 @@ class QueryResearchRunRecord(ContractModel):
 class QueryGenerationCommand(ContractModel):
     provider: str = "dummy"
     brand_name: str
+    own_brand_aliases: list[BrandAlias] = Field(default_factory=list)
     competitor_brands: list[str] = Field(default_factory=list)
+    competitor_aliases: list[BrandAlias] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     region: str
     language: str | None = None

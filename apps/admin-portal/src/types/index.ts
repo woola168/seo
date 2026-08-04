@@ -1014,6 +1014,11 @@ export interface GeoBrandMentionRulesRequest {
   shouldMentionCompetitor: boolean;
 }
 
+export interface GeoBrandAliasRequest {
+  alias: string;
+  matchType: "exact" | "case_insensitive" | "contains" | "domain";
+}
+
 export interface GeoQueryResearchRunRequest {
   provider: GeoQueryProvider;
   brandName: string;
@@ -1048,7 +1053,9 @@ export interface GeoQueryResearchRunResource {
 export interface GeoQueryGenerationRunRequest {
   provider: GeoQueryProvider;
   brandName: string;
+  ownBrandAliases?: GeoBrandAliasRequest[];
   competitorBrands: string[];
+  competitorAliases?: GeoBrandAliasRequest[];
   keywords: string[];
   region: GeoRegion;
   language: string | null;

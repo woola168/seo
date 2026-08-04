@@ -40,6 +40,7 @@ def _draft(
     intent_description: str = "Learn",
     keyword: str = "erp",
     keywords: list[str] | None = None,
+    query: str = "Which ERP fits a manufacturer?",
 ) -> _GeminiQueryDraft:
     return _GeminiQueryDraft.model_validate(
         {
@@ -57,7 +58,7 @@ def _draft(
                     "shouldMentionCompetitor": False,
                 },
             },
-            "query": "Which ERP fits a manufacturer?",
+            "query": query,
             "keywords": keywords or ["erp"],
         }
     )
@@ -140,6 +141,190 @@ def test_validation_requires_own_brand_when_rule_is_enabled() -> None:
             )
         }
     )
+
+    with pytest.raises(
+        ProviderRequestError,
+        match="query_generation_constraints_invalid",
+    ):
+        validate_query_drafts(command, [draft])
+
+
+def test_validation_accepts_own_brand_alias_when_rule_is_enabled() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "brandName": "Acme GEO tracking project",
+            "ownBrandAliases": [{"alias": "Acme", "matchType": "exact"}],
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        }
+    )
+    draft = _draft(query="Which Acme ERP fits a manufacturer?").model_copy(
+        update={
+            "attributes": _draft().attributes.model_copy(
+                update={
+                    "brandMentionRules": _draft().attributes.brandMentionRules.model_copy(
+                        update={"shouldMentionOwnBrand": True}
+                    )
+                }
+            )
+        }
+    )
+
+    drafts = validate_query_drafts(command, [draft])
+
+    assert [item.query for item in drafts] == ["Which Acme ERP fits a manufacturer?"]
+
+
+def test_validation_rejects_disallowed_competitor_alias() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "competitorBrands": ["Competitor Incorporated"],
+            "competitorAliases": [
+                {"alias": "Rival", "matchType": "case_insensitive"}
+            ],
+        }
+    )
+    draft = _draft(query="How does Rival ERP work?")
+
+    with pytest.raises(
+        ProviderRequestError,
+        match="query_generation_constraints_invalid",
+    ):
+        validate_query_drafts(command, [draft])
+
+
+def test_validation_applies_contains_alias_without_word_boundaries() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "brandName": "Acme GEO tracking project",
+            "ownBrandAliases": [{"alias": "Acme", "matchType": "contains"}],
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        }
+    )
+    draft = _draft(query="Which AcmeERP fits a manufacturer?").model_copy(
+        update={
+            "attributes": _draft().attributes.model_copy(
+                update={
+                    "brandMentionRules": _draft().attributes.brandMentionRules.model_copy(
+                        update={"shouldMentionOwnBrand": True}
+                    )
+                }
+            )
+        }
+    )
+
+    drafts = validate_query_drafts(command, [draft])
+
+    assert [item.query for item in drafts] == ["Which AcmeERP fits a manufacturer?"]
+
+
+@pytest.mark.parametrize(
+    ("match_type", "query"),
+    [
+        ("exact", "Which 沈Puma ERP fits a manufacturer?"),
+        ("case_insensitive", "Which 沈puma ERP fits a manufacturer?"),
+    ],
+)
+def test_validation_matches_mixed_script_alias_without_word_boundaries(
+    match_type: str,
+    query: str,
+) -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "brandName": "Mayor election tracking project",
+            "ownBrandAliases": [{"alias": "沈P", "matchType": match_type}],
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        }
+    )
+    draft = _draft(query=query).model_copy(
+        update={
+            "attributes": _draft().attributes.model_copy(
+                update={
+                    "brandMentionRules": _draft().attributes.brandMentionRules.model_copy(
+                        update={"shouldMentionOwnBrand": True}
+                    )
+                }
+            )
+        }
+    )
+
+    drafts = validate_query_drafts(command, [draft])
+
+    assert [item.query for item in drafts] == [query]
+
+
+def test_validation_matches_mixed_script_own_brand_name_without_word_boundaries() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "brandName": "沈P",
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        }
+    )
+    query = "Which 沈Puma ERP fits a manufacturer?"
+    draft = _draft(query=query).model_copy(
+        update={
+            "attributes": _draft().attributes.model_copy(
+                update={
+                    "brandMentionRules": _draft().attributes.brandMentionRules.model_copy(
+                        update={"shouldMentionOwnBrand": True}
+                    )
+                }
+            )
+        }
+    )
+
+    drafts = validate_query_drafts(command, [draft])
+
+    assert [item.query for item in drafts] == [query]
+
+
+def test_validation_rejects_mixed_script_disallowed_competitor_name() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "competitorBrands": ["沈P"],
+        }
+    )
+    draft = _draft(query="Which 沈Puma ERP fits a manufacturer?")
+
+    with pytest.raises(
+        ProviderRequestError,
+        match="query_generation_constraints_invalid",
+    ):
+        validate_query_drafts(command, [draft])
+
+
+def test_validation_ignores_domain_alias_for_text_mentions() -> None:
+    command = QueryGenerationCommand.model_validate(
+        {
+            **_command().model_dump(mode="json", by_alias=True),
+            "brandName": "Acme GEO tracking project",
+            "ownBrandAliases": [
+                {"alias": "acme.example.com", "matchType": "domain"}
+            ],
+            "brandMentionRules": {
+                "shouldMentionOwnBrand": True,
+                "shouldMentionCompetitor": False,
+            },
+        }
+    )
+    draft = _draft(query="Is acme.example.com an ERP site?")
 
     with pytest.raises(
         ProviderRequestError,

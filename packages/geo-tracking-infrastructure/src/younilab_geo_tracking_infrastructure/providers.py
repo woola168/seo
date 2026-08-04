@@ -1091,7 +1091,15 @@ def _query_generation_prompt(
     payload = {
         "brand": {
             "ownBrandName": command.brand_name,
+            "ownBrandAliases": [
+                alias.model_dump(mode="json", by_alias=True)
+                for alias in command.own_brand_aliases
+            ],
             "competitorBrands": command.competitor_brands,
+            "competitorAliases": [
+                alias.model_dump(mode="json", by_alias=True)
+                for alias in command.competitor_aliases
+            ],
         },
         "market": {
             "region": command.region,

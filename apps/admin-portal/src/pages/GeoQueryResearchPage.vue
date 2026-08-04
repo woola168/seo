@@ -99,7 +99,21 @@ const allChecked = computed(() => selectableDrafts.value.length > 0 && selectabl
 const someChecked = computed(() => selectedDraftIds.value.length > 0 && !allChecked.value);
 const selectionUpdating = computed(() => selectionUpdatingIds.value.size > 0);
 const brandName = computed(() => profile.value?.ownBrand.name || profile.value?.project.name || "");
+const ownBrandAliases = computed(() =>
+  profile.value?.ownBrand.aliases.map((alias) => ({
+    alias: alias.alias,
+    matchType: alias.matchType,
+  })) ?? [],
+);
 const competitorNames = computed(() => profile.value?.competitors.map((competitor) => competitor.name) ?? []);
+const competitorAliases = computed(() =>
+  profile.value?.competitors.flatMap((competitor) =>
+    competitor.aliases.map((alias) => ({
+      alias: alias.alias,
+      matchType: alias.matchType,
+    })),
+  ) ?? [],
+);
 const keywords = computed(() => normalizeQuerySettingsKeywords(form.keywords));
 const keywordTags = computed<string[]>({
   get: () => keywords.value,
@@ -436,7 +450,9 @@ function generationPayload(researchContext: string) {
   return {
     provider: form.runProvider,
     brandName: brandName.value,
+    ownBrandAliases: ownBrandAliases.value,
     competitorBrands: competitorNames.value,
+    competitorAliases: competitorAliases.value,
     keywords: keywords.value,
     region: profile.value!.project.defaultRegion as "TW" | "US",
     language: profile.value!.project.defaultLanguage || null,

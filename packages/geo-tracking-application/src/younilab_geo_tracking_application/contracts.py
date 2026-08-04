@@ -53,6 +53,11 @@ class BrandMentionRules(ContractModel):
     should_mention_competitor: bool = False
 
 
+class BrandAlias(ContractModel):
+    alias: str
+    match_type: Literal["exact", "case_insensitive", "contains", "domain"]
+
+
 class QueryGenerationAttributes(ContractModel):
     intent: QueryIntent
     keyword: str
@@ -91,7 +96,9 @@ class GeneratedQuery(ContractModel):
 class QueryGenerationCommand(ContractModel):
     provider: ProviderCode = ProviderCode.DUMMY
     brand_name: str = Field(min_length=1, max_length=200)
+    own_brand_aliases: list[BrandAlias] = Field(default_factory=list)
     competitor_brands: list[str] = Field(default_factory=list, max_length=8)
+    competitor_aliases: list[BrandAlias] = Field(default_factory=list)
     keywords: list[str] = Field(min_length=1, max_length=10)
     region: RegionCode
     language: str | None = Field(default=None, max_length=20)

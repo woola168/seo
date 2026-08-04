@@ -1243,6 +1243,12 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
         json={
             "provider": "gemini",
             "brandName": "Acme",
+            "ownBrandAliases": [
+                {"alias": "Acme Taiwan", "matchType": "exact"}
+            ],
+            "competitorAliases": [
+                {"alias": "Rival", "matchType": "contains"}
+            ],
             "keywords": ["erp"],
             "region": "TW",
             "language": "zh-TW",
@@ -1256,6 +1262,12 @@ def test_query_research_generation_and_draft_accept_flow() -> None:
 
     assert generation_response.status_code == 201
     generation_body = generation_response.json()
+    assert generation_body["requestPayload"]["ownBrandAliases"] == [
+        {"alias": "Acme Taiwan", "matchType": "exact"}
+    ]
+    assert generation_body["requestPayload"]["competitorAliases"] == [
+        {"alias": "Rival", "matchType": "contains"}
+    ]
     draft = generation_body["drafts"][0]
     assert draft["queryText"] == "Acme ERP 適合哪些 B2B 採購情境?"
     assert draft["topicName"] == "ERP 導入"

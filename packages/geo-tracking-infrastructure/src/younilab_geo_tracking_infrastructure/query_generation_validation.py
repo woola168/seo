@@ -1,8 +1,9 @@
-import re
+import unicodedata
 from collections.abc import Iterable
 from typing import Any
 
 from younilab_geo_tracking_application import (
+    BrandAlias,
     ProviderRequestError,
     QueryDraft,
     QueryGenerationCommand,
@@ -90,7 +91,10 @@ def _validate_query_draft(
         raise ValueError("query must not mention a disallowed competitor")
     if (
         command.brand_mention_rules.should_mention_own_brand
-        and not _contains_brand_name(query, command.brand_name)
+        and not (
+            _contains_brand_name(query, command.brand_name)
+            or _contains_any_brand_alias(query, command.own_brand_aliases)
+        )
     ):
         raise ValueError("query must mention the own brand")
 
@@ -191,22 +195,75 @@ def _mentions_disallowed_competitor(
 ) -> bool:
     if command.brand_mention_rules.should_mention_competitor:
         return False
-    return any(
-        _contains_brand_name(query, competitor)
-        for competitor in command.competitor_brands
+    return (
+        _contains_any_brand_name(query, command.competitor_brands)
+        or _contains_any_brand_alias(query, command.competitor_aliases)
     )
+
+
+def _contains_any_brand_name(query: str, names: Iterable[str]) -> bool:
+    return any(_contains_brand_name(query, name) for name in names)
+
+
+def _contains_any_brand_alias(query: str, aliases: Iterable[BrandAlias]) -> bool:
+    return any(_contains_brand_alias(query, alias) for alias in aliases)
 
 
 def _contains_brand_name(query: str, brand_name: str) -> bool:
-    brand_name = brand_name.strip()
-    if not brand_name:
-        return False
-    if any(not character.isascii() for character in brand_name):
-        return brand_name.casefold() in query.casefold()
-    return bool(
-        re.search(
-            rf"(?<![A-Za-z0-9]){re.escape(brand_name)}(?![A-Za-z0-9])",
-            query,
-            flags=re.IGNORECASE,
-        )
+    return _contains_text(
+        query,
+        brand_name,
+        case_sensitive=False,
+        word_boundaries=brand_name.isascii(),
     )
+
+
+def _contains_brand_alias(query: str, alias: BrandAlias) -> bool:
+    if alias.match_type == "domain":
+        return False
+    return _contains_text(
+        query,
+        alias.alias,
+        case_sensitive=alias.match_type == "exact",
+        word_boundaries=alias.match_type != "contains" and alias.alias.isascii(),
+    )
+
+
+def _contains_text(
+    query: str,
+    value: str,
+    *,
+    case_sensitive: bool,
+    word_boundaries: bool,
+) -> bool:
+    value = value.strip()
+    if not value:
+        return False
+    source = _normalize(query, casefold=not case_sensitive)
+    needle = _normalize(value, casefold=not case_sensitive)
+    offset = 0
+    while (index := source.find(needle, offset)) >= 0:
+        end = index + len(needle)
+        if not word_boundaries or _has_word_boundaries(source, index, end, needle):
+            return True
+        offset = index + 1
+    return False
+
+
+def _normalize(value: str, *, casefold: bool) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    return normalized.casefold() if casefold else normalized
+
+
+def _has_word_boundaries(source: str, start: int, end: int, needle: str) -> bool:
+    if _is_ascii_word_character(needle[0]):
+        if start > 0 and _is_ascii_word_character(source[start - 1]):
+            return False
+    if _is_ascii_word_character(needle[-1]):
+        if end < len(source) and _is_ascii_word_character(source[end]):
+            return False
+    return True
+
+
+def _is_ascii_word_character(value: str) -> bool:
+    return value.isascii() and (value.isalnum() or value == "_")
