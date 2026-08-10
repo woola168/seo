@@ -4,7 +4,7 @@
 
 - 資料庫：`access_control`
 - Schema：`public`
-- Schema 來源：`deploy/local/postgresql/001_access_control_schema.sql`
+- Schema 來源：`deploy/local/postgresql/baseline/access_control.sql`
 - 核對環境：PostgreSQL 18.4
 - 核對日期：2026-06-11
 

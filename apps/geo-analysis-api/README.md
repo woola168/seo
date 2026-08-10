@@ -12,13 +12,9 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 
 - Routes 只負責 HTTP DTO 與 response mapping，實際流程透過 `ManageGeoSetup` 與 `ManageQueryRunJobs` use cases 執行。
 - `presentation/http/composition.py` 負責組裝 repository、clock 與 use cases，並掛到 `app.state`。
-- 預設未設定資料庫時，API 使用 in-memory `GeoApiStore` 作為測試用 fake repository，適合單元測試與前端 stub 串接，服務重啟會遺失資料。
-- 設定 `GEO_ANALYSIS_DATABASE_URL` 後，API 會使用 `PostgresGeoAnalysisRepository` 作為 PostgreSQL infrastructure adapter。
-- Local PostgreSQL 初始化 SQL 位於 `deploy/local/postgresql/004_geo_analysis_schema.sql`。
-- 既有遠端 DB 若已跑過舊版 schema，需手動執行 `deploy/local/postgresql/005_geo_analysis_query_planning_patch.sql`，補上 Query Planning tables 並解除 `geo_project.customer_id` 的 `NOT NULL` 限制。
-- 既有遠端 DB 若尚未 tenant 化，需再手動執行 `deploy/local/postgresql/009_geo_analysis_tenant_patch.sql`，替 `geo_project` 補上 `tenant_id` 並回填 default tenant。
-- 既有遠端 DB 若要啟用 KMindHub workspace mapping，需手動執行 `deploy/local/postgresql/010_kmindhub_workspace_mapping_patch.sql`。
-- 既有遠端 DB 若要啟用 KMindHub analysis extraction，需手動執行 `deploy/local/postgresql/011_geo_analysis_kmindhub_extraction_patch.sql`。
+- Runtime 必須設定 `GEO_ANALYSIS_DATABASE_URL`，並一律使用 `PostgresGeoAnalysisRepository`；缺少設定時啟動會直接失敗，避免誤用不可持久化資料。
+- `GeoApiStore` 僅保留給 tests 透過 dependency injection 明確注入，不再是 runtime fallback。
+- 全新 PostgreSQL 的完整初始化 SQL 位於 `deploy/local/postgresql/baseline/geo_analysis.sql`。既有穩定環境不可重跑 baseline；舊版 patch 僅保留於 `deploy/local/postgresql/archive/pre-stable-baseline/` 供歷史追溯。
 - 使用者 API 需帶 Access Control Bearer token；GEO Analysis 透過 `/api/me/capabilities` 取得目前使用者 `tenantId`，request 不需要也不允許自行指定 tenant。
 - `ProjectResponse` 會回傳 `tenantId`；project list/create/query/job/run result 都以目前 tenant 作為最外層資料邊界。
 - `customerId` 是 nullable reference-only 欄位，不建立跨服務 DB FK；建立或更新 project 時會透過 Resource Catalog 驗證 reference 屬於同 tenant。每日排程流程不再使用 `seoTaskId`。
@@ -27,7 +23,7 @@ uv run uvicorn younilab_geo_analysis_api.main:app --port 8002 --reload
 - RabbitMQ publisher 已支援 `POST /api/geo/jobs/{jobId}/dispatch`；`geo-analysis-worker-gemini` 與 `geo-analysis-worker-google-aio` 會依 provider queue 呼叫 `geo-tracking-api`，並保存 raw result 與 references。Report metrics API 讀取新的 semantic facts / citation facts pipeline；metrics snapshot persistence 與額外 worker trigger 仍屬後續批次。
 - KMindHub workspace 採手動優先策略；tenant 第一次使用後續 analysis extraction 前，需先用 API 綁定既有 workspace 或明確 provision workspace。Worker 不會在首次執行時自動建立 workspace，也不會 fallback 到 default workspace。
 - KMindHub Insight extraction 的完整流程與欄位定義請參考 `docs/integrations/geo-analysis-kmindhub-insight-extraction.md`。
-- 測試可繼續使用 in-memory fake repository 或 mock data，不需要連線真實 PostgreSQL。
+- 單元與 HTTP tests 可明確注入 in-memory fake repository 或 mock data；PostgreSQL persistence contract 另以 integration tests 驗證。
 
 範例：
 
@@ -175,9 +171,7 @@ await fetch(`/api/geo/projects/${projectId}/query-settings`, {
 - Research／Generation Provider 允許 `gemini`、`openai`；Runner Provider 目前仍只允許 `gemini`。Keywords 去空白、移除空值與不分大小寫重複值，最多 10 筆且每筆 200 字；`maxQueries` 為 1–40；`marketType` 只允許 `b2c`、`b2b_procurement`。
 - 每個 Project 仍只保存一筆 Query Settings；多選 Intent 是該筆設定內的 `intents[]`，不是每個 Intent 各建立一筆設定。
 - `intents` 必須選擇 1–4 個不重複的正式分類，`maxQueries` 不得少於所選分類數量。API 暫時接受舊版單一 `intent` request 並正規化，但 response 一律回傳 `intents[]`。
-- 既有資料庫需手動執行 `deploy/local/postgresql/019_geo_project_query_settings.sql`；fresh schema 已同步更新 `004_geo_analysis_schema.sql`。
-- 已套用舊版 Query Settings schema 的環境，需在部署新版 API 前執行 `deploy/local/postgresql/025_geo_project_query_settings_intents.sql`。
-- 啟用 OpenAI Research／Generation Provider 前，既有資料庫需再執行 `deploy/local/postgresql/026_geo_project_query_settings_openai.sql`，讓 `research_provider` 接受 `openai`。
+- 穩定 baseline 已包含 Query Settings、`intents[]` 與 OpenAI Research／Generation Provider constraints；後續 schema 變更由 `027_*.sql` 起新增 patch。
 - Rollback 可先停止使用兩支 settings endpoint，再執行 `DROP TABLE geo_project_query_settings;`；這只移除 settings，不影響 Project、Entity、Alias、Topic、Query 或 runs。正式環境 rollback 前應先備份設定資料。
 - 舊版前端未呼叫 settings API 時行為不變；列表既有欄位保持相容，只新增 `customerName` 與 `ownBrand`。
 
@@ -343,11 +337,11 @@ Authorization: Bearer <access-token>
 - Entity SOV 為該 entity mentions 除以全部自有品牌與競品 mentions。
 - 引用回答比例為至少有一筆 citation 的 completed 回答數除以 completed 回答總數。
 - 產業均值、citation content tag、citation page 品牌與競品提及目前沒有資料來源，response 會使用 `null`，前端顯示「尚無資料」或「未分析」。
-- 既有資料庫部署前建議執行 `deploy/local/postgresql/024_geo_query_run_job_preparation_lookup.sql`，為 `isPreparing` 的 Project／台北日期查詢建立 partial index；缺少此索引不改變 API 結果，但 Job 資料量增加後會影響 Overview 查詢效能。
+- 穩定 baseline 已包含 `isPreparing` 的 Project／台北日期 partial index；既有穩定環境已具備此索引，不需重跑 baseline。
 
 ### 手動建立 AI Platform
 
-遠端部署目前不由 CI/CD 自動執行 DB schema 或 seed。執行 `004_geo_analysis_schema.sql` 後，需手動在 `geo_ai_platform` 寫入可派送的平台資料，後續建立 query platform、schedule、job 時會使用這些 `id`。
+遠端部署目前不由 CI/CD 自動執行 DB schema 或 seed。全新資料庫執行 `deploy/local/postgresql/baseline/geo_analysis.sql` 後，需手動在 `geo_ai_platform` 寫入可派送的平台資料，後續建立 query platform、schedule、job 時會使用這些 `id`。
 
 建議第一版手動 insert：
 
@@ -453,9 +447,9 @@ routes -> application use case -> workflow persistence port -> infrastructure ad
 - `packages/younilab-seo/.../geo_analysis/infrastructure/persistence/postgres/repository.py`：實作 PostgreSQL adapter，負責 SQLModel row 與 application/domain model 互轉。
 - `packages/younilab-seo/.../geo_analysis/infrastructure/messaging/rabbitmq.py`：實作 RabbitMQ publisher adapter，依 provider 發布到不同 queue。
 - `apps/geo-analysis-worker`：消費 provider queue，呼叫 `geo-tracking-api` `/api/v1/geo-tracking/run-requests`，並只回寫 job status/evidence。
-- `apps/geo-analysis-api/.../store.py`：作為 API tests 與本機 stub 用的 in-memory adapter。
+- `apps/geo-analysis-api/.../store.py`：僅作為 API tests 明確注入的 in-memory adapter。
 
-已移除 application layer 的 `GeoAnalysisRepository` 大型 façade。正式 runtime 仍建立一個 `PostgresGeoAnalysisRepository`，本機模式仍建立一個 `GeoApiStore`，但 `composition.py` 會把同一個 adapter 明確注入各 workflow port。這樣可重用同一個 session/state kernel，同時避免 use case 看見不相關的 persistence 方法。
+已移除 application layer 的 `GeoAnalysisRepository` 大型 façade。Runtime 一律建立一個 `PostgresGeoAnalysisRepository`，`composition.py` 會把同一個 adapter 明確注入各 workflow port。Tests 可另外注入 `GeoApiStore`，重用同一個 state kernel，同時避免 use case 看見不相關的 persistence 方法。
 
 目前主要 persistence ports：
 
@@ -509,11 +503,11 @@ packages/younilab-seo/src/younilab_seo/{bounded_context}/
 ## 前端介接共通規則
 
 - JSON 欄位使用 `camelCase`。
-- 未設定 `GEO_ANALYSIS_DATABASE_URL` 時會使用 in-memory store。
+- 未設定 `GEO_ANALYSIS_DATABASE_URL` 時應用程式啟動失敗，不提供 runtime in-memory fallback。
 - `customerId` 是 `resource-catalog` 的 nullable reference id，不在 GEO DB 建 FK。舊版 request 的 `seoTaskId` 暫時接受但會忽略，且不會出現在 response。
 - `POST /api/geo/jobs/{jobId}/dispatch` 未設定 publisher 時會回 `501`；設定 RabbitMQ publisher 後會將 job 發布到 provider queue，流程不依賴 `seoTaskId`。
 - `PATCH /api/geo/query-drafts/{draftId}/selection` 只允許尚未 accepted 的 draft；已接受成正式 query 的 draft 再次修改 selection 會回 `409`。
-- `cancel` 與 external callback 已可透過 store abstraction 套用到 in-memory 或 PostgreSQL-backed repository。
+- `cancel` 與 external callback runtime 由 PostgreSQL-backed repository 執行；tests 可透過相同 persistence ports 注入 fake。
 - 錯誤回應使用 `application/problem+json`。
 
 Problem Details 格式：
@@ -1000,7 +994,7 @@ Job 建立以 `Query + Platform + businessDate` 占用每日執行額度，`busi
 
 `jobType=query_research_first_run` 專供 Query Research 建立後的首次執行。若 daily slot 已由 `source=manual`、`jobType=manual_run` 且狀態為 `pending`／`delayed` 的 Job 占用，first-run create request 會鎖定並將同一筆 Job 升級為 `query_research_first_run`，回傳 `wasCreated: false`；scheduled 與 terminal Job 不會被改寫。scheduler 會接手 first-run Job 的到期 `pending`／`delayed` 狀態，一般 `manual_run` 不會自動派送。前端 dispatch 回應遺失或 publisher 暫時失敗時，後端仍會沿用同一筆 Job 重試。
 
-既有資料庫不可在舊版 API 或 scheduler writers 仍運作時直接套用 `deploy/local/postgresql/020_geo_query_daily_run_uniqueness.sql`。安全部署需進入維護窗口，先停止 Admin Portal 即時執行、GEO API create-job 流量與 scheduler，確認沒有 Job writer 後執行 migration，再部署新版 GEO API／scheduler；完成 create-job conflict 與 first-run pickup smoke test 後才恢復 writers，最後部署 Admin Portal。Migration 會保留歷史重複資料，只將每組最早 Job 設為 daily slot owner；fresh schema 已同步。
+每日唯一執行 contract 已包含在穩定 baseline；既有穩定環境已完成舊版 migration，不可重跑 baseline。舊版 rollout 與 rollback 說明保留於 `deploy/local/postgresql/archive/pre-stable-baseline/020_geo_query_daily_run_uniqueness.sql` 供歷史追溯。
 
 安全 rollback 應先回退 Admin Portal 的即時執行功能，並保留 migration、每日唯一索引、create-job conflict handling 與 scheduler 相容程式。若只回退 scheduler 行為，可停止撿取 `query_research_first_run`，但不可回退 create-job conflict handling。若必須完整回退後端，需先停止 API 與 scheduler writers，再以受控 migration 移除 `ux_geo_query_run_job_daily_slot`、`business_date` 與 `is_daily_slot_owner`，最後才部署舊 API／scheduler；完整回退會恢復同日重複 Job 的風險。不可將舊版 API 與新版每日唯一索引併用，否則同日重複建立會因未處理的唯一衝突回 500。
 

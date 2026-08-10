@@ -1,7 +1,7 @@
 # Resource Catalog 資料庫結構
 
 Resource Catalog 使用獨立的 `resource_catalog` PostgreSQL，schema 來源為
-`deploy/local/postgresql/001_resource_catalog_schema.sql`。
+`deploy/local/postgresql/baseline/resource_catalog.sql`。
 
 ## `customer`
 

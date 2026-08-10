@@ -53,9 +53,6 @@ from younilab_seo.geo_analysis.infrastructure.persistence.postgres import (
     build_postgres_repository,
 )
 
-from younilab_geo_analysis_api.presentation.http.store import GeoApiStore
-
-
 @dataclass(frozen=True)
 class GeoAnalysisApiDependencies:
     repository: object
@@ -217,10 +214,7 @@ class SystemClock:
 
 
 def _build_repository() -> object:
-    database_url = os.getenv("GEO_ANALYSIS_DATABASE_URL")
-    if database_url:
-        return build_postgres_repository(database_url)
-    return GeoApiStore()
+    return build_postgres_repository(_required_env("GEO_ANALYSIS_DATABASE_URL"))
 
 
 def _build_publisher() -> MessagePublisher | None:
@@ -305,3 +299,10 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} is required")
+    return value

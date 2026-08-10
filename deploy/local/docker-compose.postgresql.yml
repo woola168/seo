@@ -9,8 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - access-control-postgresql-data:/var/lib/postgresql
-      - ./postgresql/001_access_control_schema.sql:/docker-entrypoint-initdb.d/001_access_control_schema.sql:ro
-      - ./postgresql/003_access_control_lifecycle.sql:/docker-entrypoint-initdb.d/003_access_control_lifecycle.sql:ro
+      - ./postgresql/baseline/access_control.sql:/docker-entrypoint-initdb.d/001_access_control.sql:ro
 
   resource-catalog-postgresql:
     image: postgres:18
@@ -22,16 +21,9 @@ services:
       - "5433:5432"
     volumes:
       - resource-catalog-postgresql-data:/var/lib/postgresql
-      - ./postgresql/001_resource_catalog_schema.sql:/docker-entrypoint-initdb.d/001_resource_catalog_schema.sql:ro
-      - ./postgresql/004_geo_analysis_schema.sql:/docker-entrypoint-initdb.d/004_geo_analysis_schema.sql:ro
-      - ./postgresql/012_geo_analysis_analysis_metrics_patch.sql:/docker-entrypoint-initdb.d/012_geo_analysis_analysis_metrics_patch.sql:ro
-      - ./postgresql/015_geo_analysis_daily_scheduler.sql:/docker-entrypoint-initdb.d/015_geo_analysis_daily_scheduler.sql:ro
-      - ./postgresql/016_geo_analysis_remove_seo_task_contract.sql:/docker-entrypoint-initdb.d/016_geo_analysis_remove_seo_task_contract.sql:ro
-      - ./postgresql/018_provider_request_audit.sql:/docker-entrypoint-initdb.d/018_provider_request_audit.sql:ro
-      - ./postgresql/021_geo_semantic_analysis_diagnostics.sql:/docker-entrypoint-initdb.d/021_geo_semantic_analysis_diagnostics.sql:ro
-      - ./postgresql/022_geo_run_result_entity_detection.sql:/docker-entrypoint-initdb.d/022_geo_run_result_entity_detection.sql:ro
-      - ./postgresql/023_provider_request_usage_cost_estimate.sql:/docker-entrypoint-initdb.d/023_provider_request_usage_cost_estimate.sql:ro
-      - ./postgresql/024_geo_query_run_job_preparation_lookup.sql:/docker-entrypoint-initdb.d/024_geo_query_run_job_preparation_lookup.sql:ro
+      - ./postgresql/baseline/resource_catalog.sql:/docker-entrypoint-initdb.d/001_resource_catalog.sql:ro
+      - ./postgresql/baseline/geo_analysis.sql:/docker-entrypoint-initdb.d/002_geo_analysis.sql:ro
+      - ./postgresql/seed/provider_pricing_rates.sql:/docker-entrypoint-initdb.d/003_provider_pricing_rates.sql:ro
 
 volumes:
   access-control-postgresql-data:

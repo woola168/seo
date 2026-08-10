@@ -261,117 +261,57 @@ def test_project_query_settings_upsert_is_atomic_and_skips_unchanged_payload() -
     assert "IS DISTINCT FROM excluded.should_mention_competitor" in sql
 
 
-def test_local_schema_file_contains_geo_orchestration_tables() -> None:
+def test_stable_baseline_contains_current_geo_persistence_contract() -> None:
     postgres_dir = Path(__file__).parents[5] / "deploy" / "local" / "postgresql"
     compose_path = postgres_dir.parent / "docker-compose.postgresql.yml"
-    schema_path = postgres_dir / "004_geo_analysis_schema.sql"
-    patch_path = postgres_dir / "005_geo_analysis_query_planning_patch.sql"
-    analysis_metrics_patch_path = (
-        postgres_dir / "012_geo_analysis_analysis_metrics_patch.sql"
-    )
-    nullable_seo_task_patch_path = (
-        postgres_dir / "013_geo_analysis_nullable_seo_task_patch.sql"
-    )
-    scheduler_patch_path = postgres_dir / "015_geo_analysis_daily_scheduler.sql"
-    seo_task_contract_path = (
-        postgres_dir / "016_geo_analysis_remove_seo_task_contract.sql"
-    )
-    query_settings_path = postgres_dir / "019_geo_project_query_settings.sql"
-    daily_uniqueness_path = postgres_dir / "020_geo_query_daily_run_uniqueness.sql"
-    semantic_diagnostics_path = (
-        postgres_dir / "021_geo_semantic_analysis_diagnostics.sql"
-    )
-    entity_detection_path = postgres_dir / "022_geo_run_result_entity_detection.sql"
-    preparation_lookup_path = (
-        postgres_dir / "024_geo_query_run_job_preparation_lookup.sql"
-    )
-    query_settings_intents_path = (
-        postgres_dir / "025_geo_project_query_settings_intents.sql"
-    )
+    schema_path = postgres_dir / "baseline" / "geo_analysis.sql"
     schema = schema_path.read_text(encoding="utf-8")
-    patch = patch_path.read_text(encoding="utf-8")
-    analysis_metrics_patch = analysis_metrics_patch_path.read_text(encoding="utf-8")
-    nullable_seo_task_patch = nullable_seo_task_patch_path.read_text(encoding="utf-8")
-    scheduler_patch = scheduler_patch_path.read_text(encoding="utf-8")
-    seo_task_contract = seo_task_contract_path.read_text(encoding="utf-8")
-    query_settings = query_settings_path.read_text(encoding="utf-8")
-    daily_uniqueness = daily_uniqueness_path.read_text(encoding="utf-8")
-    semantic_diagnostics = semantic_diagnostics_path.read_text(encoding="utf-8")
-    entity_detection = entity_detection_path.read_text(encoding="utf-8")
-    preparation_lookup = preparation_lookup_path.read_text(encoding="utf-8")
-    query_settings_intents = query_settings_intents_path.read_text(encoding="utf-8")
     compose = compose_path.read_text(encoding="utf-8")
 
-    assert "CREATE TABLE IF NOT EXISTS geo_project" in schema
+    assert "CREATE TABLE public.geo_project" in schema
     assert "tenant_id uuid NOT NULL" in schema
     assert "ix_geo_project_tenant_id" in schema
-    assert "customer_id uuid," in schema
-    assert "customer_id uuid NOT NULL" not in schema
+    assert "customer_id uuid" in schema
     assert GeoProjectRow.__table__.columns["customer_id"].nullable is True
     assert not GeoProjectRow.__table__.columns["customer_id"].foreign_keys
     assert "seo_task_id" not in GeoProjectRow.__table__.columns
-    assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_query_draft" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_query_run_job" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_daily_run_batch" in scheduler_patch
-    assert "ux_geo_daily_run_batch_project_date" in scheduler_patch
-    assert "ux_geo_query_run_job_scheduled_identity" in scheduler_patch
-    assert "execution_snapshot jsonb NOT NULL" in scheduler_patch
-    assert "budget_enforced boolean NOT NULL DEFAULT false" in scheduler_patch
-    assert "WHERE code = 'google_aio'" in scheduler_patch
-    assert "seo_task" not in scheduler_patch
-    assert "DROP COLUMN IF EXISTS seo_task_id" not in scheduler_patch
-    assert "FROM seo_task" not in seo_task_contract
-    assert "customer_id must be backfilled" in seo_task_contract
-    assert seo_task_contract.startswith("BEGIN;")
-    assert seo_task_contract.rstrip().endswith("COMMIT;")
-    assert seo_task_contract.count("DROP COLUMN IF EXISTS seo_task_id") == 2
-    assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in schema
+    assert "seo_task_id" not in schema
+    assert "CREATE TABLE public.geo_query_research_run" in schema
+    assert "CREATE TABLE public.geo_query_generation_run" in schema
+    assert "CREATE TABLE public.geo_query_draft" in schema
+    assert "CREATE TABLE public.geo_query_draft_selection" in schema
+    assert "CREATE TABLE public.geo_query_run_job" in schema
+    assert "CREATE TABLE public.geo_daily_run_batch" in schema
+    assert "ux_geo_daily_run_batch_project_date" in schema
+    assert "ux_geo_query_run_job_scheduled_identity" in schema
+    assert "execution_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL" in schema
+    assert "budget_enforced boolean DEFAULT false NOT NULL" in schema
+    assert "CREATE TABLE public.geo_project_query_settings" in schema
     assert "intents jsonb NOT NULL" in schema
     assert "intent_category" not in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_project_query_settings" in query_settings
-    assert "project_id uuid PRIMARY KEY" in query_settings
-    assert "ON DELETE CASCADE" in query_settings
-    assert "jsonb_array_length(keywords) <= 10" in query_settings
-    assert query_settings.startswith("BEGIN;")
-    assert query_settings.rstrip().endswith("COMMIT;")
-    assert "ADD COLUMN intents jsonb" in query_settings_intents
-    assert "DROP COLUMN intent_category" in query_settings_intents
-    assert query_settings_intents.startswith("BEGIN;")
-    assert query_settings_intents.rstrip().endswith("COMMIT;")
-    assert "business_date date GENERATED ALWAYS" in schema
+    assert "research_provider" in schema
+    assert "'gemini'::character varying, 'openai'::character varying" in schema
+    assert "business_date date GENERATED ALWAYS AS" in schema
     assert "ux_geo_query_run_job_daily_slot" in schema
     assert "ix_geo_query_run_job_project_preparing" in schema
-    assert "ix_geo_query_run_job_project_preparing" in preparation_lookup
-    assert "is_daily_slot_owner = true" in preparation_lookup
-    assert "(project_id, business_date, status)" in preparation_lookup
-    assert preparation_lookup.startswith("BEGIN;")
-    assert preparation_lookup.rstrip().endswith("COMMIT;")
-    assert "PARTITION BY query_id, platform_id, business_date" in daily_uniqueness
-    assert "is_daily_slot_owner = ranked_jobs.daily_rank = 1" in daily_uniqueness
-    assert daily_uniqueness.startswith("BEGIN;")
-    assert daily_uniqueness.rstrip().endswith("COMMIT;")
-    assert "ALTER TABLE geo_run_result_analysis" in semantic_diagnostics
-    assert "analyzer_request_payload jsonb" in semantic_diagnostics
-    assert "analyzer_response_payload jsonb" in semantic_diagnostics
-    assert "validation_failures jsonb NOT NULL" in semantic_diagnostics
-    assert semantic_diagnostics.startswith("BEGIN;")
-    assert semantic_diagnostics.rstrip().endswith("COMMIT;")
-    assert "012_geo_analysis_analysis_metrics_patch.sql" in compose
-    assert "021_geo_semantic_analysis_diagnostics.sql" in compose
-    assert (
-        "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection" in entity_detection
-    )
-    assert (
-        "CREATE TABLE IF NOT EXISTS geo_run_result_entity_detection_item"
-        in entity_detection
-    )
-    assert "ux_geo_run_result_entity_detection_version" in entity_detection
-    assert "ux_geo_run_result_entity_detection_item_entity" in entity_detection
-    assert entity_detection.startswith("BEGIN;")
-    assert entity_detection.rstrip().endswith("COMMIT;")
+    assert "CREATE TABLE public.geo_response_semantic_fact" in schema
+    assert "CREATE TABLE public.geo_run_result_citation_normalization" in schema
+    assert "CREATE TABLE public.geo_run_result_citation" in schema
+    assert "CREATE TABLE public.geo_run_result_entity_detection" in schema
+    assert "CREATE TABLE public.geo_run_result_entity_detection_item" in schema
+    assert "ux_geo_run_result_entity_detection_version" in schema
+    assert "ux_geo_run_result_entity_detection_item_entity" in schema
+    assert "analyzer_request_payload jsonb" in schema
+    assert "analyzer_response_payload jsonb" in schema
+    assert "validation_failures jsonb DEFAULT '[]'::jsonb NOT NULL" in schema
+    assert "CREATE TABLE public.provider_request" in schema
+    assert "usage_capture_status" in schema
+    assert "CREATE TABLE public.provider_pricing_rate" in schema
+    assert "CREATE VIEW public.provider_request_cost_estimate" in schema
+    assert "CREATE VIEW public.provider_request_daily_cost_estimate" in schema
+    assert "baseline/geo_analysis.sql" in compose
+    assert "012_geo_analysis_analysis_metrics_patch.sql" not in compose
+    assert "021_geo_semantic_analysis_diagnostics.sql" not in compose
     daily_slot_index = next(
         index
         for index in GeoQueryRunJobRow.__table__.indexes
@@ -384,13 +324,13 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
         if index.name == "ix_geo_query_run_job_project_preparing"
     )
     assert preparation_index.unique is False
-    assert "CREATE TABLE IF NOT EXISTS geo_message_dispatch_log" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_external_run_reference" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_run_request" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_run_result" in schema
-    assert "CREATE TABLE IF NOT EXISTS geo_run_result_reference" in schema
+    assert "CREATE TABLE public.geo_message_dispatch_log" in schema
+    assert "CREATE TABLE public.geo_external_run_reference" in schema
+    assert "CREATE TABLE public.geo_run_request" in schema
+    assert "CREATE TABLE public.geo_run_result" in schema
+    assert "CREATE TABLE public.geo_run_result_reference" in schema
     assert "seo_task_id" not in GeoRunRequestRow.__table__.columns
-    assert "CREATE TABLE IF NOT EXISTS tenant_kmindhub_workspace_mapping" in schema
+    assert "CREATE TABLE public.tenant_kmindhub_workspace_mapping" in schema
     assert "ux_tenant_kmindhub_workspace_mapping_tenant" in schema
     assert not TenantKMindHubWorkspaceMappingRow.__table__.columns[
         "tenant_id"
@@ -398,31 +338,6 @@ def test_local_schema_file_contains_geo_orchestration_tables() -> None:
     assert not TenantKMindHubWorkspaceMappingRow.__table__.columns[
         "workspace_id"
     ].foreign_keys
-    assert "ALTER COLUMN customer_id DROP NOT NULL" in patch
-    assert "CREATE TABLE IF NOT EXISTS geo_query_research_run" in patch
-    assert "CREATE TABLE IF NOT EXISTS geo_query_generation_run" in patch
-    assert "CREATE TABLE IF NOT EXISTS geo_query_draft" in patch
-    assert "CREATE TABLE IF NOT EXISTS geo_query_draft_selection" in patch
-    assert "ADD COLUMN IF NOT EXISTS analyzer varchar(64)" in analysis_metrics_patch
-    assert "ADD COLUMN IF NOT EXISTS mentioned boolean" in analysis_metrics_patch
-    assert (
-        "CREATE TABLE IF NOT EXISTS geo_response_semantic_fact"
-        in analysis_metrics_patch
-    )
-    assert "ix_geo_response_semantic_fact_analysis" in analysis_metrics_patch
-    assert "ix_geo_run_result_entity_mention_analysis" in analysis_metrics_patch
-    assert "ix_geo_run_result_statement_analysis" in analysis_metrics_patch
-    assert (
-        "CREATE TABLE IF NOT EXISTS geo_run_result_citation_normalization"
-        in analysis_metrics_patch
-    )
-    assert (
-        "CREATE TABLE IF NOT EXISTS geo_run_result_citation" in analysis_metrics_patch
-    )
-    assert "ux_geo_run_result_citation_normalization_version" in analysis_metrics_patch
-    assert "ix_geo_run_result_citation_reference" in analysis_metrics_patch
-    assert "ALTER TABLE geo_run_request" in nullable_seo_task_patch
-    assert "ALTER COLUMN seo_task_id DROP NOT NULL" in nullable_seo_task_patch
 
 
 def test_semantic_analysis_rows_expose_phase_two_columns() -> None:

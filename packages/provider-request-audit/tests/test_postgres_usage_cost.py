@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_usage_cost_migration_and_views_with_postgresql() -> None:
+async def test_usage_cost_baseline_and_views_with_postgresql() -> None:
     database_url = os.getenv("GEO_ANALYSIS_TEST_DATABASE_URL")
     if not database_url:
         pytest.skip(
@@ -18,17 +18,19 @@ async def test_usage_cost_migration_and_views_with_postgresql() -> None:
         database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
     )
     schema = f"provider_usage_{uuid4().hex}"
-    migrations = Path(__file__).parents[3] / "deploy" / "local" / "postgresql"
+    postgres_dir = Path(__file__).parents[3] / "deploy" / "local" / "postgresql"
     try:
         await connection.execute(f'CREATE SCHEMA "{schema}"')
+        baseline = (postgres_dir / "baseline" / "geo_analysis.sql").read_text(
+            encoding="utf-8"
+        )
+        baseline = "\n".join(
+            line for line in baseline.splitlines() if not line.startswith("\\")
+        ).replace("public.", f'"{schema}".')
+        await connection.execute(baseline)
         await connection.execute(f'SET search_path TO "{schema}"')
         await connection.execute(
-            (migrations / "018_provider_request_audit.sql").read_text(
-                encoding="utf-8"
-            )
-        )
-        await connection.execute(
-            (migrations / "023_provider_request_usage_cost_estimate.sql").read_text(
+            (postgres_dir / "seed" / "provider_pricing_rates.sql").read_text(
                 encoding="utf-8"
             )
         )

@@ -46,6 +46,20 @@ from younilab_seo.geo_analysis.infrastructure import KMindHubGeoRunResultAnalyze
 
 TENANT_ID = UUID("00000000-0000-4000-8000-000000000001")
 OTHER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000002")
+
+
+def test_runtime_dependencies_require_geo_analysis_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GEO_ANALYSIS_DATABASE_URL", raising=False)
+
+    with pytest.raises(
+        RuntimeError,
+        match="GEO_ANALYSIS_DATABASE_URL is required",
+    ):
+        build_dependencies()
+
+
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
@@ -91,6 +105,7 @@ def test_local_admin_portal_preflight_is_allowed() -> None:
 def test_missing_bearer_token_returns_unauthorized() -> None:
     client = TestClient(
         create_app(
+            repository=GeoApiStore(),
             authorizer=FakeAuthorizer(),
             reference_verifier=FakeReferenceVerifier(),
         )
@@ -2483,6 +2498,7 @@ def test_overview_ignores_historical_non_owner_jobs() -> None:
 def _client(**kwargs) -> TestClient:
     return TestClient(
         create_app(
+            repository=kwargs.pop("repository", GeoApiStore()),
             authorizer=kwargs.pop("authorizer", FakeAuthorizer()),
             reference_verifier=kwargs.pop(
                 "reference_verifier", FakeReferenceVerifier()

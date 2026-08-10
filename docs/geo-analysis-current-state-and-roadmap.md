@@ -160,7 +160,7 @@ Citation metrics 使用完成的 citation normalization facts，與 semantic ext
 
 `provider_request` 是一個 physical request 一列；retry、reference retry 與 SerpApi page-token request 都必須各自留一列，`operation_id` 只用來 grouping。Usage 無法取得時應標為 unavailable，不得為了補 usage 重呼 provider。
 
-成本 view 是 list-price estimate，不等同實際帳單。部署 usage-aware 程式前，migration 必須按序套用，尤其先執行 `022_geo_run_result_entity_detection.sql`，再執行 `023_provider_request_usage_cost_estimate.sql`，並確認 pricing rows 與 views 存在。
+成本 view 是 list-price estimate，不等同實際帳單。全新 database 應套用 `deploy/local/postgresql/baseline/geo_analysis.sql`，再執行 `deploy/local/postgresql/seed/provider_pricing_rates.sql`，並確認 pricing rows 與 views 存在；既有穩定 database 不可重跑 baseline。舊版 migration 僅保留於 `deploy/local/postgresql/archive/pre-stable-baseline/` 供歷史追溯。
 
 ## 7. 剩餘 Roadmap
 

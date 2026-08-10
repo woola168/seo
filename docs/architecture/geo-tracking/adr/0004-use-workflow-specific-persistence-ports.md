@@ -30,7 +30,7 @@ Port 可以包含跨表 context load 或原子保存操作。Application caller 
 
 ## Runtime 組裝
 
-正式環境仍使用一個 `PostgresGeoAnalysisRepository` 實例，本機與 HTTP tests 仍可使用一個 `GeoApiStore` 實例。這兩個 adapter 可共用 session factory、transaction helper、row mapping 與 in-memory state。
+正式與本機 runtime 一律使用一個 `PostgresGeoAnalysisRepository` 實例，缺少 `GEO_ANALYSIS_DATABASE_URL` 時啟動失敗。HTTP tests 仍可透過 dependency injection 明確使用一個 `GeoApiStore` 實例；兩個 adapter 共用相同 workflow ports，但 in-memory adapter 不再是 runtime fallback。
 
 `composition.py` 負責把同一個 adapter 明確視為不同 workflow port，再分別注入 use case。共享 adapter 是 infrastructure implementation detail，不再由 application layer 以大型 façade 表達。
 

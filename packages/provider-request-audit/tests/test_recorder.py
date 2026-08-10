@@ -236,19 +236,18 @@ async def _successful_request() -> str:
     return "ok"
 
 
-def test_provider_request_migration_keeps_one_row_per_request_contract() -> None:
-    migration = (
+def test_geo_baseline_keeps_one_row_per_provider_request_contract() -> None:
+    baseline = (
         Path(__file__).parents[3]
         / "deploy"
         / "local"
         / "postgresql"
-        / "018_provider_request_audit.sql"
+        / "baseline"
+        / "geo_analysis.sql"
     ).read_text(encoding="utf-8")
 
-    assert "CREATE TABLE IF NOT EXISTS provider_request" in migration
-    assert "UNIQUE (operation_id, request_number)" in migration
-    assert "input_token_count" not in migration
-    assert "output_token_count" not in migration
+    assert "CREATE TABLE public.provider_request" in baseline
+    assert "ux_provider_request_operation_number UNIQUE" in baseline
     for field in (
         "request_kind",
         "platform_code",
@@ -259,17 +258,22 @@ def test_provider_request_migration_keeps_one_row_per_request_contract() -> None
         "uses_grounding",
         "run_request_id",
     ):
-        assert field in migration
+        assert field in baseline
 
 
-def test_provider_request_usage_cost_migration_adds_rates_and_views() -> None:
-    migration = (
+def test_geo_baseline_contains_provider_usage_rates_and_views() -> None:
+    postgres_dir = (
         Path(__file__).parents[3]
         / "deploy"
         / "local"
         / "postgresql"
-        / "023_provider_request_usage_cost_estimate.sql"
-    ).read_text(encoding="utf-8")
+    )
+    baseline = (postgres_dir / "baseline" / "geo_analysis.sql").read_text(
+        encoding="utf-8"
+    )
+    pricing_seed = (postgres_dir / "seed" / "provider_pricing_rates.sql").read_text(
+        encoding="utf-8"
+    )
 
     for field in (
         "input_token_count",
@@ -281,9 +285,11 @@ def test_provider_request_usage_cost_migration_adds_rates_and_views() -> None:
         "usage_metadata",
         "meter_usage",
     ):
-        assert field in migration
-    assert "CREATE TABLE IF NOT EXISTS provider_pricing_rate" in migration
-    assert "CREATE OR REPLACE VIEW provider_request_cost_estimate" in migration
-    assert "CREATE OR REPLACE VIEW provider_request_daily_cost_estimate" in migration
-    assert "estimated_list_cost_usd" in migration
-    assert "free" not in migration.lower()
+        assert field in baseline
+    assert "CREATE TABLE public.provider_pricing_rate" in baseline
+    assert "CREATE VIEW public.provider_request_cost_estimate" in baseline
+    assert "CREATE VIEW public.provider_request_daily_cost_estimate" in baseline
+    assert "estimated_list_cost_usd" in baseline
+    assert pricing_seed.count("'30000000-0000-4000-8000-00000000000") == 7
+    assert "ON CONFLICT DO NOTHING" in pricing_seed
+    assert "free" not in baseline.lower()

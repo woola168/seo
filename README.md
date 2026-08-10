@@ -23,7 +23,7 @@ repository，不需要啟動外部服務。
 客戶與任務主檔由獨立的 `resource-catalog-api` 擁有，開發環境預設使用
 `http://127.0.0.1:8001` 與 PostgreSQL `localhost:5433/resource_catalog`。
 
-套用 `deploy/local/postgresql/001_access_control_schema.sql` 後，以互動方式建立
+套用 `deploy/local/postgresql/baseline/access_control.sql` 後，以互動方式建立
 第一位管理員：
 
 ```powershell
@@ -36,8 +36,8 @@ uv run python -m younilab_access_control_api.bootstrap `
 
 先在 PostgreSQL 執行：
 
-1. `deploy/local/postgresql/001_access_control_schema.sql`
-2. `deploy/local/postgresql/002_access_control_demo_seed.sql`
+1. `deploy/local/postgresql/baseline/access_control.sql`
+2. `deploy/local/postgresql/seed/002_access_control_demo_seed.sql`
 
 第二份 SQL 會建立兩個測試帳號：
 
